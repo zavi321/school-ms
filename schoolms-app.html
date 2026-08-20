@@ -160,6 +160,7 @@ const T = {
     perClassBreakdown:'Per-Class Fee Status',
     confirmDelete:'Delete this record? This cannot be undone.', yes:'Yes, delete', no:'No, keep it',
     langToggle:'اردو', sharedNotice:'Your data is private to your school account — no other school can see it.',
+    copyrightNotice:'© 2026 Zavi Software. All rights reserved. This software is licensed for use by your school only — it may not be resold, redistributed, or transferred to any other party.',
     enterAmount:'Enter amount',
     lastBalance:'Last Balance', schoolFeeCol:'School Fee', sportsFund:'Sports Fund', admissionFeeCol:'Admission Fee',
     examFeeCol:'Annual Exam Fee', totalDuesCol:'Total Dues', totalPaidCol:'Total Paid', balanceCol:'Balance',
@@ -194,6 +195,7 @@ const T = {
     perClassBreakdown:'جماعت کے لحاظ سے فیس کی صورتحال',
     confirmDelete:'یہ ریکارڈ حذف کریں؟ یہ واپس نہیں ہو سکتا۔', yes:'ہاں، حذف کریں', no:'نہیں',
     langToggle:'English', sharedNotice:'آپ کا ڈیٹا صرف آپ کے اسکول کے اکاؤنٹ تک محدود ہے — کوئی اور اسکول اسے نہیں دیکھ سکتا۔',
+    copyrightNotice:'© 2026 Zavi Software۔ جملہ حقوق محفوظ ہیں۔ یہ سافٹ ویئر صرف آپ کے اسکول کے استعمال کے لیے لائسنس یافتہ ہے — اسے دوبارہ فروخت، تقسیم، یا کسی اور کو منتقل نہیں کیا جا سکتا۔',
     enterAmount:'رقم درج کریں',
     lastBalance:'پچھلا بیلنس', schoolFeeCol:'اسکول فیس', sportsFund:'اسپورٹس فنڈ', admissionFeeCol:'داخلہ فیس',
     examFeeCol:'سالانہ امتحان فیس', totalDuesCol:'کل واجب الادا', totalPaidCol:'کل ادا شدہ', balanceCol:'بیلنس',
@@ -287,6 +289,7 @@ function renderSignUp() {
     <div id="auth-msg"></div>
     <button class="btn-primary" id="su-btn" onclick="submitSignUp()">${esc(t.signUp)}</button>
     <div class="switch-line">${esc(t.haveAccount)} <a onclick="renderLogIn()">${esc(t.logIn)}</a></div>
+    <p style="font-size:10px;text-align:center;opacity:.5;margin-top:14px;line-height:1.5;">${esc(t.copyrightNotice)}</p>
   `);
 }
 
@@ -451,6 +454,7 @@ function renderTab() {
   else if (TAB==='finance') main.innerHTML = tplFinance();
   else if (TAB==='reports') main.innerHTML = tplReports();
   main.innerHTML += `<div class="notice">${esc(t.sharedNotice)}</div>`;
+  main.innerHTML += `<div class="notice" style="margin-top:8px;font-size:10px;">${esc(t.copyrightNotice)}</div>`;
 }
 
 // ---------------- Settings (school name, password, logout) ----------------
