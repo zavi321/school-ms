@@ -1,0 +1,974 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>School Finance & Records</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700&family=Inter:wght@400;500;600;700&family=Noto+Nastaliq+Urdu:wght@600;700&family=Noto+Sans+Urdu:wght@400;500;600&display=swap">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root{
+    --navy:#0F2740; --navy-deep:#0A1B2C; --gold:#C9A227; --gold-soft:#E4C765;
+    --cream:#FAF6EC; --card:#FFFFFF; --ink:#1C2530; --sage:#3F7154; --rust:#B24A32; --line:#E7E0CE;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--cream);color:var(--ink);font-family:Inter,sans-serif;}
+  body.ur{font-family:'Noto Sans Urdu',sans-serif;direction:rtl;}
+  .hidden{display:none !important;}
+  button{cursor:pointer;font-family:inherit;}
+  input,select{font-family:inherit;font-size:14px;width:100%;padding:9px 12px;border:1px solid var(--line);border-radius:8px;background:#fff;color:var(--ink);outline:none;}
+  label{display:block;margin-bottom:12px;}
+  label span{display:block;font-size:12px;font-weight:500;opacity:.7;margin-bottom:4px;}
+
+  .auth-wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px;background:var(--navy);}
+  .auth-box{width:100%;max-width:380px;}
+  .auth-brand{text-align:center;font-size:11px;letter-spacing:.15em;text-transform:uppercase;color:var(--gold-soft);opacity:.8;margin-bottom:20px;}
+  .auth-card{background:var(--cream);border-radius:18px;padding:22px;}
+  .auth-card h2{margin:0 0 4px;color:var(--navy);font-family:Fraunces,serif;font-size:19px;}
+  body.ur .auth-card h2{font-family:'Noto Nastaliq Urdu',serif;}
+  .auth-card p.desc{font-size:12px;opacity:.65;margin:0 0 16px;}
+  .err{color:var(--rust);font-size:12px;margin-bottom:10px;}
+  .ok{color:var(--sage);font-size:12px;margin-bottom:10px;}
+  .switch-line{text-align:center;font-size:13px;margin-top:14px;}
+  .switch-line a{color:var(--navy);font-weight:600;text-decoration:underline;cursor:pointer;}
+
+  .btn-primary{background:var(--navy);color:var(--gold-soft);border:none;border-radius:10px;padding:11px;font-weight:600;font-size:14px;width:100%;display:flex;align-items:center;justify-content:center;gap:6px;}
+  .btn-primary:disabled{opacity:.6;}
+  .btn-ghost{background:#F0EBDA;color:var(--navy);border:none;border-radius:10px;padding:11px;font-weight:500;font-size:14px;flex:1;}
+  .btn-ghost.danger{background:#FBEAE5;color:var(--rust);}
+  .lang-mini{background:#F0EAD6;color:var(--navy);border:none;border-radius:999px;padding:5px 12px;font-size:12px;font-weight:600;}
+
+  #app{padding-bottom:90px;}
+  header.top{background:var(--navy);padding:24px 16px 30px;border-radius:0 0 22px 22px;position:relative;overflow:hidden;}
+  header.top .glow{position:absolute;width:150px;height:150px;border-radius:999px;background:var(--gold);opacity:.1;right:-30px;top:-30px;}
+  .top-row{display:flex;justify-content:space-between;align-items:flex-start;position:relative;}
+  .top-row .eyebrow{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--gold-soft);opacity:.85;}
+  .top-row .title{color:#fff;font-family:Fraunces,serif;font-size:20px;font-weight:600;margin-top:2px;}
+  body.ur .top-row .title{font-family:'Noto Nastaliq Urdu',serif;}
+  .top-actions{display:flex;gap:8px;}
+  .pill-btn{border:none;border-radius:999px;padding:6px 12px;font-size:12px;font-weight:600;}
+  .pill-btn.lang{background:var(--gold-soft);color:var(--navy-deep);}
+  .pill-btn.lock{background:rgba(255,255,255,.12);color:var(--gold-soft);}
+
+  main{padding:0 16px;margin-top:-16px;}
+  .notice{margin-top:24px;font-size:11px;text-align:center;padding:8px 12px;border-radius:8px;color:var(--navy);opacity:.55;background:#F0EAD6;}
+
+  nav.bottom{position:fixed;left:0;right:0;bottom:0;padding:12px;z-index:40;}
+  nav.bottom .bar{max-width:420px;margin:0 auto;background:var(--navy);border-radius:16px;display:flex;padding:6px;box-shadow:0 8px 24px rgba(0,0,0,.25);}
+  nav.bottom button{flex:1;background:transparent;border:none;border-radius:12px;padding:8px 4px;display:flex;flex-direction:column;align-items:center;gap:2px;color:#8FA3B8;font-size:10px;font-weight:500;}
+  nav.bottom button.active{background:rgba(201,162,39,.18);color:var(--gold-soft);}
+  nav.bottom button svg{width:18px;height:18px;}
+
+  .stat-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:16px;}
+  .stat-card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;}
+  .stat-card .lbl{font-size:11px;opacity:.65;margin:6px 0 2px;}
+  .stat-card .val{font-size:22px;font-weight:600;color:var(--navy);font-family:Fraunces,serif;}
+  .balance-card{background:var(--navy);border-radius:14px;padding:16px;margin-top:12px;}
+  .balance-card .lbl{color:var(--gold-soft);opacity:.85;font-size:12px;}
+  .balance-card .val{color:#fff;font-size:30px;font-weight:600;font-family:Fraunces,serif;margin-top:4px;}
+
+  .section-title{font-size:14px;font-weight:600;color:var(--navy);margin:20px 0 8px;}
+  .list-card{background:var(--card);border:1px solid var(--line);border-radius:14px;overflow:hidden;}
+  .list-row{display:flex;justify-content:space-between;align-items:center;padding:12px 16px;border-bottom:1px solid var(--line);}
+  .list-row:last-child{border-bottom:none;}
+  .list-row .nm{font-size:14px;font-weight:500;}
+  .list-row .sub{font-size:11px;opacity:.5;margin-top:1px;}
+  .empty{background:var(--card);border:1px dashed var(--line);border-radius:14px;padding:32px;text-align:center;font-size:13px;opacity:.6;}
+
+  .searchbar{display:flex;gap:8px;margin-bottom:12px;}
+  .searchbar input{flex:1;}
+  .icon-btn{background:var(--navy);border:none;border-radius:10px;width:42px;flex-shrink:0;display:flex;align-items:center;justify-content:center;}
+
+  .card-btn{width:100%;text-align:left;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px 14px;display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;}
+  body.ur .card-btn{text-align:right;}
+  .card-btn .nm{font-size:14px;font-weight:600;color:var(--navy);}
+  .card-btn .sub{font-size:11px;opacity:.55;margin-top:2px;}
+  .pill{font-size:11px;font-weight:600;padding:2px 9px;border-radius:999px;}
+  .pill.good{color:var(--sage);background:#EAF2EC;}
+  .pill.bad{color:var(--rust);background:#FBEAE5;}
+
+  .modal-bg{position:fixed;inset:0;background:rgba(15,39,64,.55);z-index:50;display:flex;align-items:flex-end;justify-content:center;}
+  .modal{width:100%;max-width:420px;max-height:90vh;overflow-y:auto;background:var(--cream);border-radius:18px 18px 0 0;padding:20px;}
+  @media(min-width:640px){.modal-bg{align-items:center;}.modal{border-radius:18px;}}
+  .modal-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;}
+  .modal-head h3{margin:0;font-size:17px;color:var(--navy);font-family:Fraunces,serif;}
+  body.ur .modal-head h3{font-family:'Noto Nastaliq Urdu',serif;}
+  .modal-head button{background:none;border:none;font-size:20px;color:var(--ink);}
+  .row2{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+  .flexgap{display:flex;gap:8px;margin-top:14px;}
+  .type-toggle{display:flex;gap:8px;margin-bottom:14px;}
+  .type-toggle button{flex:1;border:none;border-radius:10px;padding:9px;font-size:13px;font-weight:600;background:#F0EBDA;color:var(--navy);}
+  .type-toggle button.on-income{background:var(--sage);color:#fff;}
+  .type-toggle button.on-expense{background:var(--rust);color:#fff;}
+  .greenbox{background:#EAF2EC;border-radius:10px;padding:10px 12px;margin-bottom:16px;}
+  .greenbox .lbl{font-size:11px;color:var(--sage);}
+  .greenbox .val{font-size:17px;font-weight:600;color:var(--sage);}
+  .ledger{border:1px solid var(--line);border-radius:10px;overflow:hidden;}
+  .ledger-row{display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:#fff;border-bottom:1px solid var(--line);}
+  .ledger-row:last-child{border-bottom:none;}
+  .amt-pos{color:var(--sage);font-weight:600;font-size:14px;}
+  .amt-neg{color:var(--rust);font-weight:600;font-size:14px;}
+  .del-btn{background:none;border:none;color:var(--rust);font-size:14px;}
+  .loading{min-height:100vh;display:flex;align-items:center;justify-content:center;color:var(--navy);font-size:14px;}
+
+  .card-table-wrap{overflow-x:auto;border:1px solid var(--line);border-radius:10px;-webkit-overflow-scrolling:touch;}
+  table.card-table{border-collapse:collapse;width:100%;min-width:820px;font-size:11px;background:#fff;}
+  table.card-table th{background:var(--navy);color:var(--gold-soft);font-weight:600;padding:7px 8px;text-align:center;white-space:nowrap;position:sticky;top:0;}
+  table.card-table td{padding:7px 8px;text-align:center;border-bottom:1px solid var(--line);white-space:nowrap;}
+  table.card-table tr:last-child td{border-bottom:none;}
+  table.card-table td.mo{font-weight:600;color:var(--navy);text-align:left;}
+  body.ur table.card-table td.mo{text-align:right;}
+  table.card-table td.bal-neg{color:var(--rust);font-weight:700;}
+  table.card-table td.bal-pos{color:var(--sage);font-weight:700;}
+  .del-x{background:none;border:none;color:var(--rust);font-size:12px;padding:0;}
+  .print-btn{background:none;border:none;color:var(--navy);font-size:13px;padding:0 4px;}
+
+  #print-area{display:none;}
+  @media print {
+    body *{visibility:hidden;}
+    #print-area, #print-area *{visibility:visible;}
+    #print-area{display:block;position:absolute;top:0;left:0;width:100%;padding:24px;}
+    .receipt-box{border:2px solid #0F2740;border-radius:8px;padding:20px;font-family:Inter,sans-serif;}
+    .receipt-box h2{font-family:Fraunces,serif;color:#0F2740;margin:0 0 2px;}
+    .receipt-box .sub{color:#555;font-size:13px;margin-bottom:16px;}
+    .receipt-box table{width:100%;border-collapse:collapse;margin-top:12px;}
+    .receipt-box td{padding:6px 4px;border-bottom:1px solid #ddd;font-size:14px;}
+    .receipt-box .lbl{color:#555;}
+    .receipt-box .total-row td{font-weight:700;font-size:16px;border-top:2px solid #0F2740;border-bottom:none;}
+    .receipt-box .foot{margin-top:24px;font-size:12px;color:#777;text-align:center;}
+  }
+</style>
+</head>
+<body>
+
+<!-- ============ CONFIG: replace with your Supabase project values ============ -->
+<script>
+  const SUPABASE_URL = "https://kapbrbuxdaqmuhfxtklq.supabase.co";
+  const SUPABASE_ANON_KEY = "sb_publishable_RVl0TxnIcUTNjlmRDsARVg_GzwGNzV2";
+</script>
+<!-- ============================================================================ -->
+
+<div id="loading" class="loading">Loading…</div>
+<div id="auth-root"></div>
+<div id="app" class="hidden"></div>
+<div id="print-area"></div>
+
+<script>
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+const T = {
+  en: {
+    appName:'School Finance & Records', tagline:'For school administration',
+    dashboard:'Dashboard', students:'Students', teachers:'Teachers', finance:'Finance', reports:'Reports',
+    totalStudents:'Active Students', feesCollected:'Fees Collected (this month)', feesDue:'Fees Due (this month)',
+    salaryPaid:'Salaries Paid (this month)', netBalance:'Net Balance (all-time)', recentActivity:'Recent Activity',
+    addStudent:'Add Student', studentName:'Student Name', fatherName:"Father's Name", className:'Class',
+    admissionDate:'Admission Date', monthlyFee:'Monthly Fee (Rs)', contact:'Contact Number',
+    search:'Search students...', noStudents:'No students yet. Add your first student to get started.',
+    feeLedger:'Fee Ledger', markPaid:'Mark Month Paid', month:'Month', amount:'Amount (Rs)',
+    save:'Save', cancel:'Cancel', delete:'Delete', paid:'Paid', due:'Due',
+    addTeacher:'Add Teacher', teacherName:'Teacher Name', subject:'Subject / Role', monthlySalary:'Monthly Salary (Rs)',
+    joinDate:'Join Date', searchTeachers:'Search teachers...', noTeachers:'No teachers yet. Add your first teacher to get started.',
+    salaryLedger:'Salary Ledger', payMonth:'Pay Month',
+    addTransaction:'Add Entry', income:'Income', expense:'Expense', category:'Category', description:'Description', date:'Date',
+    noTransactions:'No entries yet.',
+    summaryReport:'Summary Report', totalCollectedAllTime:'Total Fees Collected (all-time)', totalSalariesAllTime:'Total Salaries Paid (all-time)',
+    totalOtherIncomeAllTime:'Total Other Income (all-time)', totalOtherExpenseAllTime:'Total Other Expenses (all-time)',
+    perClassBreakdown:'Per-Class Fee Status',
+    confirmDelete:'Delete this record? This cannot be undone.', yes:'Yes, delete', no:'No, keep it',
+    langToggle:'اردو', sharedNotice:'Your data is private to your school account — no other school can see it.',
+    copyrightNotice:'© 2026 Zavi Software. All rights reserved. This software is licensed for use by your school only — it may not be resold, redistributed, or transferred to any other party.',
+    enterAmount:'Enter amount',
+    lastBalance:'Last Balance', schoolFeeCol:'School Fee', sportsFund:'Sports Fund', admissionFeeCol:'Admission Fee',
+    examFeeCol:'Annual Exam Fee', totalDuesCol:'Total Dues', totalPaidCol:'Total Paid', balanceCol:'Balance',
+    receiptNo:'Receipt No', dateCol:'Date', addEntry:'Add Month Entry', optional:'optional',
+    print:'Print', feeReceipt:'Fee Receipt', studentNameLbl:'Student Name', receivedFrom:'Received From',
+    forMonth:'For Month', totalAmount:'Total Amount Paid', thankYou:'Thank you for your payment.',
+    // Auth
+    signUpTitle:'Create your school account', signUpDesc:'Register your school to start using the system.',
+    logInTitle:'Log In', logInDesc:'Log in to your school account.',
+    schoolName:'School Name', email:'Email Address', password:'Password', confirmPassword:'Confirm Password',
+    signUp:'Sign Up', logIn:'Log In', haveAccount:'Already have an account?', noAccount:"Don't have an account?",
+    passwordTooShort:'Password must be at least 6 characters.', passwordMismatch:'Passwords do not match.',
+    signUpSuccess:'Account created! You can now log in.',
+    settings:'Account Settings', changeSchoolName:'School Name', changePassword:'New Password (leave blank to keep current)',
+    saveSettings:'Save Changes', settingsSaved:'Saved successfully.', logOut:'Log Out',
+  },
+  ur: {
+    appName:'مالیاتی و ریکارڈ سسٹم', tagline:'اسکول انتظامیہ کے لیے',
+    dashboard:'ڈیش بورڈ', students:'طلبہ', teachers:'اساتذہ', finance:'مالیات', reports:'رپورٹس',
+    totalStudents:'فعال طلبہ', feesCollected:'وصول شدہ فیس (اس ماہ)', feesDue:'واجب الادا فیس (اس ماہ)',
+    salaryPaid:'ادا شدہ تنخواہ (اس ماہ)', netBalance:'کل بیلنس', recentActivity:'حالیہ سرگرمی',
+    addStudent:'طالب علم شامل کریں', studentName:'طالب علم کا نام', fatherName:'والد کا نام', className:'جماعت',
+    admissionDate:'داخلہ کی تاریخ', monthlyFee:'ماہانہ فیس (روپے)', contact:'رابطہ نمبر',
+    search:'طلبہ تلاش کریں...', noStudents:'ابھی کوئی طالب علم شامل نہیں۔',
+    feeLedger:'فیس کھاتہ', markPaid:'مہینہ ادا شدہ نشان زد کریں', month:'مہینہ', amount:'رقم (روپے)',
+    save:'محفوظ کریں', cancel:'منسوخ کریں', delete:'حذف کریں', paid:'ادا شدہ', due:'واجب الادا',
+    addTeacher:'استاد شامل کریں', teacherName:'استاد کا نام', subject:'مضمون / عہدہ', monthlySalary:'ماہانہ تنخواہ (روپے)',
+    joinDate:'شمولیت کی تاریخ', searchTeachers:'اساتذہ تلاش کریں...', noTeachers:'ابھی کوئی استاد شامل نہیں۔',
+    salaryLedger:'تنخواہ کھاتہ', payMonth:'ادائیگی کا مہینہ',
+    addTransaction:'اندراج شامل کریں', income:'آمدنی', expense:'اخراجات', category:'قسم', description:'تفصیل', date:'تاریخ',
+    noTransactions:'ابھی کوئی اندراج نہیں۔',
+    summaryReport:'خلاصہ رپورٹ', totalCollectedAllTime:'کل وصول شدہ فیس', totalSalariesAllTime:'کل ادا شدہ تنخواہیں',
+    totalOtherIncomeAllTime:'کل دیگر آمدنی', totalOtherExpenseAllTime:'کل دیگر اخراجات',
+    perClassBreakdown:'جماعت کے لحاظ سے فیس کی صورتحال',
+    confirmDelete:'یہ ریکارڈ حذف کریں؟ یہ واپس نہیں ہو سکتا۔', yes:'ہاں، حذف کریں', no:'نہیں',
+    langToggle:'English', sharedNotice:'آپ کا ڈیٹا صرف آپ کے اسکول کے اکاؤنٹ تک محدود ہے — کوئی اور اسکول اسے نہیں دیکھ سکتا۔',
+    copyrightNotice:'© 2026 Zavi Software۔ جملہ حقوق محفوظ ہیں۔ یہ سافٹ ویئر صرف آپ کے اسکول کے استعمال کے لیے لائسنس یافتہ ہے — اسے دوبارہ فروخت، تقسیم، یا کسی اور کو منتقل نہیں کیا جا سکتا۔',
+    enterAmount:'رقم درج کریں',
+    lastBalance:'پچھلا بیلنس', schoolFeeCol:'اسکول فیس', sportsFund:'اسپورٹس فنڈ', admissionFeeCol:'داخلہ فیس',
+    examFeeCol:'سالانہ امتحان فیس', totalDuesCol:'کل واجب الادا', totalPaidCol:'کل ادا شدہ', balanceCol:'بیلنس',
+    receiptNo:'رسید نمبر', dateCol:'تاریخ', addEntry:'ماہانہ اندراج شامل کریں', optional:'اختیاری',
+    print:'پرنٹ', feeReceipt:'فیس رسید', studentNameLbl:'طالب علم کا نام', receivedFrom:'وصول شدہ از',
+    forMonth:'مہینہ', totalAmount:'کل ادا شدہ رقم', thankYou:'ادائیگی کا شکریہ۔',
+    signUpTitle:'اپنا اسکول اکاؤنٹ بنائیں', signUpDesc:'سسٹم استعمال کرنے کے لیے اپنا اسکول رجسٹر کریں۔',
+    logInTitle:'لاگ ان کریں', logInDesc:'اپنے اسکول اکاؤنٹ میں لاگ ان کریں۔',
+    schoolName:'اسکول کا نام', email:'ای میل ایڈریس', password:'پاس ورڈ', confirmPassword:'پاس ورڈ کی تصدیق',
+    signUp:'اکاؤنٹ بنائیں', logIn:'لاگ ان', haveAccount:'پہلے سے اکاؤنٹ ہے؟', noAccount:'اکاؤنٹ نہیں ہے؟',
+    passwordTooShort:'پاس ورڈ کم از کم 6 حروف کا ہونا چاہیے۔', passwordMismatch:'پاس ورڈ مماثل نہیں ہیں۔',
+    signUpSuccess:'اکاؤنٹ بن گیا! اب آپ لاگ ان کر سکتے ہیں۔',
+    settings:'اکاؤنٹ کی ترتیبات', changeSchoolName:'اسکول کا نام', changePassword:'نیا پاس ورڈ (خالی چھوڑیں اگر تبدیل نہیں کرنا)',
+    saveSettings:'تبدیلیاں محفوظ کریں', settingsSaved:'کامیابی سے محفوظ ہو گیا۔', logOut:'لاگ آؤٹ',
+  }
+};
+
+let LANG = localStorage.getItem('sms_lang') || 'en';
+let t = T[LANG];
+const CLASS_OPTIONS = ['Nursery','KG','1','2','3','4','5','6','7','8'];
+const EXPENSE_CATS = ['Utilities','Maintenance','Supplies','Rent','Transport','Events','Other'];
+const INCOME_CATS = ['Donation','Grant','Sale','Fundraiser','Other'];
+
+const fmt = n => Number(n||0).toLocaleString('en-US');
+const monthKey = (d=new Date()) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+const monthLabel = mk => { const [y,m]=mk.split('-').map(Number); return new Date(y,m-1,1).toLocaleDateString(LANG==='ur'?'ur-PK':'en-US',{month:'short',year:'numeric'}); };
+const todayISO = () => new Date().toISOString().slice(0,10);
+const esc = s => (s==null?'':String(s)).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+let DATA = { students:[], feePayments:[], teachers:[], salaryPayments:[], transactions:[] };
+let TAB = 'dashboard';
+let CURRENT_USER = null;   // { id, email }
+let CURRENT_PROFILE = null; // { school_name }
+
+// ---------------- Boot / session ----------------
+async function boot() {
+  document.body.className = LANG === 'ur' ? 'ur' : '';
+  const { data:{ session } } = await sb.auth.getSession();
+  document.getElementById('loading').classList.add('hidden');
+  if (session && session.user) {
+    CURRENT_USER = session.user;
+    await afterLogin();
+  } else {
+    renderLogIn();
+  }
+}
+
+async function afterLogin() {
+  const { data: prof } = await sb.from('profiles').select('*').eq('id', CURRENT_USER.id).maybeSingle();
+  CURRENT_PROFILE = prof || { school_name: 'My School' };
+  await loadAllData();
+  renderApp();
+}
+
+// ---------------- Auth screens ----------------
+function renderAuthShell(inner) {
+  document.getElementById('app').classList.add('hidden');
+  document.getElementById('auth-root').innerHTML = `
+    <div class="auth-wrap">
+      <div class="auth-box">
+        <div class="auth-brand">${esc(t.appName)}</div>
+        <div class="auth-card">${inner}</div>
+      </div>
+    </div>`;
+}
+
+function renderLogIn() {
+  renderAuthShell(`
+    <div style="text-align:${LANG==='ur'?'right':'left'};margin-bottom:8px;">
+      <button class="lang-mini" onclick="toggleLangAuth(false)">${esc(t.langToggle)}</button>
+    </div>
+    <h2>${esc(t.logInTitle)}</h2>
+    <p class="desc">${esc(t.logInDesc)}</p>
+    <label><span>${esc(t.email)}</span><input id="li-email" type="email" autocomplete="email"></label>
+    <label><span>${esc(t.password)}</span><input id="li-pw" type="password" autocomplete="current-password" onkeydown="if(event.key==='Enter')submitLogIn()"></label>
+    <div id="auth-msg"></div>
+    <button class="btn-primary" id="li-btn" onclick="submitLogIn()">${esc(t.logIn)}</button>
+    <div class="switch-line">${esc(t.noAccount)} <a onclick="renderSignUp()">${esc(t.signUp)}</a></div>
+  `);
+}
+
+function renderSignUp() {
+  renderAuthShell(`
+    <div style="text-align:${LANG==='ur'?'right':'left'};margin-bottom:8px;">
+      <button class="lang-mini" onclick="toggleLangAuth(true)">${esc(t.langToggle)}</button>
+    </div>
+    <h2>${esc(t.signUpTitle)}</h2>
+    <p class="desc">${esc(t.signUpDesc)}</p>
+    <label><span>${esc(t.schoolName)}</span><input id="su-school"></label>
+    <label><span>${esc(t.email)}</span><input id="su-email" type="email" autocomplete="email"></label>
+    <label><span>${esc(t.password)}</span><input id="su-pw" type="password" autocomplete="new-password"></label>
+    <label><span>${esc(t.confirmPassword)}</span><input id="su-pw2" type="password" autocomplete="new-password" onkeydown="if(event.key==='Enter')submitSignUp()"></label>
+    <div id="auth-msg"></div>
+    <button class="btn-primary" id="su-btn" onclick="submitSignUp()">${esc(t.signUp)}</button>
+    <div class="switch-line">${esc(t.haveAccount)} <a onclick="renderLogIn()">${esc(t.logIn)}</a></div>
+    <p style="font-size:10px;text-align:center;opacity:.5;margin-top:14px;line-height:1.5;">${esc(t.copyrightNotice)}</p>
+  `);
+}
+
+function toggleLangAuth(isSignUp) {
+  LANG = LANG === 'en' ? 'ur' : 'en';
+  localStorage.setItem('sms_lang', LANG);
+  t = T[LANG];
+  document.body.className = LANG === 'ur' ? 'ur' : '';
+  isSignUp ? renderSignUp() : renderLogIn();
+}
+
+async function submitSignUp() {
+  const school = document.getElementById('su-school').value.trim();
+  const email = document.getElementById('su-email').value.trim();
+  const pw = document.getElementById('su-pw').value;
+  const pw2 = document.getElementById('su-pw2').value;
+  const msg = document.getElementById('auth-msg');
+  const btn = document.getElementById('su-btn');
+  msg.innerHTML = '';
+  if (!school || !email) { msg.innerHTML = `<div class="err">${esc(t.schoolName)} / ${esc(t.email)} ${LANG==='ur'?'لازمی ہے':'required'}</div>`; return; }
+  if (pw.length < 6) { msg.innerHTML = `<div class="err">${esc(t.passwordTooShort)}</div>`; return; }
+  if (pw !== pw2) { msg.innerHTML = `<div class="err">${esc(t.passwordMismatch)}</div>`; return; }
+  btn.disabled = true;
+  const { data, error } = await sb.auth.signUp({
+    email, password: pw,
+    options: { data: { school_name: school } }
+  });
+  btn.disabled = false;
+  if (error) { msg.innerHTML = `<div class="err">${esc(error.message)}</div>`; return; }
+  if (data.session) {
+    CURRENT_USER = data.user;
+    await afterLogin();
+  } else {
+    msg.innerHTML = `<div class="ok">${esc(t.signUpSuccess)}</div>`;
+  }
+}
+
+async function submitLogIn() {
+  const email = document.getElementById('li-email').value.trim();
+  const pw = document.getElementById('li-pw').value;
+  const msg = document.getElementById('auth-msg');
+  const btn = document.getElementById('li-btn');
+  msg.innerHTML = '';
+  btn.disabled = true;
+  const { data, error } = await sb.auth.signInWithPassword({ email, password: pw });
+  btn.disabled = false;
+  if (error) { msg.innerHTML = `<div class="err">${esc(error.message)}</div>`; return; }
+  CURRENT_USER = data.user;
+  await afterLogin();
+}
+
+async function logOut() {
+  await sb.auth.signOut();
+  CURRENT_USER = null; CURRENT_PROFILE = null;
+  DATA = { students:[], feePayments:[], teachers:[], salaryPayments:[], transactions:[] };
+  document.getElementById('app').classList.add('hidden');
+  renderLogIn();
+}
+
+// ---------------- Data loading (RLS auto-scopes everything to this school) ----------------
+async function loadAllData() {
+  const [s, fp, tc, sp, tx] = await Promise.all([
+    sb.from('students').select('*').order('created_at'),
+    sb.from('fee_payments').select('*'),
+    sb.from('teachers').select('*').order('created_at'),
+    sb.from('salary_payments').select('*'),
+    sb.from('transactions').select('*').order('txn_date',{ascending:false}),
+  ]);
+  DATA.students = s.data || [];
+  DATA.feePayments = fp.data || [];
+  DATA.teachers = tc.data || [];
+  DATA.salaryPayments = sp.data || [];
+  DATA.transactions = tx.data || [];
+}
+
+function studentPayments(id){ return DATA.feePayments.filter(p=>p.student_id===id); }
+function teacherPayments(id){ return DATA.salaryPayments.filter(p=>p.teacher_id===id); }
+
+// ---------------- Stats ----------------
+function computeStats() {
+  const cur = monthKey();
+  const active = DATA.students.filter(s=>s.status!=='inactive');
+  let feesCollectedThisMonth=0, feesDueThisMonth=0;
+  active.forEach(s=>{
+    const paid = studentPayments(s.id).filter(p=>p.month===cur).reduce((a,b)=>a+Number(b.amount),0);
+    feesCollectedThisMonth += paid;
+    feesDueThisMonth += Math.max(0, Number(s.monthly_fee||0)-paid);
+  });
+  let salaryPaidThisMonth=0;
+  DATA.teachers.forEach(tc=>{ salaryPaidThisMonth += teacherPayments(tc.id).filter(p=>p.month===cur).reduce((a,b)=>a+Number(b.amount),0); });
+
+  let totalCollectedAllTime=0;
+  active.forEach(s=>{ totalCollectedAllTime += studentPayments(s.id).reduce((a,b)=>a+Number(b.amount),0); });
+  let totalSalariesAllTime=0;
+  DATA.teachers.forEach(tc=>{ totalSalariesAllTime += teacherPayments(tc.id).reduce((a,b)=>a+Number(b.amount),0); });
+  const totalOtherIncomeAllTime = DATA.transactions.filter(x=>x.type==='income').reduce((a,b)=>a+Number(b.amount),0);
+  const totalOtherExpenseAllTime = DATA.transactions.filter(x=>x.type==='expense').reduce((a,b)=>a+Number(b.amount),0);
+  const netBalance = (totalCollectedAllTime+totalOtherIncomeAllTime) - (totalSalariesAllTime+totalOtherExpenseAllTime);
+
+  return { activeCount:active.length, feesCollectedThisMonth, feesDueThisMonth, salaryPaidThisMonth,
+    totalCollectedAllTime, totalSalariesAllTime, totalOtherIncomeAllTime, totalOtherExpenseAllTime, netBalance };
+}
+
+// ---------------- App shell render ----------------
+function renderApp() {
+  document.getElementById('auth-root').innerHTML = '';
+  document.getElementById('app').classList.remove('hidden');
+  const app = document.getElementById('app');
+  app.innerHTML = `
+    <header class="top">
+      <div class="glow"></div>
+      <div class="top-row">
+        <div>
+          <div class="eyebrow">${esc(CURRENT_PROFILE.school_name || 'My School')}</div>
+          <div class="title">${esc(t.appName)}</div>
+        </div>
+        <div class="top-actions">
+          <button class="pill-btn lang" onclick="toggleLangApp()">${esc(t.langToggle)}</button>
+          <button class="pill-btn lock" onclick="openSettings()">⚙</button>
+        </div>
+      </div>
+    </header>
+    <main id="main"></main>
+    <nav class="bottom"><div class="bar" id="navbar"></div></nav>
+    <div id="modal-root"></div>
+  `;
+  renderNav();
+  renderTab();
+}
+
+function toggleLangApp() {
+  LANG = LANG === 'en' ? 'ur' : 'en';
+  localStorage.setItem('sms_lang', LANG);
+  t = T[LANG];
+  document.body.className = LANG === 'ur' ? 'ur' : '';
+  renderApp();
+}
+
+const NAV_ICONS = {
+  dashboard: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/></svg>`,
+  students: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 10v6M2 10l10-5 10 5-10 5z"/><path d="M6 12v5c3 3 9 3 12 0v-5"/></svg>`,
+  teachers: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="7" r="4"/><path d="M2 21v-2a4 4 0 014-4h6a4 4 0 014 4v2"/><circle cx="17" cy="7" r="3"/></svg>`,
+  finance: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2"/></svg>`,
+  reports: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>`,
+};
+
+function renderNav() {
+  const tabs = ['dashboard','students','teachers','finance','reports'];
+  document.getElementById('navbar').innerHTML = tabs.map(k => `
+    <button class="${TAB===k?'active':''}" onclick="setTab('${k}')">
+      ${NAV_ICONS[k]}<span>${esc(t[k])}</span>
+    </button>`).join('');
+}
+
+function setTab(k){ TAB = k; renderNav(); renderTab(); }
+
+function renderTab() {
+  const main = document.getElementById('main');
+  if (TAB==='dashboard') main.innerHTML = tplDashboard();
+  else if (TAB==='students') main.innerHTML = tplStudents();
+  else if (TAB==='teachers') main.innerHTML = tplTeachers();
+  else if (TAB==='finance') main.innerHTML = tplFinance();
+  else if (TAB==='reports') main.innerHTML = tplReports();
+  main.innerHTML += `<div class="notice">${esc(t.sharedNotice)}</div>`;
+  main.innerHTML += `<div class="notice" style="margin-top:8px;font-size:10px;">${esc(t.copyrightNotice)}</div>`;
+}
+
+// ---------------- Settings (school name, password, logout) ----------------
+function openSettings() {
+  showModal(t.settings, `
+    <label><span>${esc(t.changeSchoolName)}</span><input id="set-school" value="${esc(CURRENT_PROFILE.school_name||'')}"></label>
+    <label><span>${esc(t.changePassword)}</span><input id="set-pw" type="password" autocomplete="new-password"></label>
+    <div id="set-msg"></div>
+    <button class="btn-primary" onclick="submitSettings()">${esc(t.saveSettings)}</button>
+    <div style="margin-top:16px;"><button class="btn-ghost danger" onclick="logOut()">${esc(t.logOut)}</button></div>
+  `);
+}
+
+async function submitSettings() {
+  const schoolName = document.getElementById('set-school').value.trim();
+  const newPw = document.getElementById('set-pw').value;
+  const msg = document.getElementById('set-msg');
+  msg.innerHTML = '';
+  if (newPw && newPw.length < 6) { msg.innerHTML = `<div class="err">${esc(t.passwordTooShort)}</div>`; return; }
+
+  if (schoolName && schoolName !== CURRENT_PROFILE.school_name) {
+    await sb.from('profiles').update({ school_name: schoolName }).eq('id', CURRENT_USER.id);
+    CURRENT_PROFILE.school_name = schoolName;
+  }
+  if (newPw) {
+    const { error } = await sb.auth.updateUser({ password: newPw });
+    if (error) { msg.innerHTML = `<div class="err">${esc(error.message)}</div>`; return; }
+  }
+  msg.innerHTML = `<div class="ok">${esc(t.settingsSaved)}</div>`;
+  document.querySelector('header .eyebrow').textContent = CURRENT_PROFILE.school_name;
+  setTimeout(closeModal, 800);
+}
+
+// ---------------- Dashboard ----------------
+function tplDashboard() {
+  const s = computeStats();
+  const recent = [];
+  DATA.students.forEach(st => studentPayments(st.id).forEach(p => recent.push({name:st.name, amount:p.amount, date:p.pay_date, kind:'fee'})));
+  DATA.teachers.forEach(tc => teacherPayments(tc.id).forEach(p => recent.push({name:tc.name, amount:p.amount, date:p.pay_date, kind:'salary'})));
+  DATA.transactions.forEach(x => recent.push({name:x.description, amount:x.amount, date:x.txn_date, kind:x.type}));
+  recent.sort((a,b)=> new Date(b.date) - new Date(a.date));
+  const top = recent.slice(0,8);
+
+  return `
+    <div style="padding-top:16px;">
+      <div class="stat-grid">
+        <div class="stat-card"><div class="lbl">${esc(t.totalStudents)}</div><div class="val">${s.activeCount}</div></div>
+        <div class="stat-card"><div class="lbl">${esc(t.feesCollected)}</div><div class="val">₨${fmt(s.feesCollectedThisMonth)}</div></div>
+        <div class="stat-card"><div class="lbl">${esc(t.feesDue)}</div><div class="val">₨${fmt(s.feesDueThisMonth)}</div></div>
+        <div class="stat-card"><div class="lbl">${esc(t.salaryPaid)}</div><div class="val">₨${fmt(s.salaryPaidThisMonth)}</div></div>
+      </div>
+      <div class="balance-card"><div class="lbl">${esc(t.netBalance)}</div><div class="val">₨${fmt(s.netBalance)}</div></div>
+      <div class="section-title">${esc(t.recentActivity)}</div>
+      <div class="list-card">
+        ${top.length===0 ? `<div style="padding:16px;text-align:center;opacity:.5;font-size:13px;">—</div>` :
+          top.map(r=>`
+            <div class="list-row">
+              <div><div class="nm">${esc(r.name)}</div><div class="sub">${esc(r.date||'')}</div></div>
+              <div class="${(r.kind==='fee'||r.kind==='income')?'amt-pos':'amt-neg'}">${(r.kind==='fee'||r.kind==='income')?'+':'−'}₨${fmt(r.amount)}</div>
+            </div>`).join('')}
+      </div>
+    </div>`;
+}
+
+// ---------------- Students ----------------
+let studentSearch = '';
+function tplStudents() {
+  const list = DATA.students.filter(s => (s.name+ (s.father_name||'') + (s.class_name||'')).toLowerCase().includes(studentSearch.toLowerCase()));
+  const cur = monthKey();
+  return `
+    <div style="padding-top:16px;">
+      <div class="searchbar">
+        <input placeholder="${esc(t.search)}" value="${esc(studentSearch)}" oninput="studentSearch=this.value; renderTab();">
+        <button class="icon-btn" onclick="openAddStudent()">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#E4C765" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg>
+        </button>
+      </div>
+      ${list.length===0 ? `<div class="empty">${esc(t.noStudents)}</div>` :
+        list.map(s=>{
+          const paid = studentPayments(s.id).filter(p=>p.month===cur).reduce((a,b)=>a+Number(b.amount),0);
+          const due = Math.max(0, Number(s.monthly_fee||0)-paid);
+          return `
+          <button class="card-btn" onclick="openStudentDetail('${s.id}')">
+            <div><div class="nm">${esc(s.name)}</div><div class="sub">${esc(t.className)}: ${esc(s.class_name||'')} · ${esc(t.fatherName)}: ${esc(s.father_name||'')}</div></div>
+            <span class="pill ${due>0?'bad':'good'}">${due>0 ? '₨'+fmt(due)+' '+esc(t.due) : esc(t.paid)}</span>
+          </button>`;
+        }).join('')}
+    </div>`;
+}
+
+function openAddStudent() {
+  showModal(t.addStudent, `
+    <label><span>${esc(t.studentName)}</span><input id="f-name"></label>
+    <label><span>${esc(t.fatherName)}</span><input id="f-father"></label>
+    <label><span>${esc(t.className)}</span><select id="f-class">${CLASS_OPTIONS.map(c=>`<option>${c}</option>`).join('')}</select></label>
+    <label><span>${esc(t.admissionDate)}</span><input id="f-admission" type="date" value="${todayISO()}"></label>
+    <label><span>${esc(t.monthlyFee)}</span><input id="f-fee" type="number"></label>
+    <label><span>${esc(t.contact)}</span><input id="f-contact"></label>
+    <div class="flexgap">
+      <button class="btn-ghost" onclick="closeModal()">${esc(t.cancel)}</button>
+      <button class="btn-primary" style="flex:1" onclick="submitAddStudent()">${esc(t.save)}</button>
+    </div>
+  `);
+}
+
+async function submitAddStudent() {
+  const name = document.getElementById('f-name').value.trim();
+  const fee = document.getElementById('f-fee').value;
+  if (!name || fee==='') return;
+  await sb.from('students').insert({
+    owner_id: CURRENT_USER.id,
+    name, father_name: document.getElementById('f-father').value,
+    class_name: document.getElementById('f-class').value,
+    admission_date: document.getElementById('f-admission').value,
+    monthly_fee: Number(fee), contact: document.getElementById('f-contact').value, status:'active'
+  });
+  closeModal(); await loadAllData(); renderTab();
+}
+
+function openStudentDetail(id) {
+  const s = DATA.students.find(x=>x.id===id);
+  const entries = studentPayments(id).slice().sort((a,b)=> (a.month>b.month?1:a.month<b.month?-1:0) || (new Date(a.pay_date)-new Date(b.pay_date)));
+
+  // Compute running ledger: last balance carries forward from previous row's balance
+  let running = 0;
+  const rows = entries.map(e => {
+    const lastBalance = running;
+    const totalDues = lastBalance + Number(e.school_fee||0) + Number(e.sports_fund||0) + Number(e.admission_fee||0) + Number(e.exam_fee||0);
+    const totalPaid = Number(e.amount||0);
+    const balance = totalDues - totalPaid;
+    running = balance;
+    return { e, lastBalance, totalDues, totalPaid, balance };
+  });
+  const currentBalance = running;
+  const totalPaidAllTime = entries.reduce((a,b)=>a+Number(b.amount||0),0);
+
+  showModal(s.name, `
+    <div style="font-size:12px;opacity:.7;margin-bottom:12px;display:flex;flex-wrap:wrap;gap:12px;">
+      <span>${esc(t.className)}: ${esc(s.class_name||'')}</span>
+      <span>${esc(t.fatherName)}: ${esc(s.father_name||'')}</span>
+      <span>${esc(t.monthlyFee)}: ₨${fmt(s.monthly_fee)}</span>
+    </div>
+    <div style="display:flex;gap:8px;margin-bottom:16px;">
+      <div class="greenbox" style="flex:1;margin-bottom:0;"><div class="lbl">${esc(t.totalCollectedAllTime)}</div><div class="val">₨${fmt(totalPaidAllTime)}</div></div>
+      <div class="greenbox" style="flex:1;margin-bottom:0;background:${currentBalance>0?'#FBEAE5':'#EAF2EC'};">
+        <div class="lbl" style="color:${currentBalance>0?'var(--rust)':'var(--sage)'};">${esc(t.balanceCol)}</div>
+        <div class="val" style="color:${currentBalance>0?'var(--rust)':'var(--sage)'};">₨${fmt(currentBalance)}</div>
+      </div>
+    </div>
+
+    <h4 class="section-title" style="margin-top:0;">${esc(t.addEntry)}</h4>
+    <div class="row2">
+      <input id="p-month" type="month" value="${monthKey()}">
+      <input id="p-receipt" placeholder="${esc(t.receiptNo)} (${esc(t.optional)})">
+    </div>
+    <div class="row2" style="margin-top:8px;">
+      <label style="margin-bottom:0;"><span>${esc(t.schoolFeeCol)}</span><input id="p-schoolfee" type="number" value="${s.monthly_fee||0}"></label>
+      <label style="margin-bottom:0;"><span>${esc(t.sportsFund)}</span><input id="p-sports" type="number" value="0"></label>
+    </div>
+    <div class="row2" style="margin-top:8px;">
+      <label style="margin-bottom:0;"><span>${esc(t.admissionFeeCol)}</span><input id="p-admission" type="number" value="0"></label>
+      <label style="margin-bottom:0;"><span>${esc(t.examFeeCol)}</span><input id="p-exam" type="number" value="0"></label>
+    </div>
+    <div class="row2" style="margin-top:8px;">
+      <label style="margin-bottom:0;"><span>${esc(t.totalPaidCol)}</span><input id="p-amount" type="number" placeholder="${esc(t.enterAmount)}" value="${s.monthly_fee||''}"></label>
+      <label style="margin-bottom:0;"><span>${esc(t.dateCol)}</span><input id="p-date" type="date" value="${todayISO()}"></label>
+    </div>
+    <div style="margin-top:10px;"><button class="btn-primary" onclick="submitFeePayment('${id}')">+ ${esc(t.save)}</button></div>
+
+    <h4 class="section-title">${esc(t.feeLedger)}</h4>
+    ${rows.length===0 ? `<div style="padding:10px;text-align:center;font-size:12px;opacity:.5;">—</div>` : `
+    <div class="card-table-wrap">
+      <table class="card-table">
+        <thead><tr>
+          <th>${esc(t.month)}</th><th>${esc(t.lastBalance)}</th><th>${esc(t.schoolFeeCol)}</th>
+          <th>${esc(t.sportsFund)}</th><th>${esc(t.admissionFeeCol)}</th><th>${esc(t.examFeeCol)}</th>
+          <th>${esc(t.totalDuesCol)}</th><th>${esc(t.totalPaidCol)}</th><th>${esc(t.balanceCol)}</th>
+          <th>${esc(t.receiptNo)}</th><th>${esc(t.dateCol)}</th><th></th><th></th>
+        </tr></thead>
+        <tbody>
+          ${rows.map(r=>`
+            <tr>
+              <td class="mo">${esc(monthLabel(r.e.month))}</td>
+              <td>₨${fmt(r.lastBalance)}</td>
+              <td>₨${fmt(r.e.school_fee)}</td>
+              <td>₨${fmt(r.e.sports_fund)}</td>
+              <td>₨${fmt(r.e.admission_fee)}</td>
+              <td>₨${fmt(r.e.exam_fee)}</td>
+              <td>₨${fmt(r.totalDues)}</td>
+              <td>₨${fmt(r.totalPaid)}</td>
+              <td class="${r.balance>0?'bal-neg':'bal-pos'}">₨${fmt(r.balance)}</td>
+              <td>${esc(r.e.receipt_no||'—')}</td>
+              <td>${esc(r.e.pay_date||'')}</td>
+              <td><button class="print-btn" title="${esc(t.print)}" onclick="printReceipt('${id}','${r.e.id}')">🖨️</button></td>
+              <td><button class="del-x" onclick="deleteFeePayment('${r.e.id}','${id}')">✕</button></td>
+            </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>`}
+    <div style="margin-top:16px;"><button class="btn-ghost danger" onclick="confirmDelete('student','${id}')">${esc(t.delete)}</button></div>
+  `);
+}
+
+async function submitFeePayment(studentId) {
+  const month = document.getElementById('p-month').value;
+  const schoolFee = document.getElementById('p-schoolfee').value || 0;
+  const sportsFund = document.getElementById('p-sports').value || 0;
+  const admissionFee = document.getElementById('p-admission').value || 0;
+  const examFee = document.getElementById('p-exam').value || 0;
+  const amount = document.getElementById('p-amount').value;
+  const receiptNo = document.getElementById('p-receipt').value;
+  const date = document.getElementById('p-date').value;
+  if (!month || amount === '') return;
+  await sb.from('fee_payments').insert({
+    owner_id: CURRENT_USER.id, student_id: studentId, month,
+    school_fee: Number(schoolFee), sports_fund: Number(sportsFund),
+    admission_fee: Number(admissionFee), exam_fee: Number(examFee),
+    amount: Number(amount), receipt_no: receiptNo || null, pay_date: date
+  });
+  await loadAllData(); openStudentDetail(studentId);
+}
+
+function printReceipt(studentId, entryId) {
+  const s = DATA.students.find(x=>x.id===studentId);
+  const entries = studentPayments(studentId).slice().sort((a,b)=> (a.month>b.month?1:a.month<b.month?-1:0) || (new Date(a.pay_date)-new Date(b.pay_date)));
+  let running = 0, target = null;
+  entries.forEach(e => {
+    const lastBalance = running;
+    const totalDues = lastBalance + Number(e.school_fee||0) + Number(e.sports_fund||0) + Number(e.admission_fee||0) + Number(e.exam_fee||0);
+    const balance = totalDues - Number(e.amount||0);
+    running = balance;
+    if (e.id === entryId) target = { e, lastBalance, totalDues, balance };
+  });
+  if (!target) return;
+  const { e, lastBalance, totalDues, balance } = target;
+
+  const rowsHtml = [
+    [t.lastBalance, lastBalance],
+    [t.schoolFeeCol, e.school_fee],
+    [t.sportsFund, e.sports_fund],
+    [t.admissionFeeCol, e.admission_fee],
+    [t.examFeeCol, e.exam_fee],
+    [t.totalDuesCol, totalDues],
+  ].map(([lbl,val]) => `<tr><td class="lbl">${esc(lbl)}</td><td style="text-align:right;">₨${fmt(val)}</td></tr>`).join('');
+
+  document.getElementById('print-area').innerHTML = `
+    <div class="receipt-box">
+      <h2>${esc(CURRENT_PROFILE.school_name || 'School')}</h2>
+      <div class="sub">${esc(t.feeReceipt)} — ${esc(monthLabel(e.month))}</div>
+      <table>
+        <tr><td class="lbl">${esc(t.receivedFrom)}</td><td style="text-align:right;">${esc(s.name)}</td></tr>
+        <tr><td class="lbl">${esc(t.className)}</td><td style="text-align:right;">${esc(s.class_name||'')}</td></tr>
+        <tr><td class="lbl">${esc(t.fatherName)}</td><td style="text-align:right;">${esc(s.father_name||'')}</td></tr>
+        ${rowsHtml}
+        <tr class="total-row"><td>${esc(t.totalAmount)}</td><td style="text-align:right;">₨${fmt(e.amount)}</td></tr>
+        <tr><td class="lbl">${esc(t.balanceCol)}</td><td style="text-align:right;">₨${fmt(balance)}</td></tr>
+        <tr><td class="lbl">${esc(t.receiptNo)}</td><td style="text-align:right;">${esc(e.receipt_no||'—')}</td></tr>
+        <tr><td class="lbl">${esc(t.dateCol)}</td><td style="text-align:right;">${esc(e.pay_date||'')}</td></tr>
+      </table>
+      <div class="foot">${esc(t.thankYou)}</div>
+    </div>`;
+  window.print();
+}
+async function deleteFeePayment(paymentId, studentId) {
+  await sb.from('fee_payments').delete().eq('id', paymentId);
+  await loadAllData(); openStudentDetail(studentId);
+}
+
+// ---------------- Teachers ----------------
+let teacherSearch = '';
+function tplTeachers() {
+  const list = DATA.teachers.filter(tc => (tc.name+(tc.subject||'')).toLowerCase().includes(teacherSearch.toLowerCase()));
+  const cur = monthKey();
+  return `
+    <div style="padding-top:16px;">
+      <div class="searchbar">
+        <input placeholder="${esc(t.searchTeachers)}" value="${esc(teacherSearch)}" oninput="teacherSearch=this.value; renderTab();">
+        <button class="icon-btn" onclick="openAddTeacher()">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#E4C765" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg>
+        </button>
+      </div>
+      ${list.length===0 ? `<div class="empty">${esc(t.noTeachers)}</div>` :
+        list.map(tc=>{
+          const paid = teacherPayments(tc.id).filter(p=>p.month===cur).reduce((a,b)=>a+Number(b.amount),0);
+          const due = Math.max(0, Number(tc.monthly_salary||0)-paid);
+          return `
+          <button class="card-btn" onclick="openTeacherDetail('${tc.id}')">
+            <div><div class="nm">${esc(tc.name)}</div><div class="sub">${esc(tc.subject||'')}</div></div>
+            <span class="pill ${due>0?'bad':'good'}">${due>0 ? '₨'+fmt(due)+' '+esc(t.due) : esc(t.paid)}</span>
+          </button>`;
+        }).join('')}
+    </div>`;
+}
+
+function openAddTeacher() {
+  showModal(t.addTeacher, `
+    <label><span>${esc(t.teacherName)}</span><input id="f-name"></label>
+    <label><span>${esc(t.subject)}</span><input id="f-subject"></label>
+    <label><span>${esc(t.monthlySalary)}</span><input id="f-salary" type="number"></label>
+    <label><span>${esc(t.joinDate)}</span><input id="f-join" type="date" value="${todayISO()}"></label>
+    <label><span>${esc(t.contact)}</span><input id="f-contact"></label>
+    <div class="flexgap">
+      <button class="btn-ghost" onclick="closeModal()">${esc(t.cancel)}</button>
+      <button class="btn-primary" style="flex:1" onclick="submitAddTeacher()">${esc(t.save)}</button>
+    </div>
+  `);
+}
+
+async function submitAddTeacher() {
+  const name = document.getElementById('f-name').value.trim();
+  const salary = document.getElementById('f-salary').value;
+  if (!name || salary==='') return;
+  await sb.from('teachers').insert({
+    owner_id: CURRENT_USER.id,
+    name, subject: document.getElementById('f-subject').value,
+    monthly_salary: Number(salary), join_date: document.getElementById('f-join').value,
+    contact: document.getElementById('f-contact').value
+  });
+  closeModal(); await loadAllData(); renderTab();
+}
+
+function openTeacherDetail(id) {
+  const tc = DATA.teachers.find(x=>x.id===id);
+  const payments = teacherPayments(id).slice().sort((a,b)=> new Date(b.pay_date)-new Date(a.pay_date));
+  const totalPaid = payments.reduce((a,b)=>a+Number(b.amount),0);
+  showModal(tc.name, `
+    <div style="font-size:12px;opacity:.7;margin-bottom:12px;display:flex;flex-wrap:wrap;gap:12px;">
+      <span>${esc(t.subject)}: ${esc(tc.subject||'')}</span>
+      <span>${esc(t.monthlySalary)}: ₨${fmt(tc.monthly_salary)}</span>
+    </div>
+    <div class="greenbox"><div class="lbl">${esc(t.totalSalariesAllTime)}</div><div class="val">₨${fmt(totalPaid)}</div></div>
+    <div class="section-title" style="margin-top:0;">${esc(t.payMonth)}</div>
+    <div class="row2">
+      <input id="p-month" type="month" value="${monthKey()}">
+      <input id="p-amount" type="number" placeholder="${esc(t.enterAmount)}" value="${tc.monthly_salary||''}">
+    </div>
+    <div style="margin-top:8px;"><input id="p-date" type="date" value="${todayISO()}"></div>
+    <div style="margin-top:8px;"><button class="btn-primary" onclick="submitSalaryPayment('${id}')">+ ${esc(t.save)}</button></div>
+    <div class="section-title">${esc(t.salaryLedger)}</div>
+    <div class="ledger">
+      ${payments.length===0 ? `<div style="padding:10px;text-align:center;font-size:12px;opacity:.5;">—</div>` :
+        payments.map(p=>`
+          <div class="ledger-row">
+            <div style="font-size:12px;">${esc(monthLabel(p.month))} <span style="opacity:.5;">· ${esc(p.pay_date)}</span></div>
+            <div style="display:flex;align-items:center;gap:8px;">
+              <span class="amt-neg">₨${fmt(p.amount)}</span>
+              <button class="del-btn" onclick="deleteSalaryPayment('${p.id}','${id}')">✕</button>
+            </div>
+          </div>`).join('')}
+    </div>
+    <div style="margin-top:16px;"><button class="btn-ghost danger" onclick="confirmDelete('teacher','${id}')">${esc(t.delete)}</button></div>
+  `);
+}
+
+async function submitSalaryPayment(teacherId) {
+  const month = document.getElementById('p-month').value;
+  const amount = document.getElementById('p-amount').value;
+  const date = document.getElementById('p-date').value;
+  if (!amount) return;
+  await sb.from('salary_payments').insert({ owner_id: CURRENT_USER.id, teacher_id: teacherId, month, amount: Number(amount), pay_date: date });
+  await loadAllData(); openTeacherDetail(teacherId);
+}
+async function deleteSalaryPayment(paymentId, teacherId) {
+  await sb.from('salary_payments').delete().eq('id', paymentId);
+  await loadAllData(); openTeacherDetail(teacherId);
+}
+
+// ---------------- Finance ----------------
+function tplFinance() {
+  return `
+    <div style="padding-top:16px;">
+      <div style="display:flex;justify-content:flex-end;margin-bottom:12px;">
+        <button class="btn-primary" style="width:auto;padding:9px 16px;" onclick="openAddTxn()">+ ${esc(t.addTransaction)}</button>
+      </div>
+      ${DATA.transactions.length===0 ? `<div class="empty">${esc(t.noTransactions)}</div>` :
+        `<div class="list-card">` + DATA.transactions.map(x=>`
+          <div class="list-row">
+            <div><div class="nm">${esc(x.description||'')}</div><div class="sub">${esc(x.category||'')} · ${esc(x.txn_date||'')}</div></div>
+            <div style="display:flex;align-items:center;gap:8px;">
+              <span class="${x.type==='income'?'amt-pos':'amt-neg'}">${x.type==='income'?'+':'−'}₨${fmt(x.amount)}</span>
+              <button class="del-btn" onclick="deleteTxn('${x.id}')">✕</button>
+            </div>
+          </div>`).join('') + `</div>`}
+    </div>`;
+}
+
+let txnType = 'expense';
+function openAddTxn() {
+  txnType = 'expense';
+  showModal(t.addTransaction, `
+    <div class="type-toggle">
+      <button id="btn-income" onclick="setTxnType('income')">${esc(t.income)}</button>
+      <button id="btn-expense" class="on-expense" onclick="setTxnType('expense')">${esc(t.expense)}</button>
+    </div>
+    <label><span>${esc(t.category)}</span><select id="f-cat"></select></label>
+    <label><span>${esc(t.description)}</span><input id="f-desc"></label>
+    <label><span>${esc(t.amount)}</span><input id="f-amt" type="number"></label>
+    <label><span>${esc(t.date)}</span><input id="f-date" type="date" value="${todayISO()}"></label>
+    <div class="flexgap">
+      <button class="btn-ghost" onclick="closeModal()">${esc(t.cancel)}</button>
+      <button class="btn-primary" style="flex:1" onclick="submitAddTxn()">${esc(t.save)}</button>
+    </div>
+  `);
+  fillCatOptions();
+}
+function setTxnType(type) {
+  txnType = type;
+  document.getElementById('btn-income').className = type==='income' ? 'on-income' : '';
+  document.getElementById('btn-expense').className = type==='expense' ? 'on-expense' : '';
+  fillCatOptions();
+}
+function fillCatOptions() {
+  const cats = txnType==='income' ? INCOME_CATS : EXPENSE_CATS;
+  document.getElementById('f-cat').innerHTML = cats.map(c=>`<option>${c}</option>`).join('');
+}
+async function submitAddTxn() {
+  const desc = document.getElementById('f-desc').value.trim();
+  const amt = document.getElementById('f-amt').value;
+  if (!desc || amt==='') return;
+  await sb.from('transactions').insert({
+    owner_id: CURRENT_USER.id,
+    type: txnType, category: document.getElementById('f-cat').value, description: desc,
+    amount: Number(amt), txn_date: document.getElementById('f-date').value
+  });
+  closeModal(); await loadAllData(); renderTab();
+}
+async function deleteTxn(id) {
+  await sb.from('transactions').delete().eq('id', id);
+  await loadAllData(); renderTab();
+}
+
+// ---------------- Reports ----------------
+function tplReports() {
+  const s = computeStats();
+  const perClass = {};
+  DATA.students.filter(x=>x.status!=='inactive').forEach(st=>{
+    const cls = st.class_name || '—';
+    if (!perClass[cls]) perClass[cls] = {count:0, collected:0};
+    perClass[cls].count++;
+    perClass[cls].collected += studentPayments(st.id).reduce((a,b)=>a+Number(b.amount),0);
+  });
+  const rows = [
+    [t.totalCollectedAllTime, s.totalCollectedAllTime, 'amt-pos'],
+    [t.totalSalariesAllTime, s.totalSalariesAllTime, 'amt-neg'],
+    [t.totalOtherIncomeAllTime, s.totalOtherIncomeAllTime, 'amt-pos'],
+    [t.totalOtherExpenseAllTime, s.totalOtherExpenseAllTime, 'amt-neg'],
+  ];
+  return `
+    <div style="padding-top:16px;">
+      <div class="section-title" style="margin-top:0;">${esc(t.summaryReport)}</div>
+      <div class="list-card">
+        ${rows.map(([l,v,cls])=>`<div class="list-row"><span style="font-size:13px;">${esc(l)}</span><span class="${cls}">₨${fmt(v)}</span></div>`).join('')}
+      </div>
+      <div class="section-title">${esc(t.perClassBreakdown)}</div>
+      <div class="list-card">
+        ${Object.keys(perClass).length===0 ? `<div style="padding:16px;text-align:center;opacity:.5;font-size:13px;">—</div>` :
+          Object.entries(perClass).map(([cls,d])=>`
+            <div class="list-row">
+              <span style="font-size:13px;font-weight:500;">${esc(cls)} <span style="font-size:11px;opacity:.5;">(${d.count})</span></span>
+              <span class="amt-pos">₨${fmt(d.collected)}</span>
+            </div>`).join('')}
+      </div>
+    </div>`;
+}
+
+// ---------------- Modal helpers ----------------
+function showModal(title, bodyHtml) {
+  document.getElementById('modal-root').innerHTML = `
+    <div class="modal-bg" onclick="if(event.target===this)closeModal()">
+      <div class="modal">
+        <div class="modal-head"><h3>${esc(title)}</h3><button onclick="closeModal()">✕</button></div>
+        ${bodyHtml}
+      </div>
+    </div>`;
+}
+function closeModal() { document.getElementById('modal-root').innerHTML = ''; }
+
+function confirmDelete(kind, id) {
+  showModal(t.delete, `
+    <p style="font-size:14px;">${esc(t.confirmDelete)}</p>
+    <div class="flexgap">
+      <button class="btn-ghost" onclick="closeModal()">${esc(t.no)}</button>
+      <button class="btn-primary" style="flex:1;background:var(--rust);" onclick="doDelete('${kind}','${id}')">${esc(t.yes)}</button>
+    </div>
+  `);
+}
+async function doDelete(kind, id) {
+  if (kind==='student') await sb.from('students').delete().eq('id', id);
+  if (kind==='teacher') await sb.from('teachers').delete().eq('id', id);
+  closeModal(); await loadAllData(); renderTab();
+}
+
+boot();
+</script>
+</body>
+</html>
