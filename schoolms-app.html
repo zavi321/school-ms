@@ -122,6 +122,12 @@
   table.card-table td.bal-pos{color:var(--sage);font-weight:700;}
   .del-x{background:none;border:none;color:var(--rust);font-size:12px;padding:0;}
   .print-btn{background:none;border:none;color:var(--navy);font-size:13px;padding:0 4px;}
+  .class-header{display:flex;align-items:center;justify-content:space-between;margin:18px 0 8px;padding:10px 12px;background:var(--navy);border-radius:8px;cursor:pointer;}
+  .class-header .cname{color:var(--gold-soft);font-weight:700;font-size:13px;}
+  .class-header .cright{display:flex;align-items:center;gap:8px;}
+  .class-header .ccount{color:#8FA3B8;font-size:11px;}
+  .class-header .chev{color:var(--gold-soft);font-size:12px;transition:transform .15s;}
+  .class-header .chev.collapsed{transform:rotate(-90deg);}
 
   #print-area{display:none;}
   @media print {
@@ -542,9 +548,37 @@ function tplDashboard() {
 
 // ---------------- Students ----------------
 let studentSearch = '';
+let classCollapsed = {};
+function toggleClassSection(cls) {
+  classCollapsed[cls] = !classCollapsed[cls];
+  renderTab();
+}
 function tplStudents() {
   const list = DATA.students.filter(s => (s.name+ (s.father_name||'') + (s.class_name||'')).toLowerCase().includes(studentSearch.toLowerCase()));
   const cur = monthKey();
+
+  // Group by class, ordered by CLASS_OPTIONS, unknown classes appended at the end
+  const groups = {};
+  list.forEach(s => {
+    const cls = s.class_name || '—';
+    if (!groups[cls]) groups[cls] = [];
+    groups[cls].push(s);
+  });
+  const orderedClasses = [
+    ...CLASS_OPTIONS.filter(c => groups[c]),
+    ...Object.keys(groups).filter(c => !CLASS_OPTIONS.includes(c))
+  ];
+
+  const studentCard = s => {
+    const paid = studentPayments(s.id).filter(p=>p.month===cur).reduce((a,b)=>a+Number(b.amount),0);
+    const due = Math.max(0, Number(s.monthly_fee||0)-paid);
+    return `
+      <button class="card-btn" onclick="openStudentDetail('${s.id}')">
+        <div><div class="nm">${esc(s.name)}</div><div class="sub">${esc(t.fatherName)}: ${esc(s.father_name||'')}</div></div>
+        <span class="pill ${due>0?'bad':'good'}">${due>0 ? '₨'+fmt(due)+' '+esc(t.due) : esc(t.paid)}</span>
+      </button>`;
+  };
+
   return `
     <div style="padding-top:16px;">
       <div class="searchbar">
@@ -554,14 +588,22 @@ function tplStudents() {
         </button>
       </div>
       ${list.length===0 ? `<div class="empty">${esc(t.noStudents)}</div>` :
-        list.map(s=>{
-          const paid = studentPayments(s.id).filter(p=>p.month===cur).reduce((a,b)=>a+Number(b.amount),0);
-          const due = Math.max(0, Number(s.monthly_fee||0)-paid);
+        orderedClasses.map(cls => {
+          const collapsed = !!classCollapsed[cls];
+          const dueCount = groups[cls].filter(s => {
+            const paid = studentPayments(s.id).filter(p=>p.month===cur).reduce((a,b)=>a+Number(b.amount),0);
+            return Math.max(0, Number(s.monthly_fee||0)-paid) > 0;
+          }).length;
           return `
-          <button class="card-btn" onclick="openStudentDetail('${s.id}')">
-            <div><div class="nm">${esc(s.name)}</div><div class="sub">${esc(t.className)}: ${esc(s.class_name||'')} · ${esc(t.fatherName)}: ${esc(s.father_name||'')}</div></div>
-            <span class="pill ${due>0?'bad':'good'}">${due>0 ? '₨'+fmt(due)+' '+esc(t.due) : esc(t.paid)}</span>
-          </button>`;
+          <div class="class-header" onclick="toggleClassSection('${esc(cls)}')">
+            <span class="cname">${esc(t.className)}: ${esc(cls)}</span>
+            <span class="cright">
+              <span class="ccount">${groups[cls].length}${dueCount>0 ? ` · ${dueCount} ${esc(t.due)}` : ''}</span>
+              <span class="chev ${collapsed?'collapsed':''}">▾</span>
+            </span>
+          </div>
+          ${collapsed ? '' : groups[cls].map(studentCard).join('')}
+        `;
         }).join('')}
     </div>`;
 }
