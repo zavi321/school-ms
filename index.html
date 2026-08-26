@@ -4,26 +4,39 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>School Finance & Records</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#0F2740">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="SchoolMS">
+<link rel="apple-touch-icon" href="icons/icon-180.png">
+<link rel="icon" href="icons/icon-192.png">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700&family=Inter:wght@400;500;600;700&family=Noto+Nastaliq+Urdu:wght@600;700&family=Noto+Sans+Urdu:wght@400;500;600&display=swap">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <style>
   :root{
     --navy:#0F2740; --navy-deep:#0A1B2C; --gold:#C9A227; --gold-soft:#E4C765;
     --cream:#FAF6EC; --card:#FFFFFF; --ink:#1C2530; --sage:#3F7154; --rust:#B24A32; --line:#E7E0CE;
+    --shadow-sm:0 1px 2px rgba(15,39,64,.05), 0 3px 10px rgba(15,39,64,.05);
+    --shadow-md:0 2px 6px rgba(15,39,64,.07), 0 8px 20px rgba(15,39,64,.06);
   }
   *{box-sizing:border-box;}
   body{margin:0;background:var(--cream);color:var(--ink);font-family:Inter,sans-serif;}
   body.ur{font-family:'Noto Sans Urdu',sans-serif;direction:rtl;}
   .hidden{display:none !important;}
-  button{cursor:pointer;font-family:inherit;}
-  input,select{font-family:inherit;font-size:14px;width:100%;padding:9px 12px;border:1px solid var(--line);border-radius:8px;background:#fff;color:var(--ink);outline:none;}
+  button{cursor:pointer;font-family:inherit;transition:transform .08s ease, opacity .08s ease;}
+  button:active{transform:scale(.97);}
+  input,select{font-family:inherit;font-size:14px;width:100%;padding:9px 12px;border:1px solid var(--line);border-radius:8px;background:#fff;color:var(--ink);outline:none;transition:border-color .12s ease;}
+  input:focus,select:focus{border-color:var(--gold);}
   label{display:block;margin-bottom:12px;}
   label span{display:block;font-size:12px;font-weight:500;opacity:.7;margin-bottom:4px;}
 
   .auth-wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px;background:var(--navy);}
   .auth-box{width:100%;max-width:380px;}
   .auth-brand{text-align:center;font-size:11px;letter-spacing:.15em;text-transform:uppercase;color:var(--gold-soft);opacity:.8;margin-bottom:20px;}
-  .auth-card{background:var(--cream);border-radius:18px;padding:22px;}
+  .auth-card{background:var(--cream);border-radius:18px;padding:22px;box-shadow:var(--shadow-md);}
   .auth-card h2{margin:0 0 4px;color:var(--navy);font-family:Fraunces,serif;font-size:19px;}
   body.ur .auth-card h2{font-family:'Noto Nastaliq Urdu',serif;}
   .auth-card p.desc{font-size:12px;opacity:.65;margin:0 0 16px;}
@@ -32,14 +45,15 @@
   .switch-line{text-align:center;font-size:13px;margin-top:14px;}
   .switch-line a{color:var(--navy);font-weight:600;text-decoration:underline;cursor:pointer;}
 
-  .btn-primary{background:var(--navy);color:var(--gold-soft);border:none;border-radius:10px;padding:11px;font-weight:600;font-size:14px;width:100%;display:flex;align-items:center;justify-content:center;gap:6px;}
+  .btn-primary{background:var(--navy);color:var(--gold-soft);border:none;border-radius:10px;padding:11px;font-weight:600;font-size:14px;width:100%;display:flex;align-items:center;justify-content:center;gap:6px;box-shadow:0 2px 8px rgba(15,39,64,.25);}
   .btn-primary:disabled{opacity:.6;}
   .btn-ghost{background:#F0EBDA;color:var(--navy);border:none;border-radius:10px;padding:11px;font-weight:500;font-size:14px;flex:1;}
   .btn-ghost.danger{background:#FBEAE5;color:var(--rust);}
   .lang-mini{background:#F0EAD6;color:var(--navy);border:none;border-radius:999px;padding:5px 12px;font-size:12px;font-weight:600;}
 
   #app{padding-bottom:90px;}
-  header.top{background:var(--navy);padding:24px 16px 30px;border-radius:0 0 22px 22px;position:relative;overflow:hidden;}
+  header.top{background:var(--navy);padding:24px 16px 30px;border-radius:0 0 22px 22px;position:relative;overflow:hidden;
+    background-image:repeating-linear-gradient(180deg, rgba(228,199,101,.05) 0px, rgba(228,199,101,.05) 1px, transparent 1px, transparent 28px);}
   header.top .glow{position:absolute;width:150px;height:150px;border-radius:999px;background:var(--gold);opacity:.1;right:-30px;top:-30px;}
   .top-row{display:flex;justify-content:space-between;align-items:flex-start;position:relative;}
   .top-row .eyebrow{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--gold-soft);opacity:.85;}
@@ -60,15 +74,17 @@
   nav.bottom button svg{width:18px;height:18px;}
 
   .stat-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:16px;}
-  .stat-card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;}
+  .stat-card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;box-shadow:var(--shadow-sm);}
   .stat-card .lbl{font-size:11px;opacity:.65;margin:6px 0 2px;}
   .stat-card .val{font-size:22px;font-weight:600;color:var(--navy);font-family:Fraunces,serif;}
-  .balance-card{background:var(--navy);border-radius:14px;padding:16px;margin-top:12px;}
+  .balance-card{background:var(--navy);border-radius:14px;padding:16px;margin-top:12px;box-shadow:var(--shadow-md);position:relative;overflow:hidden;}
+  .balance-card::after{content:'';position:absolute;right:-20px;bottom:-20px;width:90px;height:90px;border-radius:999px;background:var(--gold);opacity:.08;}
   .balance-card .lbl{color:var(--gold-soft);opacity:.85;font-size:12px;}
   .balance-card .val{color:#fff;font-size:30px;font-weight:600;font-family:Fraunces,serif;margin-top:4px;}
 
-  .section-title{font-size:14px;font-weight:600;color:var(--navy);margin:20px 0 8px;}
-  .list-card{background:var(--card);border:1px solid var(--line);border-radius:14px;overflow:hidden;}
+  .section-title{font-size:14px;font-weight:600;color:var(--navy);margin:20px 0 8px;padding-left:9px;border-left:3px solid var(--rust);}
+  body.ur .section-title{padding-left:0;padding-right:9px;border-left:none;border-right:3px solid var(--rust);}
+  .list-card{background:var(--card);border:1px solid var(--line);border-radius:14px;overflow:hidden;box-shadow:var(--shadow-sm);}
   .list-row{display:flex;justify-content:space-between;align-items:center;padding:12px 16px;border-bottom:1px solid var(--line);}
   .list-row:last-child{border-bottom:none;}
   .list-row .nm{font-size:14px;font-weight:500;}
@@ -77,20 +93,26 @@
 
   .searchbar{display:flex;gap:8px;margin-bottom:12px;}
   .searchbar input{flex:1;}
-  .icon-btn{background:var(--navy);border:none;border-radius:10px;width:42px;flex-shrink:0;display:flex;align-items:center;justify-content:center;}
+  .icon-btn{background:var(--navy);border:none;border-radius:10px;width:42px;flex-shrink:0;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(15,39,64,.25);}
 
-  .card-btn{width:100%;text-align:left;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px 14px;display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;}
+  .card-btn{width:100%;text-align:left;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px 14px;display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;box-shadow:var(--shadow-sm);}
   body.ur .card-btn{text-align:right;}
   .card-btn .nm{font-size:14px;font-weight:600;color:var(--navy);}
   .card-btn .sub{font-size:11px;opacity:.55;margin-top:2px;}
   .pill{font-size:11px;font-weight:600;padding:2px 9px;border-radius:999px;}
   .pill.good{color:var(--sage);background:#EAF2EC;}
   .pill.bad{color:var(--rust);background:#FBEAE5;}
+  .pill.free{color:#2563A6;background:#E7F0FA;}
+  .pill.orphan{color:#8A6200;background:#FBF1DA;}
+
+  .type-filter{display:flex;gap:6px;margin-bottom:12px;overflow-x:auto;}
+  .type-filter button{flex-shrink:0;border:none;border-radius:999px;padding:6px 13px;font-size:12px;font-weight:600;background:#F0EBDA;color:var(--navy);}
+  .type-filter button.on{background:var(--navy);color:var(--gold-soft);}
 
   .modal-bg{position:fixed;inset:0;background:rgba(15,39,64,.55);z-index:50;display:flex;align-items:flex-end;justify-content:center;}
-  .modal{width:100%;max-width:420px;max-height:90vh;overflow-y:auto;background:var(--cream);border-radius:18px 18px 0 0;padding:20px;}
+  .modal{width:100%;max-width:420px;max-height:90vh;overflow-y:auto;background:var(--cream);border-radius:18px 18px 0 0;padding:20px;box-shadow:0 -8px 30px rgba(0,0,0,.2);}
   @media(min-width:640px){.modal-bg{align-items:center;}.modal{border-radius:18px;}}
-  .modal-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;}
+  .modal-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;padding-bottom:12px;border-bottom:1px solid var(--line);}
   .modal-head h3{margin:0;font-size:17px;color:var(--navy);font-family:Fraunces,serif;}
   body.ur .modal-head h3{font-family:'Noto Nastaliq Urdu',serif;}
   .modal-head button{background:none;border:none;font-size:20px;color:var(--ink);}
@@ -122,7 +144,7 @@
   table.card-table td.bal-pos{color:var(--sage);font-weight:700;}
   .del-x{background:none;border:none;color:var(--rust);font-size:12px;padding:0;}
   .print-btn{background:none;border:none;color:var(--navy);font-size:13px;padding:0 4px;}
-  .class-header{display:flex;align-items:center;justify-content:space-between;margin:18px 0 8px;padding:10px 12px;background:var(--navy);border-radius:8px;cursor:pointer;}
+  .class-header{display:flex;align-items:center;justify-content:space-between;margin:18px 0 8px;padding:10px 12px;background:var(--navy);border-radius:8px;cursor:pointer;box-shadow:0 2px 8px rgba(15,39,64,.18);}
   .class-header .cname{color:var(--gold-soft);font-weight:700;font-size:13px;}
   .class-header .cright{display:flex;align-items:center;gap:8px;}
   .class-header .ccount{color:#8FA3B8;font-size:11px;}
@@ -131,9 +153,10 @@
 
   #print-area{display:none;}
   @media print {
+    *{-webkit-print-color-adjust:exact;print-color-adjust:exact;}
     body *{visibility:hidden;}
     #print-area, #print-area *{visibility:visible;}
-    #print-area{display:block;position:absolute;top:0;left:0;width:100%;padding:24px;}
+    #print-area{display:block;position:absolute;top:0;left:0;width:100%;padding:0;}
     .receipt-box{border:2px solid #0F2740;border-radius:8px;padding:20px;font-family:Inter,sans-serif;}
     .receipt-box h2{font-family:Fraunces,serif;color:#0F2740;margin:0 0 2px;}
     .receipt-box .sub{color:#555;font-size:13px;margin-bottom:16px;}
@@ -142,6 +165,35 @@
     .receipt-box .lbl{color:#555;}
     .receipt-box .total-row td{font-weight:700;font-size:16px;border-top:2px solid #0F2740;border-bottom:none;}
     .receipt-box .foot{margin-top:24px;font-size:12px;color:#777;text-align:center;}
+
+    /* ---- Fee Card (khoobsurat design) ---- */
+    .fc-wrap{font-family:Inter,sans-serif;border-radius:14px;overflow:hidden;border:1px solid #E7E0CE;box-shadow:0 2px 10px rgba(15,39,64,.08);}
+    .fc-head{background:#0F2740;background-image:linear-gradient(135deg,#0F2740 0%,#0A1B2C 100%);padding:22px 24px 18px;position:relative;}
+    .fc-head::after{content:'';position:absolute;right:-30px;top:-30px;width:140px;height:140px;border-radius:999px;background:#C9A227;opacity:.10;}
+    .fc-head .eyebrow{color:#E4C765;font-size:10px;letter-spacing:.16em;text-transform:uppercase;opacity:.85;margin:0 0 4px;position:relative;}
+    .fc-head h2{font-family:Fraunces,serif;color:#fff;font-size:22px;margin:0 0 2px;position:relative;}
+    .fc-head .fc-sub{color:#E4C765;opacity:.9;font-size:12px;position:relative;}
+
+    .fc-info{display:flex;flex-wrap:wrap;gap:0;background:#FAF6EC;border-bottom:1px solid #E7E0CE;}
+    .fc-info .fc-cell{flex:1 1 33%;padding:12px 16px;border-right:1px solid #E7E0CE;}
+    .fc-info .fc-cell:last-child{border-right:none;}
+    .fc-info .fc-lbl{font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:#8A6200;opacity:.8;margin-bottom:2px;}
+    .fc-info .fc-val{font-size:13px;font-weight:600;color:#0F2740;}
+
+    .fc-table{width:100%;border-collapse:collapse;background:#fff;}
+    .fc-table thead th{background:#0F2740;color:#E4C765;font-size:9.5px;text-transform:uppercase;letter-spacing:.03em;padding:8px 5px;text-align:left;font-weight:600;}
+    .fc-table tbody td{padding:7px 5px;font-size:11.5px;border-bottom:1px solid #EFEAD9;color:#1C2530;}
+    .fc-table tbody tr:nth-child(even){background:#FAF6EC;}
+    .fc-table tbody tr.fc-current{background:#FBF1DA;}
+    .fc-table .fc-mo{font-weight:600;color:#0F2740;}
+    .fc-table .fc-due{color:#B24A32;font-weight:600;}
+    .fc-table .fc-paid{color:#3F7154;font-weight:600;}
+    .fc-table .fc-zero{color:#B0A98C;}
+
+    .fc-foot{display:flex;justify-content:space-between;align-items:center;padding:16px 24px;background:#FAF6EC;border-top:2px solid #C9A227;}
+    .fc-foot .fc-brand{font-size:11px;color:#0F2740;font-weight:600;font-family:Fraunces,serif;}
+    .fc-foot .fc-sig{font-size:11px;color:#555;}
+    .fc-foot .fc-sig .line{display:inline-block;width:120px;border-bottom:1px solid #999;margin-left:6px;}
   }
 </style>
 </head>
@@ -166,10 +218,14 @@ const T = {
   en: {
     appName:'School Finance & Records', tagline:'For school administration',
     dashboard:'Dashboard', students:'Students', teachers:'Teachers', finance:'Finance', reports:'Reports',
+    thisMonth:'This Month',
     totalStudents:'Active Students', feesCollected:'Fees Collected (this month)', feesDue:'Fees Due (this month)',
     salaryPaid:'Salaries Paid (this month)', netBalance:'Net Balance (all-time)', recentActivity:'Recent Activity',
+    totalIncome:'Total Income (all-time)', totalExpense:'Total Expenses (all-time)', teacherSalaries:'Teacher Salaries (all-time)',
     addStudent:'Add Student', studentName:'Student Name', fatherName:"Father's Name", className:'Class',
     admissionDate:'Admission Date', monthlyFee:'Monthly Fee (Rs)', contact:'Contact Number',
+    studentType:'Student Type', feePaying:'Fee-Paying', free:'Free', orphan:'Orphan', all:'All',
+    updateType:'Update Type', typeUpdated:'Type updated',
     search:'Search students...', noStudents:'No students yet. Add your first student to get started.',
     feeLedger:'Fee Ledger', markPaid:'Mark Month Paid', month:'Month', amount:'Amount (Rs)',
     save:'Save', cancel:'Cancel', delete:'Delete', paid:'Paid', due:'Due',
@@ -180,7 +236,7 @@ const T = {
     noTransactions:'No entries yet.',
     summaryReport:'Summary Report', totalCollectedAllTime:'Total Fees Collected (all-time)', totalSalariesAllTime:'Total Salaries Paid (all-time)',
     totalOtherIncomeAllTime:'Total Other Income (all-time)', totalOtherExpenseAllTime:'Total Other Expenses (all-time)',
-    perClassBreakdown:'Per-Class Fee Status',
+    perClassBreakdown:'Per-Class Fee Status', duesOutstanding:'Dues Outstanding',
     confirmDelete:'Delete this record? This cannot be undone.', yes:'Yes, delete', no:'No, keep it',
     langToggle:'اردو', sharedNotice:'Your data is private to your school account — no other school can see it.',
     copyrightNotice:'© 2026 Zavi Software. All rights reserved. This software is licensed for use by your school only — it may not be resold, redistributed, or transferred to any other party.',
@@ -188,7 +244,7 @@ const T = {
     lastBalance:'Last Balance', schoolFeeCol:'School Fee', sportsFund:'Sports Fund', admissionFeeCol:'Admission Fee',
     examFeeCol:'Annual Exam Fee', totalDuesCol:'Total Dues', totalPaidCol:'Total Paid', balanceCol:'Balance',
     receiptNo:'Receipt No', dateCol:'Date', addEntry:'Add Month Entry', optional:'optional',
-    print:'Print', feeReceipt:'Fee Receipt', studentNameLbl:'Student Name', receivedFrom:'Received From',
+    print:'Print', printCard:'Print Card', feeReceipt:'Fee Receipt', studentNameLbl:'Student Name', receivedFrom:'Received From',
     forMonth:'For Month', totalAmount:'Total Amount Paid', thankYou:'Thank you for your payment.',
     // Auth
     signUpTitle:'Create your school account', signUpDesc:'Register your school to start using the system.',
@@ -199,14 +255,19 @@ const T = {
     signUpSuccess:'Account created! You can now log in.',
     settings:'Account Settings', changeSchoolName:'School Name', changePassword:'New Password (leave blank to keep current)',
     saveSettings:'Save Changes', settingsSaved:'Saved successfully.', logOut:'Log Out',
+    exportBackup:'Download Backup (Excel)', exportHint:'Save a full copy of your records to your device.',
   },
   ur: {
     appName:'مالیاتی و ریکارڈ سسٹم', tagline:'اسکول انتظامیہ کے لیے',
     dashboard:'ڈیش بورڈ', students:'طلبہ', teachers:'اساتذہ', finance:'مالیات', reports:'رپورٹس',
+    thisMonth:'اس ماہ',
     totalStudents:'فعال طلبہ', feesCollected:'وصول شدہ فیس (اس ماہ)', feesDue:'واجب الادا فیس (اس ماہ)',
     salaryPaid:'ادا شدہ تنخواہ (اس ماہ)', netBalance:'کل بیلنس', recentActivity:'حالیہ سرگرمی',
+    totalIncome:'کل آمدنی', totalExpense:'کل اخراجات', teacherSalaries:'اساتذہ کی تنخواہیں',
     addStudent:'طالب علم شامل کریں', studentName:'طالب علم کا نام', fatherName:'والد کا نام', className:'جماعت',
     admissionDate:'داخلہ کی تاریخ', monthlyFee:'ماہانہ فیس (روپے)', contact:'رابطہ نمبر',
+    studentType:'طالب علم کی قسم', feePaying:'فیس ادا کرنے والا', free:'مفت', orphan:'یتیم', all:'تمام',
+    updateType:'قسم اپڈیٹ کریں', typeUpdated:'قسم اپڈیٹ ہو گئی',
     search:'طلبہ تلاش کریں...', noStudents:'ابھی کوئی طالب علم شامل نہیں۔',
     feeLedger:'فیس کھاتہ', markPaid:'مہینہ ادا شدہ نشان زد کریں', month:'مہینہ', amount:'رقم (روپے)',
     save:'محفوظ کریں', cancel:'منسوخ کریں', delete:'حذف کریں', paid:'ادا شدہ', due:'واجب الادا',
@@ -217,7 +278,7 @@ const T = {
     noTransactions:'ابھی کوئی اندراج نہیں۔',
     summaryReport:'خلاصہ رپورٹ', totalCollectedAllTime:'کل وصول شدہ فیس', totalSalariesAllTime:'کل ادا شدہ تنخواہیں',
     totalOtherIncomeAllTime:'کل دیگر آمدنی', totalOtherExpenseAllTime:'کل دیگر اخراجات',
-    perClassBreakdown:'جماعت کے لحاظ سے فیس کی صورتحال',
+    perClassBreakdown:'جماعت کے لحاظ سے فیس کی صورتحال', duesOutstanding:'واجب الادا رقم',
     confirmDelete:'یہ ریکارڈ حذف کریں؟ یہ واپس نہیں ہو سکتا۔', yes:'ہاں، حذف کریں', no:'نہیں',
     langToggle:'English', sharedNotice:'آپ کا ڈیٹا صرف آپ کے اسکول کے اکاؤنٹ تک محدود ہے — کوئی اور اسکول اسے نہیں دیکھ سکتا۔',
     copyrightNotice:'© 2026 Zavi Software۔ جملہ حقوق محفوظ ہیں۔ یہ سافٹ ویئر صرف آپ کے اسکول کے استعمال کے لیے لائسنس یافتہ ہے — اسے دوبارہ فروخت، تقسیم، یا کسی اور کو منتقل نہیں کیا جا سکتا۔',
@@ -225,7 +286,7 @@ const T = {
     lastBalance:'پچھلا بیلنس', schoolFeeCol:'اسکول فیس', sportsFund:'اسپورٹس فنڈ', admissionFeeCol:'داخلہ فیس',
     examFeeCol:'سالانہ امتحان فیس', totalDuesCol:'کل واجب الادا', totalPaidCol:'کل ادا شدہ', balanceCol:'بیلنس',
     receiptNo:'رسید نمبر', dateCol:'تاریخ', addEntry:'ماہانہ اندراج شامل کریں', optional:'اختیاری',
-    print:'پرنٹ', feeReceipt:'فیس رسید', studentNameLbl:'طالب علم کا نام', receivedFrom:'وصول شدہ از',
+    print:'پرنٹ', printCard:'کارڈ پرنٹ کریں', feeReceipt:'فیس رسید', studentNameLbl:'طالب علم کا نام', receivedFrom:'وصول شدہ از',
     forMonth:'مہینہ', totalAmount:'کل ادا شدہ رقم', thankYou:'ادائیگی کا شکریہ۔',
     signUpTitle:'اپنا اسکول اکاؤنٹ بنائیں', signUpDesc:'سسٹم استعمال کرنے کے لیے اپنا اسکول رجسٹر کریں۔',
     logInTitle:'لاگ ان کریں', logInDesc:'اپنے اسکول اکاؤنٹ میں لاگ ان کریں۔',
@@ -235,12 +296,16 @@ const T = {
     signUpSuccess:'اکاؤنٹ بن گیا! اب آپ لاگ ان کر سکتے ہیں۔',
     settings:'اکاؤنٹ کی ترتیبات', changeSchoolName:'اسکول کا نام', changePassword:'نیا پاس ورڈ (خالی چھوڑیں اگر تبدیل نہیں کرنا)',
     saveSettings:'تبدیلیاں محفوظ کریں', settingsSaved:'کامیابی سے محفوظ ہو گیا۔', logOut:'لاگ آؤٹ',
+    exportBackup:'بیک اپ ڈاؤن لوڈ کریں (ایکسل)', exportHint:'اپنے تمام ریکارڈ کی مکمل کاپی اپنے ڈیوائس میں محفوظ کریں۔',
   }
 };
 
 let LANG = localStorage.getItem('sms_lang') || 'en';
 let t = T[LANG];
 const CLASS_OPTIONS = ['Nursery','KG','1','2','3','4','5','6','7','8'];
+const STUDENT_TYPES = ['paying','free','orphan'];
+function typeLabel(type) { return type==='free' ? t.free : type==='orphan' ? t.orphan : t.feePaying; }
+function isFeePaying(s) { return (s.student_type || 'paying') === 'paying'; }
 const EXPENSE_CATS = ['Utilities','Maintenance','Supplies','Rent','Transport','Events','Other'];
 const INCOME_CATS = ['Donation','Grant','Sale','Fundraiser','Other'];
 
@@ -395,15 +460,29 @@ async function loadAllData() {
 function studentPayments(id){ return DATA.feePayments.filter(p=>p.student_id===id); }
 function teacherPayments(id){ return DATA.salaryPayments.filter(p=>p.teacher_id===id); }
 
+// Running ledger balance for a student (positive = amount still due, negative = credit)
+function studentBalance(id) {
+  const entries = studentPayments(id).slice().sort((a,b)=> (a.month>b.month?1:a.month<b.month?-1:0) || (new Date(a.pay_date)-new Date(b.pay_date)));
+  let running = 0;
+  entries.forEach(e => {
+    const totalDues = running + Number(e.school_fee||0) + Number(e.sports_fund||0) + Number(e.admission_fee||0) + Number(e.exam_fee||0);
+    running = totalDues - Number(e.amount||0);
+  });
+  return running;
+}
+
 // ---------------- Stats ----------------
 function computeStats() {
   const cur = monthKey();
   const active = DATA.students.filter(s=>s.status!=='inactive');
   let feesCollectedThisMonth=0, feesDueThisMonth=0;
+  let payingCount=0, freeCount=0, orphanCount=0;
   active.forEach(s=>{
     const paid = studentPayments(s.id).filter(p=>p.month===cur).reduce((a,b)=>a+Number(b.amount),0);
     feesCollectedThisMonth += paid;
-    feesDueThisMonth += Math.max(0, Number(s.monthly_fee||0)-paid);
+    if (isFeePaying(s)) { feesDueThisMonth += Math.max(0, Number(s.monthly_fee||0)-paid); payingCount++; }
+    else if ((s.student_type)==='orphan') orphanCount++;
+    else freeCount++;
   });
   let salaryPaidThisMonth=0;
   DATA.teachers.forEach(tc=>{ salaryPaidThisMonth += teacherPayments(tc.id).filter(p=>p.month===cur).reduce((a,b)=>a+Number(b.amount),0); });
@@ -414,10 +493,13 @@ function computeStats() {
   DATA.teachers.forEach(tc=>{ totalSalariesAllTime += teacherPayments(tc.id).reduce((a,b)=>a+Number(b.amount),0); });
   const totalOtherIncomeAllTime = DATA.transactions.filter(x=>x.type==='income').reduce((a,b)=>a+Number(b.amount),0);
   const totalOtherExpenseAllTime = DATA.transactions.filter(x=>x.type==='expense').reduce((a,b)=>a+Number(b.amount),0);
-  const netBalance = (totalCollectedAllTime+totalOtherIncomeAllTime) - (totalSalariesAllTime+totalOtherExpenseAllTime);
+  const totalIncomeAllTime = totalCollectedAllTime + totalOtherIncomeAllTime;
+  const totalExpenseAllTime = totalSalariesAllTime + totalOtherExpenseAllTime;
+  const netBalance = totalIncomeAllTime - totalExpenseAllTime;
 
   return { activeCount:active.length, feesCollectedThisMonth, feesDueThisMonth, salaryPaidThisMonth,
-    totalCollectedAllTime, totalSalariesAllTime, totalOtherIncomeAllTime, totalOtherExpenseAllTime, netBalance };
+    totalCollectedAllTime, totalSalariesAllTime, totalOtherIncomeAllTime, totalOtherExpenseAllTime,
+    totalIncomeAllTime, totalExpenseAllTime, netBalance, payingCount, freeCount, orphanCount };
 }
 
 // ---------------- App shell render ----------------
@@ -491,8 +573,99 @@ function openSettings() {
     <label><span>${esc(t.changePassword)}</span><input id="set-pw" type="password" autocomplete="new-password"></label>
     <div id="set-msg"></div>
     <button class="btn-primary" onclick="submitSettings()">${esc(t.saveSettings)}</button>
+    <div style="margin-top:18px;padding-top:16px;border-top:1px solid var(--line);">
+      <p style="font-size:11px;opacity:.6;margin:0 0 8px;">${esc(t.exportHint)}</p>
+      <button class="btn-ghost" style="width:100%;" onclick="exportBackup()">⬇ ${esc(t.exportBackup)}</button>
+    </div>
     <div style="margin-top:16px;"><button class="btn-ghost danger" onclick="logOut()">${esc(t.logOut)}</button></div>
   `);
+}
+
+function exportBackup() {
+  const wb = XLSX.utils.book_new();
+  const addSheet = (name, rows) => {
+    const ws = XLSX.utils.json_to_sheet(rows.length ? rows : [{}]);
+    // Size the sheet to exactly the columns that exist — no blank/hidden extra columns
+    const numCols = rows.length ? Object.keys(rows[0]).length : 1;
+    ws['!cols'] = Array.from({ length: numCols }, () => ({ wch: 14 }));
+    XLSX.utils.book_append_sheet(wb, ws, name);
+  };
+  addSheet('Students', DATA.students.map(s=>({
+    Name:s.name, Father:s.father_name, Class:s.class_name, Type:typeLabel(s.student_type||'paying'),
+    Admission:s.admission_date, MonthlyFee:s.monthly_fee, Contact:s.contact, Status:s.status,
+    CurrentBalance: studentBalance(s.id)
+  })));
+  // Per-student fee ledger sheets — mirrors the school's printed fee card format exactly:
+  // 12 fixed rows (February through January) with columns
+  // Month | Last Balance | School Fee | Sports Fund | Admission Fee | Annual Exam Fee | Total Dues | Total Paid | Balance | Receipt No | Date | Signature
+  const CARD_MONTH_ORDER = [2,3,4,5,6,7,8,9,10,11,12,1]; // Feb..Jan, same order as the printed card
+  const usedSheetNames = new Set(['Students','Teachers','Salary Payments','Other Transactions','Summary']);
+  DATA.students.forEach(s => {
+    const entries = studentPayments(s.id);
+    const entryByMonth = {};
+    entries.forEach(e => { entryByMonth[e.month] = e; });
+
+    // Figure out which calendar year February starts in for this student's card
+    // (admission year if known, else the earliest recorded entry, else the current year)
+    let startYear;
+    if (s.admission_date) startYear = new Date(s.admission_date).getFullYear();
+    else if (entries.length) startYear = Math.min(...entries.map(e => Number(e.month.split('-')[0])));
+    else startYear = new Date().getFullYear();
+
+    const monthKeys = CARD_MONTH_ORDER.map(m => {
+      const y = m >= 2 ? startYear : startYear + 1; // January rolls into the next calendar year
+      return `${y}-${String(m).padStart(2,'0')}`;
+    });
+
+    let running = 0;
+    const ledgerRows = monthKeys.map(mk => {
+      const e = entryByMonth[mk];
+      const lastBalance = running;
+      if (!e) {
+        // No entry recorded yet for this month — row stays blank like the physical card, balance carries forward
+        running = lastBalance;
+        return {
+          Month: monthLabel(mk), 'Last Balance': lastBalance, 'School Fee': '', 'Sports Fund': '',
+          'Admission Fee': '', 'Annual Exam Fee': '', 'Total Dues': lastBalance, 'Total Paid': '',
+          'Balance': lastBalance, 'Receipt No': '', Date: '', Signature: ''
+        };
+      }
+      const totalDues = lastBalance + Number(e.school_fee||0) + Number(e.sports_fund||0) + Number(e.admission_fee||0) + Number(e.exam_fee||0);
+      const totalPaid = Number(e.amount||0);
+      const balance = totalDues - totalPaid;
+      running = balance;
+      return {
+        Month: monthLabel(mk), 'Last Balance': lastBalance, 'School Fee': Number(e.school_fee||0),
+        'Sports Fund': Number(e.sports_fund||0), 'Admission Fee': Number(e.admission_fee||0), 'Annual Exam Fee': Number(e.exam_fee||0),
+        'Total Dues': totalDues, 'Total Paid': totalPaid, 'Balance': balance,
+        'Receipt No': e.receipt_no||'', Date: e.pay_date||'', Signature: ''
+      };
+    });
+    // Build a safe, unique Excel sheet name (max 31 chars, no illegal characters)
+    let base = (s.name||'Student').replace(/[\\/*?:\[\]]/g,'').trim().slice(0,28) || 'Student';
+    let sheetName = base, i = 2;
+    while (usedSheetNames.has(sheetName)) { sheetName = `${base.slice(0,26)}_${i++}`; }
+    usedSheetNames.add(sheetName);
+    addSheet(sheetName, ledgerRows);
+  });
+  addSheet('Teachers', DATA.teachers.map(tc=>({
+    Name:tc.name, Subject:tc.subject, MonthlySalary:tc.monthly_salary, JoinDate:tc.join_date
+  })));
+  addSheet('Salary Payments', DATA.salaryPayments.map(p=>{
+    const tc = DATA.teachers.find(x=>x.id===p.teacher_id);
+    return { Teacher: tc?tc.name:p.teacher_id, Month:p.month, Amount:p.amount, Date:p.pay_date };
+  }));
+  addSheet('Other Transactions', DATA.transactions.map(x=>({
+    Type:x.type, Category:x.category, Description:x.description, Amount:x.amount, Date:x.txn_date
+  })));
+  const s = computeStats();
+  addSheet('Summary', [{
+    TotalFeesCollected:s.totalCollectedAllTime, TotalSalariesPaid:s.totalSalariesAllTime,
+    TotalOtherIncome:s.totalOtherIncomeAllTime, TotalOtherExpense:s.totalOtherExpenseAllTime,
+    NetBalance:s.netBalance, ExportedOn:todayISO()
+  }]);
+  const schoolPart = (CURRENT_PROFILE.school_name||'school').replace(/[^a-z0-9]+/gi,'_');
+  XLSX.writeFile(wb, `${schoolPart}_backup_${todayISO()}.xlsx`);
 }
 
 async function submitSettings() {
@@ -518,10 +691,20 @@ async function submitSettings() {
 // ---------------- Dashboard ----------------
 function tplDashboard() {
   const s = computeStats();
-  const recent = [];
-  DATA.students.forEach(st => studentPayments(st.id).forEach(p => recent.push({name:st.name, amount:p.amount, date:p.pay_date, kind:'fee'})));
-  DATA.teachers.forEach(tc => teacherPayments(tc.id).forEach(p => recent.push({name:tc.name, amount:p.amount, date:p.pay_date, kind:'salary'})));
-  DATA.transactions.forEach(x => recent.push({name:x.description, amount:x.amount, date:x.txn_date, kind:x.type}));
+  // Group activity per person/entry so each name appears once; tapping opens their full record
+  const groups = {};
+  const pushEntry = (groupKey, kind, refId, name, amount, date) => {
+    if (!groups[groupKey]) groups[groupKey] = { kind, refId, name, entries: [] };
+    groups[groupKey].entries.push({ amount, date });
+  };
+  DATA.students.forEach(st => studentPayments(st.id).forEach(p => pushEntry('fee-'+st.id, 'fee', st.id, st.name, p.amount, p.pay_date)));
+  DATA.teachers.forEach(tc => teacherPayments(tc.id).forEach(p => pushEntry('salary-'+tc.id, 'salary', tc.id, tc.name, p.amount, p.pay_date)));
+  DATA.transactions.forEach(x => pushEntry('txn-'+x.id, x.type, x.id, x.description, x.amount, x.txn_date));
+
+  const recent = Object.entries(groups).map(([key,g]) => {
+    const sorted = g.entries.slice().sort((a,b)=> new Date(b.date) - new Date(a.date));
+    return { key, kind: g.kind, refId: g.refId, name: g.name, date: sorted[0].date, amount: sorted[0].amount, count: sorted.length };
+  });
   recent.sort((a,b)=> new Date(b.date) - new Date(a.date));
   const top = recent.slice(0,8);
 
@@ -529,17 +712,33 @@ function tplDashboard() {
     <div style="padding-top:16px;">
       <div class="stat-grid">
         <div class="stat-card"><div class="lbl">${esc(t.totalStudents)}</div><div class="val">${s.activeCount}</div></div>
-        <div class="stat-card"><div class="lbl">${esc(t.feesCollected)}</div><div class="val">₨${fmt(s.feesCollectedThisMonth)}</div></div>
-        <div class="stat-card"><div class="lbl">${esc(t.feesDue)}</div><div class="val">₨${fmt(s.feesDueThisMonth)}</div></div>
-        <div class="stat-card"><div class="lbl">${esc(t.salaryPaid)}</div><div class="val">₨${fmt(s.salaryPaidThisMonth)}</div></div>
+        <div class="stat-card"><div class="lbl">${esc(t.totalIncome)}</div><div class="val" style="color:var(--sage);">₨${fmt(s.totalIncomeAllTime)}</div></div>
+        <div class="stat-card"><div class="lbl">${esc(t.totalExpense)}</div><div class="val" style="color:var(--rust);">₨${fmt(s.totalExpenseAllTime)}</div></div>
+        <div class="stat-card"><div class="lbl">${esc(t.teacherSalaries)}</div><div class="val">₨${fmt(s.totalSalariesAllTime)}</div></div>
       </div>
       <div class="balance-card"><div class="lbl">${esc(t.netBalance)}</div><div class="val">₨${fmt(s.netBalance)}</div></div>
+
+      <div class="section-title">${esc(t.thisMonth)}</div>
+      <div class="stat-grid">
+        <div class="stat-card"><div class="lbl">${esc(t.feesCollected)}</div><div class="val" style="font-size:18px;">₨${fmt(s.feesCollectedThisMonth)}</div></div>
+        <div class="stat-card"><div class="lbl">${esc(t.feesDue)}</div><div class="val" style="font-size:18px;">₨${fmt(s.feesDueThisMonth)}</div></div>
+        <div class="stat-card"><div class="lbl">${esc(t.salaryPaid)}</div><div class="val" style="font-size:18px;">₨${fmt(s.salaryPaidThisMonth)}</div></div>
+        <div class="stat-card"><div class="lbl">${esc(t.totalStudents)}</div><div class="val" style="font-size:18px;">${s.activeCount}</div></div>
+      </div>
+
+      <div class="section-title">${esc(t.studentType)}</div>
+      <div class="stat-grid" style="grid-template-columns:1fr 1fr 1fr;">
+        <div class="stat-card"><div class="lbl">${esc(t.feePaying)}</div><div class="val" style="font-size:18px;">${s.payingCount}</div></div>
+        <div class="stat-card"><div class="lbl">${esc(t.free)}</div><div class="val" style="font-size:18px;color:#2563A6;">${s.freeCount}</div></div>
+        <div class="stat-card"><div class="lbl">${esc(t.orphan)}</div><div class="val" style="font-size:18px;color:#8A6200;">${s.orphanCount}</div></div>
+      </div>
+
       <div class="section-title">${esc(t.recentActivity)}</div>
       <div class="list-card">
         ${top.length===0 ? `<div style="padding:16px;text-align:center;opacity:.5;font-size:13px;">—</div>` :
           top.map(r=>`
-            <div class="list-row">
-              <div><div class="nm">${esc(r.name)}</div><div class="sub">${esc(r.date||'')}</div></div>
+            <div class="list-row" style="cursor:pointer;" onclick="openActivityHistory('${r.kind}','${r.refId}')">
+              <div><div class="nm">${esc(r.name)}${r.count>1?` <span style="opacity:.45;font-weight:400;">(${r.count})</span>`:''}</div><div class="sub">${esc(r.date||'')}</div></div>
               <div class="${(r.kind==='fee'||r.kind==='income')?'amt-pos':'amt-neg'}">${(r.kind==='fee'||r.kind==='income')?'+':'−'}₨${fmt(r.amount)}</div>
             </div>`).join('')}
       </div>
@@ -548,13 +747,17 @@ function tplDashboard() {
 
 // ---------------- Students ----------------
 let studentSearch = '';
+let studentTypeFilter = 'all';
 let classCollapsed = {};
+function setStudentTypeFilter(v) { studentTypeFilter = v; renderTab(); }
 function toggleClassSection(cls) {
   classCollapsed[cls] = !classCollapsed[cls];
   renderTab();
 }
 function tplStudents() {
-  const list = DATA.students.filter(s => (s.name+ (s.father_name||'') + (s.class_name||'')).toLowerCase().includes(studentSearch.toLowerCase()));
+  const list = DATA.students
+    .filter(s => (s.name+ (s.father_name||'') + (s.class_name||'')).toLowerCase().includes(studentSearch.toLowerCase()))
+    .filter(s => studentTypeFilter==='all' || (s.student_type||'paying')===studentTypeFilter);
   const cur = monthKey();
 
   // Group by class, ordered by CLASS_OPTIONS, unknown classes appended at the end
@@ -572,15 +775,22 @@ function tplStudents() {
   const studentCard = s => {
     const paid = studentPayments(s.id).filter(p=>p.month===cur).reduce((a,b)=>a+Number(b.amount),0);
     const due = Math.max(0, Number(s.monthly_fee||0)-paid);
+    const type = s.student_type || 'paying';
+    const pill = type==='free' ? `<span class="pill free">${esc(t.free)}</span>`
+      : type==='orphan' ? `<span class="pill orphan">${esc(t.orphan)}</span>`
+      : `<span class="pill ${due>0?'bad':'good'}">${due>0 ? '₨'+fmt(due)+' '+esc(t.due) : esc(t.paid)}</span>`;
     return `
       <button class="card-btn" onclick="openStudentDetail('${s.id}')">
         <div><div class="nm">${esc(s.name)}</div><div class="sub">${esc(t.fatherName)}: ${esc(s.father_name||'')}</div></div>
-        <span class="pill ${due>0?'bad':'good'}">${due>0 ? '₨'+fmt(due)+' '+esc(t.due) : esc(t.paid)}</span>
+        ${pill}
       </button>`;
   };
 
   return `
     <div style="padding-top:16px;">
+      <div class="type-filter">
+        ${['all',...STUDENT_TYPES].map(v => `<button class="${studentTypeFilter===v?'on':''}" onclick="setStudentTypeFilter('${v}')">${esc(v==='all'?t.all:typeLabel(v))}</button>`).join('')}
+      </div>
       <div class="searchbar">
         <input placeholder="${esc(t.search)}" value="${esc(studentSearch)}" oninput="studentSearch=this.value; renderTab();">
         <button class="icon-btn" onclick="openAddStudent()">
@@ -613,8 +823,9 @@ function openAddStudent() {
     <label><span>${esc(t.studentName)}</span><input id="f-name"></label>
     <label><span>${esc(t.fatherName)}</span><input id="f-father"></label>
     <label><span>${esc(t.className)}</span><select id="f-class">${CLASS_OPTIONS.map(c=>`<option>${c}</option>`).join('')}</select></label>
+    <label><span>${esc(t.studentType)}</span><select id="f-type" onchange="onAddTypeChange()">${STUDENT_TYPES.map(v=>`<option value="${v}">${esc(typeLabel(v))}</option>`).join('')}</select></label>
     <label><span>${esc(t.admissionDate)}</span><input id="f-admission" type="date" value="${todayISO()}"></label>
-    <label><span>${esc(t.monthlyFee)}</span><input id="f-fee" type="number"></label>
+    <label><span>${esc(t.monthlyFee)}</span><input id="f-fee" type="number" value="0"></label>
     <label><span>${esc(t.contact)}</span><input id="f-contact"></label>
     <div class="flexgap">
       <button class="btn-ghost" onclick="closeModal()">${esc(t.cancel)}</button>
@@ -622,17 +833,25 @@ function openAddStudent() {
     </div>
   `);
 }
+function onAddTypeChange() {
+  const type = document.getElementById('f-type').value;
+  const feeInput = document.getElementById('f-fee');
+  if (type !== 'paying') { feeInput.value = 0; feeInput.disabled = true; }
+  else { feeInput.disabled = false; }
+}
 
 async function submitAddStudent() {
   const name = document.getElementById('f-name').value.trim();
   const fee = document.getElementById('f-fee').value;
+  const type = document.getElementById('f-type').value;
   if (!name || fee==='') return;
   await sb.from('students').insert({
     owner_id: CURRENT_USER.id,
     name, father_name: document.getElementById('f-father').value,
     class_name: document.getElementById('f-class').value,
+    student_type: type,
     admission_date: document.getElementById('f-admission').value,
-    monthly_fee: Number(fee), contact: document.getElementById('f-contact').value, status:'active'
+    monthly_fee: type==='paying' ? Number(fee) : 0, contact: document.getElementById('f-contact').value, status:'active'
   });
   closeModal(); await loadAllData(); renderTab();
 }
@@ -651,7 +870,7 @@ function openStudentDetail(id) {
     running = balance;
     return { e, lastBalance, totalDues, totalPaid, balance };
   });
-  const currentBalance = running;
+  const currentBalance = studentBalance(id);
   const totalPaidAllTime = entries.reduce((a,b)=>a+Number(b.amount||0),0);
 
   showModal(s.name, `
@@ -659,6 +878,12 @@ function openStudentDetail(id) {
       <span>${esc(t.className)}: ${esc(s.class_name||'')}</span>
       <span>${esc(t.fatherName)}: ${esc(s.father_name||'')}</span>
       <span>${esc(t.monthlyFee)}: ₨${fmt(s.monthly_fee)}</span>
+    </div>
+    <div class="row2" style="align-items:end;margin-bottom:16px;">
+      <label style="margin-bottom:0;"><span>${esc(t.studentType)}</span>
+        <select id="d-type">${STUDENT_TYPES.map(v=>`<option value="${v}" ${((s.student_type||'paying')===v)?'selected':''}>${esc(typeLabel(v))}</option>`).join('')}</select>
+      </label>
+      <button class="btn-ghost" onclick="updateStudentType('${id}')">${esc(t.updateType)}</button>
     </div>
     <div style="display:flex;gap:8px;margin-bottom:16px;">
       <div class="greenbox" style="flex:1;margin-bottom:0;"><div class="lbl">${esc(t.totalCollectedAllTime)}</div><div class="val">₨${fmt(totalPaidAllTime)}</div></div>
@@ -717,8 +942,19 @@ function openStudentDetail(id) {
         </tbody>
       </table>
     </div>`}
-    <div style="margin-top:16px;"><button class="btn-ghost danger" onclick="confirmDelete('student','${id}')">${esc(t.delete)}</button></div>
+    <div style="margin-top:16px;display:flex;gap:8px;">
+      <button class="btn-ghost" style="flex:1;" onclick="printFeeCard('${id}')">🖨️ ${esc(t.printCard)}</button>
+      <button class="btn-ghost danger" style="flex:1;" onclick="confirmDelete('student','${id}')">${esc(t.delete)}</button>
+    </div>
   `);
+}
+
+async function updateStudentType(studentId) {
+  const type = document.getElementById('d-type').value;
+  const update = { student_type: type };
+  if (type !== 'paying') update.monthly_fee = 0;
+  await sb.from('students').update(update).eq('id', studentId);
+  await loadAllData(); openStudentDetail(studentId);
 }
 
 async function submitFeePayment(studentId) {
@@ -784,6 +1020,90 @@ function printReceipt(studentId, entryId) {
 async function deleteFeePayment(paymentId, studentId) {
   await sb.from('fee_payments').delete().eq('id', paymentId);
   await loadAllData(); openStudentDetail(studentId);
+}
+
+// Print the full 12-month fee card (Feb–Jan), matching the school's printed physical card layout
+function printFeeCard(studentId) {
+  const s = DATA.students.find(x=>x.id===studentId);
+  const entries = studentPayments(studentId);
+  const entryByMonth = {};
+  entries.forEach(e => { entryByMonth[e.month] = e; });
+
+  let startYear;
+  if (s.admission_date) startYear = new Date(s.admission_date).getFullYear();
+  else if (entries.length) startYear = Math.min(...entries.map(e => Number(e.month.split('-')[0])));
+  else startYear = new Date().getFullYear();
+
+  const CARD_MONTH_ORDER = [2,3,4,5,6,7,8,9,10,11,12,1];
+  const monthKeys = CARD_MONTH_ORDER.map(m => {
+    const y = m >= 2 ? startYear : startYear + 1;
+    return `${y}-${String(m).padStart(2,'0')}`;
+  });
+
+  let running = 0;
+  const rows = monthKeys.map(mk => {
+    const e = entryByMonth[mk];
+    const lastBalance = running;
+    if (!e) { running = lastBalance; return { mk, lastBalance, blank:true }; }
+    const totalDues = lastBalance + Number(e.school_fee||0) + Number(e.sports_fund||0) + Number(e.admission_fee||0) + Number(e.exam_fee||0);
+    const totalPaid = Number(e.amount||0);
+    const balance = totalDues - totalPaid;
+    running = balance;
+    return { mk, e, lastBalance, totalDues, totalPaid, balance, blank:false };
+  });
+
+  const todayMk = todayISO().slice(0,7);
+  const rowsHtml = rows.map(r => `
+    <tr class="${r.mk===todayMk ? 'fc-current' : ''}">
+      <td class="fc-mo">${esc(monthLabel(r.mk))}</td>
+      <td class="${r.lastBalance>0?'fc-due':'fc-zero'}">₨${fmt(r.lastBalance)}</td>
+      <td class="fc-zero">${r.blank ? '—' : '₨'+fmt(r.e.school_fee)}</td>
+      <td class="fc-zero">${r.blank ? '—' : '₨'+fmt(r.e.sports_fund)}</td>
+      <td class="fc-zero">${r.blank ? '—' : '₨'+fmt(r.e.admission_fee)}</td>
+      <td class="fc-zero">${r.blank ? '—' : '₨'+fmt(r.e.exam_fee)}</td>
+      <td>₨${fmt(r.blank ? r.lastBalance : r.totalDues)}</td>
+      <td class="fc-paid">${r.blank ? '—' : '₨'+fmt(r.totalPaid)}</td>
+      <td class="${(r.blank ? r.lastBalance : r.balance) > 0 ? 'fc-due' : 'fc-paid'}">₨${fmt(r.blank ? r.lastBalance : r.balance)}</td>
+      <td class="fc-zero">${r.blank ? '—' : esc(r.e.receipt_no||'—')}</td>
+      <td class="fc-zero">${r.blank ? '—' : esc(r.e.pay_date||'—')}</td>
+    </tr>`).join('');
+
+  const finalBalance = rows.length ? (rows[rows.length-1].blank ? rows[rows.length-1].lastBalance : rows[rows.length-1].balance) : 0;
+
+  document.getElementById('print-area').innerHTML = `
+    <div class="fc-wrap">
+      <div class="fc-head">
+        <div class="eyebrow">${esc(t.feeLedger)} · ${startYear}–${startYear+1}</div>
+        <h2>${esc(CURRENT_PROFILE.school_name || 'School')}</h2>
+        <div class="fc-sub">Annual Fee Card</div>
+      </div>
+      <div class="fc-info">
+        <div class="fc-cell"><div class="fc-lbl">${esc(t.studentNameLbl || t.receivedFrom)}</div><div class="fc-val">${esc(s.name)}</div></div>
+        <div class="fc-cell"><div class="fc-lbl">${esc(t.className)}</div><div class="fc-val">${esc(s.class_name||'—')}</div></div>
+        <div class="fc-cell"><div class="fc-lbl">${esc(t.fatherName)}</div><div class="fc-val">${esc(s.father_name||'—')}</div></div>
+      </div>
+      <table class="fc-table">
+        <thead><tr>
+          <th>${esc(t.month)}</th>
+          <th>${esc(t.lastBalance)}</th>
+          <th>${esc(t.schoolFeeCol)}</th>
+          <th>${esc(t.sportsFund)}</th>
+          <th>${esc(t.admissionFeeCol)}</th>
+          <th>${esc(t.examFeeCol)}</th>
+          <th>${esc(t.totalDuesCol)}</th>
+          <th>${esc(t.totalPaidCol)}</th>
+          <th>${esc(t.balanceCol)}</th>
+          <th>${esc(t.receiptNo)}</th>
+          <th>${esc(t.dateCol)}</th>
+        </tr></thead>
+        <tbody>${rowsHtml}</tbody>
+      </table>
+      <div class="fc-foot">
+        <div class="fc-brand">${esc(CURRENT_PROFILE.school_name || '')}</div>
+        <div class="fc-sig">Principal Signature: <span class="line"></span></div>
+      </div>
+    </div>`;
+  window.print();
 }
 
 // ---------------- Teachers ----------------
@@ -955,9 +1275,10 @@ function tplReports() {
   const perClass = {};
   DATA.students.filter(x=>x.status!=='inactive').forEach(st=>{
     const cls = st.class_name || '—';
-    if (!perClass[cls]) perClass[cls] = {count:0, collected:0};
+    if (!perClass[cls]) perClass[cls] = {count:0, collected:0, dues:0};
     perClass[cls].count++;
     perClass[cls].collected += studentPayments(st.id).reduce((a,b)=>a+Number(b.amount),0);
+    if (isFeePaying(st)) perClass[cls].dues += Math.max(0, studentBalance(st.id));
   });
   const rows = [
     [t.totalCollectedAllTime, s.totalCollectedAllTime, 'amt-pos'],
@@ -967,9 +1288,18 @@ function tplReports() {
   ];
   return `
     <div style="padding-top:16px;">
-      <div class="section-title" style="margin-top:0;">${esc(t.summaryReport)}</div>
+      <div class="section-title" style="margin-top:0;display:flex;justify-content:space-between;align-items:center;">
+        <span>${esc(t.summaryReport)}</span>
+        <button onclick="printReport()" style="border:none;background:var(--navy);color:var(--gold-soft);border-radius:8px;padding:5px 12px;font-size:11px;font-weight:600;">🖨️ ${esc(t.print)}</button>
+      </div>
       <div class="list-card">
         ${rows.map(([l,v,cls])=>`<div class="list-row"><span style="font-size:13px;">${esc(l)}</span><span class="${cls}">₨${fmt(v)}</span></div>`).join('')}
+      </div>
+      <div class="section-title">${esc(t.studentType)}</div>
+      <div class="list-card">
+        <div class="list-row"><span style="font-size:13px;">${esc(t.feePaying)}</span><span>${s.payingCount}</span></div>
+        <div class="list-row"><span style="font-size:13px;">${esc(t.free)}</span><span>${s.freeCount}</span></div>
+        <div class="list-row"><span style="font-size:13px;">${esc(t.orphan)}</span><span>${s.orphanCount}</span></div>
       </div>
       <div class="section-title">${esc(t.perClassBreakdown)}</div>
       <div class="list-card">
@@ -977,10 +1307,79 @@ function tplReports() {
           Object.entries(perClass).map(([cls,d])=>`
             <div class="list-row">
               <span style="font-size:13px;font-weight:500;">${esc(cls)} <span style="font-size:11px;opacity:.5;">(${d.count})</span></span>
-              <span class="amt-pos">₨${fmt(d.collected)}</span>
+              <span style="display:flex;flex-direction:column;align-items:flex-end;gap:2px;">
+                <span class="amt-pos">₨${fmt(d.collected)}</span>
+                ${d.dues>0 ? `<span class="amt-neg" style="font-size:11px;">₨${fmt(d.dues)} ${esc(t.due)}</span>` : ''}
+              </span>
             </div>`).join('')}
       </div>
     </div>`;
+}
+
+function printReport() {
+  const s = computeStats();
+  const perClass = {};
+  DATA.students.filter(x=>x.status!=='inactive').forEach(st=>{
+    const cls = st.class_name || '—';
+    if (!perClass[cls]) perClass[cls] = {count:0, collected:0, dues:0};
+    perClass[cls].count++;
+    perClass[cls].collected += studentPayments(st.id).reduce((a,b)=>a+Number(b.amount),0);
+    if (isFeePaying(st)) perClass[cls].dues += Math.max(0, studentBalance(st.id));
+  });
+  const summaryRows = [
+    [t.totalCollectedAllTime, s.totalCollectedAllTime],
+    [t.totalSalariesAllTime, s.totalSalariesAllTime],
+    [t.totalOtherIncomeAllTime, s.totalOtherIncomeAllTime],
+    [t.totalOtherExpenseAllTime, s.totalOtherExpenseAllTime],
+  ].map(([l,v])=>`<tr><td class="lbl">${esc(l)}</td><td style="text-align:right;">₨${fmt(v)}</td></tr>`).join('');
+
+  const typeRows = `
+    <tr><td class="lbl">${esc(t.feePaying)}</td><td style="text-align:right;">${s.payingCount}</td></tr>
+    <tr><td class="lbl">${esc(t.free)}</td><td style="text-align:right;">${s.freeCount}</td></tr>
+    <tr><td class="lbl">${esc(t.orphan)}</td><td style="text-align:right;">${s.orphanCount}</td></tr>`;
+
+  const classRowsHtml = Object.keys(perClass).length===0
+    ? `<tr><td colspan="4" style="text-align:center;opacity:.6;">—</td></tr>`
+    : Object.entries(perClass).map(([cls,d])=>`
+        <tr>
+          <td>${esc(cls)}</td>
+          <td style="text-align:right;">${d.count}</td>
+          <td style="text-align:right;">₨${fmt(d.collected)}</td>
+          <td style="text-align:right;">${d.dues>0 ? '₨'+fmt(d.dues) : '—'}</td>
+        </tr>`).join('');
+
+  document.getElementById('print-area').innerHTML = `
+    <div class="receipt-box" style="max-width:100%;">
+      <h2>${esc(CURRENT_PROFILE.school_name || 'School')}</h2>
+      <div class="sub">${esc(t.summaryReport)} — ${esc(todayISO())}</div>
+      <table><tbody>${summaryRows}</tbody></table>
+      <div style="margin-top:16px;font-weight:700;font-size:13px;color:#0F2740;">${esc(t.studentType)}</div>
+      <table><tbody>${typeRows}</tbody></table>
+      <div style="margin-top:16px;font-weight:700;font-size:13px;color:#0F2740;">${esc(t.perClassBreakdown)}</div>
+      <table style="width:100%;border-collapse:collapse;">
+        <thead><tr>
+          <th style="text-align:left;padding:6px 4px;border-bottom:2px solid #0F2740;font-size:11px;">Class</th>
+          <th style="text-align:right;padding:6px 4px;border-bottom:2px solid #0F2740;font-size:11px;">#</th>
+          <th style="text-align:right;padding:6px 4px;border-bottom:2px solid #0F2740;font-size:11px;">Collected</th>
+          <th style="text-align:right;padding:6px 4px;border-bottom:2px solid #0F2740;font-size:11px;">${esc(t.due)}</th>
+        </tr></thead>
+        <tbody style="font-size:12px;">${classRowsHtml}</tbody>
+      </table>
+      <div class="foot">${esc(CURRENT_PROFILE.school_name || '')} — Principal Signature: ____________________</div>
+    </div>`;
+  window.print();
+}
+
+// Tapping a Recent Activity row opens that person's full record
+function openActivityHistory(kind, refId) {
+  if (kind === 'fee') { setTab('students'); openStudentDetail(refId); return; }
+  if (kind === 'salary') { setTab('teachers'); openTeacherDetail(refId); return; }
+  const x = DATA.transactions.find(tx => tx.id === refId);
+  if (!x) return;
+  showModal(x.description||'—', `
+    <div class="list-row"><span style="font-size:13px;opacity:.65;">${esc(t.dateCol)}</span><span style="font-size:13px;">${esc(x.txn_date||'')}</span></div>
+    <div class="list-row"><span style="font-size:13px;opacity:.65;">${esc(t.amount)}</span><span class="${x.type==='income'?'amt-pos':'amt-neg'}">${x.type==='income'?'+':'−'}₨${fmt(x.amount)}</span></div>
+  `);
 }
 
 // ---------------- Modal helpers ----------------
@@ -1011,6 +1410,12 @@ async function doDelete(kind, id) {
 }
 
 boot();
+
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('sw.js').catch(() => {});
+  });
+}
 </script>
 </body>
 </html>
