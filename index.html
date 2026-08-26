@@ -250,6 +250,22 @@ async function sendFeeSms(mobileRaw, message) {
 }
 // ----------------------------------------
 
+// ---------- WhatsApp helper ----------
+// Opens WhatsApp (desktop app / WhatsApp Web on PC & laptop, or the WhatsApp app on mobile)
+// with the father's number and message pre-filled via the wa.me click-to-chat link.
+// Browsers can't send messages silently — the user still taps "Send" inside WhatsApp.
+function whatsappUri(mobileRaw, message) {
+  const mobile = normalizePkMobile(mobileRaw);
+  if (!mobile) return null;
+  return `https://wa.me/${mobile}?text=${encodeURIComponent(message)}`;
+}
+function openFatherWhatsapp(mobileRaw, message) {
+  const uri = whatsappUri(mobileRaw, message);
+  if (!uri) { alert('No valid contact number on file for this student.'); return; }
+  window.open(uri, '_blank');
+}
+// --------------------------------------
+
 // ---------- Local (device SIM) SMS helper ----------
 // Opens the phone's own SMS app with the father's number and message pre-filled.
 // Browsers can't send SMS silently for security reasons — the user still taps "Send" in their SMS app.
@@ -642,11 +658,25 @@ function exportBackup() {
     // Size the sheet to exactly the columns that exist — no blank/hidden extra columns
     const numCols = rows.length ? Object.keys(rows[0]).length : 1;
     ws['!cols'] = Array.from({ length: numCols }, () => ({ wch: 14 }));
+    // Bold the header row (row 1)
+    for (let c = 0; c < numCols; c++) {
+      const addr = XLSX.utils.encode_cell({ r: 0, c });
+      if (ws[addr]) ws[addr].s = { font: { bold: true } };
+    }
     XLSX.utils.book_append_sheet(wb, ws, name);
   };
-  addSheet('Students', DATA.students.map(s=>({
+  const classRank = (cls) => {
+    const i = CLASS_OPTIONS.indexOf(cls);
+    return i === -1 ? CLASS_OPTIONS.length : i; // unknown/blank class names sort last
+  };
+  const sortedStudents = DATA.students.slice().sort((a, b) => {
+    const r = classRank(a.class_name) - classRank(b.class_name);
+    if (r !== 0) return r;
+    return (a.name || '').localeCompare(b.name || ''); // same class → alphabetical by name
+  });
+  addSheet('Students', sortedStudents.map(s=>({
     Name:s.name, Father:s.father_name, Class:s.class_name, Type:typeLabel(s.student_type||'paying'),
-    Admission:s.admission_date, MonthlyFee:s.monthly_fee, Contact:s.contact, Status:s.status,
+    Admission:s.admission_date, Contact:s.contact, MonthlyFee:s.monthly_fee, Status:s.status,
     CurrentBalance: studentBalance(s.id)
   })));
   // Per-student fee ledger sheets — mirrors the school's printed fee card format exactly:
@@ -654,7 +684,11 @@ function exportBackup() {
   // Month | Last Balance | School Fee | Sports Fund | Admission Fee | Annual Exam Fee | Total Dues | Total Paid | Balance | Receipt No | Date | Signature
   const CARD_MONTH_ORDER = [2,3,4,5,6,7,8,9,10,11,12,1]; // Feb..Jan, same order as the printed card
   const usedSheetNames = new Set(['Students','Teachers','Salary Payments','Other Transactions','Summary']);
-  DATA.students.forEach(s => {
+  DATA.students.slice().sort((a, b) => {
+    const r = classRank(a.class_name) - classRank(b.class_name);
+    if (r !== 0) return r;
+    return (a.name || '').localeCompare(b.name || '');
+  }).forEach(s => {
     const entries = studentPayments(s.id);
     const entryByMonth = {};
     entries.forEach(e => { entryByMonth[e.month] = e; });
@@ -719,7 +753,7 @@ function exportBackup() {
     NetBalance:s.netBalance, ExportedOn:todayISO()
   }]);
   const schoolPart = (CURRENT_PROFILE.school_name||'school').replace(/[^a-z0-9]+/gi,'_');
-  XLSX.writeFile(wb, `${schoolPart}_backup_${todayISO()}.xlsx`);
+  XLSX.writeFile(wb, `${schoolPart}_backup_${todayISO()}.xlsx`, { cellStyles: true });
 }
 
 async function submitSettings() {
@@ -879,8 +913,8 @@ function openAddStudent() {
     <label><span>${esc(t.className)}</span><select id="f-class">${CLASS_OPTIONS.map(c=>`<option>${c}</option>`).join('')}</select></label>
     <label><span>${esc(t.studentType)}</span><select id="f-type" onchange="onAddTypeChange()">${STUDENT_TYPES.map(v=>`<option value="${v}">${esc(typeLabel(v))}</option>`).join('')}</select></label>
     <label><span>${esc(t.admissionDate)}</span><input id="f-admission" type="date" value="${todayISO()}"></label>
-    <label><span>${esc(t.monthlyFee)}</span><input id="f-fee" type="number" value="0"></label>
     <label><span>${esc(t.contact)}</span><input id="f-contact"></label>
+    <label><span>${esc(t.monthlyFee)}</span><input id="f-fee" type="number" value="0"></label>
     <div class="flexgap">
       <button class="btn-ghost" onclick="closeModal()">${esc(t.cancel)}</button>
       <button class="btn-primary" style="flex:1" onclick="submitAddStudent()">${esc(t.save)}</button>
@@ -991,7 +1025,7 @@ function openStudentDetail(id) {
               <td>${esc(r.e.receipt_no||'—')}</td>
               <td>${esc(r.e.pay_date||'')}</td>
               <td><button class="print-btn" title="${esc(t.print)}" onclick="printReceipt('${id}','${r.e.id}')">🖨️</button></td>
-              <td><button class="print-btn" title="Send SMS to father" onclick="openFatherSms('${esc(s.contact||'')}', 'Dear Parent, fee of Rs ${fmt(r.totalPaid)} for ${esc(s.name)} (${esc(monthLabel(r.e.month))}) has been received. Thank you. - School')">📩</button></td>
+              <td><button class="print-btn" title="Send WhatsApp to father" onclick="openFatherWhatsapp('${esc(s.contact||'')}', 'Dear Parent, fee of Rs ${fmt(r.totalPaid)} for ${esc(s.name)} (${esc(monthLabel(r.e.month))}) has been received. Thank you. - School')">💬</button></td>
               <td><button class="del-x" onclick="deleteFeePayment('${r.e.id}','${id}')">✕</button></td>
             </tr>`).join('')}
         </tbody>
@@ -1032,7 +1066,7 @@ async function submitFeePayment(studentId) {
   if (student) {
     const msg = `Dear Parent, fee of Rs ${Number(amount).toLocaleString()} for ${student.name} (${month}) has been received. Thank you. - School`;
     sendFeeSms(student.contact, msg); // SendPK gateway (only if configured/enabled)
-    openFatherSms(student.contact, msg); // opens device's own SMS app, pre-filled, ready to send
+    openFatherWhatsapp(student.contact, msg); // opens WhatsApp (PC/laptop or phone), pre-filled, ready to send
   }
   await loadAllData(); openStudentDetail(studentId);
 }
