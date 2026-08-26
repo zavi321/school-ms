@@ -384,7 +384,7 @@ const T = {
 
 let LANG = localStorage.getItem('sms_lang') || 'en';
 let t = T[LANG];
-const CLASS_OPTIONS = ['Nursery','KG','1','2','3','4','5','6','7','8'];
+const CLASS_OPTIONS = ['Nursery','KG','1','2','3','4','5','6','7','8','9','10','11','12'];
 const STUDENT_TYPES = ['paying','free','orphan'];
 function typeLabel(type) { return type==='free' ? t.free : type==='orphan' ? t.orphan : t.feePaying; }
 function isFeePaying(s) { return (s.student_type || 'paying') === 'paying'; }
