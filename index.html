@@ -49,6 +49,7 @@
   .auth-box{width:100%;max-width:380px;}
   .auth-brand{text-align:center;font-size:11px;letter-spacing:.15em;text-transform:uppercase;color:var(--gold-soft);opacity:.8;margin-bottom:20px;}
   .auth-card{background:var(--cream);border-radius:18px;padding:22px;box-shadow:var(--shadow-md);}
+  .card{background:var(--cream);border-radius:16px;padding:18px;box-shadow:var(--shadow-md);}
   .auth-card h2{margin:0 0 4px;color:var(--navy);font-family:Fraunces,serif;font-size:19px;}
   body.ur .auth-card h2{font-family:'Noto Nastaliq Urdu',serif;}
   .auth-card p.desc{font-size:12px;opacity:.65;margin:0 0 16px;}
@@ -226,6 +227,13 @@
 </script>
 <!-- ==================================================================================== -->
 
+<!-- ============ CONFIG: Owner contact — shown to anyone who tries to sign up without ============ -->
+<!-- ============            being whitelisted first. Replace with your real WhatsApp number.     ============ -->
+<script>
+  const OWNER_WHATSAPP_NUMBER = "923412565659";
+</script>
+<!-- ==================================================================================== -->
+
 <div id="loading" class="loading">Loading…</div>
 <div id="auth-root"></div>
 <div id="app" class="hidden"></div>
@@ -233,6 +241,16 @@
 
 <script>
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+// A second, isolated Supabase client used ONLY when the admin confirms a
+// school's OTP code. auth.verifyOtp() would otherwise replace the current
+// browser session with the school's session — using a separate client
+// keeps the admin logged in as themselves throughout.
+function makeOtpVerifyClient() {
+  return supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+    auth: { persistSession: false, autoRefreshToken: false }
+  });
+}
 
 // ---------- SendPK SMS helper ----------
 // Converts local Pakistani numbers (03xx..., +923xx..., 923xx...) into the 923xxxxxxxxx format SendPK expects.
@@ -338,6 +356,19 @@ const T = {
     settings:'Account Settings', changeSchoolName:'School Name', changePassword:'New Password (leave blank to keep current)',
     saveSettings:'Save Changes', settingsSaved:'Saved successfully.', logOut:'Log Out',
     exportBackup:'Download Backup (Excel)', exportHint:'Save a full copy of your records to your device.',
+    // Whitelist / Admin onboarding
+    notWhitelistedTitle:'This email is not registered with us yet.',
+    notWhitelistedDesc:'To register your school, please contact us on WhatsApp first.',
+    contactOnWhatsApp:'Contact us on WhatsApp',
+    signUpPendingTitle:'Almost done!',
+    signUpPendingDesc:'A verification code has been sent to your email. Please send us that code on WhatsApp to activate your account.',
+    admin:'Admin', adminPanel:'Admin Panel',
+    addSchoolEmail:'Add a school email', schoolEmailPlaceholder:'School owner\'s Gmail address',
+    addToWhitelist:'Add & Allow Sign Up', emailAdded:'Email added — they can now sign up.',
+    whitelistedSchools:'Registered Schools', statusWhitelisted:'Waiting for sign up', statusAttempted:'Awaiting your OTP confirmation', statusVerified:'Active',
+    confirmOtpTitle:'Activate school with OTP', confirmOtpDesc:'Enter the code the school read out to you.',
+    otpCode:'6-digit code', confirmOtp:'Confirm & Activate', otpConfirmed:'Activated! The school can now log in.', otpWrong:'That code is incorrect or expired.',
+    noWhitelistYet:'No schools added yet.', notAdmin:'Admin access only.',
   },
   ur: {
     appName:'مالیاتی و ریکارڈ سسٹم', tagline:'اسکول انتظامیہ کے لیے',
@@ -379,6 +410,18 @@ const T = {
     settings:'اکاؤنٹ کی ترتیبات', changeSchoolName:'اسکول کا نام', changePassword:'نیا پاس ورڈ (خالی چھوڑیں اگر تبدیل نہیں کرنا)',
     saveSettings:'تبدیلیاں محفوظ کریں', settingsSaved:'کامیابی سے محفوظ ہو گیا۔', logOut:'لاگ آؤٹ',
     exportBackup:'بیک اپ ڈاؤن لوڈ کریں (ایکسل)', exportHint:'اپنے تمام ریکارڈ کی مکمل کاپی اپنے ڈیوائس میں محفوظ کریں۔',
+    notWhitelistedTitle:'یہ ای میل ابھی تک ہمارے ساتھ رجسٹرڈ نہیں ہے۔',
+    notWhitelistedDesc:'اپنا اسکول رجسٹر کروانے کے لیے پہلے ہم سے واٹس ایپ پر رابطہ کریں۔',
+    contactOnWhatsApp:'واٹس ایپ پر رابطہ کریں',
+    signUpPendingTitle:'تقریباً مکمل!',
+    signUpPendingDesc:'آپ کے ای میل پر ایک تصدیقی کوڈ بھیجا گیا ہے۔ اپنا اکاؤنٹ فعال کروانے کے لیے وہ کوڈ ہمیں واٹس ایپ پر بھیجیں۔',
+    admin:'ایڈمن', adminPanel:'ایڈمن پینل',
+    addSchoolEmail:'اسکول کی ای میل شامل کریں', schoolEmailPlaceholder:'اسکول مالک کا جی میل ایڈریس',
+    addToWhitelist:'شامل کریں اور سائن اپ کی اجازت دیں', emailAdded:'ای میل شامل ہو گئی — وہ اب سائن اپ کر سکتے ہیں۔',
+    whitelistedSchools:'رجسٹرڈ اسکولز', statusWhitelisted:'سائن اپ کا انتظار', statusAttempted:'آپ کی OTP تصدیق کا انتظار', statusVerified:'فعال',
+    confirmOtpTitle:'OTP سے اسکول فعال کریں', confirmOtpDesc:'اسکول نے آپ کو جو کوڈ بتایا وہ درج کریں۔',
+    otpCode:'6 ہندسوں کا کوڈ', confirmOtp:'تصدیق کریں اور فعال کریں', otpConfirmed:'فعال ہو گیا! اسکول اب لاگ ان کر سکتا ہے۔', otpWrong:'یہ کوڈ غلط ہے یا میعاد ختم ہو گئی ہے۔',
+    noWhitelistYet:'ابھی تک کوئی اسکول شامل نہیں کیا گیا۔', notAdmin:'صرف ایڈمن رسائی۔',
   }
 };
 
@@ -487,18 +530,47 @@ async function submitSignUp() {
   if (pw.length < 6) { msg.innerHTML = `<div class="err">${esc(t.passwordTooShort)}</div>`; return; }
   if (pw !== pw2) { msg.innerHTML = `<div class="err">${esc(t.passwordMismatch)}</div>`; return; }
   btn.disabled = true;
+
+  // Only owner-whitelisted emails may sign up. Anyone else is sent to
+  // WhatsApp to arrange registration first.
+  const { data: allowed, error: wErr } = await sb.rpc('is_email_whitelisted', { check_email: email });
+  if (wErr) { btn.disabled = false; msg.innerHTML = `<div class="err">${esc(wErr.message)}</div>`; return; }
+  if (!allowed) {
+    btn.disabled = false;
+    const waLink = `https://wa.me/${OWNER_WHATSAPP_NUMBER}?text=${encodeURIComponent('Hi, I want to register my school: ' + school)}`;
+    msg.innerHTML = `
+      <div class="err">
+        <div style="margin-bottom:8px;">${esc(t.notWhitelistedTitle)}</div>
+        <div style="margin-bottom:10px;">${esc(t.notWhitelistedDesc)}</div>
+        <a class="btn-primary" style="display:block;text-align:center;text-decoration:none;" href="${waLink}" target="_blank" rel="noopener">${esc(t.contactOnWhatsApp)}</a>
+      </div>`;
+    return;
+  }
+
   const { data, error } = await sb.auth.signUp({
     email, password: pw,
     options: { data: { school_name: school } }
   });
   btn.disabled = false;
   if (error) { msg.innerHTML = `<div class="err">${esc(error.message)}</div>`; return; }
+
   if (data.session) {
+    // Email confirmation is off on this project — logs straight in.
     CURRENT_USER = data.user;
     await afterLogin();
-  } else {
-    msg.innerHTML = `<div class="ok">${esc(t.signUpSuccess)}</div>`;
+    return;
   }
+
+  // Normal path: Supabase sent a confirmation code to their email.
+  // Mark the whitelist entry so the admin sees it's awaiting OTP.
+  await sb.rpc('mark_signup_attempted', { check_email: email });
+  const waLink2 = `https://wa.me/${OWNER_WHATSAPP_NUMBER}?text=${encodeURIComponent('Hi, my school is ' + school + ' (' + email + '). My verification code is: ')}`;
+  msg.innerHTML = `
+    <div class="ok">
+      <div style="margin-bottom:8px;">${esc(t.signUpPendingTitle)}</div>
+      <div style="margin-bottom:10px;">${esc(t.signUpPendingDesc)}</div>
+      <a class="btn-primary" style="display:block;text-align:center;text-decoration:none;" href="${waLink2}" target="_blank" rel="noopener">${esc(t.contactOnWhatsApp)}</a>
+    </div>`;
 }
 
 async function submitLogIn() {
@@ -625,13 +697,15 @@ const NAV_ICONS = {
   teachers: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="7" r="4"/><path d="M2 21v-2a4 4 0 014-4h6a4 4 0 014 4v2"/><circle cx="17" cy="7" r="3"/></svg>`,
   finance: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2"/></svg>`,
   reports: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>`,
+  admin: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l8 4v6c0 5-3.5 8.5-8 10-4.5-1.5-8-5-8-10V6l8-4z"/></svg>`,
 };
 
 function renderNav() {
   const tabs = ['dashboard','students','teachers','finance','reports'];
+  if (CURRENT_PROFILE && CURRENT_PROFILE.is_admin) tabs.push('admin');
   document.getElementById('navbar').innerHTML = tabs.map(k => `
     <button class="${TAB===k?'active':''}" onclick="setTab('${k}')">
-      ${NAV_ICONS[k]}<span>${esc(t[k])}</span>
+      ${NAV_ICONS[k]}<span>${esc(t[k] || t.admin)}</span>
     </button>`).join('');
 }
 
@@ -644,8 +718,86 @@ function renderTab() {
   else if (TAB==='teachers') main.innerHTML = tplTeachers();
   else if (TAB==='finance') main.innerHTML = tplFinance();
   else if (TAB==='reports') main.innerHTML = tplReports();
+  else if (TAB==='admin') { main.innerHTML = tplAdmin(); loadWhitelist(); return; }
   main.innerHTML += `<div class="notice">${esc(t.sharedNotice)}</div>`;
   main.innerHTML += `<div class="notice" style="margin-top:8px;font-size:10px;">${esc(t.copyrightNotice)}</div>`;
+}
+
+// ---------------- Admin Panel (owner only) ----------------
+function tplAdmin() {
+  if (!CURRENT_PROFILE || !CURRENT_PROFILE.is_admin) {
+    return `<div class="notice">${esc(t.notAdmin)}</div>`;
+  }
+  return `
+    <h2>${esc(t.adminPanel)}</h2>
+
+    <div class="card" style="margin-bottom:16px;">
+      <h3 style="margin-top:0;">${esc(t.addSchoolEmail)}</h3>
+      <label><span>${esc(t.email)}</span><input id="wl-email" type="email" placeholder="${esc(t.schoolEmailPlaceholder)}"></label>
+      <div id="wl-add-msg"></div>
+      <button class="btn-primary" onclick="submitAddWhitelist()">${esc(t.addToWhitelist)}</button>
+    </div>
+
+    <div class="card" style="margin-bottom:16px;">
+      <h3 style="margin-top:0;">${esc(t.confirmOtpTitle)}</h3>
+      <p class="desc" style="margin-top:0;">${esc(t.confirmOtpDesc)}</p>
+      <label><span>${esc(t.email)}</span><input id="otp-email" type="email"></label>
+      <label><span>${esc(t.otpCode)}</span><input id="otp-code" inputmode="numeric" maxlength="6"></label>
+      <div id="otp-msg"></div>
+      <button class="btn-primary" onclick="submitConfirmOtp()">${esc(t.confirmOtp)}</button>
+    </div>
+
+    <div class="card">
+      <h3 style="margin-top:0;">${esc(t.whitelistedSchools)}</h3>
+      <div id="wl-list">…</div>
+    </div>
+  `;
+}
+
+async function loadWhitelist() {
+  const el = document.getElementById('wl-list');
+  if (!el) return;
+  const { data, error } = await sb.from('whitelist_emails').select('*').order('created_at', { ascending: false });
+  if (error) { el.innerHTML = `<div class="err">${esc(error.message)}</div>`; return; }
+  if (!data || !data.length) { el.innerHTML = `<div class="notice">${esc(t.noWhitelistYet)}</div>`; return; }
+  const statusLabel = s => s==='verified' ? t.statusVerified : s==='signup_attempted' ? t.statusAttempted : t.statusWhitelisted;
+  const statusColor = s => s==='verified' ? '#1a7f37' : s==='signup_attempted' ? '#b8860b' : '#666';
+  el.innerHTML = data.map(row => `
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--line);">
+      <span style="word-break:break-all;">${esc(row.email)}</span>
+      <span style="font-size:11px;font-weight:600;color:${statusColor(row.status)};white-space:nowrap;margin-left:10px;">${esc(statusLabel(row.status))}</span>
+    </div>`).join('');
+}
+
+async function submitAddWhitelist() {
+  const email = document.getElementById('wl-email').value.trim();
+  const msg = document.getElementById('wl-add-msg');
+  msg.innerHTML = '';
+  if (!email) return;
+  const { error } = await sb.from('whitelist_emails').insert({ email, added_by: CURRENT_USER.id });
+  if (error) { msg.innerHTML = `<div class="err">${esc(error.message)}</div>`; return; }
+  msg.innerHTML = `<div class="ok">${esc(t.emailAdded)}</div>`;
+  document.getElementById('wl-email').value = '';
+  loadWhitelist();
+}
+
+async function submitConfirmOtp() {
+  const email = document.getElementById('otp-email').value.trim();
+  const code = document.getElementById('otp-code').value.trim();
+  const msg = document.getElementById('otp-msg');
+  msg.innerHTML = '';
+  if (!email || !code) return;
+
+  // Use an isolated client so this never touches the admin's own session.
+  const otpClient = makeOtpVerifyClient();
+  const { error } = await otpClient.auth.verifyOtp({ email, token: code, type: 'signup' });
+  if (error) { msg.innerHTML = `<div class="err">${esc(t.otpWrong)}</div>`; return; }
+
+  await sb.from('whitelist_emails').update({ status: 'verified', verified_at: new Date().toISOString() }).eq('email', email);
+  msg.innerHTML = `<div class="ok">${esc(t.otpConfirmed)}</div>`;
+  document.getElementById('otp-email').value = '';
+  document.getElementById('otp-code').value = '';
+  loadWhitelist();
 }
 
 // ---------------- Settings (school name, password, logout) ----------------
