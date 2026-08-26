@@ -206,6 +206,14 @@
 </script>
 <!-- ============================================================================ -->
 
+<!-- ============ CONFIG: SendPK SMS gateway — replace with your own values ============ -->
+<script>
+  const SENDPK_API_KEY = "PASTE_YOUR_SENDPK_API_KEY_HERE";
+  const SENDPK_SENDER  = "PASTE_YOUR_APPROVED_SENDER_ID_HERE"; // e.g. "SMS Alert" or your school's approved brand name
+  const SENDPK_ENABLED = true; // set to false to turn off fee-payment SMS without removing config
+</script>
+<!-- ==================================================================================== -->
+
 <div id="loading" class="loading">Loading…</div>
 <div id="auth-root"></div>
 <div id="app" class="hidden"></div>
@@ -213,6 +221,52 @@
 
 <script>
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+// ---------- SendPK SMS helper ----------
+// Converts local Pakistani numbers (03xx..., +923xx..., 923xx...) into the 923xxxxxxxxx format SendPK expects.
+function normalizePkMobile(raw) {
+  if (!raw) return null;
+  let n = String(raw).replace(/[^0-9]/g, '');
+  if (n.startsWith('0092')) n = n.slice(2);
+  if (n.startsWith('92')) return n.length === 12 ? n : null;
+  if (n.startsWith('0')) return '92' + n.slice(1);
+  if (n.length === 10) return '92' + n; // e.g. 3001234567
+  return null;
+}
+
+async function sendFeeSms(mobileRaw, message) {
+  if (!SENDPK_ENABLED) return;
+  if (!SENDPK_API_KEY || SENDPK_API_KEY.startsWith('PASTE_')) return; // not configured yet
+  const mobile = normalizePkMobile(mobileRaw);
+  if (!mobile) return; // no valid contact number on file
+  try {
+    const params = new URLSearchParams({
+      api_key: SENDPK_API_KEY, sender: SENDPK_SENDER, mobile, message, format: 'json'
+    });
+    await fetch('https://sendpk.com/api/sms.php?' + params, { method: 'GET' });
+  } catch (err) {
+    console.error('SMS send failed:', err);
+  }
+}
+// ----------------------------------------
+
+// ---------- Local (device SIM) SMS helper ----------
+// Opens the phone's own SMS app with the father's number and message pre-filled.
+// Browsers can't send SMS silently for security reasons — the user still taps "Send" in their SMS app.
+function smsComposeUri(mobileRaw, message) {
+  const mobile = normalizePkMobile(mobileRaw);
+  if (!mobile) return null;
+  const number = '+' + mobile;
+  const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
+  const sep = isIOS ? '&' : '?'; // iOS Messages needs '&' before body, Android needs '?'
+  return `sms:${number}${sep}body=${encodeURIComponent(message)}`;
+}
+function openFatherSms(mobileRaw, message) {
+  const uri = smsComposeUri(mobileRaw, message);
+  if (!uri) { alert('No valid contact number on file for this student.'); return; }
+  window.location.href = uri;
+}
+// ----------------------------------------------------
 
 const T = {
   en: {
@@ -920,7 +974,7 @@ function openStudentDetail(id) {
           <th>${esc(t.month)}</th><th>${esc(t.lastBalance)}</th><th>${esc(t.schoolFeeCol)}</th>
           <th>${esc(t.sportsFund)}</th><th>${esc(t.admissionFeeCol)}</th><th>${esc(t.examFeeCol)}</th>
           <th>${esc(t.totalDuesCol)}</th><th>${esc(t.totalPaidCol)}</th><th>${esc(t.balanceCol)}</th>
-          <th>${esc(t.receiptNo)}</th><th>${esc(t.dateCol)}</th><th></th><th></th>
+          <th>${esc(t.receiptNo)}</th><th>${esc(t.dateCol)}</th><th></th><th></th><th></th>
         </tr></thead>
         <tbody>
           ${rows.map(r=>`
@@ -937,6 +991,7 @@ function openStudentDetail(id) {
               <td>${esc(r.e.receipt_no||'—')}</td>
               <td>${esc(r.e.pay_date||'')}</td>
               <td><button class="print-btn" title="${esc(t.print)}" onclick="printReceipt('${id}','${r.e.id}')">🖨️</button></td>
+              <td><button class="print-btn" title="Send SMS to father" onclick="openFatherSms('${esc(s.contact||'')}', 'Dear Parent, fee of Rs ${fmt(r.totalPaid)} for ${esc(s.name)} (${esc(monthLabel(r.e.month))}) has been received. Thank you. - School')">📩</button></td>
               <td><button class="del-x" onclick="deleteFeePayment('${r.e.id}','${id}')">✕</button></td>
             </tr>`).join('')}
         </tbody>
@@ -973,6 +1028,12 @@ async function submitFeePayment(studentId) {
     admission_fee: Number(admissionFee), exam_fee: Number(examFee),
     amount: Number(amount), receipt_no: receiptNo || null, pay_date: date
   });
+  const student = DATA.students.find(x => x.id === studentId);
+  if (student) {
+    const msg = `Dear Parent, fee of Rs ${Number(amount).toLocaleString()} for ${student.name} (${month}) has been received. Thank you. - School`;
+    sendFeeSms(student.contact, msg); // SendPK gateway (only if configured/enabled)
+    openFatherSms(student.contact, msg); // opens device's own SMS app, pre-filled, ready to send
+  }
   await loadAllData(); openStudentDetail(studentId);
 }
 
