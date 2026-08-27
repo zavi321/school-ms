@@ -323,10 +323,11 @@ const T = {
     salaryPaid:'Salaries Paid (this month)', netBalance:'Net Balance (all-time)', recentActivity:'Recent Activity',
     totalIncome:'Total Income (all-time)', totalExpense:'Total Expenses (all-time)', teacherSalaries:'Teacher Salaries (all-time)',
     addStudent:'Add Student', studentName:'Student Name', fatherName:"Father's Name", className:'Class',
+    groupByClass:'By Class', groupByFee:'By Fee', noFeeCategory:'No Fee', studentsCount:'students',
     admissionDate:'Admission Date', monthlyFee:'Monthly Fee (Rs)', contact:'Contact Number',
     studentType:'Student Type', feePaying:'Fee-Paying', free:'Free', orphan:'Orphan', all:'All',
     updateType:'Update Type', typeUpdated:'Type updated',
-    search:'Search students...', noStudents:'No students yet. Add your first student to get started.',
+    search:'Search name or amount...', noStudents:'No students yet. Add your first student to get started.',
     feeLedger:'Fee Ledger', markPaid:'Mark Month Paid', month:'Month', amount:'Amount (Rs)',
     save:'Save', cancel:'Cancel', delete:'Delete', paid:'Paid', due:'Due',
     addTeacher:'Add Teacher', teacherName:'Teacher Name', subject:'Subject / Role', monthlySalary:'Monthly Salary (Rs)',
@@ -378,10 +379,11 @@ const T = {
     salaryPaid:'ادا شدہ تنخواہ (اس ماہ)', netBalance:'کل بیلنس', recentActivity:'حالیہ سرگرمی',
     totalIncome:'کل آمدنی', totalExpense:'کل اخراجات', teacherSalaries:'اساتذہ کی تنخواہیں',
     addStudent:'طالب علم شامل کریں', studentName:'طالب علم کا نام', fatherName:'والد کا نام', className:'جماعت',
+    groupByClass:'جماعت کے مطابق', groupByFee:'فیس کے مطابق', noFeeCategory:'بغیر فیس', studentsCount:'طلباء',
     admissionDate:'داخلہ کی تاریخ', monthlyFee:'ماہانہ فیس (روپے)', contact:'رابطہ نمبر',
     studentType:'طالب علم کی قسم', feePaying:'فیس ادا کرنے والا', free:'مفت', orphan:'یتیم', all:'تمام',
     updateType:'قسم اپڈیٹ کریں', typeUpdated:'قسم اپڈیٹ ہو گئی',
-    search:'طلبہ تلاش کریں...', noStudents:'ابھی کوئی طالب علم شامل نہیں۔',
+    search:'نام یا رقم تلاش کریں...', noStudents:'ابھی کوئی طالب علم شامل نہیں۔',
     feeLedger:'فیس کھاتہ', markPaid:'مہینہ ادا شدہ نشان زد کریں', month:'مہینہ', amount:'رقم (روپے)',
     save:'محفوظ کریں', cancel:'منسوخ کریں', delete:'حذف کریں', paid:'ادا شدہ', due:'واجب الادا',
     addTeacher:'استاد شامل کریں', teacherName:'استاد کا نام', subject:'مضمون / عہدہ', monthlySalary:'ماہانہ تنخواہ (روپے)',
@@ -986,17 +988,40 @@ function tplDashboard() {
 
 // ---------------- Students ----------------
 let studentSearch = '';
-let studentTypeFilter = 'all';
 let classCollapsed = {};
+let studentTypeFilter = 'all';
+let duesFilter = 'all'; // 'all' or a dues-bucket threshold (as string, e.g. '10000')
 function setStudentTypeFilter(v) { studentTypeFilter = v; renderTab(); }
+function setDuesFilter(v) { duesFilter = (duesFilter===v) ? 'all' : v; renderTab(); }
 function toggleClassSection(cls) {
   classCollapsed[cls] = !classCollapsed[cls];
   renderTab();
 }
 function tplStudents() {
+  // Dues category thresholds: fixed low tiers, then extend by ₨10,000 steps to
+  // cover whatever the highest current due is, computed across ALL students
+  // (not just the filtered list) so the buttons stay stable as filters change.
+  const duesBuckets = [1000, 5000, 10000, 20000];
+  const maxBalanceAll = Math.max(0, ...DATA.students.map(s => studentBalance(s.id)));
+  for (let next = 30000; next <= maxBalanceAll; next += 10000) duesBuckets.push(next);
+  // Each category covers its range up to the next threshold; the highest
+  // category has no upper limit.
+  const duesRangeMatch = (balance, lower) => {
+    const idx = duesBuckets.indexOf(lower);
+    const upper = duesBuckets[idx + 1];
+    return balance >= lower && (upper === undefined || balance < upper);
+  };
+
   const list = DATA.students
-    .filter(s => (s.name+ (s.father_name||'') + (s.class_name||'')).toLowerCase().includes(studentSearch.toLowerCase()))
-    .filter(s => studentTypeFilter==='all' || (s.student_type||'paying')===studentTypeFilter);
+    .filter(s => {
+      const q = studentSearch.trim().toLowerCase();
+      if (!q) return true;
+      const nameMatch = (s.name+ (s.father_name||'') + (s.class_name||'')).toLowerCase().includes(q);
+      const dueMatch = String(Math.max(0, studentBalance(s.id))).includes(studentSearch.trim());
+      return nameMatch || dueMatch;
+    })
+    .filter(s => studentTypeFilter==='all' || (s.student_type||'paying')===studentTypeFilter)
+    .filter(s => duesFilter==='all' || (duesFilter==='due' ? studentBalance(s.id) > 0 : duesRangeMatch(studentBalance(s.id), Number(duesFilter))));
   const cur = monthKey();
 
   // Group by class, ordered by CLASS_OPTIONS, unknown classes appended at the end
@@ -1028,7 +1053,11 @@ function tplStudents() {
   return `
     <div style="padding-top:16px;">
       <div class="type-filter">
-        ${['all',...STUDENT_TYPES].map(v => `<button class="${studentTypeFilter===v?'on':''}" onclick="setStudentTypeFilter('${v}')">${esc(v==='all'?t.all:typeLabel(v))}</button>`).join('')}
+        <button class="${studentTypeFilter==='all'?'on':''}" onclick="setStudentTypeFilter('all')">${esc(t.all)}</button>
+        <button class="${studentTypeFilter==='paying'?'on':''}" onclick="setStudentTypeFilter('paying')">${esc(t.feePaying)}</button>
+        <button class="${studentTypeFilter==='free'?'on':''}" onclick="setStudentTypeFilter('free')">${esc(t.free)}</button>
+        <button class="${duesFilter!=='all'?'on':''}" onclick="setDuesFilter('due')">${esc(t.due)}</button>
+        ${duesFilter!=='all' ? duesBuckets.map(b => `<button class="${duesFilter===String(b)?'on':''}" onclick="setDuesFilter('${b}')">₨${fmt(b)}+</button>`).join('') : ''}
       </div>
       <div class="searchbar">
         <input placeholder="${esc(t.search)}" value="${esc(studentSearch)}" oninput="studentSearch=this.value; renderTab();">
