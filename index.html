@@ -361,13 +361,13 @@ const T = {
     notWhitelistedDesc:'To register your school, please contact us on WhatsApp first.',
     contactOnWhatsApp:'Contact us on WhatsApp',
     signUpPendingTitle:'Almost done!',
-    signUpPendingDesc:'A verification code has been sent to your email. Please send us that code on WhatsApp to activate your account.',
+    signUpPendingDesc:'A confirmation email has been sent to your inbox. Please forward that email (or the link inside it) to us on WhatsApp to activate your account.',
     admin:'Admin', adminPanel:'Admin Panel',
     addSchoolEmail:'Add a school email', schoolEmailPlaceholder:'School owner\'s Gmail address',
     addToWhitelist:'Add & Allow Sign Up', emailAdded:'Email added — they can now sign up.',
     whitelistedSchools:'Registered Schools', statusWhitelisted:'Waiting for sign up', statusAttempted:'Awaiting your OTP confirmation', statusVerified:'Active',
-    confirmOtpTitle:'Activate school with OTP', confirmOtpDesc:'Enter the code the school read out to you.',
-    otpCode:'6-digit code', confirmOtp:'Confirm & Activate', otpConfirmed:'Activated! The school can now log in.', otpWrong:'That code is incorrect or expired.',
+    confirmOtpTitle:'How to activate a school', confirmOtpDesc:'Open the confirmation link the school sent you (use a Private/Incognito tab so it doesn\'t affect your own login), then mark them verified below.',
+    otpCode:'6-digit code', markVerified:'Mark as Verified', otpConfirmed:'Marked as verified.', otpWrong:'That code is incorrect or expired.',
     noWhitelistYet:'No schools added yet.', notAdmin:'Admin access only.',
   },
   ur: {
@@ -414,13 +414,13 @@ const T = {
     notWhitelistedDesc:'اپنا اسکول رجسٹر کروانے کے لیے پہلے ہم سے واٹس ایپ پر رابطہ کریں۔',
     contactOnWhatsApp:'واٹس ایپ پر رابطہ کریں',
     signUpPendingTitle:'تقریباً مکمل!',
-    signUpPendingDesc:'آپ کے ای میل پر ایک تصدیقی کوڈ بھیجا گیا ہے۔ اپنا اکاؤنٹ فعال کروانے کے لیے وہ کوڈ ہمیں واٹس ایپ پر بھیجیں۔',
+    signUpPendingDesc:'آپ کے ای میل پر ایک تصدیقی ای میل بھیجی گئی ہے۔ اپنا اکاؤنٹ فعال کروانے کے لیے وہ ای میل (یا اس کے اندر موجود لنک) ہمیں واٹس ایپ پر بھیجیں۔',
     admin:'ایڈمن', adminPanel:'ایڈمن پینل',
     addSchoolEmail:'اسکول کی ای میل شامل کریں', schoolEmailPlaceholder:'اسکول مالک کا جی میل ایڈریس',
     addToWhitelist:'شامل کریں اور سائن اپ کی اجازت دیں', emailAdded:'ای میل شامل ہو گئی — وہ اب سائن اپ کر سکتے ہیں۔',
     whitelistedSchools:'رجسٹرڈ اسکولز', statusWhitelisted:'سائن اپ کا انتظار', statusAttempted:'آپ کی OTP تصدیق کا انتظار', statusVerified:'فعال',
-    confirmOtpTitle:'OTP سے اسکول فعال کریں', confirmOtpDesc:'اسکول نے آپ کو جو کوڈ بتایا وہ درج کریں۔',
-    otpCode:'6 ہندسوں کا کوڈ', confirmOtp:'تصدیق کریں اور فعال کریں', otpConfirmed:'فعال ہو گیا! اسکول اب لاگ ان کر سکتا ہے۔', otpWrong:'یہ کوڈ غلط ہے یا میعاد ختم ہو گئی ہے۔',
+    confirmOtpTitle:'اسکول کو کیسے فعال کریں', confirmOtpDesc:'اسکول نے آپ کو جو تصدیقی لنک بھیجا ہے وہ کھولیں (Private/Incognito tab استعمال کریں تاکہ آپ کا اپنا لاگ ان متاثر نہ ہو)، پھر نیچے "فعال کریں" پر تصدیق کریں۔',
+    otpCode:'6 ہندسوں کا کوڈ', markVerified:'فعال کریں', otpConfirmed:'فعال کے طور پر نشان زد ہو گیا۔', otpWrong:'یہ کوڈ غلط ہے یا میعاد ختم ہو گئی ہے۔',
     noWhitelistYet:'ابھی تک کوئی اسکول شامل نہیں کیا گیا۔', notAdmin:'صرف ایڈمن رسائی۔',
   }
 };
@@ -741,10 +741,6 @@ function tplAdmin() {
     <div class="card" style="margin-bottom:16px;">
       <h3 style="margin-top:0;">${esc(t.confirmOtpTitle)}</h3>
       <p class="desc" style="margin-top:0;">${esc(t.confirmOtpDesc)}</p>
-      <label><span>${esc(t.email)}</span><input id="otp-email" type="email"></label>
-      <label><span>${esc(t.otpCode)}</span><input id="otp-code" inputmode="numeric" maxlength="6"></label>
-      <div id="otp-msg"></div>
-      <button class="btn-primary" onclick="submitConfirmOtp()">${esc(t.confirmOtp)}</button>
     </div>
 
     <div class="card">
@@ -763,10 +759,18 @@ async function loadWhitelist() {
   const statusLabel = s => s==='verified' ? t.statusVerified : s==='signup_attempted' ? t.statusAttempted : t.statusWhitelisted;
   const statusColor = s => s==='verified' ? '#1a7f37' : s==='signup_attempted' ? '#b8860b' : '#666';
   el.innerHTML = data.map(row => `
-    <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--line);">
-      <span style="word-break:break-all;">${esc(row.email)}</span>
-      <span style="font-size:11px;font-weight:600;color:${statusColor(row.status)};white-space:nowrap;margin-left:10px;">${esc(statusLabel(row.status))}</span>
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:10px 0;border-bottom:1px solid var(--line);">
+      <span style="word-break:break-all;flex:1;">${esc(row.email)}</span>
+      ${row.status === 'signup_attempted'
+        ? `<button style="font-size:11px;padding:6px 10px;white-space:nowrap;" class="btn-primary" onclick="markWhitelistVerified('${esc(row.email).replace(/'/g,"\\'")}')">${esc(t.markVerified)}</button>`
+        : `<span style="font-size:11px;font-weight:600;color:${statusColor(row.status)};white-space:nowrap;">${esc(statusLabel(row.status))}</span>`
+      }
     </div>`).join('');
+}
+
+async function markWhitelistVerified(email) {
+  await sb.from('whitelist_emails').update({ status: 'verified', verified_at: new Date().toISOString() }).eq('email', email);
+  loadWhitelist();
 }
 
 async function submitAddWhitelist() {
@@ -781,24 +785,7 @@ async function submitAddWhitelist() {
   loadWhitelist();
 }
 
-async function submitConfirmOtp() {
-  const email = document.getElementById('otp-email').value.trim();
-  const code = document.getElementById('otp-code').value.trim();
-  const msg = document.getElementById('otp-msg');
-  msg.innerHTML = '';
-  if (!email || !code) return;
 
-  // Use an isolated client so this never touches the admin's own session.
-  const otpClient = makeOtpVerifyClient();
-  const { error } = await otpClient.auth.verifyOtp({ email, token: code, type: 'signup' });
-  if (error) { msg.innerHTML = `<div class="err">${esc(t.otpWrong)}</div>`; return; }
-
-  await sb.from('whitelist_emails').update({ status: 'verified', verified_at: new Date().toISOString() }).eq('email', email);
-  msg.innerHTML = `<div class="ok">${esc(t.otpConfirmed)}</div>`;
-  document.getElementById('otp-email').value = '';
-  document.getElementById('otp-code').value = '';
-  loadWhitelist();
-}
 
 // ---------------- Settings (school name, password, logout) ----------------
 function openSettings() {
