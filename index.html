@@ -364,6 +364,7 @@ const T = {
     sendSmsToFather:'Send SMS to father', overdueRemindersTitle:'Send overdue reminders',
     overdueRemindersDesc:'These students are 2+ months behind on fees. Tap Send next to each to open your SMS app with a reminder pre-filled for their father.',
     noOverdueStudents:'No students are 2+ months overdue right now.', send:'Send',
+    numMonths:'Number of months', numMonthsHint:'Adds this many consecutive months starting from the month above, each with the same amounts.',
     signUpPendingTitle:'Almost done!',
     signUpPendingDesc:'A confirmation email has been sent to your inbox. Please forward that email (or the link inside it) to us on WhatsApp to activate your account.',
     admin:'Admin', adminPanel:'Admin Panel',
@@ -421,6 +422,7 @@ const T = {
     sendSmsToFather:'والد کو ایس ایم ایس بھیجیں', overdueRemindersTitle:'واجبات کی یاد دہانی بھیجیں',
     overdueRemindersDesc:'یہ طلبہ 2 یا زائد مہینوں سے فیس کے واجب الادا ہیں۔ ہر ایک کے سامنے "بھیجیں" دبائیں تاکہ آپ کی ایس ایم ایس ایپ والد کے لیے پیغام کے ساتھ کھل جائے۔',
     noOverdueStudents:'فی الحال کوئی طالب علم 2 مہینوں سے زائد واجب الادا نہیں ہے۔', send:'بھیجیں',
+    numMonths:'مہینوں کی تعداد', numMonthsHint:'اوپر منتخب مہینے سے شروع ہو کر اتنے ہی لگاتار مہینوں کی انٹری شامل کرے گا، ہر ایک وہی رقوم کے ساتھ۔',
     signUpPendingTitle:'تقریباً مکمل!',
     signUpPendingDesc:'آپ کے ای میل پر ایک تصدیقی ای میل بھیجی گئی ہے۔ اپنا اکاؤنٹ فعال کروانے کے لیے وہ ای میل (یا اس کے اندر موجود لنک) ہمیں واٹس ایپ پر بھیجیں۔',
     admin:'ایڈمن', adminPanel:'ایڈمن پینل',
@@ -1245,6 +1247,8 @@ function openStudentDetail(id) {
       <label style="margin-bottom:0;"><span>${esc(t.totalPaidCol)}</span><input id="p-amount" type="number" placeholder="${esc(t.enterAmount)}" value="${s.monthly_fee||''}"></label>
       <label style="margin-bottom:0;"><span>${esc(t.dateCol)}</span><input id="p-date" type="date" value="${todayISO()}"></label>
     </div>
+    <label style="margin-top:8px;"><span>${esc(t.numMonths)}</span><input id="p-months-count" type="number" min="1" value="1"></label>
+    <div style="font-size:11px;opacity:.6;margin-top:-4px;margin-bottom:4px;">${esc(t.numMonthsHint)}</div>
     <div style="margin-top:10px;"><button class="btn-primary" onclick="submitFeePayment('${id}')">+ ${esc(t.save)}</button></div>
 
     <h4 class="section-title">${esc(t.feeLedger)}</h4>
@@ -1293,8 +1297,19 @@ async function updateStudentType(studentId) {
   await loadAllData(); openStudentDetail(studentId);
 }
 
+// Given a "YYYY-MM" starting month key, returns an array of `count` consecutive month keys.
+function consecutiveMonthKeys(startMonth, count) {
+  const [y, m] = startMonth.split('-').map(Number);
+  const out = [];
+  for (let i = 0; i < count; i++) {
+    const d = new Date(y, m - 1 + i, 1);
+    out.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
+  }
+  return out;
+}
+
 async function submitFeePayment(studentId) {
-  const month = document.getElementById('p-month').value;
+  const startMonth = document.getElementById('p-month').value;
   const schoolFee = document.getElementById('p-schoolfee').value || 0;
   const sportsFund = document.getElementById('p-sports').value || 0;
   const admissionFee = document.getElementById('p-admission').value || 0;
@@ -1302,31 +1317,40 @@ async function submitFeePayment(studentId) {
   const amount = document.getElementById('p-amount').value;
   const receiptNo = document.getElementById('p-receipt').value;
   const date = document.getElementById('p-date').value;
-  if (!month || amount === '') return;
+  const monthsCount = Math.max(1, Number(document.getElementById('p-months-count')?.value || 1));
+  if (!startMonth || amount === '') return;
 
-  // Guard against accidentally recording two entries for the same student + month.
-  const dup = studentPayments(studentId).some(p => p.month === month);
-  if (dup) {
+  const months = consecutiveMonthKeys(startMonth, monthsCount);
+
+  // Guard against accidentally recording duplicate entries for any month already on file.
+  const existing = new Set(studentPayments(studentId).map(p => p.month));
+  const dupMonths = months.filter(mk => existing.has(mk));
+  if (dupMonths.length) {
+    const list = dupMonths.map(monthLabel).join(', ');
     const proceed = confirm(
       (LANG==='ur'
-        ? `اس مہینے (${monthLabel(month)}) کے لیے پہلے سے ایک انٹری موجود ہے۔ کیا آپ ایک اور انٹری شامل کرنا چاہتے ہیں؟`
-        : `An entry for ${monthLabel(month)} already exists for this student. Add another entry anyway?`)
+        ? `ان مہینوں کے لیے پہلے سے انٹری موجود ہے: ${list}۔ کیا آپ پھر بھی شامل کرنا چاہتے ہیں؟`
+        : `An entry already exists for: ${list}. Add anyway?`)
     );
     if (!proceed) return;
   }
 
-  await sb.from('fee_payments').insert({
-    owner_id: CURRENT_USER.id, student_id: studentId, month,
+  const rows = months.map(mk => ({
+    owner_id: CURRENT_USER.id, student_id: studentId, month: mk,
     school_fee: Number(schoolFee), sports_fund: Number(sportsFund),
     admission_fee: Number(admissionFee), exam_fee: Number(examFee),
     amount: Number(amount), receipt_no: receiptNo || null, pay_date: date
-  });
+  }));
+  await sb.from('fee_payments').insert(rows);
+
   const student = DATA.students.find(x => x.id === studentId);
   // Only auto-fire the parent notification when this is a real-time entry (dated today).
   // Backdated / historical entries (data import, past-month catch-up) should NOT
   // trigger a "fee has been received" message today, so those are skipped automatically.
   if (student && date === todayISO()) {
-    const msg = `Dear Parent, fee of Rs ${Number(amount).toLocaleString()} for ${student.name} (${month}) has been received. Thank you. - School`;
+    const totalAmount = Number(amount) * monthsCount;
+    const monthRangeLabel = monthsCount === 1 ? monthLabel(months[0]) : `${monthLabel(months[0])} – ${monthLabel(months[months.length-1])}`;
+    const msg = `Dear Parent, fee of Rs ${totalAmount.toLocaleString()} for ${student.name} (${monthRangeLabel}) has been received. Thank you. - School`;
     sendFeeSms(student.contact, msg); // SendPK gateway (only if configured/enabled)
     openFatherWhatsapp(student.contact, msg); // opens WhatsApp (PC/laptop or phone), pre-filled, ready to send
   }
