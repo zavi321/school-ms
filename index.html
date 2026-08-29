@@ -60,7 +60,11 @@
 
   .btn-primary{background:var(--navy);color:var(--gold-soft);border:none;border-radius:10px;padding:11px;font-weight:600;font-size:14px;width:100%;display:flex;align-items:center;justify-content:center;gap:6px;box-shadow:0 2px 8px rgba(15,39,64,.25);}
   .btn-primary:disabled{opacity:.6;}
-  .btn-ghost{background:#F0EBDA;color:var(--navy);border:none;border-radius:10px;padding:11px;font-weight:500;font-size:14px;flex:1;}
+  .btn-ghost{background:#F0EBDA;color:var(--navy);border:none;border-radius:10px;padding:11px;font-weight:500;font-size:14px;flex:1;transition:opacity .15s,transform .1s;}
+  .btn-ghost:disabled{opacity:.4;}
+  .btn-ghost:active:not(:disabled), .btn-primary:active, .card-btn:active{transform:scale(.98);}
+  .tab-fade{animation:fadeIn .18s ease-out;}
+  @keyframes fadeIn{from{opacity:0;transform:translateY(4px);}to{opacity:1;transform:translateY(0);}}
   .btn-ghost.danger{background:#FBEAE5;color:var(--rust);}
   .lang-mini{background:#F0EAD6;color:var(--navy);border:none;border-radius:999px;padding:5px 12px;font-size:12px;font-weight:600;}
 
@@ -207,6 +211,36 @@
     .fc-foot .fc-brand{font-size:11px;color:#0F2740;font-weight:600;font-family:Fraunces,serif;}
     .fc-foot .fc-sig{font-size:11px;color:#555;}
     .fc-foot .fc-sig .line{display:inline-block;width:120px;border-bottom:1px solid #999;margin-left:6px;}
+
+    /* ---- Admission Register (ledger page print, landscape) ---- */
+    @page{size:landscape;}
+    .ledger-print{font-family:Inter,sans-serif;}
+    .ledger-print h2{font-family:Fraunces,serif;color:#0F2740;margin:0 0 2px;}
+    .ledger-print .sub{color:#555;font-size:12px;margin-bottom:10px;}
+    .ledger-print table{width:100%;border-collapse:collapse;table-layout:fixed;}
+    .ledger-print th, .ledger-print td{border:1px solid #999;padding:4px 5px;font-size:9px;word-break:break-word;text-align:left;}
+    .ledger-print th{background:#0F2740;color:#E4C765;font-weight:600;}
+    .ledger-print .foot{margin-top:20px;font-size:11px;color:#555;text-align:right;}
+
+    /* ---- School Leaving Certificate (SLC) ---- */
+    .slc-print{font-family:Inter,sans-serif;border:2px solid #0F2740;border-radius:4px;max-width:800px;margin:0 auto;position:relative;}
+    .slc-print::before{content:'';position:absolute;inset:6px;border:1px solid #C9A227;border-radius:2px;pointer-events:none;}
+    .slc-head{text-align:center;background:#0F2740;color:#FAF6EC;padding:22px 30px 18px;border-radius:2px 2px 0 0;}
+    .slc-head h2{font-family:Fraunces,serif;color:#FAF6EC;margin:0 0 6px;font-size:24px;}
+    .slc-title{font-size:14px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:#E4C765;}
+    .slc-meta{display:flex;justify-content:space-between;font-size:11px;color:#555;padding:14px 34px 0;letter-spacing:.03em;}
+    .slc-body{font-size:14px;line-height:2;color:#1C2530;text-align:justify;}
+    .slc-remarks{font-size:13px;color:#555;margin-top:10px;}
+    .slc-fields{display:grid;grid-template-columns:1fr 1fr;gap:0 28px;padding:16px 34px 4px;}
+    .slc-field{border-bottom:1px solid #E7E0CE;padding:9px 0;}
+    .slc-field .lbl{display:block;font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:#8A8168;margin-bottom:3px;}
+    .slc-field .val{font-size:14px;color:#0F2740;font-weight:600;}
+    .slc-table{width:100%;border-collapse:collapse;margin-top:14px;}
+    .slc-table td{padding:7px 4px;border-bottom:1px solid #ddd;font-size:13px;}
+    .slc-table .lbl{color:#555;}
+    .slc-sign{margin:50px 34px 26px;display:flex;justify-content:flex-end;}
+    .slc-sign .box{text-align:center;font-size:11px;color:#555;}
+    .slc-sign .line{width:200px;border-bottom:1px solid #333;margin-bottom:6px;}
   }
 </style>
 </head>
@@ -387,7 +421,13 @@ const T = {
     residence:'Residence', classAdmitted:'Class Admitted', arrearsDue:'Arrears Due',
     classWithdrawn:'Class Withdrawn', withdrawalDate:'Date of Withdrawal', remarks:'Remarks',
     addRegisterEntry:'Add Entry', editRegisterEntry:'Edit Entry', searchRegister:'Search name or father\'s name...',
-    noRegisterEntries:'No entries yet. Add your first admission record to get started.',
+    noRegisterEntries:'No entries yet. Add your first admission record to get started.', headOfInstitution:'Head of the Institution',
+    previous:'Prev', next:'Next', printThisPage:'Print this page',
+    religion:'Religion', nationality:'Nationality', conduct:'Conduct', loadingData:'Loading your data…',
+    defaultersReport:'Defaulters Report', total:'Total',
+    slcTitle:'Students Registration Record', slcNo:'Record No.', slcIssueDate:'Date of Issue',
+    slcSignature:'Signature & Stamp',
+    registerDashboard:'Dashboard', registerAdmitted:'Admitted', registerSlc:'SLC',
   },
   ur: {
     appName:'مالیاتی و ریکارڈ سسٹم', tagline:'اسکول انتظامیہ کے لیے',
@@ -457,7 +497,13 @@ const T = {
     residence:'رہائش', classAdmitted:'جس جماعت میں داخلہ', arrearsDue:'واجب الادا رقم',
     classWithdrawn:'جس جماعت سے اخراج', withdrawalDate:'تاریخ اخراج', remarks:'تبصرہ',
     addRegisterEntry:'اندراج شامل کریں', editRegisterEntry:'اندراج میں ترمیم', searchRegister:'نام یا والد کا نام تلاش کریں...',
-    noRegisterEntries:'ابھی کوئی اندراج نہیں۔ اپنا پہلا داخلہ ریکارڈ شامل کریں۔',
+    noRegisterEntries:'ابھی کوئی اندراج نہیں۔ اپنا پہلا داخلہ ریکارڈ شامل کریں۔', headOfInstitution:'سربراہ ادارہ',
+    previous:'پچھلا', next:'اگلا', printThisPage:'یہ صفحہ پرنٹ کریں',
+    religion:'مذہب', nationality:'قومیت', conduct:'اخلاق', loadingData:'آپ کا ڈیٹا لوڈ ہو رہا ہے…',
+    defaultersReport:'واجب الادا رپورٹ', total:'کل',
+    slcTitle:'طلبہ رجسٹریشن ریکارڈ', slcNo:'ریکارڈ نمبر', slcIssueDate:'تاریخ اجراء',
+    slcSignature:'دستخط و مہر',
+    registerDashboard:'ڈیش بورڈ', registerAdmitted:'داخل شدہ', registerSlc:'ایس ایل سی',
   }
 };
 
@@ -556,15 +602,15 @@ async function boot() {
   });
 
   const { data:{ session } } = await sb.auth.getSession();
-  document.getElementById('loading').classList.add('hidden');
   // Give the PASSWORD_RECOVERY listener a tick to fire first if this load came from a reset-link click.
   await new Promise(r => setTimeout(r, 50));
-  if (handledAsRecovery) return;
+  if (handledAsRecovery) { document.getElementById('loading').classList.add('hidden'); return; }
 
   if (session && session.user) {
     CURRENT_USER = session.user;
-    await afterLogin();
+    await afterLogin(); // hides #loading itself once data has actually arrived
   } else {
+    document.getElementById('loading').classList.add('hidden');
     renderLogIn();
   }
 }
@@ -579,7 +625,10 @@ async function afterLogin() {
     await sb.from('profiles').update({ phone: metaPhone }).eq('id', CURRENT_USER.id);
     CURRENT_PROFILE.phone = metaPhone;
   }
+  const loadingEl = document.getElementById('loading');
+  if (loadingEl) loadingEl.textContent = t.loadingData || 'Loading your data…';
   await loadAllData();
+  document.getElementById('loading').classList.add('hidden');
   renderApp();
 }
 
@@ -894,7 +943,11 @@ function renderNav() {
     </button>`).join('');
 }
 
-function setTab(k){ TAB = k; renderNav(); renderTab(); }
+function setTab(k){
+  TAB = k; renderNav(); renderTab();
+  const main = document.getElementById('main');
+  main.classList.remove('tab-fade'); void main.offsetWidth; main.classList.add('tab-fade');
+}
 
 function renderTab() {
   const main = document.getElementById('main');
@@ -1173,10 +1226,13 @@ function tplDashboard() {
 // ---------------- Students ----------------
 let studentSearch = '';
 let classCollapsed = {};
+let classPage = {};
+const STUDENTS_PAGE_SIZE = 30;
+function setClassPage(cls, p) { classPage[cls] = p; renderTab(); }
 let studentTypeFilter = 'all';
 let duesFilter = 'all'; // 'all' or a dues-bucket threshold (as string, e.g. '10000')
-function setStudentTypeFilter(v) { studentTypeFilter = v; renderTab(); }
-function setDuesFilter(v) { duesFilter = (duesFilter===v) ? 'all' : v; renderTab(); }
+function setStudentTypeFilter(v) { studentTypeFilter = v; classPage = {}; renderTab(); }
+function setDuesFilter(v) { duesFilter = (duesFilter===v) ? 'all' : v; classPage = {}; renderTab(); }
 function toggleClassSection(cls) {
   classCollapsed[cls] = !classCollapsed[cls];
   renderTab();
@@ -1248,7 +1304,7 @@ function tplStudents() {
         ${duesFilter!=='all' ? duesBuckets.map(b => `<button class="${duesFilter===String(b)?'on':''}" onclick="setDuesFilter('${b}')">₨${fmt(b)}+</button>`).join('') : ''}
       </div>
       <div class="searchbar">
-        <input placeholder="${esc(t.search)}" value="${esc(studentSearch)}" oninput="studentSearch=this.value; renderTab();">
+        <input placeholder="${esc(t.search)}" value="${esc(studentSearch)}" oninput="studentSearch=this.value; classPage={}; renderTab();">
         <button class="icon-btn" onclick="openAddStudent()">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#E4C765" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg>
         </button>
@@ -1267,6 +1323,17 @@ function tplStudents() {
             const paid = studentPayments(s.id).filter(p=>p.month===cur).reduce((a,b)=>a+Number(b.amount),0);
             return Math.max(0, Number(s.monthly_fee||0)-paid) > 0;
           }).length;
+          const totalPages = Math.max(1, Math.ceil(groups[cls].length / STUDENTS_PAGE_SIZE));
+          let page = classPage[cls] || 1;
+          if (page > totalPages) page = classPage[cls] = totalPages;
+          const start = (page - 1) * STUDENTS_PAGE_SIZE;
+          const pageItems = groups[cls].slice(start, start + STUDENTS_PAGE_SIZE);
+          const classPager = collapsed || groups[cls].length <= STUDENTS_PAGE_SIZE ? '' : `
+            <div class="flexgap" style="align-items:center;margin:6px 0 10px;">
+              <button class="btn-ghost" ${page<=1?'disabled':''} onclick="event.stopPropagation(); setClassPage('${esc(cls)}', ${page-1})">‹ ${esc(t.previous)}</button>
+              <span style="font-size:12px;opacity:.65;white-space:nowrap;">${page} / ${totalPages}</span>
+              <button class="btn-ghost" ${page>=totalPages?'disabled':''} onclick="event.stopPropagation(); setClassPage('${esc(cls)}', ${page+1})">${esc(t.next)} ›</button>
+            </div>`;
           return `
           <div class="class-header" onclick="toggleClassSection('${esc(cls)}')">
             <span class="cname">${esc(t.className)}: ${esc(cls)}</span>
@@ -1275,7 +1342,7 @@ function tplStudents() {
               <span class="chev ${collapsed?'collapsed':''}">▾</span>
             </span>
           </div>
-          ${collapsed ? '' : groups[cls].map(studentCard).join('')}
+          ${collapsed ? '' : pageItems.map(studentCard).join('') + classPager}
         `;
         }).join('')}
     </div>`;
@@ -1626,13 +1693,28 @@ function printFeeCard(studentId) {
 
 // ---------------- Teachers ----------------
 let teacherSearch = '';
+let teacherPage = 1;
+const TEACHERS_PAGE_SIZE = 30;
+function setTeacherSearch(v) { teacherSearch = v; teacherPage = 1; renderTab(); }
+function setTeacherPage(p) { teacherPage = p; renderTab(); }
+
 function tplTeachers() {
-  const list = DATA.teachers.filter(tc => (tc.name+(tc.subject||'')).toLowerCase().includes(teacherSearch.toLowerCase()));
+  const full = DATA.teachers.filter(tc => (tc.name+(tc.subject||'')).toLowerCase().includes(teacherSearch.toLowerCase()));
+  const totalPages = Math.max(1, Math.ceil(full.length / TEACHERS_PAGE_SIZE));
+  if (teacherPage > totalPages) teacherPage = totalPages;
+  const start = (teacherPage - 1) * TEACHERS_PAGE_SIZE;
+  const list = full.slice(start, start + TEACHERS_PAGE_SIZE);
   const cur = monthKey();
+  const pager = full.length <= TEACHERS_PAGE_SIZE ? '' : `
+    <div class="flexgap" style="align-items:center;margin-top:12px;">
+      <button class="btn-ghost" ${teacherPage<=1?'disabled':''} onclick="setTeacherPage(${teacherPage-1})">‹ ${esc(t.previous)}</button>
+      <span style="font-size:12px;opacity:.65;white-space:nowrap;">${teacherPage} / ${totalPages}</span>
+      <button class="btn-ghost" ${teacherPage>=totalPages?'disabled':''} onclick="setTeacherPage(${teacherPage+1})">${esc(t.next)} ›</button>
+    </div>`;
   return `
     <div style="padding-top:16px;">
       <div class="searchbar">
-        <input placeholder="${esc(t.searchTeachers)}" value="${esc(teacherSearch)}" oninput="teacherSearch=this.value; renderTab();">
+        <input placeholder="${esc(t.searchTeachers)}" value="${esc(teacherSearch)}" oninput="setTeacherSearch(this.value)">
         <button class="icon-btn" onclick="openAddTeacher()">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#E4C765" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg>
         </button>
@@ -1647,6 +1729,7 @@ function tplTeachers() {
             <span class="pill ${due>0?'bad':'good'}">${due>0 ? '₨'+fmt(due)+' '+esc(t.due) : esc(t.paid)}</span>
           </button>`;
         }).join('')}
+      ${pager}
     </div>`;
 }
 
@@ -1831,7 +1914,51 @@ function tplReports() {
               </span>
             </div>`).join('')}
       </div>
+      <div class="section-title" style="display:flex;justify-content:space-between;align-items:center;">
+        <span>${esc(t.defaultersReport)}</span>
+        <button onclick="printDefaultersReport()" style="border:none;background:var(--navy);color:var(--gold-soft);border-radius:8px;padding:5px 12px;font-size:11px;font-weight:600;">🖨️ ${esc(t.print)}</button>
+      </div>
+      <div class="list-card">
+        ${(() => {
+          const defaulters = DATA.students
+            .filter(x => x.status!=='inactive' && isFeePaying(x) && studentBalance(x.id) > 0)
+            .sort((a,b) => studentBalance(b.id) - studentBalance(a.id));
+          if (defaulters.length === 0) return `<div style="padding:16px;text-align:center;opacity:.5;font-size:13px;">—</div>`;
+          return defaulters.map(x => `
+            <div class="list-row" style="cursor:pointer;" onclick="setTab('students'); openStudentDetail('${x.id}')">
+              <span style="font-size:13px;">${esc(x.name)} <span style="font-size:11px;opacity:.5;">(${esc(x.class_name||'—')})</span></span>
+              <span class="amt-neg">₨${fmt(studentBalance(x.id))}</span>
+            </div>`).join('');
+        })()}
+      </div>
     </div>`;
+}
+
+function printDefaultersReport() {
+  const defaulters = DATA.students
+    .filter(x => x.status!=='inactive' && isFeePaying(x) && studentBalance(x.id) > 0)
+    .sort((a,b) => studentBalance(b.id) - studentBalance(a.id));
+  const total = defaulters.reduce((a,b) => a + studentBalance(b.id), 0);
+  const rows = defaulters.map((x,i) => `
+    <tr>
+      <td>${i+1}</td>
+      <td>${esc(x.name)}</td>
+      <td>${esc(x.father_name||'—')}</td>
+      <td>${esc(x.class_name||'—')}</td>
+      <td style="text-align:right;">₨${fmt(studentBalance(x.id))}</td>
+    </tr>`).join('');
+
+  document.getElementById('print-area').innerHTML = `
+    <div class="ledger-print">
+      <h2>${esc(CURRENT_PROFILE.school_name || 'School')}</h2>
+      <div class="sub">${esc(t.defaultersReport)} — ${esc(todayISO())}</div>
+      <table>
+        <thead><tr><th>#</th><th>${esc(t.studentName)}</th><th>${esc(t.fatherName)}</th><th>${esc(t.className)}</th><th>${esc(t.balanceCol)}</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+      <div class="foot" style="text-align:left;margin-top:14px;font-weight:700;">${esc(t.total)}: ₨${fmt(total)}</div>
+    </div>`;
+  window.print();
 }
 
 function printReport() {
@@ -1907,12 +2034,69 @@ function openActivityHistory(kind, refId) {
 // Finance data above — the two live side by side in the same app but are
 // otherwise unrelated.
 let registerSearch = '';
-function tplAdmissionRegister() {
+let registerPage = 1;
+let registerSubTab = 'dashboard'; // 'dashboard' | 'admitted' | 'slc'
+const REGISTER_PAGE_SIZE = 30;
+function setRegisterSearch(v) { registerSearch = v; registerPage = 1; renderTab(); }
+function setRegisterPage(p) { registerPage = p; renderTab(); }
+function setRegisterSubTab(k) { registerSubTab = k; registerSearch = ''; registerPage = 1; renderTab(); }
+
+// 'admitted' = currently enrolled (no withdrawal date yet); 'slc' = has left / SLC issued.
+function filteredRegisterList() {
   const q = registerSearch.trim().toLowerCase();
-  const list = DATA.admissionRegister
-    .filter(r => !q || (r.student_name||'').toLowerCase().includes(q) || (r.father_name||'').toLowerCase().includes(q))
+  return DATA.admissionRegister
+    .filter(r => registerSubTab==='admitted' ? !r.withdrawal_date : registerSubTab==='slc' ? !!r.withdrawal_date : true)
+    .filter(r => !q
+      || (r.student_name||'').toLowerCase().includes(q)
+      || (r.father_name||'').toLowerCase().includes(q)
+      || String(r.serial_no||'').includes(registerSearch.trim()))
     .slice()
     .sort((a,b) => Number(a.serial_no||0) - Number(b.serial_no||0));
+}
+
+function tplAdmissionRegister() {
+  const subnav = `
+    <div class="type-filter" style="margin-bottom:12px;">
+      <button class="${registerSubTab==='dashboard'?'on':''}" onclick="setRegisterSubTab('dashboard')">${esc(t.registerDashboard)}</button>
+      <button class="${registerSubTab==='admitted'?'on':''}" onclick="setRegisterSubTab('admitted')">${esc(t.registerAdmitted)}</button>
+      <button class="${registerSubTab==='slc'?'on':''}" onclick="setRegisterSubTab('slc')">${esc(t.registerSlc)}</button>
+    </div>`;
+  const body = registerSubTab === 'dashboard' ? tplRegisterDashboard() : tplRegisterList();
+  return `<div style="padding-top:16px;">${subnav}${body}</div>`;
+}
+
+function tplRegisterDashboard() {
+  const all = DATA.admissionRegister;
+  const admittedCount = all.filter(r => !r.withdrawal_date).length;
+  const slcCount = all.filter(r => !!r.withdrawal_date).length;
+  const totalArrears = all.filter(r => !r.withdrawal_date).reduce((a,b) => a + Number(b.arrears_due||0), 0);
+  const recent = all.slice().sort((a,b) => new Date(b.admission_date||0) - new Date(a.admission_date||0)).slice(0,5);
+  const row = r => `
+    <div class="list-row" style="cursor:pointer;" onclick="openEditAdmissionEntry('${r.id}')">
+      <div><div class="nm">${esc(r.student_name)}</div><div class="sub">${esc(t.admissionDate)}: ${esc(r.admission_date||'—')}</div></div>
+      ${r.withdrawal_date ? `<span class="pill" style="background:#EFEAD9;color:#555;">${esc(t.registerSlc)}</span>` : `<span class="pill good">${esc(t.registerAdmitted)}</span>`}
+    </div>`;
+
+  return `
+    <div class="notice" style="margin-bottom:12px;">${esc(t.admissionRegisterDesc)}</div>
+    <div class="stat-grid">
+      <div class="stat-card"><div class="lbl">${esc(t.registerAdmitted)}</div><div class="val">${admittedCount}</div></div>
+      <div class="stat-card"><div class="lbl">${esc(t.registerSlc)}</div><div class="val">${slcCount}</div></div>
+      <div class="stat-card"><div class="lbl">${esc(t.arrearsDue)}</div><div class="val" style="color:var(--rust);font-size:18px;">₨${fmt(totalArrears)}</div></div>
+      <div class="stat-card"><div class="lbl">${esc(t.serialNo)} (${esc(t.all)})</div><div class="val">${all.length}</div></div>
+    </div>
+    <div class="section-title">${esc(t.recentActivity)}</div>
+    <div class="list-card">
+      ${recent.length===0 ? `<div style="padding:16px;text-align:center;opacity:.5;font-size:13px;">—</div>` : recent.map(row).join('')}
+    </div>`;
+}
+
+function tplRegisterList() {
+  const full = filteredRegisterList();
+  const totalPages = Math.max(1, Math.ceil(full.length / REGISTER_PAGE_SIZE));
+  if (registerPage > totalPages) registerPage = totalPages;
+  const start = (registerPage - 1) * REGISTER_PAGE_SIZE;
+  const list = full.slice(start, start + REGISTER_PAGE_SIZE);
 
   const row = r => `
     <button class="card-btn" onclick="openEditAdmissionEntry('${r.id}')">
@@ -1920,20 +2104,73 @@ function tplAdmissionRegister() {
         <div class="nm">${esc(r.serial_no ? '#'+r.serial_no+' — ' : '')}${esc(r.student_name)}</div>
         <div class="sub">${esc(t.fatherName)}: ${esc(r.father_name||'')} · ${esc(r.class_admitted||'—')}</div>
       </div>
-      ${Number(r.arrears_due||0) > 0 ? `<span class="pill bad">₨${fmt(r.arrears_due)}</span>` : ''}
+      ${registerSubTab==='slc'
+        ? `<span class="print-btn" title="${esc(t.print)}" onclick="event.stopPropagation(); printAdmissionEntry('${r.id}')">🖨️</span>`
+        : (Number(r.arrears_due||0) > 0 ? `<span class="pill bad">₨${fmt(r.arrears_due)}</span>` : '')}
+    </button>`;
+
+  const pager = full.length === 0 ? '' : `
+    <div class="flexgap" style="align-items:center;margin-top:12px;">
+      <button class="btn-ghost" ${registerPage<=1?'disabled':''} onclick="setRegisterPage(${registerPage-1})">‹ ${esc(t.previous||'Prev')}</button>
+      <span style="font-size:12px;opacity:.65;white-space:nowrap;">${registerPage} / ${totalPages}</span>
+      <button class="btn-ghost" ${registerPage>=totalPages?'disabled':''} onclick="setRegisterPage(${registerPage+1})">${esc(t.next||'Next')} ›</button>
+    </div>
+    <button class="btn-primary" style="width:100%;margin-top:10px;" onclick="printAdmissionRegisterPage(${registerPage})">
+      🖨️ ${esc(t.printThisPage||'Print this page')} (${list.length})
     </button>`;
 
   return `
-    <div style="padding-top:16px;">
-      <div class="notice" style="margin-bottom:12px;">${esc(t.admissionRegisterDesc)}</div>
-      <div class="searchbar">
-        <input placeholder="${esc(t.searchRegister)}" value="${esc(registerSearch)}" oninput="registerSearch=this.value; renderTab();">
-        <button class="icon-btn" onclick="openAddAdmissionEntry()">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#E4C765" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg>
-        </button>
-      </div>
-      ${list.length===0 ? `<div class="empty">${esc(t.noRegisterEntries)}</div>` : `<div class="list-card">${list.map(row).join('')}</div>`}
+    <div class="searchbar">
+      <input placeholder="${esc(t.searchRegister)}" value="${esc(registerSearch)}" oninput="setRegisterSearch(this.value)">
+      <button class="icon-btn" onclick="openAddAdmissionEntry()">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#E4C765" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg>
+      </button>
+    </div>
+    ${list.length===0 ? `<div class="empty">${esc(t.noRegisterEntries)}</div>` : `<div class="list-card">${list.map(row).join('')}</div>${pager}`}`;
+}
+
+// Prints one page (up to 30 rows) of the register as a single ledger-style table,
+// matching the columns/layout of the physical Admission & Withdrawal Register book.
+function printAdmissionRegisterPage(page) {
+  const full = filteredRegisterList();
+  const start = (page - 1) * REGISTER_PAGE_SIZE;
+  const rows = full.slice(start, start + REGISTER_PAGE_SIZE);
+  if (rows.length === 0) return;
+
+  const headCols = [
+    t.admissionDate, t.serialNo, t.studentName, t.dobFigures, t.dobWords, t.fatherName,
+    t.casteTribe, t.occupation, t.residence, t.classAdmitted, t.arrearsDue,
+    t.classWithdrawn, t.withdrawalDate, t.remarks
+  ];
+  const bodyRows = rows.map(r => `
+    <tr>
+      <td>${esc(r.admission_date||'—')}</td>
+      <td>${esc(r.serial_no||'—')}</td>
+      <td>${esc(r.student_name||'—')}</td>
+      <td>${esc(r.dob_figures||'—')}</td>
+      <td>${esc(r.dob_words||'—')}</td>
+      <td>${esc(r.father_name||'—')}</td>
+      <td>${esc(r.caste_tribe||'—')}</td>
+      <td>${esc(r.occupation||'—')}</td>
+      <td>${esc(r.residence||'—')}</td>
+      <td>${esc(r.class_admitted||'—')}</td>
+      <td>₨${fmt(r.arrears_due||0)}</td>
+      <td>${esc(r.class_withdrawn||'—')}</td>
+      <td>${esc(r.withdrawal_date||'—')}</td>
+      <td>${esc(r.remarks||'—')}</td>
+    </tr>`).join('');
+
+  document.getElementById('print-area').innerHTML = `
+    <div class="ledger-print">
+      <h2>${esc(CURRENT_PROFILE.school_name || 'School')}</h2>
+      <div class="sub">${esc(t.admissionRegister)} — Page ${page}</div>
+      <table>
+        <thead><tr>${headCols.map(c=>`<th>${esc(c)}</th>`).join('')}</tr></thead>
+        <tbody>${bodyRows}</tbody>
+      </table>
+      <div class="foot">${esc(t.headOfInstitution || 'Head of the Institution')}</div>
     </div>`;
+  window.print();
 }
 
 function admissionEntryForm(r) {
@@ -1945,11 +2182,14 @@ function admissionEntryForm(r) {
     <label><span>${esc(t.dobFigures)}</span><input id="ar-dob-figures" type="date" value="${esc(r.dob_figures||'')}"></label>
     <label><span>${esc(t.dobWords)}</span><input id="ar-dob-words" value="${esc(r.dob_words||'')}"></label>
     <label><span>${esc(t.fatherName)}</span><input id="ar-father" value="${esc(r.father_name||'')}"></label>
+    <label><span>${esc(t.religion)}</span><input id="ar-religion" value="${esc(r.religion||'')}"></label>
+    <label><span>${esc(t.nationality)}</span><input id="ar-nationality" value="${esc(r.nationality||'')}"></label>
     <label><span>${esc(t.casteTribe)}</span><input id="ar-caste" value="${esc(r.caste_tribe||'')}"></label>
     <label><span>${esc(t.occupation)}</span><input id="ar-occupation" value="${esc(r.occupation||'')}"></label>
     <label><span>${esc(t.residence)}</span><input id="ar-residence" value="${esc(r.residence||'')}"></label>
     <label><span>${esc(t.classAdmitted)}</span><select id="ar-class-admitted">${CLASS_OPTIONS.map(c=>`<option ${r.class_admitted===c?'selected':''}>${c}</option>`).join('')}</select></label>
     <label><span>${esc(t.arrearsDue)}</span><input id="ar-arrears" type="number" value="${esc(r.arrears_due||0)}"></label>
+    <label><span>${esc(t.conduct)} (${esc(t.optional)})</span><input id="ar-conduct" value="${esc(r.conduct||'')}"></label>
     <label><span>${esc(t.classWithdrawn)} (${esc(t.optional)})</span><select id="ar-class-withdrawn"><option value="">—</option>${CLASS_OPTIONS.map(c=>`<option ${r.class_withdrawn===c?'selected':''}>${c}</option>`).join('')}</select></label>
     <label><span>${esc(t.withdrawalDate)} (${esc(t.optional)})</span><input id="ar-withdrawal-date" type="date" value="${esc(r.withdrawal_date||'')}"></label>
     <label><span>${esc(t.remarks)} (${esc(t.optional)})</span><input id="ar-remarks" value="${esc(r.remarks||'')}"></label>`;
@@ -1973,11 +2213,14 @@ function readAdmissionForm() {
     dob_figures: document.getElementById('ar-dob-figures').value,
     dob_words: document.getElementById('ar-dob-words').value.trim(),
     father_name: document.getElementById('ar-father').value.trim(),
+    religion: document.getElementById('ar-religion').value.trim(),
+    nationality: document.getElementById('ar-nationality').value.trim(),
     caste_tribe: document.getElementById('ar-caste').value.trim(),
     occupation: document.getElementById('ar-occupation').value.trim(),
     residence: document.getElementById('ar-residence').value.trim(),
     class_admitted: document.getElementById('ar-class-admitted').value,
     arrears_due: Number(document.getElementById('ar-arrears').value || 0),
+    conduct: document.getElementById('ar-conduct').value.trim(),
     class_withdrawn: document.getElementById('ar-class-withdrawn').value || null,
     withdrawal_date: document.getElementById('ar-withdrawal-date').value || null,
     remarks: document.getElementById('ar-remarks').value.trim(),
@@ -1998,10 +2241,56 @@ function openEditAdmissionEntry(id) {
     ${admissionEntryForm(r)}
     <div class="flexgap">
       <button class="btn-ghost" style="color:var(--rust);border-color:var(--rust);" onclick="confirmDelete('admissionEntry','${id}')">${esc(t.delete)}</button>
+      <button class="btn-ghost" onclick="printAdmissionEntry('${id}')">🖨️ ${esc(t.print)}</button>
       <button class="btn-primary" style="flex:1" onclick="submitEditAdmissionEntry('${id}')">${esc(t.save)}</button>
     </div>
   `);
 }
+
+// Prints a single admission entry as a formal School Leaving Certificate (SLC),
+// using the standard wording/fields expected on this document in Pakistani schools.
+function printAdmissionEntry(id) {
+  const r = DATA.admissionRegister.find(x => x.id === id);
+  if (!r) return;
+  const dash = '—';
+  const fieldsHtml = [
+    [t.serialNo, r.serial_no || dash],
+    [t.admissionDate, r.admission_date || dash],
+    [t.studentName, r.student_name || dash],
+    [t.fatherName, r.father_name || dash],
+    [t.dobFigures, r.dob_figures || dash],
+    [t.dobWords, r.dob_words || dash],
+    [t.religion, r.religion || dash],
+    [t.nationality, r.nationality || dash],
+    [t.casteTribe, r.caste_tribe || dash],
+    [t.occupation, r.occupation || dash],
+    [t.residence, r.residence || dash],
+    [t.classAdmitted, r.class_admitted || dash],
+    [t.arrearsDue, '₨' + fmt(r.arrears_due || 0)],
+    [t.conduct, r.conduct || dash],
+    [t.classWithdrawn, r.class_withdrawn || dash],
+    [t.withdrawalDate, r.withdrawal_date || dash],
+  ].map(([lbl,val]) => `<div class="slc-field"><span class="lbl">${esc(lbl)}</span><span class="val">${esc(val)}</span></div>`).join('');
+
+  document.getElementById('print-area').innerHTML = `
+    <div class="slc-print">
+      <div class="slc-head">
+        <h2>${esc(CURRENT_PROFILE.school_name || 'School')}</h2>
+        <div class="slc-title">${esc(t.slcTitle)}</div>
+      </div>
+      <div class="slc-meta">
+        <span>${esc(t.slcNo)}: ${esc(r.serial_no || dash)}</span>
+        <span>${esc(t.slcIssueDate)}: ${esc(todayISO())}</span>
+      </div>
+      <div class="slc-fields">${fieldsHtml}</div>
+      ${r.remarks ? `<p class="slc-remarks" style="padding:0 34px;">${esc(t.remarks)}: ${esc(r.remarks)}</p>` : ''}
+      <div class="slc-sign">
+        <div class="box"><div class="line"></div>${esc(t.slcSignature)}</div>
+      </div>
+    </div>`;
+  window.print();
+}
+
 
 async function submitEditAdmissionEntry(id) {
   const entry = readAdmissionForm();
