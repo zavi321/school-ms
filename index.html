@@ -1563,26 +1563,23 @@ function openStudentDetail(id) {
           <th>${esc(t.receiptNo)}</th><th>${esc(t.dateCol)}</th><th></th><th></th><th></th>
         </tr></thead>
         <tbody>
-          ${rows.map(r=>{
-            const displayLastBalance = (r.blank && r.isFuture) ? 0 : r.lastBalance;
-            const displayBalance = r.blank ? displayLastBalance : r.balance;
-            return `
+          ${rows.map(r=>`
             <tr>
               <td class="mo">${esc(monthLabel(r.mk))}</td>
-              <td>₨${fmt(displayLastBalance)}</td>
+              <td>${r.blank ? '—' : '₨'+fmt(r.lastBalance)}</td>
               <td>${r.blank ? '—' : '₨'+fmt(r.e.school_fee)}</td>
               <td>${r.blank ? '—' : '₨'+fmt(r.e.sports_fund)}</td>
               <td>${r.blank ? '—' : '₨'+fmt(r.e.admission_fee)}</td>
               <td>${r.blank ? '—' : '₨'+fmt(r.e.exam_fee)}</td>
-              <td>₨${fmt(r.blank ? displayLastBalance : r.totalDues)}</td>
+              <td>${r.blank ? '—' : '₨'+fmt(r.totalDues)}</td>
               <td>${r.blank ? '—' : '₨'+fmt(r.totalPaid)}</td>
-              <td class="${displayBalance>0?'bal-neg':'bal-pos'}">₨${fmt(displayBalance)}</td>
+              <td class="${!r.blank && r.balance>0?'bal-neg':'bal-pos'}">${r.blank ? '—' : '₨'+fmt(r.balance)}</td>
               <td>${r.blank ? '—' : esc(r.e.receipt_no||'—')}</td>
               <td>${r.blank ? '—' : esc(r.e.pay_date||'')}</td>
               <td>${r.blank ? '' : `<button class="print-btn" title="${esc(t.print)}" onclick="printReceipt('${id}','${r.e.id}')">🖨️</button>`}</td>
               <td>${r.blank ? '' : `<button class="print-btn" title="Send WhatsApp to father" onclick="openFatherWhatsapp('${esc(s.contact||'')}', 'Dear Parent, fee of Rs ${fmt(r.totalPaid)} for ${esc(s.name)} (${esc(monthLabel(r.mk))}) has been received. Thank you. - School')">💬</button>`}</td>
               <td>${r.blank ? '' : `<button class="del-x" onclick="deleteFeePayment('${r.e.id}','${id}')">✕</button>`}</td>
-            </tr>`;}).join('')}
+            </tr>`).join('')}
         </tbody>
       </table>
     </div>
@@ -1693,23 +1690,20 @@ function printFeeCard(studentId) {
   const { startYear, rows } = buildAcademicYearLedger(studentId);
 
   const todayMk = todayISO().slice(0,7);
-  const rowsHtml = rows.map(r => {
-    const displayLastBalance = (r.blank && r.isFuture) ? 0 : r.lastBalance;
-    const displayBalance = r.blank ? displayLastBalance : r.balance;
-    return `
+  const rowsHtml = rows.map(r => `
     <tr class="${r.mk===todayMk ? 'fc-current' : ''}">
       <td class="fc-mo">${esc(monthLabel(r.mk))}</td>
-      <td class="${displayLastBalance>0?'fc-due':'fc-zero'}">₨${fmt(displayLastBalance)}</td>
+      <td class="${!r.blank && r.lastBalance>0?'fc-due':'fc-zero'}">${r.blank ? '—' : '₨'+fmt(r.lastBalance)}</td>
       <td class="fc-zero">${r.blank ? '—' : '₨'+fmt(r.e.school_fee)}</td>
       <td class="fc-zero">${r.blank ? '—' : '₨'+fmt(r.e.sports_fund)}</td>
       <td class="fc-zero">${r.blank ? '—' : '₨'+fmt(r.e.admission_fee)}</td>
       <td class="fc-zero">${r.blank ? '—' : '₨'+fmt(r.e.exam_fee)}</td>
-      <td>₨${fmt(r.blank ? displayLastBalance : r.totalDues)}</td>
+      <td>${r.blank ? '—' : '₨'+fmt(r.totalDues)}</td>
       <td class="fc-paid">${r.blank ? '—' : '₨'+fmt(r.totalPaid)}</td>
-      <td class="${displayBalance > 0 ? 'fc-due' : 'fc-paid'}">₨${fmt(displayBalance)}</td>
+      <td class="${!r.blank && r.balance > 0 ? 'fc-due' : 'fc-paid'}">${r.blank ? '—' : '₨'+fmt(r.balance)}</td>
       <td class="fc-zero">${r.blank ? '—' : esc(r.e.receipt_no||'—')}</td>
       <td class="fc-zero">${r.blank ? '—' : esc(r.e.pay_date||'—')}</td>
-    </tr>`;}).join('');
+    </tr>`).join('');
 
   document.getElementById('print-area').innerHTML = `
     <div class="fc-wrap">
