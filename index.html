@@ -380,6 +380,14 @@ const T = {
     confirmOtpTitle:'How to activate a school', confirmOtpDesc:'Open the confirmation link the school sent you (use a Private/Incognito tab so it doesn\'t affect your own login), then mark them verified below.',
     otpCode:'6-digit code', markVerified:'Mark as Verified', otpConfirmed:'Marked as verified.', otpWrong:'That code is incorrect or expired.',
     noWhitelistYet:'No schools added yet.', notAdmin:'Admin access only.',
+    // Admission & Withdrawal Register — a standalone record with no link to the
+    // students/finance data above.
+    admissionRegister:'Admission Register', admissionRegisterDesc:'A standalone admission & withdrawal record, separate from the Students/Finance data.',
+    serialNo:'Serial No.', dobFigures:'Date of Birth (figures)', dobWords:'Date of Birth (in words)', casteTribe:'Caste / Tribe', occupation:'Occupation',
+    residence:'Residence', classAdmitted:'Class Admitted', arrearsDue:'Arrears Due',
+    classWithdrawn:'Class Withdrawn', withdrawalDate:'Date of Withdrawal', remarks:'Remarks',
+    addRegisterEntry:'Add Entry', editRegisterEntry:'Edit Entry', searchRegister:'Search name or father\'s name...',
+    noRegisterEntries:'No entries yet. Add your first admission record to get started.',
   },
   ur: {
     appName:'مالیاتی و ریکارڈ سسٹم', tagline:'اسکول انتظامیہ کے لیے',
@@ -444,6 +452,12 @@ const T = {
     confirmOtpTitle:'اسکول کو کیسے فعال کریں', confirmOtpDesc:'اسکول نے آپ کو جو تصدیقی لنک بھیجا ہے وہ کھولیں (Private/Incognito tab استعمال کریں تاکہ آپ کا اپنا لاگ ان متاثر نہ ہو)، پھر نیچے "فعال کریں" پر تصدیق کریں۔',
     otpCode:'6 ہندسوں کا کوڈ', markVerified:'فعال کریں', otpConfirmed:'فعال کے طور پر نشان زد ہو گیا۔', otpWrong:'یہ کوڈ غلط ہے یا میعاد ختم ہو گئی ہے۔',
     noWhitelistYet:'ابھی تک کوئی اسکول شامل نہیں کیا گیا۔', notAdmin:'صرف ایڈمن رسائی۔',
+    admissionRegister:'داخلہ رجسٹر', admissionRegisterDesc:'ایک علیحدہ داخلہ و اخراج ریکارڈ، طلبہ/مالیات کے ڈیٹا سے الگ۔',
+    serialNo:'سیریل نمبر', dobFigures:'تاریخ پیدائش (ہندسوں میں)', dobWords:'تاریخ پیدائش (الفاظ میں)', casteTribe:'ذات / قبیلہ', occupation:'پیشہ',
+    residence:'رہائش', classAdmitted:'جس جماعت میں داخلہ', arrearsDue:'واجب الادا رقم',
+    classWithdrawn:'جس جماعت سے اخراج', withdrawalDate:'تاریخ اخراج', remarks:'تبصرہ',
+    addRegisterEntry:'اندراج شامل کریں', editRegisterEntry:'اندراج میں ترمیم', searchRegister:'نام یا والد کا نام تلاش کریں...',
+    noRegisterEntries:'ابھی کوئی اندراج نہیں۔ اپنا پہلا داخلہ ریکارڈ شامل کریں۔',
   }
 };
 
@@ -462,7 +476,7 @@ const monthLabel = mk => { const [y,m]=mk.split('-').map(Number); return new Dat
 const todayISO = () => new Date().toISOString().slice(0,10);
 const esc = s => (s==null?'':String(s)).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
-let DATA = { students:[], feePayments:[], teachers:[], salaryPayments:[], transactions:[] };
+let DATA = { students:[], feePayments:[], teachers:[], salaryPayments:[], transactions:[], admissionRegister:[] };
 let TAB = 'dashboard';
 let CURRENT_USER = null;   // { id, email }
 let CURRENT_PROFILE = null; // { school_name }
@@ -703,25 +717,29 @@ async function submitLogIn() {
 async function logOut() {
   await sb.auth.signOut();
   CURRENT_USER = null; CURRENT_PROFILE = null;
-  DATA = { students:[], feePayments:[], teachers:[], salaryPayments:[], transactions:[] };
+  DATA = { students:[], feePayments:[], teachers:[], salaryPayments:[], transactions:[], admissionRegister:[] };
   document.getElementById('app').classList.add('hidden');
   renderLogIn();
 }
 
 // ---------------- Data loading (RLS auto-scopes everything to this school) ----------------
 async function loadAllData() {
-  const [s, fp, tc, sp, tx] = await Promise.all([
+  const [s, fp, tc, sp, tx, ar] = await Promise.all([
     sb.from('students').select('*').order('created_at'),
     sb.from('fee_payments').select('*'),
     sb.from('teachers').select('*').order('created_at'),
     sb.from('salary_payments').select('*'),
     sb.from('transactions').select('*').order('txn_date',{ascending:false}),
+    // Admission & Withdrawal Register: a standalone record, unrelated to the
+    // students/fee-finance tables above — it is never joined or cross-referenced.
+    sb.from('admission_register').select('*').order('serial_no'),
   ]);
   DATA.students = s.data || [];
   DATA.feePayments = fp.data || [];
   DATA.teachers = tc.data || [];
   DATA.salaryPayments = sp.data || [];
   DATA.transactions = tx.data || [];
+  DATA.admissionRegister = ar.data || [];
 }
 
 // How many months' worth of fee a student's current balance represents.
@@ -863,11 +881,12 @@ const NAV_ICONS = {
   teachers: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="7" r="4"/><path d="M2 21v-2a4 4 0 014-4h6a4 4 0 014 4v2"/><circle cx="17" cy="7" r="3"/></svg>`,
   finance: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2"/></svg>`,
   reports: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>`,
+  admissionRegister: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 016.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"/><path d="M9 7h7M9 11h7"/></svg>`,
   admin: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l8 4v6c0 5-3.5 8.5-8 10-4.5-1.5-8-5-8-10V6l8-4z"/></svg>`,
 };
 
 function renderNav() {
-  const tabs = ['dashboard','students','teachers','finance','reports'];
+  const tabs = ['dashboard','students','teachers','finance','reports','admissionRegister'];
   if (CURRENT_PROFILE && CURRENT_PROFILE.is_admin) tabs.push('admin');
   document.getElementById('navbar').innerHTML = tabs.map(k => `
     <button class="${TAB===k?'active':''}" onclick="setTab('${k}')">
@@ -884,6 +903,7 @@ function renderTab() {
   else if (TAB==='teachers') main.innerHTML = tplTeachers();
   else if (TAB==='finance') main.innerHTML = tplFinance();
   else if (TAB==='reports') main.innerHTML = tplReports();
+  else if (TAB==='admissionRegister') main.innerHTML = tplAdmissionRegister();
   else if (TAB==='admin') { main.innerHTML = tplAdmin(); loadWhitelist(); return; }
   main.innerHTML += `<div class="notice">${esc(t.sharedNotice)}</div>`;
   main.innerHTML += `<div class="notice" style="margin-top:8px;font-size:10px;">${esc(t.copyrightNotice)}</div>`;
@@ -1880,7 +1900,117 @@ function openActivityHistory(kind, refId) {
   `);
 }
 
-// ---------------- Modal helpers ----------------
+// ---------------- Admission & Withdrawal Register ----------------
+// A standalone digitized copy of the school's physical Admission & Withdrawal
+// Register book. It reads/writes its own Supabase table (admission_register)
+// and is never joined, cross-referenced, or matched against the Students or
+// Finance data above — the two live side by side in the same app but are
+// otherwise unrelated.
+let registerSearch = '';
+function tplAdmissionRegister() {
+  const q = registerSearch.trim().toLowerCase();
+  const list = DATA.admissionRegister
+    .filter(r => !q || (r.student_name||'').toLowerCase().includes(q) || (r.father_name||'').toLowerCase().includes(q))
+    .slice()
+    .sort((a,b) => Number(a.serial_no||0) - Number(b.serial_no||0));
+
+  const row = r => `
+    <button class="card-btn" onclick="openEditAdmissionEntry('${r.id}')">
+      <div>
+        <div class="nm">${esc(r.serial_no ? '#'+r.serial_no+' — ' : '')}${esc(r.student_name)}</div>
+        <div class="sub">${esc(t.fatherName)}: ${esc(r.father_name||'')} · ${esc(r.class_admitted||'—')}</div>
+      </div>
+      ${Number(r.arrears_due||0) > 0 ? `<span class="pill bad">₨${fmt(r.arrears_due)}</span>` : ''}
+    </button>`;
+
+  return `
+    <div style="padding-top:16px;">
+      <div class="notice" style="margin-bottom:12px;">${esc(t.admissionRegisterDesc)}</div>
+      <div class="searchbar">
+        <input placeholder="${esc(t.searchRegister)}" value="${esc(registerSearch)}" oninput="registerSearch=this.value; renderTab();">
+        <button class="icon-btn" onclick="openAddAdmissionEntry()">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#E4C765" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg>
+        </button>
+      </div>
+      ${list.length===0 ? `<div class="empty">${esc(t.noRegisterEntries)}</div>` : `<div class="list-card">${list.map(row).join('')}</div>`}
+    </div>`;
+}
+
+function admissionEntryForm(r) {
+  r = r || {};
+  return `
+    <label><span>${esc(t.serialNo)}</span><input id="ar-serial" type="number" value="${esc(r.serial_no||'')}"></label>
+    <label><span>${esc(t.admissionDate)}</span><input id="ar-admission-date" type="date" value="${esc(r.admission_date||todayISO())}"></label>
+    <label><span>${esc(t.studentName)}</span><input id="ar-name" value="${esc(r.student_name||'')}"></label>
+    <label><span>${esc(t.dobFigures)}</span><input id="ar-dob-figures" type="date" value="${esc(r.dob_figures||'')}"></label>
+    <label><span>${esc(t.dobWords)}</span><input id="ar-dob-words" value="${esc(r.dob_words||'')}"></label>
+    <label><span>${esc(t.fatherName)}</span><input id="ar-father" value="${esc(r.father_name||'')}"></label>
+    <label><span>${esc(t.casteTribe)}</span><input id="ar-caste" value="${esc(r.caste_tribe||'')}"></label>
+    <label><span>${esc(t.occupation)}</span><input id="ar-occupation" value="${esc(r.occupation||'')}"></label>
+    <label><span>${esc(t.residence)}</span><input id="ar-residence" value="${esc(r.residence||'')}"></label>
+    <label><span>${esc(t.classAdmitted)}</span><select id="ar-class-admitted">${CLASS_OPTIONS.map(c=>`<option ${r.class_admitted===c?'selected':''}>${c}</option>`).join('')}</select></label>
+    <label><span>${esc(t.arrearsDue)}</span><input id="ar-arrears" type="number" value="${esc(r.arrears_due||0)}"></label>
+    <label><span>${esc(t.classWithdrawn)} (${esc(t.optional)})</span><select id="ar-class-withdrawn"><option value="">—</option>${CLASS_OPTIONS.map(c=>`<option ${r.class_withdrawn===c?'selected':''}>${c}</option>`).join('')}</select></label>
+    <label><span>${esc(t.withdrawalDate)} (${esc(t.optional)})</span><input id="ar-withdrawal-date" type="date" value="${esc(r.withdrawal_date||'')}"></label>
+    <label><span>${esc(t.remarks)} (${esc(t.optional)})</span><input id="ar-remarks" value="${esc(r.remarks||'')}"></label>`;
+}
+
+function openAddAdmissionEntry() {
+  showModal(t.addRegisterEntry, `
+    ${admissionEntryForm()}
+    <div class="flexgap">
+      <button class="btn-ghost" onclick="closeModal()">${esc(t.cancel)}</button>
+      <button class="btn-primary" style="flex:1" onclick="submitAddAdmissionEntry()">${esc(t.save)}</button>
+    </div>
+  `);
+}
+
+function readAdmissionForm() {
+  return {
+    serial_no: document.getElementById('ar-serial').value ? Number(document.getElementById('ar-serial').value) : null,
+    admission_date: document.getElementById('ar-admission-date').value,
+    student_name: document.getElementById('ar-name').value.trim(),
+    dob_figures: document.getElementById('ar-dob-figures').value,
+    dob_words: document.getElementById('ar-dob-words').value.trim(),
+    father_name: document.getElementById('ar-father').value.trim(),
+    caste_tribe: document.getElementById('ar-caste').value.trim(),
+    occupation: document.getElementById('ar-occupation').value.trim(),
+    residence: document.getElementById('ar-residence').value.trim(),
+    class_admitted: document.getElementById('ar-class-admitted').value,
+    arrears_due: Number(document.getElementById('ar-arrears').value || 0),
+    class_withdrawn: document.getElementById('ar-class-withdrawn').value || null,
+    withdrawal_date: document.getElementById('ar-withdrawal-date').value || null,
+    remarks: document.getElementById('ar-remarks').value.trim(),
+  };
+}
+
+async function submitAddAdmissionEntry() {
+  const entry = readAdmissionForm();
+  if (!entry.student_name) return;
+  await sb.from('admission_register').insert({ owner_id: CURRENT_USER.id, ...entry });
+  closeModal(); await loadAllData(); renderTab();
+}
+
+function openEditAdmissionEntry(id) {
+  const r = DATA.admissionRegister.find(x => x.id === id);
+  if (!r) return;
+  showModal(t.editRegisterEntry, `
+    ${admissionEntryForm(r)}
+    <div class="flexgap">
+      <button class="btn-ghost" style="color:var(--rust);border-color:var(--rust);" onclick="confirmDelete('admissionEntry','${id}')">${esc(t.delete)}</button>
+      <button class="btn-primary" style="flex:1" onclick="submitEditAdmissionEntry('${id}')">${esc(t.save)}</button>
+    </div>
+  `);
+}
+
+async function submitEditAdmissionEntry(id) {
+  const entry = readAdmissionForm();
+  if (!entry.student_name) return;
+  await sb.from('admission_register').update(entry).eq('id', id);
+  closeModal(); await loadAllData(); renderTab();
+}
+
+
 function showModal(title, bodyHtml) {
   document.getElementById('modal-root').innerHTML = `
     <div class="modal-bg" onclick="if(event.target===this)closeModal()">
@@ -1916,6 +2046,10 @@ async function doDelete(kind, id) {
     if (r1.error) err = r1.error;
     const r2 = await sb.from('teachers').delete().eq('id', id);
     if (r2.error) err = r2.error;
+  }
+  if (kind==='admissionEntry') {
+    const r1 = await sb.from('admission_register').delete().eq('id', id);
+    if (r1.error) err = r1.error;
   }
   closeModal(); await loadAllData(); renderTab();
   if (err) alert((LANG==='ur' ? 'حذف کرنے میں خرابی: ' : 'Delete failed: ') + err.message);
