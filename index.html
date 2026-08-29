@@ -367,6 +367,7 @@ const T = {
     addTeacher:'Add Teacher', teacherName:'Teacher Name', subject:'Subject / Role', monthlySalary:'Monthly Salary (Rs)',
     joinDate:'Join Date', searchTeachers:'Search teachers...', noTeachers:'No teachers yet. Add your first teacher to get started.',
     salaryLedger:'Salary Ledger', payMonth:'Pay Month',
+    baseSalary:'Base Salary', attendanceBonus:'Attendance Bonus', extraClass:'Extra Class',
     addTransaction:'Add Entry', income:'Income', expense:'Expense', category:'Category', description:'Description', date:'Date',
     noTransactions:'No entries yet.',
     summaryReport:'Summary Report', totalCollectedAllTime:'Total Fees Collected (all-time)', totalSalariesAllTime:'Total Salaries Paid (all-time)',
@@ -405,6 +406,8 @@ const T = {
     sendSmsToFather:'SMS for Parents', overdueRemindersTitle:'Send overdue reminders',
     overdueRemindersDesc:'These students are 2+ months behind on fees. Tap Send next to each to open WhatsApp with a month-by-month reminder pre-filled for their father.',
     noOverdueStudents:'No students are 2+ months overdue right now.', send:'Send',
+    sendFeeRequest:'Send fee request', feeRequestTitle:'Send fee request', feeRequestDesc:'These students currently have pending dues. Tap Send next to each to open WhatsApp with a month-by-month reminder pre-filled for their father.',
+    noDueStudents:'No students currently have pending dues.',
     signUpPendingTitle:'Almost done!',
     signUpPendingDesc:'A confirmation email has been sent to your inbox. Please forward that email (or the link inside it) to us on WhatsApp to activate your account.',
     admin:'Admin', adminPanel:'Admin Panel',
@@ -447,6 +450,7 @@ const T = {
     addTeacher:'استاد شامل کریں', teacherName:'استاد کا نام', subject:'مضمون / عہدہ', monthlySalary:'ماہانہ تنخواہ (روپے)',
     joinDate:'شمولیت کی تاریخ', searchTeachers:'اساتذہ تلاش کریں...', noTeachers:'ابھی کوئی استاد شامل نہیں۔',
     salaryLedger:'تنخواہ کھاتہ', payMonth:'ادائیگی کا مہینہ',
+    baseSalary:'بنیادی تنخواہ', attendanceBonus:'حاضری بونس', extraClass:'اضافی کلاس',
     addTransaction:'اندراج شامل کریں', income:'آمدنی', expense:'اخراجات', category:'قسم', description:'تفصیل', date:'تاریخ',
     noTransactions:'ابھی کوئی اندراج نہیں۔',
     summaryReport:'خلاصہ رپورٹ', totalCollectedAllTime:'کل وصول شدہ فیس', totalSalariesAllTime:'کل ادا شدہ تنخواہیں',
@@ -483,6 +487,8 @@ const T = {
     sendSmsToFather:'والدین کو SMS', overdueRemindersTitle:'واجبات کی یاد دہانی بھیجیں',
     overdueRemindersDesc:'یہ طلبہ 2 یا زائد مہینوں سے فیس کے واجب الادا ہیں۔ ہر ایک کے سامنے "بھیجیں" دبائیں تاکہ والد کے واٹس ایپ پر ہر مہینے کی تفصیل کے ساتھ پیغام کھل جائے۔',
     noOverdueStudents:'فی الحال کوئی طالب علم 2 مہینوں سے زائد واجب الادا نہیں ہے۔', send:'بھیجیں',
+    sendFeeRequest:'فیس کی درخواست بھیجیں', feeRequestTitle:'فیس کی درخواست بھیجیں', feeRequestDesc:'ان طلبہ کی فیس واجب الادا ہے۔ ہر ایک کے سامنے "بھیجیں" دبائیں تاکہ والد کے واٹس ایپ پر ہر مہینے کی تفصیل کے ساتھ پیغام کھل جائے۔',
+    noDueStudents:'فی الحال کسی طالب علم کی کوئی فیس واجب الادا نہیں ہے۔',
     signUpPendingTitle:'تقریباً مکمل!',
     signUpPendingDesc:'آپ کے ای میل پر ایک تصدیقی ای میل بھیجی گئی ہے۔ اپنا اکاؤنٹ فعال کروانے کے لیے وہ ای میل (یا اس کے اندر موجود لنک) ہمیں واٹس ایپ پر بھیجیں۔',
     admin:'ایڈمن', adminPanel:'ایڈمن پینل',
@@ -839,6 +845,34 @@ function sendOverdueReminderSms(id) {
   const s = DATA.students.find(x => x.id === id);
   if (!s) return;
   openFatherWhatsapp(s.contact, duesReminderMessageUrdu(s));
+}
+
+// General fee-request: same month-by-month breakdown message, but available for
+// ANY student with a pending balance (not just those 2+ months overdue).
+function sendFeeRequestSms(id) {
+  const s = DATA.students.find(x => x.id === id);
+  if (!s) return;
+  openFatherWhatsapp(s.contact, duesReminderMessageUrdu(s));
+}
+
+function openFeeRequestReminders() {
+  const due = DATA.students
+    .filter(s => s.status !== 'inactive' && isFeePaying(s) && studentBalance(s.id) > 0)
+    .sort((a, b) => studentBalance(b.id) - studentBalance(a.id));
+  const rows = due.length === 0
+    ? `<div class="empty">${esc(t.noDueStudents)}</div>`
+    : due.map(s => `
+      <div class="card-btn" style="cursor:default;">
+        <div>
+          <div class="nm">${esc(s.name)}</div>
+          <div class="sub">${esc(t.fatherName)}: ${esc(s.father_name||'')} · ₨${fmt(studentBalance(s.id))} ${esc(t.due)}</div>
+        </div>
+        <button class="btn-primary" style="padding:6px 14px;" onclick="sendFeeRequestSms('${s.id}')">${esc(t.send)}</button>
+      </div>`).join('');
+  showModal(t.feeRequestTitle, `
+    <div style="font-size:13px;opacity:.75;margin-bottom:14px;">${esc(t.feeRequestDesc)}</div>
+    ${rows}
+  `);
 }
 
 function studentPayments(id){ return DATA.feePayments.filter(p=>p.student_id===id); }
@@ -1311,10 +1345,18 @@ function tplStudents() {
       </div>
       ${(() => {
         const overdueCount = DATA.students.filter(s => s.status!=='inactive' && monthsOverdue(s) >= 2).length;
-        return overdueCount > 0 ? `
-          <button class="btn-ghost" style="width:100%;margin-bottom:12px;" onclick="openOverdueReminders()">
-            📩 ${esc(t.overdueRemindersTitle)} (${overdueCount})
-          </button>` : '';
+        const dueCount = DATA.students.filter(s => s.status!=='inactive' && isFeePaying(s) && studentBalance(s.id) > 0).length;
+        return `
+          <div style="display:flex;gap:8px;margin-bottom:12px;">
+            ${overdueCount > 0 ? `
+              <button class="btn-ghost" style="flex:1;" onclick="openOverdueReminders()">
+                📩 ${esc(t.overdueRemindersTitle)} (${overdueCount})
+              </button>` : ''}
+            ${dueCount > 0 ? `
+              <button class="btn-ghost" style="flex:1;" onclick="openFeeRequestReminders()">
+                💰 ${esc(t.sendFeeRequest)} (${dueCount})
+              </button>` : ''}
+          </div>`;
       })()}
       ${list.length===0 ? `<div class="empty">${esc(t.noStudents)}</div>` :
         orderedClasses.map(cls => {
@@ -1440,10 +1482,18 @@ function buildAcademicYearLedger(studentId) {
   });
 
   let running = 0;
+  const currentMk = todayISO().slice(0,7);
   const rows = monthKeys.map(mk => {
     const e = entryByMonth[mk];
     const lastBalance = running;
-    if (!e) { running = lastBalance; return { mk, lastBalance, blank:true }; }
+    if (!e) {
+      running = lastBalance;
+      // Months that haven't arrived yet shouldn't show a carried-forward due —
+      // only months that have actually passed (or the current month) without an
+      // entry represent a real missed/unrecorded payment.
+      const isFuture = mk > currentMk;
+      return { mk, lastBalance, blank:true, isFuture };
+    }
     const totalDues = lastBalance + Number(e.school_fee||0) + Number(e.sports_fund||0) + Number(e.admission_fee||0) + Number(e.exam_fee||0);
     const totalPaid = Number(e.amount||0);
     const balance = totalDues - totalPaid;
@@ -1513,23 +1563,26 @@ function openStudentDetail(id) {
           <th>${esc(t.receiptNo)}</th><th>${esc(t.dateCol)}</th><th></th><th></th><th></th>
         </tr></thead>
         <tbody>
-          ${rows.map(r=>`
+          ${rows.map(r=>{
+            const displayLastBalance = (r.blank && r.isFuture) ? 0 : r.lastBalance;
+            const displayBalance = r.blank ? displayLastBalance : r.balance;
+            return `
             <tr>
               <td class="mo">${esc(monthLabel(r.mk))}</td>
-              <td>₨${fmt(r.lastBalance)}</td>
+              <td>₨${fmt(displayLastBalance)}</td>
               <td>${r.blank ? '—' : '₨'+fmt(r.e.school_fee)}</td>
               <td>${r.blank ? '—' : '₨'+fmt(r.e.sports_fund)}</td>
               <td>${r.blank ? '—' : '₨'+fmt(r.e.admission_fee)}</td>
               <td>${r.blank ? '—' : '₨'+fmt(r.e.exam_fee)}</td>
-              <td>₨${fmt(r.blank ? r.lastBalance : r.totalDues)}</td>
+              <td>₨${fmt(r.blank ? displayLastBalance : r.totalDues)}</td>
               <td>${r.blank ? '—' : '₨'+fmt(r.totalPaid)}</td>
-              <td class="${(r.blank ? r.lastBalance : r.balance)>0?'bal-neg':'bal-pos'}">₨${fmt(r.blank ? r.lastBalance : r.balance)}</td>
+              <td class="${displayBalance>0?'bal-neg':'bal-pos'}">₨${fmt(displayBalance)}</td>
               <td>${r.blank ? '—' : esc(r.e.receipt_no||'—')}</td>
               <td>${r.blank ? '—' : esc(r.e.pay_date||'')}</td>
               <td>${r.blank ? '' : `<button class="print-btn" title="${esc(t.print)}" onclick="printReceipt('${id}','${r.e.id}')">🖨️</button>`}</td>
               <td>${r.blank ? '' : `<button class="print-btn" title="Send WhatsApp to father" onclick="openFatherWhatsapp('${esc(s.contact||'')}', 'Dear Parent, fee of Rs ${fmt(r.totalPaid)} for ${esc(s.name)} (${esc(monthLabel(r.mk))}) has been received. Thank you. - School')">💬</button>`}</td>
               <td>${r.blank ? '' : `<button class="del-x" onclick="deleteFeePayment('${r.e.id}','${id}')">✕</button>`}</td>
-            </tr>`).join('')}
+            </tr>`;}).join('')}
         </tbody>
       </table>
     </div>
@@ -1640,20 +1693,23 @@ function printFeeCard(studentId) {
   const { startYear, rows } = buildAcademicYearLedger(studentId);
 
   const todayMk = todayISO().slice(0,7);
-  const rowsHtml = rows.map(r => `
+  const rowsHtml = rows.map(r => {
+    const displayLastBalance = (r.blank && r.isFuture) ? 0 : r.lastBalance;
+    const displayBalance = r.blank ? displayLastBalance : r.balance;
+    return `
     <tr class="${r.mk===todayMk ? 'fc-current' : ''}">
       <td class="fc-mo">${esc(monthLabel(r.mk))}</td>
-      <td class="${r.lastBalance>0?'fc-due':'fc-zero'}">₨${fmt(r.lastBalance)}</td>
+      <td class="${displayLastBalance>0?'fc-due':'fc-zero'}">₨${fmt(displayLastBalance)}</td>
       <td class="fc-zero">${r.blank ? '—' : '₨'+fmt(r.e.school_fee)}</td>
       <td class="fc-zero">${r.blank ? '—' : '₨'+fmt(r.e.sports_fund)}</td>
       <td class="fc-zero">${r.blank ? '—' : '₨'+fmt(r.e.admission_fee)}</td>
       <td class="fc-zero">${r.blank ? '—' : '₨'+fmt(r.e.exam_fee)}</td>
-      <td>₨${fmt(r.blank ? r.lastBalance : r.totalDues)}</td>
+      <td>₨${fmt(r.blank ? displayLastBalance : r.totalDues)}</td>
       <td class="fc-paid">${r.blank ? '—' : '₨'+fmt(r.totalPaid)}</td>
-      <td class="${(r.blank ? r.lastBalance : r.balance) > 0 ? 'fc-due' : 'fc-paid'}">₨${fmt(r.blank ? r.lastBalance : r.balance)}</td>
+      <td class="${displayBalance > 0 ? 'fc-due' : 'fc-paid'}">₨${fmt(displayBalance)}</td>
       <td class="fc-zero">${r.blank ? '—' : esc(r.e.receipt_no||'—')}</td>
       <td class="fc-zero">${r.blank ? '—' : esc(r.e.pay_date||'—')}</td>
-    </tr>`).join('');
+    </tr>`;}).join('');
 
   document.getElementById('print-area').innerHTML = `
     <div class="fc-wrap">
@@ -1773,21 +1829,30 @@ function openTeacherDetail(id) {
     <div class="section-title" style="margin-top:0;">${esc(t.payMonth)}</div>
     <div class="row2">
       <input id="p-month" type="month" value="${monthKey()}">
-      <input id="p-amount" type="number" placeholder="${esc(t.enterAmount)}" value="${tc.monthly_salary||''}">
+      <label style="margin-bottom:0;"><span>${esc(t.baseSalary)}</span><input id="p-amount" type="number" placeholder="${esc(t.enterAmount)}" value="${tc.monthly_salary||''}"></label>
+    </div>
+    <div class="row2" style="margin-top:8px;">
+      <label style="margin-bottom:0;"><span>${esc(t.attendanceBonus)}</span><input id="p-bonus" type="number" value="0"></label>
+      <label style="margin-bottom:0;"><span>${esc(t.extraClass)}</span><input id="p-extra" type="number" value="0"></label>
     </div>
     <div style="margin-top:8px;"><input id="p-date" type="date" value="${todayISO()}"></div>
     <div style="margin-top:8px;"><button class="btn-primary" onclick="submitSalaryPayment('${id}')">+ ${esc(t.save)}</button></div>
     <div class="section-title">${esc(t.salaryLedger)}</div>
     <div class="ledger">
       ${payments.length===0 ? `<div style="padding:10px;text-align:center;font-size:12px;opacity:.5;">—</div>` :
-        payments.map(p=>`
+        payments.map(p=>{
+          const bonus = Number(p.attendance_bonus||0), extra = Number(p.extra_class_fee||0);
+          const breakdown = (bonus || extra)
+            ? `<div style="font-size:11px;opacity:.6;">${bonus?esc(t.attendanceBonus)+': ₨'+fmt(bonus)+'  ':''}${extra?esc(t.extraClass)+': ₨'+fmt(extra):''}</div>`
+            : '';
+          return `
           <div class="ledger-row">
-            <div style="font-size:12px;">${esc(monthLabel(p.month))} <span style="opacity:.5;">· ${esc(p.pay_date)}</span></div>
+            <div style="font-size:12px;">${esc(monthLabel(p.month))} <span style="opacity:.5;">· ${esc(p.pay_date)}</span>${breakdown}</div>
             <div style="display:flex;align-items:center;gap:8px;">
               <span class="amt-neg">₨${fmt(p.amount)}</span>
               <button class="del-btn" onclick="deleteSalaryPayment('${p.id}','${id}')">✕</button>
             </div>
-          </div>`).join('')}
+          </div>`;}).join('')}
     </div>
     <div style="margin-top:16px;"><button class="btn-ghost danger" onclick="confirmDelete('teacher','${id}')">${esc(t.delete)}</button></div>
   `);
@@ -1795,10 +1860,16 @@ function openTeacherDetail(id) {
 
 async function submitSalaryPayment(teacherId) {
   const month = document.getElementById('p-month').value;
-  const amount = document.getElementById('p-amount').value;
+  const base = Number(document.getElementById('p-amount').value || 0);
+  const bonus = Number(document.getElementById('p-bonus').value || 0);
+  const extra = Number(document.getElementById('p-extra').value || 0);
   const date = document.getElementById('p-date').value;
+  const amount = base + bonus + extra;
   if (!amount) return;
-  await sb.from('salary_payments').insert({ owner_id: CURRENT_USER.id, teacher_id: teacherId, month, amount: Number(amount), pay_date: date });
+  await sb.from('salary_payments').insert({
+    owner_id: CURRENT_USER.id, teacher_id: teacherId, month,
+    amount, attendance_bonus: bonus, extra_class_fee: extra, pay_date: date
+  });
   await loadAllData(); openTeacherDetail(teacherId);
 }
 async function deleteSalaryPayment(paymentId, teacherId) {
