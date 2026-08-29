@@ -352,6 +352,13 @@ const T = {
     logInTitle:'Log In', logInDesc:'Log in to your school account.',
     schoolName:'School Name', email:'Email Address', password:'Password', confirmPassword:'Confirm Password',
     signUp:'Sign Up', logIn:'Log In', haveAccount:'Already have an account?', noAccount:"Don't have an account?",
+    phoneNumber:'Phone Number', forgotPassword:'Forgot password?', forgotEmail:'Forgot your registered email?',
+    forgotPasswordTitle:'Reset your password', forgotPasswordDesc:'Enter the email you signed up with. We\u2019ll send a password reset link to it.',
+    sendResetLink:'Send Reset Link', resetLinkSentTitle:'Reset link sent', resetLinkSentDesc:'Check your email (and spam folder) for a link to set a new password.',
+    newPasswordTitle:'Set a new password', newPasswordDesc:'Enter and confirm your new password below.',
+    setNewPassword:'Set New Password', passwordUpdatedTitle:'Password updated', passwordUpdatedDesc:'Your password has been changed. You can now log in.',
+    forgotEmailTitle:'Forgot your registered email?', forgotEmailDesc:'For security, we can\u2019t look up or reveal an account email here. Message your school administrator on WhatsApp with your school name and phone number, and they can confirm which email your account is registered under.',
+    backToLogin:'Back to Log In',
     passwordTooShort:'Password must be at least 6 characters.', passwordMismatch:'Passwords do not match.',
     signUpSuccess:'Account created! You can now log in.',
     settings:'Account Settings', changeSchoolName:'School Name', changePassword:'New Password (leave blank to keep current)',
@@ -361,8 +368,8 @@ const T = {
     notWhitelistedTitle:'This email is not registered with us yet.',
     notWhitelistedDesc:'To register your school, please contact us on WhatsApp first.',
     contactOnWhatsApp:'Contact us on WhatsApp',
-    sendSmsToFather:'Send SMS to father', overdueRemindersTitle:'Send overdue reminders',
-    overdueRemindersDesc:'These students are 2+ months behind on fees. Tap Send next to each to open your SMS app with a reminder pre-filled for their father.',
+    sendSmsToFather:'SMS for Parents', overdueRemindersTitle:'Send overdue reminders',
+    overdueRemindersDesc:'These students are 2+ months behind on fees. Tap Send next to each to open WhatsApp with a month-by-month reminder pre-filled for their father.',
     noOverdueStudents:'No students are 2+ months overdue right now.', send:'Send',
     signUpPendingTitle:'Almost done!',
     signUpPendingDesc:'A confirmation email has been sent to your inbox. Please forward that email (or the link inside it) to us on WhatsApp to activate your account.',
@@ -410,6 +417,13 @@ const T = {
     logInTitle:'لاگ ان کریں', logInDesc:'اپنے اسکول اکاؤنٹ میں لاگ ان کریں۔',
     schoolName:'اسکول کا نام', email:'ای میل ایڈریس', password:'پاس ورڈ', confirmPassword:'پاس ورڈ کی تصدیق',
     signUp:'اکاؤنٹ بنائیں', logIn:'لاگ ان', haveAccount:'پہلے سے اکاؤنٹ ہے؟', noAccount:'اکاؤنٹ نہیں ہے؟',
+    phoneNumber:'فون نمبر', forgotPassword:'پاس ورڈ بھول گئے؟', forgotEmail:'رجسٹرڈ ای میل بھول گئے؟',
+    forgotPasswordTitle:'اپنا پاس ورڈ ری سیٹ کریں', forgotPasswordDesc:'وہ ای میل درج کریں جس سے آپ نے سائن اپ کیا تھا۔ ہم اس پر پاس ورڈ ری سیٹ کرنے کا لنک بھیجیں گے۔',
+    sendResetLink:'ری سیٹ لنک بھیجیں', resetLinkSentTitle:'ری سیٹ لنک بھیج دیا گیا', resetLinkSentDesc:'نیا پاس ورڈ سیٹ کرنے کے لنک کے لیے اپنا ای میل (اور اسپیم فولڈر) چیک کریں۔',
+    newPasswordTitle:'نیا پاس ورڈ سیٹ کریں', newPasswordDesc:'نیچے اپنا نیا پاس ورڈ درج اور تصدیق کریں۔',
+    setNewPassword:'نیا پاس ورڈ سیٹ کریں', passwordUpdatedTitle:'پاس ورڈ اپڈیٹ ہو گیا', passwordUpdatedDesc:'آپ کا پاس ورڈ تبدیل ہو گیا ہے۔ اب آپ لاگ ان کر سکتے ہیں۔',
+    forgotEmailTitle:'رجسٹرڈ ای میل بھول گئے؟', forgotEmailDesc:'حفاظتی وجوہات کی بنا پر ہم یہاں اکاؤنٹ کی ای میل تلاش یا ظاہر نہیں کر سکتے۔ اپنے اسکول ایڈمنسٹریٹر کو واٹس ایپ پر اپنے اسکول کا نام اور فون نمبر بھیجیں، وہ تصدیق کر دیں گے کہ آپ کا اکاؤنٹ کس ای میل پر رجسٹرڈ ہے۔',
+    backToLogin:'لاگ ان پر واپس جائیں',
     passwordTooShort:'پاس ورڈ کم از کم 6 حروف کا ہونا چاہیے۔', passwordMismatch:'پاس ورڈ مماثل نہیں ہیں۔',
     signUpSuccess:'اکاؤنٹ بن گیا! اب آپ لاگ ان کر سکتے ہیں۔',
     settings:'اکاؤنٹ کی ترتیبات', changeSchoolName:'اسکول کا نام', changePassword:'نیا پاس ورڈ (خالی چھوڑیں اگر تبدیل نہیں کرنا)',
@@ -418,8 +432,8 @@ const T = {
     notWhitelistedTitle:'یہ ای میل ابھی تک ہمارے ساتھ رجسٹرڈ نہیں ہے۔',
     notWhitelistedDesc:'اپنا اسکول رجسٹر کروانے کے لیے پہلے ہم سے واٹس ایپ پر رابطہ کریں۔',
     contactOnWhatsApp:'واٹس ایپ پر رابطہ کریں',
-    sendSmsToFather:'والد کو ایس ایم ایس بھیجیں', overdueRemindersTitle:'واجبات کی یاد دہانی بھیجیں',
-    overdueRemindersDesc:'یہ طلبہ 2 یا زائد مہینوں سے فیس کے واجب الادا ہیں۔ ہر ایک کے سامنے "بھیجیں" دبائیں تاکہ آپ کی ایس ایم ایس ایپ والد کے لیے پیغام کے ساتھ کھل جائے۔',
+    sendSmsToFather:'والدین کو SMS', overdueRemindersTitle:'واجبات کی یاد دہانی بھیجیں',
+    overdueRemindersDesc:'یہ طلبہ 2 یا زائد مہینوں سے فیس کے واجب الادا ہیں۔ ہر ایک کے سامنے "بھیجیں" دبائیں تاکہ والد کے واٹس ایپ پر ہر مہینے کی تفصیل کے ساتھ پیغام کھل جائے۔',
     noOverdueStudents:'فی الحال کوئی طالب علم 2 مہینوں سے زائد واجب الادا نہیں ہے۔', send:'بھیجیں',
     signUpPendingTitle:'تقریباً مکمل!',
     signUpPendingDesc:'آپ کے ای میل پر ایک تصدیقی ای میل بھیجی گئی ہے۔ اپنا اکاؤنٹ فعال کروانے کے لیے وہ ای میل (یا اس کے اندر موجود لنک) ہمیں واٹس ایپ پر بھیجیں۔',
@@ -454,10 +468,85 @@ let CURRENT_USER = null;   // { id, email }
 let CURRENT_PROFILE = null; // { school_name }
 
 // ---------------- Boot / session ----------------
+function renderForgotPassword() {
+  renderAuthShell(`
+    <h2>${esc(t.forgotPasswordTitle)}</h2>
+    <p class="desc">${esc(t.forgotPasswordDesc)}</p>
+    <label><span>${esc(t.email)}</span><input id="fp-email" type="email" autocomplete="email" onkeydown="if(event.key==='Enter')submitForgotPassword()"></label>
+    <div id="auth-msg"></div>
+    <button class="btn-primary" id="fp-btn" onclick="submitForgotPassword()">${esc(t.sendResetLink)}</button>
+    <div class="switch-line"><a onclick="renderLogIn()">${esc(t.backToLogin)}</a></div>
+  `);
+}
+
+async function submitForgotPassword() {
+  const email = document.getElementById('fp-email').value.trim();
+  const msg = document.getElementById('auth-msg');
+  const btn = document.getElementById('fp-btn');
+  msg.innerHTML = '';
+  if (!email) return;
+  btn.disabled = true;
+  const { error } = await sb.auth.resetPasswordForEmail(email, { redirectTo: window.location.origin });
+  btn.disabled = false;
+  // Always show a success-style message even on error, so this screen can't be used
+  // to probe which emails have accounts (Supabase itself does this by default too).
+  msg.innerHTML = `<div class="ok"><div style="margin-bottom:8px;">${esc(t.resetLinkSentTitle)}</div><div>${esc(t.resetLinkSentDesc)}</div></div>`;
+}
+
+function renderSetNewPassword() {
+  renderAuthShell(`
+    <h2>${esc(t.newPasswordTitle)}</h2>
+    <p class="desc">${esc(t.newPasswordDesc)}</p>
+    <label><span>${esc(t.password)}</span><input id="np-pw" type="password" autocomplete="new-password"></label>
+    <label><span>${esc(t.confirmPassword)}</span><input id="np-pw2" type="password" autocomplete="new-password" onkeydown="if(event.key==='Enter')submitSetNewPassword()"></label>
+    <div id="auth-msg"></div>
+    <button class="btn-primary" id="np-btn" onclick="submitSetNewPassword()">${esc(t.setNewPassword)}</button>
+  `);
+}
+
+async function submitSetNewPassword() {
+  const pw = document.getElementById('np-pw').value;
+  const pw2 = document.getElementById('np-pw2').value;
+  const msg = document.getElementById('auth-msg');
+  const btn = document.getElementById('np-btn');
+  msg.innerHTML = '';
+  if (pw.length < 6) { msg.innerHTML = `<div class="err">${esc(t.passwordTooShort)}</div>`; return; }
+  if (pw !== pw2) { msg.innerHTML = `<div class="err">${esc(t.passwordMismatch)}</div>`; return; }
+  btn.disabled = true;
+  const { error } = await sb.auth.updateUser({ password: pw });
+  btn.disabled = false;
+  if (error) { msg.innerHTML = `<div class="err">${esc(error.message)}</div>`; return; }
+  msg.innerHTML = `<div class="ok"><div style="margin-bottom:8px;">${esc(t.passwordUpdatedTitle)}</div><div>${esc(t.passwordUpdatedDesc)}</div></div>`;
+  await sb.auth.signOut();
+  setTimeout(renderLogIn, 1800);
+}
+
+function renderForgotEmail() {
+  renderAuthShell(`
+    <h2>${esc(t.forgotEmailTitle)}</h2>
+    <p class="desc">${esc(t.forgotEmailDesc)}</p>
+    <a class="btn-primary" style="display:block;text-align:center;text-decoration:none;margin-top:10px;" href="https://wa.me/${OWNER_WHATSAPP_NUMBER}?text=${encodeURIComponent('Hi, I forgot which email my school account is registered under. My school name is: ')}" target="_blank" rel="noopener">${esc(t.contactOnWhatsApp)}</a>
+    <div class="switch-line"><a onclick="renderLogIn()">${esc(t.backToLogin)}</a></div>
+  `);
+}
+
 async function boot() {
   document.body.className = LANG === 'ur' ? 'ur' : '';
+
+  let handledAsRecovery = false;
+  sb.auth.onAuthStateChange((event) => {
+    if (event === 'PASSWORD_RECOVERY') {
+      handledAsRecovery = true;
+      renderSetNewPassword();
+    }
+  });
+
   const { data:{ session } } = await sb.auth.getSession();
   document.getElementById('loading').classList.add('hidden');
+  // Give the PASSWORD_RECOVERY listener a tick to fire first if this load came from a reset-link click.
+  await new Promise(r => setTimeout(r, 50));
+  if (handledAsRecovery) return;
+
   if (session && session.user) {
     CURRENT_USER = session.user;
     await afterLogin();
@@ -469,6 +558,13 @@ async function boot() {
 async function afterLogin() {
   const { data: prof } = await sb.from('profiles').select('*').eq('id', CURRENT_USER.id).maybeSingle();
   CURRENT_PROFILE = prof || { school_name: 'My School' };
+  // If this account signed up with a phone number but it hasn't landed on the
+  // profile row yet (e.g. they had to verify via OTP before their first login), sync it now.
+  const metaPhone = CURRENT_USER.user_metadata && CURRENT_USER.user_metadata.phone;
+  if (metaPhone && !CURRENT_PROFILE.phone) {
+    await sb.from('profiles').update({ phone: metaPhone }).eq('id', CURRENT_USER.id);
+    CURRENT_PROFILE.phone = metaPhone;
+  }
   await loadAllData();
   renderApp();
 }
@@ -494,6 +590,10 @@ function renderLogIn() {
     <p class="desc">${esc(t.logInDesc)}</p>
     <label><span>${esc(t.email)}</span><input id="li-email" type="email" autocomplete="email"></label>
     <label><span>${esc(t.password)}</span><input id="li-pw" type="password" autocomplete="current-password" onkeydown="if(event.key==='Enter')submitLogIn()"></label>
+    <div style="display:flex;justify-content:space-between;margin:-6px 0 10px;font-size:12px;">
+      <a onclick="renderForgotPassword()" style="cursor:pointer;">${esc(t.forgotPassword)}</a>
+      <a onclick="renderForgotEmail()" style="cursor:pointer;">${esc(t.forgotEmail)}</a>
+    </div>
     <div id="auth-msg"></div>
     <button class="btn-primary" id="li-btn" onclick="submitLogIn()">${esc(t.logIn)}</button>
     <div class="switch-line">${esc(t.noAccount)} <a onclick="renderSignUp()">${esc(t.signUp)}</a></div>
@@ -509,6 +609,7 @@ function renderSignUp() {
     <p class="desc">${esc(t.signUpDesc)}</p>
     <label><span>${esc(t.schoolName)}</span><input id="su-school"></label>
     <label><span>${esc(t.email)}</span><input id="su-email" type="email" autocomplete="email"></label>
+    <label><span>${esc(t.phoneNumber)}</span><input id="su-phone" type="tel" autocomplete="tel" placeholder="03XXXXXXXXX"></label>
     <label><span>${esc(t.password)}</span><input id="su-pw" type="password" autocomplete="new-password"></label>
     <label><span>${esc(t.confirmPassword)}</span><input id="su-pw2" type="password" autocomplete="new-password" onkeydown="if(event.key==='Enter')submitSignUp()"></label>
     <div id="auth-msg"></div>
@@ -529,6 +630,7 @@ function toggleLangAuth(isSignUp) {
 async function submitSignUp() {
   const school = document.getElementById('su-school').value.trim();
   const email = document.getElementById('su-email').value.trim();
+  const phone = document.getElementById('su-phone').value.trim();
   const pw = document.getElementById('su-pw').value;
   const pw2 = document.getElementById('su-pw2').value;
   const msg = document.getElementById('auth-msg');
@@ -557,7 +659,7 @@ async function submitSignUp() {
 
   const { data, error } = await sb.auth.signUp({
     email, password: pw,
-    options: { data: { school_name: school } }
+    options: { data: { school_name: school, phone } }
   });
   btn.disabled = false;
   if (error) { msg.innerHTML = `<div class="err">${esc(error.message)}</div>`; return; }
@@ -565,6 +667,9 @@ async function submitSignUp() {
   if (data.session) {
     // Email confirmation is off on this project — logs straight in.
     CURRENT_USER = data.user;
+    // Best-effort: also store the phone number directly on the profile row now
+    // that we have an authenticated session (RLS allows updating our own row).
+    if (phone) await sb.from('profiles').update({ phone }).eq('id', CURRENT_USER.id);
     await afterLogin();
     return;
   }
@@ -635,11 +740,38 @@ function overdueReminderMessage(s) {
     : `Dear Parent, ${s.name}'s school fee dues are now ${months}+ months overdue, totaling Rs ${balance}. Please clear the balance at your earliest convenience. Thank you - School`;
 }
 
-// Opens the phone's own SMS app pre-filled with an overdue reminder for this student's father.
+// Month-by-month breakdown of unpaid dues (e.g. "فروری: روپے 500" / "مارچ: روپے 600"),
+// built from the same academic-year ledger shown on the student's fee card so the
+// figures always match what's on screen. A month only appears here if that month's
+// own charges weren't fully paid off — not the running cumulative balance.
+const UR_MONTH_NAMES = ['جنوری','فروری','مارچ','اپریل','مئی','جون','جولائی','اگست','ستمبر','اکتوبر','نومبر','دسمبر'];
+function duesBreakdownLinesUrdu(studentId) {
+  const { rows } = buildAcademicYearLedger(studentId);
+  return rows
+    .filter(r => !r.blank)
+    .map(r => {
+      const monthDue = Number(r.e.school_fee||0) + Number(r.e.sports_fund||0) + Number(r.e.admission_fee||0) + Number(r.e.exam_fee||0) - Number(r.e.amount||0);
+      if (monthDue <= 0) return null;
+      const monthNum = Number(r.mk.split('-')[1]);
+      return `${UR_MONTH_NAMES[monthNum-1]}: روپے ${fmt(monthDue)}`;
+    })
+    .filter(Boolean);
+}
+
+// Always in Urdu regardless of the site's current display language, since parents
+// are the intended recipients.
+function duesReminderMessageUrdu(s) {
+  const lines = duesBreakdownLinesUrdu(s.id);
+  const breakdown = lines.length ? ('\n' + lines.join('\n')) : '';
+  const total = fmt(Math.max(0, studentBalance(s.id)));
+  return `محترم سرپرست،\n${s.name} کی فیس کے واجبات درج ذیل ہیں:${breakdown}\nکل بقایا رقم: روپے ${total}\nبراہ کرم جلد از جلد ادائیگی کریں۔ شکریہ - اسکول`;
+}
+
+// Opens WhatsApp with the father's number and the Urdu dues-breakdown message pre-filled.
 function sendOverdueReminderSms(id) {
   const s = DATA.students.find(x => x.id === id);
   if (!s) return;
-  openFatherSms(s.contact, overdueReminderMessage(s));
+  openFatherWhatsapp(s.contact, duesReminderMessageUrdu(s));
 }
 
 function studentPayments(id){ return DATA.feePayments.filter(p=>p.student_id===id); }
@@ -1076,8 +1208,8 @@ function tplStudents() {
       : type==='orphan' ? `<span class="pill orphan">${esc(t.orphan)}</span>`
       : `<span class="pill ${due>0?'bad':'good'}">${due>0 ? '₨'+fmt(due)+' '+esc(t.due) : esc(t.paid)}</span>`;
     const overdue = monthsOverdue(s);
-    const smsBtn = overdue >= 2
-      ? `<button class="print-btn" title="${overdue}+ ${esc(t.due)} — ${esc(t.sendSmsToFather)}" onclick="event.stopPropagation(); sendOverdueReminderSms('${s.id}')">📩</button>`
+    const smsBtn = isFeePaying(s) && studentBalance(s.id) > 0
+      ? `<button class="print-btn" title="${esc(t.sendSmsToFather)}" onclick="event.stopPropagation(); sendOverdueReminderSms('${s.id}')">📩</button>`
       : '';
     return `
       <button class="card-btn" onclick="openStudentDetail('${s.id}')">
@@ -1260,9 +1392,9 @@ function openStudentDetail(id) {
         <div class="val" style="color:${currentBalance>0?'var(--rust)':'var(--sage)'};">₨${fmt(currentBalance)}</div>
       </div>
     </div>
-    ${monthsOverdue(s) >= 2 ? `
+    ${isFeePaying(s) && currentBalance > 0 ? `
     <button class="btn-ghost" style="width:100%;margin-bottom:16px;color:var(--rust);border-color:var(--rust);" onclick="sendOverdueReminderSms('${id}')">
-      📩 ${esc(t.sendSmsToFather)} (${monthsOverdue(s)}+ ${esc(t.due)})
+      📩 ${esc(t.sendSmsToFather)}
     </button>` : ''}
 
     <h4 class="section-title" style="margin-top:0;">${esc(t.addEntry)}</h4>
