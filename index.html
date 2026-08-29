@@ -364,7 +364,6 @@ const T = {
     sendSmsToFather:'Send SMS to father', overdueRemindersTitle:'Send overdue reminders',
     overdueRemindersDesc:'These students are 2+ months behind on fees. Tap Send next to each to open your SMS app with a reminder pre-filled for their father.',
     noOverdueStudents:'No students are 2+ months overdue right now.', send:'Send',
-    numMonths:'Number of months', numMonthsHint:'Adds this many consecutive months starting from the month above, each with the same amounts.',
     signUpPendingTitle:'Almost done!',
     signUpPendingDesc:'A confirmation email has been sent to your inbox. Please forward that email (or the link inside it) to us on WhatsApp to activate your account.',
     admin:'Admin', adminPanel:'Admin Panel',
@@ -422,7 +421,6 @@ const T = {
     sendSmsToFather:'والد کو ایس ایم ایس بھیجیں', overdueRemindersTitle:'واجبات کی یاد دہانی بھیجیں',
     overdueRemindersDesc:'یہ طلبہ 2 یا زائد مہینوں سے فیس کے واجب الادا ہیں۔ ہر ایک کے سامنے "بھیجیں" دبائیں تاکہ آپ کی ایس ایم ایس ایپ والد کے لیے پیغام کے ساتھ کھل جائے۔',
     noOverdueStudents:'فی الحال کوئی طالب علم 2 مہینوں سے زائد واجب الادا نہیں ہے۔', send:'بھیجیں',
-    numMonths:'مہینوں کی تعداد', numMonthsHint:'اوپر منتخب مہینے سے شروع ہو کر اتنے ہی لگاتار مہینوں کی انٹری شامل کرے گا، ہر ایک وہی رقوم کے ساتھ۔',
     signUpPendingTitle:'تقریباً مکمل!',
     signUpPendingDesc:'آپ کے ای میل پر ایک تصدیقی ای میل بھیجی گئی ہے۔ اپنا اکاؤنٹ فعال کروانے کے لیے وہ ای میل (یا اس کے اندر موجود لنک) ہمیں واٹس ایپ پر بھیجیں۔',
     admin:'ایڈمن', adminPanel:'ایڈمن پینل',
@@ -1189,20 +1187,57 @@ async function submitAddStudent() {
   closeModal(); await loadAllData(); renderTab();
 }
 
-function openStudentDetail(id) {
-  const s = DATA.students.find(x=>x.id===id);
-  const entries = studentPayments(id).slice().sort((a,b)=> (a.month>b.month?1:a.month<b.month?-1:0) || (new Date(a.pay_date)-new Date(b.pay_date)));
+// Builds the same 12-month (Feb-Jan academic year) ledger rows used on the physical
+// fee card, so the on-screen ledger and the printed card always match.
+function buildAcademicYearLedger(studentId) {
+  const s = DATA.students.find(x => x.id === studentId);
+  const entries = studentPayments(studentId);
+  const entryByMonth = {};
+  entries.forEach(e => { entryByMonth[e.month] = e; });
 
-  // Compute running ledger: last balance carries forward from previous row's balance
+  // The fee card covers Feb–Jan. A calendar month of Feb-Dec belongs to that same
+  // year's academic year; January belongs to the *previous* year's academic year.
+  const academicYearOf = (year, month) => (month >= 2 ? year : year - 1);
+
+  let startYear;
+  if (entries.length) {
+    // Anchor to the most recent entry so newly-added months always show up here,
+    // even if that falls in a different calendar year than admission_date.
+    const latest = entries.reduce((a, b) => (a.month > b.month ? a : b));
+    const [ey, em] = latest.month.split('-').map(Number);
+    startYear = academicYearOf(ey, em);
+  } else if (s.admission_date) {
+    const d = new Date(s.admission_date);
+    startYear = academicYearOf(d.getFullYear(), d.getMonth() + 1);
+  } else {
+    const now = new Date();
+    startYear = academicYearOf(now.getFullYear(), now.getMonth() + 1);
+  }
+
+  const CARD_MONTH_ORDER = [2,3,4,5,6,7,8,9,10,11,12,1];
+  const monthKeys = CARD_MONTH_ORDER.map(m => {
+    const y = m >= 2 ? startYear : startYear + 1;
+    return `${y}-${String(m).padStart(2,'0')}`;
+  });
+
   let running = 0;
-  const rows = entries.map(e => {
+  const rows = monthKeys.map(mk => {
+    const e = entryByMonth[mk];
     const lastBalance = running;
+    if (!e) { running = lastBalance; return { mk, lastBalance, blank:true }; }
     const totalDues = lastBalance + Number(e.school_fee||0) + Number(e.sports_fund||0) + Number(e.admission_fee||0) + Number(e.exam_fee||0);
     const totalPaid = Number(e.amount||0);
     const balance = totalDues - totalPaid;
     running = balance;
-    return { e, lastBalance, totalDues, totalPaid, balance };
+    return { mk, e, lastBalance, totalDues, totalPaid, balance, blank:false };
   });
+  return { startYear, rows };
+}
+
+function openStudentDetail(id) {
+  const s = DATA.students.find(x=>x.id===id);
+  const entries = studentPayments(id).slice().sort((a,b)=> (a.month>b.month?1:a.month<b.month?-1:0) || (new Date(a.pay_date)-new Date(b.pay_date)));
+  const { startYear, rows } = buildAcademicYearLedger(id);
   const currentBalance = studentBalance(id);
   const totalPaidAllTime = entries.reduce((a,b)=>a+Number(b.amount||0),0);
 
@@ -1247,12 +1282,9 @@ function openStudentDetail(id) {
       <label style="margin-bottom:0;"><span>${esc(t.totalPaidCol)}</span><input id="p-amount" type="number" placeholder="${esc(t.enterAmount)}" value="${s.monthly_fee||''}"></label>
       <label style="margin-bottom:0;"><span>${esc(t.dateCol)}</span><input id="p-date" type="date" value="${todayISO()}"></label>
     </div>
-    <label style="margin-top:8px;"><span>${esc(t.numMonths)}</span><input id="p-months-count" type="number" min="1" value="1"></label>
-    <div style="font-size:11px;opacity:.6;margin-top:-4px;margin-bottom:4px;">${esc(t.numMonthsHint)}</div>
     <div style="margin-top:10px;"><button class="btn-primary" onclick="submitFeePayment('${id}')">+ ${esc(t.save)}</button></div>
 
-    <h4 class="section-title">${esc(t.feeLedger)}</h4>
-    ${rows.length===0 ? `<div style="padding:10px;text-align:center;font-size:12px;opacity:.5;">—</div>` : `
+    <h4 class="section-title">${esc(t.feeLedger)} · ${startYear}–${startYear+1}</h4>
     <div class="card-table-wrap">
       <table class="card-table">
         <thead><tr>
@@ -1264,24 +1296,24 @@ function openStudentDetail(id) {
         <tbody>
           ${rows.map(r=>`
             <tr>
-              <td class="mo">${esc(monthLabel(r.e.month))}</td>
+              <td class="mo">${esc(monthLabel(r.mk))}</td>
               <td>₨${fmt(r.lastBalance)}</td>
-              <td>₨${fmt(r.e.school_fee)}</td>
-              <td>₨${fmt(r.e.sports_fund)}</td>
-              <td>₨${fmt(r.e.admission_fee)}</td>
-              <td>₨${fmt(r.e.exam_fee)}</td>
-              <td>₨${fmt(r.totalDues)}</td>
-              <td>₨${fmt(r.totalPaid)}</td>
-              <td class="${r.balance>0?'bal-neg':'bal-pos'}">₨${fmt(r.balance)}</td>
-              <td>${esc(r.e.receipt_no||'—')}</td>
-              <td>${esc(r.e.pay_date||'')}</td>
-              <td><button class="print-btn" title="${esc(t.print)}" onclick="printReceipt('${id}','${r.e.id}')">🖨️</button></td>
-              <td><button class="print-btn" title="Send WhatsApp to father" onclick="openFatherWhatsapp('${esc(s.contact||'')}', 'Dear Parent, fee of Rs ${fmt(r.totalPaid)} for ${esc(s.name)} (${esc(monthLabel(r.e.month))}) has been received. Thank you. - School')">💬</button></td>
-              <td><button class="del-x" onclick="deleteFeePayment('${r.e.id}','${id}')">✕</button></td>
+              <td>${r.blank ? '—' : '₨'+fmt(r.e.school_fee)}</td>
+              <td>${r.blank ? '—' : '₨'+fmt(r.e.sports_fund)}</td>
+              <td>${r.blank ? '—' : '₨'+fmt(r.e.admission_fee)}</td>
+              <td>${r.blank ? '—' : '₨'+fmt(r.e.exam_fee)}</td>
+              <td>₨${fmt(r.blank ? r.lastBalance : r.totalDues)}</td>
+              <td>${r.blank ? '—' : '₨'+fmt(r.totalPaid)}</td>
+              <td class="${(r.blank ? r.lastBalance : r.balance)>0?'bal-neg':'bal-pos'}">₨${fmt(r.blank ? r.lastBalance : r.balance)}</td>
+              <td>${r.blank ? '—' : esc(r.e.receipt_no||'—')}</td>
+              <td>${r.blank ? '—' : esc(r.e.pay_date||'')}</td>
+              <td>${r.blank ? '' : `<button class="print-btn" title="${esc(t.print)}" onclick="printReceipt('${id}','${r.e.id}')">🖨️</button>`}</td>
+              <td>${r.blank ? '' : `<button class="print-btn" title="Send WhatsApp to father" onclick="openFatherWhatsapp('${esc(s.contact||'')}', 'Dear Parent, fee of Rs ${fmt(r.totalPaid)} for ${esc(s.name)} (${esc(monthLabel(r.mk))}) has been received. Thank you. - School')">💬</button>`}</td>
+              <td>${r.blank ? '' : `<button class="del-x" onclick="deleteFeePayment('${r.e.id}','${id}')">✕</button>`}</td>
             </tr>`).join('')}
         </tbody>
       </table>
-    </div>`}
+    </div>
     <div style="margin-top:16px;display:flex;gap:8px;">
       <button class="btn-ghost" style="flex:1;" onclick="printFeeCard('${id}')">🖨️ ${esc(t.printCard)}</button>
       <button class="btn-ghost danger" style="flex:1;" onclick="confirmDelete('student','${id}')">${esc(t.delete)}</button>
@@ -1297,19 +1329,8 @@ async function updateStudentType(studentId) {
   await loadAllData(); openStudentDetail(studentId);
 }
 
-// Given a "YYYY-MM" starting month key, returns an array of `count` consecutive month keys.
-function consecutiveMonthKeys(startMonth, count) {
-  const [y, m] = startMonth.split('-').map(Number);
-  const out = [];
-  for (let i = 0; i < count; i++) {
-    const d = new Date(y, m - 1 + i, 1);
-    out.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
-  }
-  return out;
-}
-
 async function submitFeePayment(studentId) {
-  const startMonth = document.getElementById('p-month').value;
+  const month = document.getElementById('p-month').value;
   const schoolFee = document.getElementById('p-schoolfee').value || 0;
   const sportsFund = document.getElementById('p-sports').value || 0;
   const admissionFee = document.getElementById('p-admission').value || 0;
@@ -1317,40 +1338,31 @@ async function submitFeePayment(studentId) {
   const amount = document.getElementById('p-amount').value;
   const receiptNo = document.getElementById('p-receipt').value;
   const date = document.getElementById('p-date').value;
-  const monthsCount = Math.max(1, Number(document.getElementById('p-months-count')?.value || 1));
-  if (!startMonth || amount === '') return;
+  if (!month || amount === '') return;
 
-  const months = consecutiveMonthKeys(startMonth, monthsCount);
-
-  // Guard against accidentally recording duplicate entries for any month already on file.
-  const existing = new Set(studentPayments(studentId).map(p => p.month));
-  const dupMonths = months.filter(mk => existing.has(mk));
-  if (dupMonths.length) {
-    const list = dupMonths.map(monthLabel).join(', ');
+  // Guard against accidentally recording two entries for the same student + month.
+  const dup = studentPayments(studentId).some(p => p.month === month);
+  if (dup) {
     const proceed = confirm(
       (LANG==='ur'
-        ? `ان مہینوں کے لیے پہلے سے انٹری موجود ہے: ${list}۔ کیا آپ پھر بھی شامل کرنا چاہتے ہیں؟`
-        : `An entry already exists for: ${list}. Add anyway?`)
+        ? `اس مہینے (${monthLabel(month)}) کے لیے پہلے سے ایک انٹری موجود ہے۔ کیا آپ ایک اور انٹری شامل کرنا چاہتے ہیں؟`
+        : `An entry for ${monthLabel(month)} already exists for this student. Add another entry anyway?`)
     );
     if (!proceed) return;
   }
 
-  const rows = months.map(mk => ({
-    owner_id: CURRENT_USER.id, student_id: studentId, month: mk,
+  await sb.from('fee_payments').insert({
+    owner_id: CURRENT_USER.id, student_id: studentId, month,
     school_fee: Number(schoolFee), sports_fund: Number(sportsFund),
     admission_fee: Number(admissionFee), exam_fee: Number(examFee),
     amount: Number(amount), receipt_no: receiptNo || null, pay_date: date
-  }));
-  await sb.from('fee_payments').insert(rows);
-
+  });
   const student = DATA.students.find(x => x.id === studentId);
   // Only auto-fire the parent notification when this is a real-time entry (dated today).
   // Backdated / historical entries (data import, past-month catch-up) should NOT
   // trigger a "fee has been received" message today, so those are skipped automatically.
   if (student && date === todayISO()) {
-    const totalAmount = Number(amount) * monthsCount;
-    const monthRangeLabel = monthsCount === 1 ? monthLabel(months[0]) : `${monthLabel(months[0])} – ${monthLabel(months[months.length-1])}`;
-    const msg = `Dear Parent, fee of Rs ${totalAmount.toLocaleString()} for ${student.name} (${monthRangeLabel}) has been received. Thank you. - School`;
+    const msg = `Dear Parent, fee of Rs ${Number(amount).toLocaleString()} for ${student.name} (${month}) has been received. Thank you. - School`;
     sendFeeSms(student.contact, msg); // SendPK gateway (only if configured/enabled)
     openFatherWhatsapp(student.contact, msg); // opens WhatsApp (PC/laptop or phone), pre-filled, ready to send
   }
@@ -1406,32 +1418,7 @@ async function deleteFeePayment(paymentId, studentId) {
 // Print the full 12-month fee card (Feb–Jan), matching the school's printed physical card layout
 function printFeeCard(studentId) {
   const s = DATA.students.find(x=>x.id===studentId);
-  const entries = studentPayments(studentId);
-  const entryByMonth = {};
-  entries.forEach(e => { entryByMonth[e.month] = e; });
-
-  let startYear;
-  if (s.admission_date) startYear = new Date(s.admission_date).getFullYear();
-  else if (entries.length) startYear = Math.min(...entries.map(e => Number(e.month.split('-')[0])));
-  else startYear = new Date().getFullYear();
-
-  const CARD_MONTH_ORDER = [2,3,4,5,6,7,8,9,10,11,12,1];
-  const monthKeys = CARD_MONTH_ORDER.map(m => {
-    const y = m >= 2 ? startYear : startYear + 1;
-    return `${y}-${String(m).padStart(2,'0')}`;
-  });
-
-  let running = 0;
-  const rows = monthKeys.map(mk => {
-    const e = entryByMonth[mk];
-    const lastBalance = running;
-    if (!e) { running = lastBalance; return { mk, lastBalance, blank:true }; }
-    const totalDues = lastBalance + Number(e.school_fee||0) + Number(e.sports_fund||0) + Number(e.admission_fee||0) + Number(e.exam_fee||0);
-    const totalPaid = Number(e.amount||0);
-    const balance = totalDues - totalPaid;
-    running = balance;
-    return { mk, e, lastBalance, totalDues, totalPaid, balance, blank:false };
-  });
+  const { startYear, rows } = buildAcademicYearLedger(studentId);
 
   const todayMk = todayISO().slice(0,7);
   const rowsHtml = rows.map(r => `
@@ -1448,8 +1435,6 @@ function printFeeCard(studentId) {
       <td class="fc-zero">${r.blank ? '—' : esc(r.e.receipt_no||'—')}</td>
       <td class="fc-zero">${r.blank ? '—' : esc(r.e.pay_date||'—')}</td>
     </tr>`).join('');
-
-  const finalBalance = rows.length ? (rows[rows.length-1].blank ? rows[rows.length-1].lastBalance : rows[rows.length-1].balance) : 0;
 
   document.getElementById('print-area').innerHTML = `
     <div class="fc-wrap">
