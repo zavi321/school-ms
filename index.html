@@ -1348,16 +1348,11 @@ function tplStudents() {
       </div>
       ${(() => {
         const overdueCount = DATA.students.filter(s => s.status!=='inactive' && monthsOverdue(s) >= 2).length;
-        const dueCount = DATA.students.filter(s => s.status!=='inactive' && isFeePaying(s) && studentBalance(s.id) > 0).length;
         return `
           <div style="display:flex;gap:8px;margin-bottom:12px;">
             ${overdueCount > 0 ? `
               <button class="btn-ghost" style="flex:1;" onclick="openOverdueReminders()">
                 📩 ${esc(t.overdueRemindersTitle)} (${overdueCount})
-              </button>` : ''}
-            ${dueCount > 0 ? `
-              <button class="btn-ghost" style="flex:1;" onclick="openFeeRequestReminders()">
-                💰 ${esc(t.sendFeeRequest)} (${dueCount})
               </button>` : ''}
           </div>`;
       })()}
