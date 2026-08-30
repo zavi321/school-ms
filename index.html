@@ -1852,6 +1852,13 @@ function openTeacherDetail(id) {
   `);
 }
 
+function teacherWaLink(phone, message) {
+  let digits = (phone||'').replace(/\D/g,'');
+  if (!digits) return null;
+  if (digits.startsWith('0')) digits = '92' + digits.slice(1);
+  else if (!digits.startsWith('92')) digits = '92' + digits;
+  return `https://wa.me/${digits}?text=${encodeURIComponent(message)}`;
+}
 async function submitSalaryPayment(teacherId) {
   const month = document.getElementById('p-month').value;
   const base = Number(document.getElementById('p-amount').value || 0);
@@ -1864,7 +1871,16 @@ async function submitSalaryPayment(teacherId) {
     owner_id: CURRENT_USER.id, teacher_id: teacherId, month,
     amount, attendance_bonus: bonus, extra_class_fee: extra, pay_date: date
   });
-  await loadAllData(); openTeacherDetail(teacherId);
+  await loadAllData();
+  const tc = DATA.teachers.find(x=>x.id===teacherId);
+  if (tc && tc.contact) {
+    const msg = LANG==='ur'
+      ? `السلام علیکم ${tc.name}، آپ کی تنخواہ ماہ ${monthLabel(month)} کے لیے روپے ${fmt(amount)} ادا کر دی گئی ہے۔ شکریہ۔`
+      : `Assalam-o-Alaikum ${tc.name}, your salary of Rs${fmt(amount)} for ${monthLabel(month)} has been paid. Thank you.`;
+    const link = teacherWaLink(tc.contact, msg);
+    if (link) window.open(link, '_blank');
+  }
+  openTeacherDetail(teacherId);
 }
 async function deleteSalaryPayment(paymentId, teacherId) {
   await sb.from('salary_payments').delete().eq('id', paymentId);
