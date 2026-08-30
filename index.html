@@ -351,7 +351,7 @@ function openFatherSms(mobileRaw, message) {
 const T = {
   en: {
     appName:'School Finance & Records', tagline:'For school administration',
-    dashboard:'Dashboard', students:'Students', teachers:'Teachers', finance:'Finance', reports:'Reports', dmc:'Certificates',
+    dashboard:'Dashboard', students:'Students', teachers:'Teachers', finance:'Finance', reports:'Reports', dmc:'Certificates', marksSheet:'Marks Sheet',
     thisMonth:'This Month',
     totalStudents:'Active Students', feesCollected:'Fees Collected (this month)', feesDue:'Fees Due (this month)',
     salaryPaid:'Salaries Paid (this month)', netBalance:'Net Balance (all-time)', recentActivity:'Recent Activity',
@@ -434,7 +434,7 @@ const T = {
   },
   ur: {
     appName:'مالیاتی و ریکارڈ سسٹم', tagline:'اسکول انتظامیہ کے لیے',
-    dashboard:'ڈیش بورڈ', students:'طلبہ', teachers:'اساتذہ', finance:'مالیات', reports:'رپورٹس', dmc:'سرٹیفکیٹس',
+    dashboard:'ڈیش بورڈ', students:'طلبہ', teachers:'اساتذہ', finance:'مالیات', reports:'رپورٹس', dmc:'سرٹیفکیٹس', marksSheet:'نتائج کی فہرست',
     thisMonth:'اس ماہ',
     totalStudents:'فعال طلبہ', feesCollected:'وصول شدہ فیس (اس ماہ)', feesDue:'واجب الادا فیس (اس ماہ)',
     salaryPaid:'ادا شدہ تنخواہ (اس ماہ)', netBalance:'کل بیلنس', recentActivity:'حالیہ سرگرمی',
@@ -965,12 +965,13 @@ const NAV_ICONS = {
   finance: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2"/></svg>`,
   reports: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>`,
   dmc: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 5c0-1 0-2 1-2h16c1 0 1 1 1 2v14c0 1 0 2-1 2H4c-1 0-1-1-1-2V5z"/><path d="M7 10h10M7 14h8M7 18h6"/></svg>`,
+  marksSheet: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="18" rx="2"/><path d="M9 8h6M3 13h18M3 18h18"/></svg>`,
   admissionRegister: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 016.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"/><path d="M9 7h7M9 11h7"/></svg>`,
   admin: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l8 4v6c0 5-3.5 8.5-8 10-4.5-1.5-8-5-8-10V6l8-4z"/></svg>`,
 };
 
 function renderNav() {
-  const tabs = ['dashboard','students','teachers','finance','reports','dmc','admissionRegister'];
+  const tabs = ['dashboard','students','teachers','finance','reports','dmc','marksSheet','admissionRegister'];
   if (CURRENT_PROFILE && CURRENT_PROFILE.is_admin) tabs.push('admin');
   document.getElementById('navbar').innerHTML = tabs.map(k => `
     <button class="${TAB===k?'active':''}" onclick="setTab('${k}')">
@@ -992,6 +993,7 @@ function renderTab() {
   else if (TAB==='finance') main.innerHTML = tplFinance();
   else if (TAB==='reports') main.innerHTML = tplReports();
   else if (TAB==='dmc') main.innerHTML = tplDMC();
+  else if (TAB==='marksSheet') main.innerHTML = tplMarksSheet();
   else if (TAB==='admissionRegister') main.innerHTML = tplAdmissionRegister();
   else if (TAB==='admin') { main.innerHTML = tplAdmin(); loadWhitelist(); return; }
   main.innerHTML += `<div class="notice">${esc(t.sharedNotice)}</div>`;
@@ -2305,6 +2307,118 @@ function printAllDMC() {
   });
   html += '</body></html>';
   const w = window.open('', '', 'height=900,width=800');
+  w.document.write(html);
+  w.document.close();
+  setTimeout(() => w.print(), 500);
+}
+
+// --------- MARKS SHEET (Class-wise results entry) ---------
+let marksSheetSelectedClass = '';
+let marksSheetData = {}; // {studentId: {subject: marks}}
+
+function tplMarksSheet() {
+  const classes = [...new Set(DATA.students.map(s => s.class_name).filter(Boolean))].sort((a,b) => CLASS_OPTIONS.indexOf(a) - CLASS_OPTIONS.indexOf(b));
+  
+  if (!marksSheetSelectedClass && classes.length) marksSheetSelectedClass = classes[0];
+  
+  const studentsInClass = DATA.students.filter(s => s.class_name === marksSheetSelectedClass).sort((a,b) => (a.name||'').localeCompare(b.name||''));
+  
+  const subjects = dmcSubjects.length ? dmcSubjects.map(s => s.name) : ['Urdu', 'English', 'Math'];
+  
+  let tableHtml = `
+    <table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:16px;">
+      <thead>
+        <tr style="background:#0F2740;color:#fff;position:sticky;top:0;">
+          <th style="padding:8px;text-align:left;min-width:150px;">Student Name</th>
+          ${subjects.map(s => `<th style="padding:8px;text-align:center;min-width:80px;">${esc(s)}</th>`).join('')}
+        </tr>
+      </thead>
+      <tbody>
+  `;
+  
+  studentsInClass.forEach(student => {
+    if (!marksSheetData[student.id]) marksSheetData[student.id] = {};
+    tableHtml += `<tr style="border-bottom:1px solid #ddd;">
+      <td style="padding:8px;text-align:left;font-weight:500;">${esc(student.name)}</td>
+      ${subjects.map(subj => {
+        const key = `ms-${student.id}-${subj}`;
+        const val = marksSheetData[student.id][subj] || '';
+        return `<td style="padding:4px;"><input type="number" id="${key}" value="${val}" placeholder="—" style="width:100%;text-align:center;padding:4px;border:1px solid #ccc;" onchange="marksSheetData['${student.id}']['${subj}']=this.value;"></td>`;
+      }).join('')}
+    </tr>`;
+  });
+  
+  tableHtml += `</tbody></table>`;
+  
+  return `
+    <h2>📋 Marks Sheet</h2>
+    
+    <div class="card">
+      <h3 style="margin-top:0;">Select Class</h3>
+      <select id="ms-class-select" onchange="marksSheetSelectedClass=this.value; renderTab();" style="margin-bottom:0;">
+        <option value="">-- Select Class --</option>
+        ${classes.map(c => `<option value="${c}" ${c===marksSheetSelectedClass?'selected':''}>${esc(c)}</option>`).join('')}
+      </select>
+    </div>
+
+    ${marksSheetSelectedClass ? `
+    <div class="card">
+      <h3 style="margin-top:0;">Class: ${esc(marksSheetSelectedClass)}</h3>
+      <p style="font-size:11px;opacity:.6;">Enter marks for each student. Click "Export to PDF" when done.</p>
+      ${studentsInClass.length ? tableHtml : '<p style="opacity:.5;text-align:center;">No students in this class</p>'}
+      ${studentsInClass.length ? `<button class="btn-ghost" onclick="exportMarksSheetPDF('${marksSheetSelectedClass}')">📄 Export to PDF</button>` : ''}
+    </div>
+    ` : '<p style="text-align:center;opacity:.5;margin-top:20px;">Select a class to view and edit marks</p>'}
+  `;
+}
+
+function exportMarksSheetPDF(className) {
+  const studentsInClass = DATA.students.filter(s => s.class_name === className).sort((a,b) => (a.name||'').localeCompare(b.name||''));
+  const subjects = dmcSubjects.length ? dmcSubjects.map(s => s.name) : ['Urdu', 'English', 'Math'];
+  
+  let html = `
+    <html>
+    <head>
+      <meta charset="utf-8">
+      <style>
+        body { font-family: Arial, sans-serif; margin: 20px; background: #f5f5f5; }
+        .header { text-align: center; margin-bottom: 20px; border-bottom: 2px solid #0F2740; padding-bottom: 10px; }
+        .school-name { font-size: 18px; font-weight: bold; color: #0F2740; }
+        .class-name { font-size: 14px; color: #666; margin-top: 5px; }
+        table { width: 100%; border-collapse: collapse; background: white; margin-bottom: 30px; }
+        th { background: #0F2740; color: white; padding: 10px; text-align: left; font-weight: bold; border: 1px solid #0F2740; }
+        td { padding: 8px; border: 1px solid #ddd; }
+        .page-break { page-break-after: always; }
+        @media print { body { background: white; } }
+      </style>
+    </head>
+    <body>
+      <div class="header">
+        <div class="school-name">${CURRENT_PROFILE?.school_name || 'School Name'}</div>
+        <div class="class-name">Marks Sheet - ${esc(className)}</div>
+      </div>
+      
+      <table>
+        <thead>
+          <tr>
+            <th style="min-width: 150px;">Student Name</th>
+            ${subjects.map(s => `<th style="min-width: 80px; text-align: center;">${esc(s)}</th>`).join('')}
+          </tr>
+        </thead>
+        <tbody>
+          ${studentsInClass.map(student => `
+            <tr>
+              <td>${esc(student.name)}</td>
+              ${subjects.map(subj => `<td style="text-align: center;">${marksSheetData[student.id] && marksSheetData[student.id][subj] ? marksSheetData[student.id][subj] : '—'}</td>`).join('')}
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    </body>
+    </html>
+  `;
+  
+  const w = window.open('', '', 'height=900,width=1000');
   w.document.write(html);
   w.document.close();
   setTimeout(() => w.print(), 500);
