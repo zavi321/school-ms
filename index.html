@@ -2147,7 +2147,7 @@ function tplDMC() {
     
     <div class="card">
       <h3 style="margin-top:0;">Upload Result List (Excel)</h3>
-      <p style="font-size:12px;opacity:.7;">Upload an Excel file with columns: Student Name, Class, Subject1 Marks, Subject2 Marks, etc.</p>
+      <p style="font-size:12px;opacity:.7;">Upload an Excel file with columns: Student Name, Father Name, Class, Subject1 Marks, Subject2 Marks, etc.</p>
       <label style="margin-bottom:0;">
         <span>Select Excel File</span>
         <input type="file" id="dmc-file-input" accept=".xlsx,.xls,.csv" onchange="handleDMCExcelUpload(this.files[0])">
@@ -2218,6 +2218,7 @@ function handleDMCExcelUpload(file) {
       dmcResults = rows.map((r, idx) => ({
         serialNo: idx + 1,
         studentName: r['Student Name'] || r['Name'] || r['Student'] || '',
+        fatherName: r['Father Name'] || r["Father's Name"] || r['Father'] || r['S/O'] || r['Walid'] || '',
         class: r['Class'] || r['جماعت'] || '',
         marks: {} // will be filled from other columns
       }));
@@ -2226,7 +2227,7 @@ function handleDMCExcelUpload(file) {
       dmcResults.forEach((r, idx) => {
         const row = rows[idx];
         Object.keys(row).forEach(col => {
-          if (!['Student Name','Name','Student','Class','جماعت'].includes(col)) {
+          if (!['Student Name','Name','Student','Class','جماعت','Father Name',"Father's Name",'Father','S/O','Walid'].includes(col)) {
             r.marks[col] = Number(row[col]) || 0;
           }
         });
@@ -2286,6 +2287,7 @@ function renderDMCCertificate(result) {
 
         <div style="text-align:center;margin-bottom:18px;">
           <div style="font-family:'Fraunces',serif;font-size:19px;font-weight:600;color:#0F2740;">${esc(result.studentName)}</div>
+          ${result.fatherName ? `<div style="font-size:12px;color:#666;margin-top:3px;">Father Name: ${esc(result.fatherName)}</div>` : ''}
         </div>
 
         <table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:16px;">
@@ -2342,6 +2344,7 @@ function tplMarksSheet() {
         <thead>
           <tr style="background:#0F2740;color:#fff;position:sticky;top:0;">
             <th style="padding:8px;text-align:left;min-width:150px;">Student Name</th>
+            <th style="padding:8px;text-align:left;min-width:150px;">Father Name</th>
             ${msSubjects.map(s => `<th style="padding:8px;text-align:center;min-width:80px;">${esc(s)}</th>`).join('')}
             <th style="padding:8px;text-align:center;min-width:60px;">Action</th>
           </tr>
@@ -2355,6 +2358,7 @@ function tplMarksSheet() {
       
       tableHtml += `<tr style="border-bottom:1px solid #ddd;">
         <td style="padding:8px;text-align:left;font-weight:500;">${esc(student.name)}</td>
+        <td style="padding:4px;"><input type="text" value="${esc(student.fatherName||'')}" placeholder="Father Name" style="width:100%;padding:4px;border:1px solid #ccc;" onchange="msStudents['${msSelectedClass}'][${idx}].fatherName=this.value;"></td>
         ${msSubjects.map(subj => {
           const val = msMarksData[msSelectedClass][student.id][subj] || '';
           return `<td style="padding:4px;"><input type="number" value="${val}" placeholder="—" style="width:100%;text-align:center;padding:4px;border:1px solid #ccc;" onchange="msMarksData['${msSelectedClass}']['${student.id}']['${subj}']=this.value;"></td>`;
@@ -2410,6 +2414,7 @@ function tplMarksSheet() {
       
       <div style="display:flex;gap:6px;margin-bottom:12px;">
         <input type="text" id="ms-student-input" placeholder="Student Name" style="flex:1;">
+        <input type="text" id="ms-father-input" placeholder="Father Name" style="flex:1;">
         <button class="btn-ghost" onclick="addMarksSheetStudent()">+ Add Student</button>
       </div>
       
@@ -2460,17 +2465,20 @@ function addMarksSheetSubject() {
 
 function addMarksSheetStudent() {
   const input = document.getElementById('ms-student-input');
+  const fatherInput = document.getElementById('ms-father-input');
   const name = input.value.trim();
+  const fatherName = fatherInput ? fatherInput.value.trim() : '';
   if (!name || !msSelectedClass) return;
   
   if (!msStudents[msSelectedClass]) msStudents[msSelectedClass] = [];
   if (!msMarksData[msSelectedClass]) msMarksData[msSelectedClass] = {};
   
   const id = Math.random().toString(36).substr(2, 9);
-  msStudents[msSelectedClass].push({id, name});
+  msStudents[msSelectedClass].push({id, name, fatherName});
   msMarksData[msSelectedClass][id] = {};
   
   input.value = '';
+  if (fatherInput) fatherInput.value = '';
   renderTab();
 }
 
@@ -2486,7 +2494,7 @@ function exportMarksSheetExcel(className) {
   if (!classStudents.length || !msSubjects.length) return;
 
   const rows = classStudents.map(student => {
-    const row = { 'Student Name': student.name };
+    const row = { 'Student Name': student.name, 'Father Name': student.fatherName || '' };
     let total = 0;
     msSubjects.forEach(subj => {
       const val = (msMarksData[className] && msMarksData[className][student.id] && msMarksData[className][student.id][subj]) || '';
@@ -2504,7 +2512,7 @@ function exportMarksSheetExcel(className) {
     const addr = XLSX.utils.encode_cell({ r: 0, c });
     if (ws[addr]) ws[addr].s = { font: { bold: true } };
   }
-  ws['!cols'] = [{ wch: 24 }, ...msSubjects.map(() => ({ wch: 12 })), { wch: 10 }];
+  ws['!cols'] = [{ wch: 24 }, { wch: 24 }, ...msSubjects.map(() => ({ wch: 12 })), { wch: 10 }];
 
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, className.slice(0, 31) || 'Marks Sheet');
@@ -2541,6 +2549,7 @@ function printMarksSheet(className) {
         <thead>
           <tr>
             <th style="min-width: 150px;">Student Name</th>
+            <th style="min-width: 150px;">Father Name</th>
             ${msSubjects.map(s => `<th style="min-width: 80px; text-align: center;">${esc(s)}</th>`).join('')}
           </tr>
         </thead>
@@ -2548,6 +2557,7 @@ function printMarksSheet(className) {
           ${classStudents.map(student => `
             <tr>
               <td>${esc(student.name)}</td>
+              <td>${esc(student.fatherName||'—')}</td>
               ${msSubjects.map(subj => `<td style="text-align: center;">${msMarksData[className] && msMarksData[className][student.id] && msMarksData[className][student.id][subj] ? msMarksData[className][student.id][subj] : '—'}</td>`).join('')}
             </tr>
           `).join('')}
