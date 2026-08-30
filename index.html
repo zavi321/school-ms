@@ -535,6 +535,18 @@ const monthLabel = mk => { const [y,m]=mk.split('-').map(Number); return new Dat
 const todayISO = () => new Date().toISOString().slice(0,10);
 const esc = s => (s==null?'':String(s)).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
+// Shared error surface for Supabase writes. Returns true (and alerts the user)
+// if an error occurred, so callers can `if (reportSaveError(error)) return;`
+// instead of silently continuing as if the save succeeded.
+function reportSaveError(error) {
+  if (!error) return false;
+  console.error('Save failed:', error);
+  alert(LANG === 'ur'
+    ? `محفوظ کرنے میں خرابی پیش آئی: ${error.message}\nبراہ کرم انٹرنیٹ کنکشن چیک کریں اور دوبارہ کوشش کریں۔`
+    : `Save failed: ${error.message}\nPlease check your internet connection and try again.`);
+  return true;
+}
+
 let DATA = { students:[], feePayments:[], teachers:[], salaryPayments:[], transactions:[], admissionRegister:[] };
 let TAB = 'dashboard';
 let CURRENT_USER = null;   // { id, email }
@@ -1199,7 +1211,8 @@ async function submitSettings() {
   if (newPw && newPw.length < 6) { msg.innerHTML = `<div class="err">${esc(t.passwordTooShort)}</div>`; return; }
 
   if (schoolName && schoolName !== CURRENT_PROFILE.school_name) {
-    await sb.from('profiles').update({ school_name: schoolName }).eq('id', CURRENT_USER.id);
+    const { error } = await sb.from('profiles').update({ school_name: schoolName }).eq('id', CURRENT_USER.id);
+    if (error) { msg.innerHTML = `<div class="err">${esc(error.message)}</div>`; return; }
     CURRENT_PROFILE.school_name = schoolName;
   }
   if (newPw) {
@@ -1443,7 +1456,7 @@ async function submitAddStudent() {
   const fee = document.getElementById('f-fee').value;
   const type = document.getElementById('f-type').value;
   if (!name || fee==='') return;
-  await sb.from('students').insert({
+  const { error } = await sb.from('students').insert({
     owner_id: CURRENT_USER.id,
     name, father_name: document.getElementById('f-father').value,
     class_name: document.getElementById('f-class').value,
@@ -1451,6 +1464,7 @@ async function submitAddStudent() {
     admission_date: document.getElementById('f-admission').value,
     monthly_fee: type==='paying' ? Number(fee) : 0, contact: document.getElementById('f-contact').value, status:'active'
   });
+  if (reportSaveError(error)) return;
   closeModal(); await loadAllData(); renderTab();
 }
 
@@ -1600,7 +1614,8 @@ async function updateStudentType(studentId) {
   const type = document.getElementById('d-type').value;
   const update = { student_type: type };
   if (type !== 'paying') update.monthly_fee = 0;
-  await sb.from('students').update(update).eq('id', studentId);
+  const { error } = await sb.from('students').update(update).eq('id', studentId);
+  if (reportSaveError(error)) return;
   await loadAllData(); openStudentDetail(studentId);
 }
 
@@ -1626,12 +1641,13 @@ async function submitFeePayment(studentId) {
     if (!proceed) return;
   }
 
-  await sb.from('fee_payments').insert({
+  const { error } = await sb.from('fee_payments').insert({
     owner_id: CURRENT_USER.id, student_id: studentId, month,
     school_fee: Number(schoolFee), sports_fund: Number(sportsFund),
     admission_fee: Number(admissionFee), exam_fee: Number(examFee),
     amount: Number(amount), receipt_no: receiptNo || null, pay_date: date
   });
+  if (reportSaveError(error)) return;
   const student = DATA.students.find(x => x.id === studentId);
   // Only auto-fire the parent notification when this is a real-time entry (dated today).
   // Backdated / historical entries (data import, past-month catch-up) should NOT
@@ -1807,12 +1823,13 @@ async function submitAddTeacher() {
   const name = document.getElementById('f-name').value.trim();
   const salary = document.getElementById('f-salary').value;
   if (!name || salary==='') return;
-  await sb.from('teachers').insert({
+  const { error } = await sb.from('teachers').insert({
     owner_id: CURRENT_USER.id,
     name, subject: document.getElementById('f-subject').value,
     monthly_salary: Number(salary), join_date: document.getElementById('f-join').value,
     contact: document.getElementById('f-contact').value
   });
+  if (reportSaveError(error)) return;
   closeModal(); await loadAllData(); renderTab();
 }
 
@@ -1873,10 +1890,23 @@ async function submitSalaryPayment(teacherId) {
   const date = document.getElementById('p-date').value;
   const amount = base + bonus + extra;
   if (!amount) return;
-  await sb.from('salary_payments').insert({
+
+  // Guard against accidentally recording two salary entries for the same teacher + month.
+  const dup = teacherPayments(teacherId).some(p => p.month === month);
+  if (dup) {
+    const proceed = confirm(
+      (LANG==='ur'
+        ? `اس مہینے (${monthLabel(month)}) کے لیے پہلے سے ایک تنخواہ کی انٹری موجود ہے۔ کیا آپ ایک اور انٹری شامل کرنا چاہتے ہیں؟`
+        : `A salary entry for ${monthLabel(month)} already exists for this teacher. Add another entry anyway?`)
+    );
+    if (!proceed) return;
+  }
+
+  const { error } = await sb.from('salary_payments').insert({
     owner_id: CURRENT_USER.id, teacher_id: teacherId, month,
     amount, attendance_bonus: bonus, extra_class_fee: extra, pay_date: date
   });
+  if (reportSaveError(error)) return;
   await loadAllData();
   const tc = DATA.teachers.find(x=>x.id===teacherId);
   if (tc && tc.contact) {
@@ -1945,11 +1975,12 @@ async function submitAddTxn() {
   const desc = document.getElementById('f-desc').value.trim();
   const amt = document.getElementById('f-amt').value;
   if (!desc || amt==='') return;
-  await sb.from('transactions').insert({
+  const { error } = await sb.from('transactions').insert({
     owner_id: CURRENT_USER.id,
     type: txnType, category: document.getElementById('f-cat').value, description: desc,
     amount: Number(amt), txn_date: document.getElementById('f-date').value
   });
+  if (reportSaveError(error)) return;
   closeModal(); await loadAllData(); renderTab();
 }
 async function deleteTxn(id) {
@@ -2802,7 +2833,8 @@ function readAdmissionForm() {
 async function submitAddAdmissionEntry() {
   const entry = readAdmissionForm();
   if (!entry.student_name) return;
-  await sb.from('admission_register').insert({ owner_id: CURRENT_USER.id, ...entry });
+  const { error } = await sb.from('admission_register').insert({ owner_id: CURRENT_USER.id, ...entry });
+  if (reportSaveError(error)) return;
   closeModal(); await loadAllData(); renderTab();
 }
 
@@ -2867,7 +2899,8 @@ function printAdmissionEntry(id) {
 async function submitEditAdmissionEntry(id) {
   const entry = readAdmissionForm();
   if (!entry.student_name) return;
-  await sb.from('admission_register').update(entry).eq('id', id);
+  const { error } = await sb.from('admission_register').update(entry).eq('id', id);
+  if (reportSaveError(error)) return;
   closeModal(); await loadAllData(); renderTab();
 }
 
