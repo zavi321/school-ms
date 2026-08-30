@@ -2312,42 +2312,44 @@ function printAllDMC() {
   setTimeout(() => w.print(), 500);
 }
 
-// --------- MARKS SHEET (Class-wise results entry) ---------
-let marksSheetSelectedClass = '';
-let marksSheetData = {}; // {studentId: {subject: marks}}
-let marksSheetSubjects = []; // independent subject list for marks sheet
+// --------- MARKS SHEET (Independent - separate from Students database) ---------
+let msClasses = ['Nursery', 'KG', '1st', '2nd', '3rd']; // independent class list
+let msStudents = {}; // {className: [{id, name}, ...]}
+let msSubjects = []; // independent subject list
+let msMarksData = {}; // {className: {studentId: {subject: marks}}}
+let msSelectedClass = '';
+let msNewStudentName = '';
 
 function tplMarksSheet() {
-  const classes = [...new Set(DATA.students.map(s => s.class_name).filter(Boolean))].sort((a,b) => CLASS_OPTIONS.indexOf(a) - CLASS_OPTIONS.indexOf(b));
+  if (!msSelectedClass && msClasses.length) msSelectedClass = msClasses[0];
   
-  if (!marksSheetSelectedClass && classes.length) marksSheetSelectedClass = classes[0];
-  
-  const studentsInClass = DATA.students.filter(s => s.class_name === marksSheetSelectedClass).sort((a,b) => (a.name||'').localeCompare(b.name||''));
-  
-  const subjects = marksSheetSubjects.length ? marksSheetSubjects : ['Urdu', 'English', 'Math'];
+  const classStudents = msStudents[msSelectedClass] || [];
   
   let tableHtml = '';
-  if (studentsInClass.length) {
+  if (classStudents.length > 0) {
     tableHtml = `
-      <table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:16px;overflow-x:auto;display:block;">
+      <table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:16px;">
         <thead>
           <tr style="background:#0F2740;color:#fff;position:sticky;top:0;">
             <th style="padding:8px;text-align:left;min-width:150px;">Student Name</th>
-            ${subjects.map(s => `<th style="padding:8px;text-align:center;min-width:80px;">${esc(s)}</th>`).join('')}
+            ${msSubjects.map(s => `<th style="padding:8px;text-align:center;min-width:80px;">${esc(s)}</th>`).join('')}
+            <th style="padding:8px;text-align:center;min-width:60px;">Action</th>
           </tr>
         </thead>
         <tbody>
     `;
     
-    studentsInClass.forEach(student => {
-      if (!marksSheetData[student.id]) marksSheetData[student.id] = {};
+    classStudents.forEach((student, idx) => {
+      if (!msMarksData[msSelectedClass]) msMarksData[msSelectedClass] = {};
+      if (!msMarksData[msSelectedClass][student.id]) msMarksData[msSelectedClass][student.id] = {};
+      
       tableHtml += `<tr style="border-bottom:1px solid #ddd;">
         <td style="padding:8px;text-align:left;font-weight:500;">${esc(student.name)}</td>
-        ${subjects.map(subj => {
-          const key = `ms-${student.id}-${subj}`;
-          const val = marksSheetData[student.id][subj] || '';
-          return `<td style="padding:4px;"><input type="number" id="${key}" value="${val}" placeholder="—" style="width:100%;text-align:center;padding:4px;border:1px solid #ccc;" onchange="marksSheetData['${student.id}']['${subj}']=this.value;"></td>`;
+        ${msSubjects.map(subj => {
+          const val = msMarksData[msSelectedClass][student.id][subj] || '';
+          return `<td style="padding:4px;"><input type="number" value="${val}" placeholder="—" style="width:100%;text-align:center;padding:4px;border:1px solid #ccc;" onchange="msMarksData['${msSelectedClass}']['${student.id}']['${subj}']=this.value;"></td>`;
         }).join('')}
+        <td style="padding:4px;text-align:center;"><button class="btn-ghost" style="padding:0;font-size:11px;" onclick="removeMarksSheetStudent('${msSelectedClass}', ${idx})">✕</button></td>
       </tr>`;
     });
     
@@ -2355,14 +2357,23 @@ function tplMarksSheet() {
   }
   
   return `
-    <h2>📋 Marks Sheet</h2>
+    <h2>📋 Marks Sheet (Independent)</h2>
     
     <div class="card">
-      <h3 style="margin-top:0;">Select Class</h3>
-      <select id="ms-class-select" onchange="marksSheetSelectedClass=this.value; renderTab();" style="margin-bottom:0;">
-        <option value="">-- Select Class --</option>
-        ${classes.map(c => `<option value="${c}" ${c===marksSheetSelectedClass?'selected':''}>${esc(c)}</option>`).join('')}
-      </select>
+      <h3 style="margin-top:0;">Classes</h3>
+      <p style="font-size:11px;opacity:.6;">Add or remove classes</p>
+      <div style="display:flex;gap:6px;margin-bottom:8px;">
+        <input type="text" id="ms-new-class" placeholder="Class Name (e.g., 1st, 2nd)" style="flex:1;">
+        <button class="btn-ghost" onclick="addMarksSheetClass()">+ Add</button>
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px;">
+        ${msClasses.map((c, i) => `
+          <div style="background:#F0EBDA;padding:6px 10px;border-radius:6px;font-size:12px;display:flex;align-items:center;gap:6px;">
+            <button style="background:none;border:none;padding:0;cursor:pointer;font-weight:${c===msSelectedClass?'bold':'normal'};color:${c===msSelectedClass?'#0F2740':'inherit'};" onclick="msSelectedClass='${c}';renderTab();">${esc(c)}</button>
+            <button class="btn-ghost" style="padding:0;font-size:10px;opacity:.6;" onclick="removeMarksSheetClass(${i})">✕</button>
+          </div>
+        `).join('')}
+      </div>
     </div>
 
     <div class="card">
@@ -2373,55 +2384,106 @@ function tplMarksSheet() {
         <button class="btn-ghost" onclick="addMarksSheetSubject()">+ Add</button>
       </div>
       <div style="display:flex;flex-wrap:wrap;gap:6px;">
-        ${marksSheetSubjects.map((s, i) => `
+        ${msSubjects.map((s, i) => `
           <div style="background:#F0EBDA;padding:6px 10px;border-radius:6px;font-size:12px;display:flex;align-items:center;gap:6px;">
             ${esc(s)}
-            <button class="btn-ghost" style="padding:0;font-size:10px;opacity:.6;" onclick="marksSheetSubjects.splice(${i},1);renderTab();">✕</button>
+            <button class="btn-ghost" style="padding:0;font-size:10px;opacity:.6;" onclick="msSubjects.splice(${i},1);renderTab();">✕</button>
           </div>
         `).join('')}
       </div>
     </div>
 
-    ${marksSheetSelectedClass ? `
+    ${msSelectedClass ? `
     <div class="card">
-      <h3 style="margin-top:0;">Class: ${esc(marksSheetSelectedClass)}</h3>
-      <p style="font-size:11px;opacity:.6;">Enter marks for each student.</p>
-      ${studentsInClass.length ? tableHtml : '<p style="opacity:.5;text-align:center;">No students in this class</p>'}
-      ${studentsInClass.length && marksSheetSubjects.length ? `<button class="btn-ghost" onclick="exportMarksSheetPDF('${marksSheetSelectedClass}')">📄 Export to PDF</button>` : ''}
+      <h3 style="margin-top:0;">Class: ${esc(msSelectedClass)}</h3>
+      <p style="font-size:11px;opacity:.6;">Add students and enter marks</p>
+      
+      <div style="display:flex;gap:6px;margin-bottom:12px;">
+        <input type="text" id="ms-student-input" placeholder="Student Name" style="flex:1;">
+        <button class="btn-ghost" onclick="addMarksSheetStudent()">+ Add Student</button>
+      </div>
+      
+      ${classStudents.length ? tableHtml : '<p style="opacity:.5;text-align:center;padding:20px;">No students yet. Add a student above.</p>'}
+      
+      ${classStudents.length && msSubjects.length ? `<button class="btn-ghost" onclick="printMarksSheet('${msSelectedClass}')">🖨️ Print</button>` : ''}
     </div>
-    ` : '<p style="text-align:center;opacity:.5;margin-top:20px;">Select a class to view and edit marks</p>'}
+    ` : ''}
   `;
+}
+
+function addMarksSheetClass() {
+  const input = document.getElementById('ms-new-class');
+  const cls = input.value.trim();
+  if (!cls) return;
+  if (!msClasses.includes(cls)) {
+    msClasses.push(cls);
+    msStudents[cls] = [];
+    msMarksData[cls] = {};
+    msSelectedClass = cls;
+  }
+  input.value = '';
+  renderTab();
+}
+
+function removeMarksSheetClass(idx) {
+  const cls = msClasses[idx];
+  msClasses.splice(idx, 1);
+  delete msStudents[cls];
+  delete msMarksData[cls];
+  if (msSelectedClass === cls) msSelectedClass = msClasses[0] || '';
+  renderTab();
 }
 
 function addMarksSheetSubject() {
   const input = document.getElementById('ms-new-subject');
   const subj = input.value.trim();
   if (!subj) return;
-  if (!marksSheetSubjects.includes(subj)) {
-    marksSheetSubjects.push(subj);
+  if (!msSubjects.includes(subj)) {
+    msSubjects.push(subj);
   }
   input.value = '';
   renderTab();
 }
 
-function exportMarksSheetPDF(className) {
-  const studentsInClass = DATA.students.filter(s => s.class_name === className).sort((a,b) => (a.name||'').localeCompare(b.name||''));
-  const subjects = marksSheetSubjects.length ? marksSheetSubjects : ['Urdu', 'English', 'Math'];
+function addMarksSheetStudent() {
+  const input = document.getElementById('ms-student-input');
+  const name = input.value.trim();
+  if (!name || !msSelectedClass) return;
+  
+  if (!msStudents[msSelectedClass]) msStudents[msSelectedClass] = [];
+  if (!msMarksData[msSelectedClass]) msMarksData[msSelectedClass] = {};
+  
+  const id = Math.random().toString(36).substr(2, 9);
+  msStudents[msSelectedClass].push({id, name});
+  msMarksData[msSelectedClass][id] = {};
+  
+  input.value = '';
+  renderTab();
+}
+
+function removeMarksSheetStudent(cls, idx) {
+  const student = msStudents[cls][idx];
+  msStudents[cls].splice(idx, 1);
+  delete msMarksData[cls][student.id];
+  renderTab();
+}
+
+function printMarksSheet(className) {
+  const classStudents = msStudents[className] || [];
   
   let html = `
     <html>
     <head>
       <meta charset="utf-8">
       <style>
-        body { font-family: Arial, sans-serif; margin: 20px; background: #f5f5f5; }
+        body { font-family: Arial, sans-serif; margin: 20px; }
         .header { text-align: center; margin-bottom: 20px; border-bottom: 2px solid #0F2740; padding-bottom: 10px; }
         .school-name { font-size: 18px; font-weight: bold; color: #0F2740; }
         .class-name { font-size: 14px; color: #666; margin-top: 5px; }
         table { width: 100%; border-collapse: collapse; background: white; margin-bottom: 30px; }
         th { background: #0F2740; color: white; padding: 10px; text-align: left; font-weight: bold; border: 1px solid #0F2740; }
         td { padding: 8px; border: 1px solid #ddd; }
-        .page-break { page-break-after: always; }
-        @media print { body { background: white; } }
+        @media print { body { margin: 0; padding: 10px; } }
       </style>
     </head>
     <body>
@@ -2434,14 +2496,14 @@ function exportMarksSheetPDF(className) {
         <thead>
           <tr>
             <th style="min-width: 150px;">Student Name</th>
-            ${subjects.map(s => `<th style="min-width: 80px; text-align: center;">${esc(s)}</th>`).join('')}
+            ${msSubjects.map(s => `<th style="min-width: 80px; text-align: center;">${esc(s)}</th>`).join('')}
           </tr>
         </thead>
         <tbody>
-          ${studentsInClass.map(student => `
+          ${classStudents.map(student => `
             <tr>
               <td>${esc(student.name)}</td>
-              ${subjects.map(subj => `<td style="text-align: center;">${marksSheetData[student.id] && marksSheetData[student.id][subj] ? marksSheetData[student.id][subj] : '—'}</td>`).join('')}
+              ${msSubjects.map(subj => `<td style="text-align: center;">${msMarksData[className] && msMarksData[className][student.id] && msMarksData[className][student.id][subj] ? msMarksData[className][student.id][subj] : '—'}</td>`).join('')}
             </tr>
           `).join('')}
         </tbody>
@@ -2450,10 +2512,11 @@ function exportMarksSheetPDF(className) {
     </html>
   `;
   
-  const w = window.open('', '', 'height=900,width=1000');
-  w.document.write(html);
-  w.document.close();
-  setTimeout(() => w.print(), 500);
+  const printWindow = window.open('', '', 'height=900,width=1000');
+  printWindow.document.write(html);
+  printWindow.document.close();
+  printWindow.focus();
+  setTimeout(() => printWindow.print(), 500);
 }
 
 function tplAdmissionRegister() {
