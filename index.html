@@ -253,10 +253,8 @@
 </script>
 <!-- ============================================================================ -->
 
-<!-- ============ CONFIG: SendPK SMS gateway — replace with your own values ============ -->
+<!-- ============ CONFIG: SMS reminders — actual API key lives server-side only ============ -->
 <script>
-  const SENDPK_API_KEY = "PASTE_YOUR_SENDPK_API_KEY_HERE";
-  const SENDPK_SENDER  = "PASTE_YOUR_APPROVED_SENDER_ID_HERE"; // e.g. "SMS Alert" or your school's approved brand name
   const SENDPK_ENABLED = true; // set to false to turn off fee-payment SMS without removing config
 </script>
 <!-- ==================================================================================== -->
@@ -300,14 +298,15 @@ function normalizePkMobile(raw) {
 
 async function sendFeeSms(mobileRaw, message) {
   if (!SENDPK_ENABLED) return;
-  if (!SENDPK_API_KEY || SENDPK_API_KEY.startsWith('PASTE_')) return; // not configured yet
+  if (!CURRENT_PROFILE || CURRENT_PROFILE.sms_enabled === false) return; // this school's SMS is turned off
   const mobile = normalizePkMobile(mobileRaw);
   if (!mobile) return; // no valid contact number on file
   try {
-    const params = new URLSearchParams({
-      api_key: SENDPK_API_KEY, sender: SENDPK_SENDER, mobile, message, format: 'json'
-    });
-    await fetch('https://sendpk.com/api/sms.php?' + params, { method: 'GET' });
+    // The real SendPK API key never touches the browser — it lives only inside
+    // the "send-sms" Edge Function as a server-side secret. This call is
+    // authenticated as the logged-in school (owner_id), so usage is logged
+    // per school for billing, and no school can see or reuse another's key.
+    await sb.functions.invoke('send-sms', { body: { mobile, message } });
   } catch (err) {
     console.error('SMS send failed:', err);
   }
@@ -2254,7 +2253,7 @@ function generateDMCPreview() {
 }
 
 function renderDMCCertificate(result) {
-  const totalObtained = Object.values(result.marks).reduce((a,b) => a+Number(b), 0);
+  const totalObtained = dmcSubjects.reduce((a, s) => a + (Number(result.marks[s.name]) || 0), 0);
   const totalPossible = dmcSubjects.reduce((a,b) => a+b.total, 0);
   const percentage = totalPossible ? ((totalObtained / totalPossible) * 100).toFixed(1) : 0;
   const grade = percentage >= 80 ? 'A' : percentage >= 60 ? 'B' : percentage >= 40 ? 'C' : 'D';
@@ -2405,7 +2404,10 @@ function tplMarksSheet() {
       
       ${classStudents.length ? tableHtml : '<p style="opacity:.5;text-align:center;padding:20px;">No students yet. Add a student above.</p>'}
       
-      ${classStudents.length && msSubjects.length ? `<button class="btn-ghost" onclick="printMarksSheet('${msSelectedClass}')">🖨️ Print</button>` : ''}
+      ${classStudents.length && msSubjects.length ? `
+        <button class="btn-ghost" onclick="printMarksSheet('${msSelectedClass}')">🖨️ Print</button>
+        <button class="btn-ghost" onclick="exportMarksSheetExcel('${msSelectedClass}')">📊 Export to Excel</button>
+      ` : ''}
     </div>
     ` : ''}
   `;
@@ -2466,6 +2468,38 @@ function removeMarksSheetStudent(cls, idx) {
   msStudents[cls].splice(idx, 1);
   delete msMarksData[cls][student.id];
   renderTab();
+}
+
+function exportMarksSheetExcel(className) {
+  const classStudents = msStudents[className] || [];
+  if (!classStudents.length || !msSubjects.length) return;
+
+  const rows = classStudents.map(student => {
+    const row = { 'Student Name': student.name };
+    let total = 0;
+    msSubjects.forEach(subj => {
+      const val = (msMarksData[className] && msMarksData[className][student.id] && msMarksData[className][student.id][subj]) || '';
+      row[subj] = val === '' ? '' : Number(val);
+      total += Number(val) || 0;
+    });
+    row['Total'] = total;
+    return row;
+  });
+
+  const ws = XLSX.utils.json_to_sheet(rows);
+  // Bold header row
+  const headerRange = XLSX.utils.decode_range(ws['!ref']);
+  for (let c = headerRange.s.c; c <= headerRange.e.c; c++) {
+    const addr = XLSX.utils.encode_cell({ r: 0, c });
+    if (ws[addr]) ws[addr].s = { font: { bold: true } };
+  }
+  ws['!cols'] = [{ wch: 24 }, ...msSubjects.map(() => ({ wch: 12 })), { wch: 10 }];
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, className.slice(0, 31) || 'Marks Sheet');
+
+  const schoolPart = (CURRENT_PROFILE?.school_name || 'School').replace(/[^a-zA-Z0-9]/g, '_');
+  XLSX.writeFile(wb, `${schoolPart}_MarksSheet_${className}_${todayISO()}.xlsx`, { cellStyles: true });
 }
 
 function printMarksSheet(className) {
