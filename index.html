@@ -2257,42 +2257,53 @@ function renderDMCCertificate(result) {
   const totalPossible = dmcSubjects.reduce((a,b) => a+b.total, 0);
   const percentage = totalPossible ? ((totalObtained / totalPossible) * 100).toFixed(1) : 0;
   const grade = percentage >= 80 ? 'A' : percentage >= 60 ? 'B' : percentage >= 40 ? 'C' : 'D';
-  
+
+  // Position in class: rank this student's total against every other student in the same class.
+  const classResults = dmcResults.filter(r => r.class === result.class);
+  const classTotals = classResults.map(r => dmcSubjects.reduce((a, s) => a + (Number(r.marks[s.name]) || 0), 0));
+  const sortedTotals = [...classTotals].sort((a, b) => b - a);
+  const position = sortedTotals.indexOf(totalObtained) + 1;
+  const totalStudentsInClass = classResults.length;
+
   const subjectsHtml = dmcSubjects.map(s => {
     const marks = result.marks[s.name] || 0;
     return `<tr><td style="padding:8px;border-bottom:1px solid #ddd;text-align:left;">${esc(s.name)}</td><td style="padding:8px;border-bottom:1px solid #ddd;text-align:center;font-weight:600;">${marks}</td><td style="padding:8px;border-bottom:1px solid #ddd;text-align:center;">${s.total}</td></tr>`;
   }).join('');
   
   return `
-    <div style="border:2px solid #0F2740;border-radius:8px;padding:20px;margin-bottom:12px;page-break-after:always;background:#fff;font-family:serif;">
-      <div style="text-align:center;border-bottom:2px solid #C9A227;padding-bottom:12px;margin-bottom:12px;">
-        <div style="font-size:18px;font-weight:bold;color:#0F2740;">${CURRENT_PROFILE?.school_name || 'School Name'}</div>
-        <div style="font-size:12px;opacity:.7;">DETAIL MARKS CERTIFICATE</div>
+    <div style="border:2px solid #0F2740;border-radius:10px;padding:0;margin-bottom:16px;page-break-after:always;background:#fff;font-family:'Fraunces',Inter,serif;overflow:hidden;">
+      <div style="text-align:center;background:linear-gradient(135deg,#0F2740,#163a5c);padding:22px 20px 18px;">
+        <div style="font-family:'Fraunces',serif;font-size:23px;font-weight:700;color:#fff;letter-spacing:.3px;">${esc(CURRENT_PROFILE?.school_name || 'School Name')}</div>
+        <div style="width:60px;height:2px;background:#C9A227;margin:10px auto;"></div>
+        <div style="font-family:Inter,sans-serif;font-size:11px;letter-spacing:3px;color:#C9A227;font-weight:600;">DETAIL MARKS CERTIFICATE</div>
       </div>
-      
-      <div style="display:flex;justify-content:space-between;margin-bottom:16px;font-size:12px;">
-        <div><strong>Serial No:</strong> ${result.serialNo}</div>
-        <div><strong>Class:</strong> ${esc(result.class)}</div>
-      </div>
-      
-      <div style="text-align:center;margin-bottom:16px;font-size:14px;font-weight:bold;">
-        ${esc(result.studentName)}
-      </div>
-      
-      <table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:16px;">
-        <thead><tr style="background:#0F2740;color:#fff;"><th style="padding:8px;text-align:left;">Subject</th><th style="padding:8px;text-align:center;">Obtained Marks</th><th style="padding:8px;text-align:center;">Total Marks</th></tr></thead>
-        <tbody>${subjectsHtml}</tbody>
-        <tfoot><tr style="font-weight:bold;background:#F0EBDA;"><td style="padding:8px;border-top:2px solid #0F2740;">TOTAL</td><td style="padding:8px;border-top:2px solid #0F2740;text-align:center;">${totalObtained}</td><td style="padding:8px;border-top:2px solid #0F2740;text-align:center;">${totalPossible}</td></tr></tfoot>
-      </table>
-      
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;font-size:11px;text-align:center;">
-        <div><strong>Percentage:</strong><br>${percentage}%</div>
-        <div><strong>Grade:</strong><br>${grade}</div>
-        <div><strong>Status:</strong><br>${percentage >= 40 ? 'PASS' : 'FAIL'}</div>
-      </div>
-      
-      <div style="margin-top:24px;border-top:1px solid #ddd;padding-top:12px;text-align:right;font-size:10px;">
-        Signature: _______________
+
+      <div style="padding:20px;font-family:Inter,sans-serif;">
+        <div style="display:flex;justify-content:space-between;margin-bottom:16px;font-size:12px;color:#444;">
+          <div><strong>Serial No:</strong> ${result.serialNo}</div>
+          <div><strong>Class:</strong> ${esc(result.class)}</div>
+        </div>
+
+        <div style="text-align:center;margin-bottom:18px;">
+          <div style="font-family:'Fraunces',serif;font-size:19px;font-weight:600;color:#0F2740;">${esc(result.studentName)}</div>
+        </div>
+
+        <table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:16px;">
+          <thead><tr style="background:#0F2740;color:#fff;"><th style="padding:8px;text-align:left;">Subject</th><th style="padding:8px;text-align:center;">Obtained Marks</th><th style="padding:8px;text-align:center;">Total Marks</th></tr></thead>
+          <tbody>${subjectsHtml}</tbody>
+          <tfoot><tr style="font-weight:bold;background:#F0EBDA;"><td style="padding:8px;border-top:2px solid #0F2740;">TOTAL</td><td style="padding:8px;border-top:2px solid #0F2740;text-align:center;">${totalObtained}</td><td style="padding:8px;border-top:2px solid #0F2740;text-align:center;">${totalPossible}</td></tr></tfoot>
+        </table>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px;font-size:11px;text-align:center;margin-bottom:4px;">
+          <div><strong>Percentage:</strong><br>${percentage}%</div>
+          <div><strong>Grade:</strong><br>${grade}</div>
+          <div><strong>Position:</strong><br>${position} / ${totalStudentsInClass}</div>
+          <div><strong>Status:</strong><br>${percentage >= 40 ? 'PASS' : 'FAIL'}</div>
+        </div>
+
+        <div style="margin-top:24px;border-top:1px solid #ddd;padding-top:12px;text-align:right;font-size:10px;">
+          Signature: _______________
+        </div>
       </div>
     </div>
   `;
@@ -2300,7 +2311,7 @@ function renderDMCCertificate(result) {
 
 function printAllDMC() {
   if (dmcResults.length === 0) { alert('No results to print'); return; }
-  let html = '<html><head><meta charset="utf-8"><style>body{font-family:serif;margin:0;padding:10px;background:#f5f5f5;}@media print{body{background:#fff;}}</style></head><body>';
+  let html = '<html><head><meta charset="utf-8"><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap"><style>body{font-family:Inter,sans-serif;margin:0;padding:10px;background:#f5f5f5;}@media print{body{background:#fff;}}</style></head><body>';
   dmcResults.forEach(r => {
     html += renderDMCCertificate(r);
   });
