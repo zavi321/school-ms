@@ -1,0 +1,44 @@
+name: Weekly Data Backup
+
+on:
+  schedule:
+    - cron: '0 3 * * 0'   # Har Sunday raat 3 baje (UTC) chalega
+  workflow_dispatch:        # manually bhi chala sakte ho GitHub se
+
+permissions:
+  contents: write
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fetch all tables from Supabase
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          DATE=$(date +%Y-%m-%d)
+          mkdir -p "backups/$DATE"
+          TABLES=(profiles students teachers fee_payments salary_payments transactions admission_register exam_results whitelist_emails)
+          for T in "${TABLES[@]}"; do
+            curl -s "$SUPABASE_URL/rest/v1/$T?select=*" \
+              -H "apikey: $SERVICE_ROLE_KEY" \
+              -H "Authorization: Bearer $SERVICE_ROLE_KEY" \
+              -o "backups/$DATE/$T.json"
+          done
+
+      - name: Keep only the last 8 weekly backups (avoid unlimited repo growth)
+        run: |
+          cd backups
+          ls -1d */ 2>/dev/null | sort | head -n -8 | xargs -r rm -rf
+          cd ..
+
+      - name: Commit backup to repo
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add backups
+          git diff --cached --quiet || git commit -m "Automated weekly backup $(date +%Y-%m-%d)"
+          git push
