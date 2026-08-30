@@ -14,6 +14,8 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https:; connect-src 'self' https://*.supabase.co wss://*.supabase.co; frame-ancestors 'none'; base-uri 'self'; form-action 'self';">
+<meta name="referrer" content="strict-origin-when-cross-origin">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>School Finance & Records</title>
 <link rel="manifest" href="manifest.json">
@@ -25,7 +27,7 @@
 <link rel="apple-touch-icon" href="icons/icon-180.png">
 <link rel="icon" href="icons/icon-192.png">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700&family=Inter:wght@400;500;600;700&family=Noto+Nastaliq+Urdu:wght@600;700&family=Noto+Sans+Urdu:wght@400;500;600&display=swap">
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.4/dist/umd/supabase.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <style>
   :root{
@@ -246,6 +248,12 @@
 </head>
 <body>
 
+<script>
+  // Clickjacking protection: bail out immediately if this page has been embedded
+  // in someone else's iframe (GitHub Pages can't set X-Frame-Options for us).
+  if (window.top !== window.self) { window.top.location = window.self.location; }
+</script>
+
 <!-- ============ CONFIG: replace with your Supabase project values ============ -->
 <script>
   const SUPABASE_URL = "https://kapbrbuxdaqmuhfxtklq.supabase.co";
@@ -306,7 +314,7 @@ async function sendFeeSms(mobileRaw, message) {
     // the "send-sms" Edge Function as a server-side secret. This call is
     // authenticated as the logged-in school (owner_id), so usage is logged
     // per school for billing, and no school can see or reuse another's key.
-    await sb.functions.invoke('send-sms', { body: { mobile, message } });
+    await sb.functions.invoke('rapid-task', { body: { mobile, message } });
   } catch (err) {
     console.error('SMS send failed:', err);
   }
@@ -991,7 +999,7 @@ function renderTab() {
   else if (TAB==='teachers') main.innerHTML = tplTeachers();
   else if (TAB==='finance') main.innerHTML = tplFinance();
   else if (TAB==='reports') main.innerHTML = tplReports();
-  else if (TAB==='dmc') main.innerHTML = tplDMC();
+  else if (TAB==='dmc') { main.innerHTML = tplDMC(); loadDMCConfig().then(renderDMCSubjects); }
   else if (TAB==='marksSheet') main.innerHTML = tplMarksSheet();
   else if (TAB==='admissionRegister') main.innerHTML = tplAdmissionRegister();
   else if (TAB==='admin') { main.innerHTML = tplAdmin(); loadWhitelist(); return; }
@@ -2176,6 +2184,21 @@ function tplDMC() {
 }
 
 let dmcSubjects = []; // {name: 'Urdu', total: 100}
+let dmcConfigLoaded = false;
+
+async function loadDMCConfig() {
+  if (dmcConfigLoaded) return;
+  dmcConfigLoaded = true;
+  const { data } = await sb.from('dmc_config').select('*').eq('owner_id', CURRENT_USER.id).maybeSingle();
+  if (data && data.subjects) dmcSubjects = data.subjects;
+}
+
+async function saveDMCConfig() {
+  const { error } = await sb.from('dmc_config').upsert({
+    owner_id: CURRENT_USER.id, subjects: dmcSubjects, updated_at: new Date().toISOString()
+  });
+  if (error) console.error('DMC config save failed:', error.message);
+}
 
 function addDMCSubject() {
   const name = document.getElementById('dmc-subj-name').value.trim();
@@ -2183,6 +2206,7 @@ function addDMCSubject() {
   if (!name) return;
   dmcSubjects.push({name, total});
   document.getElementById('dmc-subj-name').value = '';
+  saveDMCConfig();
   renderDMCSubjects();
 }
 
@@ -2190,13 +2214,14 @@ function renderDMCSubjects() {
   document.getElementById('dmc-subjects-list').innerHTML = dmcSubjects.map((s, i) => `
     <div style="background:#F0EBDA;padding:6px 10px;border-radius:6px;font-size:12px;display:flex;align-items:center;gap:6px;">
       ${esc(s.name)} (${s.total})
-      <button class="btn-ghost" style="padding:0;font-size:10px;opacity:.6;" onclick="dmcSubjects.splice(${i},1);renderDMCSubjects();">✕</button>
+      <button class="btn-ghost" style="padding:0;font-size:10px;opacity:.6;" onclick="dmcSubjects.splice(${i},1);saveDMCConfig();renderDMCSubjects();">✕</button>
     </div>
   `).join('');
 }
 
 function clearDMCSubjects() {
   dmcSubjects = [];
+  saveDMCConfig();
   renderDMCSubjects();
 }
 
@@ -2326,8 +2351,35 @@ let msSubjects = []; // independent subject list
 let msMarksData = {}; // {className: {studentId: {subject: marks}}}
 let msSelectedClass = '';
 let msNewStudentName = '';
+let msLoaded = false;
+let msSaveTimer = null;
+
+async function loadMarksSheetData() {
+  if (msLoaded) return;
+  msLoaded = true;
+  const { data } = await sb.from('marks_sheet_data').select('*').eq('owner_id', CURRENT_USER.id).maybeSingle();
+  if (data) {
+    msClasses = data.classes && data.classes.length ? data.classes : msClasses;
+    msSubjects = data.subjects || [];
+    msStudents = data.students || {};
+    msMarksData = data.marks || {};
+  }
+}
+
+// Debounced save so rapid marks entry (many onchange events) doesn't spam the database.
+function saveMarksSheetData() {
+  clearTimeout(msSaveTimer);
+  msSaveTimer = setTimeout(async () => {
+    const { error } = await sb.from('marks_sheet_data').upsert({
+      owner_id: CURRENT_USER.id, classes: msClasses, subjects: msSubjects,
+      students: msStudents, marks: msMarksData, updated_at: new Date().toISOString()
+    });
+    if (error) console.error('Marks sheet save failed:', error.message);
+  }, 500);
+}
 
 function tplMarksSheet() {
+  if (!msLoaded) { loadMarksSheetData().then(renderTab); return `<div style="padding:20px;text-align:center;opacity:.6;">${esc(t.loading||'Loading...')}</div>`; }
   if (!msSelectedClass && msClasses.length) msSelectedClass = msClasses[0];
   
   const classStudents = msStudents[msSelectedClass] || [];
@@ -2353,10 +2405,10 @@ function tplMarksSheet() {
       
       tableHtml += `<tr style="border-bottom:1px solid #ddd;">
         <td style="padding:8px;text-align:left;font-weight:500;">${esc(student.name)}</td>
-        <td style="padding:4px;"><input type="text" value="${esc(student.fatherName||'')}" placeholder="Father Name" style="width:100%;padding:4px;border:1px solid #ccc;" onchange="msStudents['${msSelectedClass}'][${idx}].fatherName=this.value;"></td>
+        <td style="padding:4px;"><input type="text" value="${esc(student.fatherName||'')}" placeholder="Father Name" style="width:100%;padding:4px;border:1px solid #ccc;" onchange="msStudents['${msSelectedClass}'][${idx}].fatherName=this.value;saveMarksSheetData();"></td>
         ${msSubjects.map(subj => {
           const val = msMarksData[msSelectedClass][student.id][subj] || '';
-          return `<td style="padding:4px;"><input type="number" value="${val}" placeholder="—" style="width:100%;text-align:center;padding:4px;border:1px solid #ccc;" onchange="msMarksData['${msSelectedClass}']['${student.id}']['${subj}']=this.value;"></td>`;
+          return `<td style="padding:4px;"><input type="number" value="${val}" placeholder="—" style="width:100%;text-align:center;padding:4px;border:1px solid #ccc;" onchange="msMarksData['${msSelectedClass}']['${student.id}']['${subj}']=this.value;saveMarksSheetData();"></td>`;
         }).join('')}
         <td style="padding:4px;text-align:center;"><button class="btn-ghost" style="padding:0;font-size:11px;" onclick="removeMarksSheetStudent('${msSelectedClass}', ${idx})">✕</button></td>
       </tr>`;
@@ -2396,7 +2448,7 @@ function tplMarksSheet() {
         ${msSubjects.map((s, i) => `
           <div style="background:#F0EBDA;padding:6px 10px;border-radius:6px;font-size:12px;display:flex;align-items:center;gap:6px;">
             ${esc(s)}
-            <button class="btn-ghost" style="padding:0;font-size:10px;opacity:.6;" onclick="msSubjects.splice(${i},1);renderTab();">✕</button>
+            <button class="btn-ghost" style="padding:0;font-size:10px;opacity:.6;" onclick="msSubjects.splice(${i},1);saveMarksSheetData();renderTab();">✕</button>
           </div>
         `).join('')}
       </div>
@@ -2435,6 +2487,7 @@ function addMarksSheetClass() {
     msSelectedClass = cls;
   }
   input.value = '';
+  saveMarksSheetData();
   renderTab();
 }
 
@@ -2444,6 +2497,7 @@ function removeMarksSheetClass(idx) {
   delete msStudents[cls];
   delete msMarksData[cls];
   if (msSelectedClass === cls) msSelectedClass = msClasses[0] || '';
+  saveMarksSheetData();
   renderTab();
 }
 
@@ -2455,6 +2509,7 @@ function addMarksSheetSubject() {
     msSubjects.push(subj);
   }
   input.value = '';
+  saveMarksSheetData();
   renderTab();
 }
 
@@ -2474,6 +2529,7 @@ function addMarksSheetStudent() {
   
   input.value = '';
   if (fatherInput) fatherInput.value = '';
+  saveMarksSheetData();
   renderTab();
 }
 
@@ -2481,6 +2537,7 @@ function removeMarksSheetStudent(cls, idx) {
   const student = msStudents[cls][idx];
   msStudents[cls].splice(idx, 1);
   delete msMarksData[cls][student.id];
+  saveMarksSheetData();
   renderTab();
 }
 
