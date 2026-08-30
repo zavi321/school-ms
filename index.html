@@ -2259,7 +2259,7 @@ function renderDMCCertificate(result) {
   
   const subjectsHtml = dmcSubjects.map(s => {
     const marks = result.marks[s.name] || 0;
-    return `<tr><td style="padding:6px;border-bottom:1px solid #ddd;">${esc(s.name)}</td><td style="padding:6px;border-bottom:1px solid #ddd;text-align:right;">${marks}/${s.total}</td></tr>`;
+    return `<tr><td style="padding:8px;border-bottom:1px solid #ddd;text-align:left;">${esc(s.name)}</td><td style="padding:8px;border-bottom:1px solid #ddd;text-align:center;font-weight:600;">${marks}</td><td style="padding:8px;border-bottom:1px solid #ddd;text-align:center;">${s.total}</td></tr>`;
   }).join('');
   
   return `
@@ -2279,9 +2279,9 @@ function renderDMCCertificate(result) {
       </div>
       
       <table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:16px;">
-        <thead><tr style="background:#0F2740;color:#fff;"><th style="padding:8px;text-align:left;">Subject</th><th style="padding:8px;text-align:right;">Marks</th></tr></thead>
+        <thead><tr style="background:#0F2740;color:#fff;"><th style="padding:8px;text-align:left;">Subject</th><th style="padding:8px;text-align:center;">Obtained Marks</th><th style="padding:8px;text-align:center;">Total Marks</th></tr></thead>
         <tbody>${subjectsHtml}</tbody>
-        <tfoot><tr style="font-weight:bold;"><td style="padding:8px;border-top:2px solid #0F2740;">Total</td><td style="padding:8px;border-top:2px solid #0F2740;text-align:right;">${totalObtained}/${totalPossible}</td></tr></tfoot>
+        <tfoot><tr style="font-weight:bold;background:#F0EBDA;"><td style="padding:8px;border-top:2px solid #0F2740;">TOTAL</td><td style="padding:8px;border-top:2px solid #0F2740;text-align:center;">${totalObtained}</td><td style="padding:8px;border-top:2px solid #0F2740;text-align:center;">${totalPossible}</td></tr></tfoot>
       </table>
       
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;font-size:11px;text-align:center;">
