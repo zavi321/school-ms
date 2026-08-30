@@ -351,7 +351,7 @@ function openFatherSms(mobileRaw, message) {
 const T = {
   en: {
     appName:'School Finance & Records', tagline:'For school administration',
-    dashboard:'Dashboard', students:'Students', teachers:'Teachers', finance:'Finance', reports:'Reports',
+    dashboard:'Dashboard', students:'Students', teachers:'Teachers', finance:'Finance', reports:'Reports', dmc:'Certificates',
     thisMonth:'This Month',
     totalStudents:'Active Students', feesCollected:'Fees Collected (this month)', feesDue:'Fees Due (this month)',
     salaryPaid:'Salaries Paid (this month)', netBalance:'Net Balance (all-time)', recentActivity:'Recent Activity',
@@ -434,7 +434,7 @@ const T = {
   },
   ur: {
     appName:'مالیاتی و ریکارڈ سسٹم', tagline:'اسکول انتظامیہ کے لیے',
-    dashboard:'ڈیش بورڈ', students:'طلبہ', teachers:'اساتذہ', finance:'مالیات', reports:'رپورٹس',
+    dashboard:'ڈیش بورڈ', students:'طلبہ', teachers:'اساتذہ', finance:'مالیات', reports:'رپورٹس', dmc:'سرٹیفکیٹس',
     thisMonth:'اس ماہ',
     totalStudents:'فعال طلبہ', feesCollected:'وصول شدہ فیس (اس ماہ)', feesDue:'واجب الادا فیس (اس ماہ)',
     salaryPaid:'ادا شدہ تنخواہ (اس ماہ)', netBalance:'کل بیلنس', recentActivity:'حالیہ سرگرمی',
@@ -964,12 +964,13 @@ const NAV_ICONS = {
   teachers: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="7" r="4"/><path d="M2 21v-2a4 4 0 014-4h6a4 4 0 014 4v2"/><circle cx="17" cy="7" r="3"/></svg>`,
   finance: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2"/></svg>`,
   reports: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>`,
+  dmc: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 5c0-1 0-2 1-2h16c1 0 1 1 1 2v14c0 1 0 2-1 2H4c-1 0-1-1-1-2V5z"/><path d="M7 10h10M7 14h8M7 18h6"/></svg>`,
   admissionRegister: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 016.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"/><path d="M9 7h7M9 11h7"/></svg>`,
   admin: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l8 4v6c0 5-3.5 8.5-8 10-4.5-1.5-8-5-8-10V6l8-4z"/></svg>`,
 };
 
 function renderNav() {
-  const tabs = ['dashboard','students','teachers','finance','reports','admissionRegister'];
+  const tabs = ['dashboard','students','teachers','finance','reports','dmc','admissionRegister'];
   if (CURRENT_PROFILE && CURRENT_PROFILE.is_admin) tabs.push('admin');
   document.getElementById('navbar').innerHTML = tabs.map(k => `
     <button class="${TAB===k?'active':''}" onclick="setTab('${k}')">
@@ -990,6 +991,7 @@ function renderTab() {
   else if (TAB==='teachers') main.innerHTML = tplTeachers();
   else if (TAB==='finance') main.innerHTML = tplFinance();
   else if (TAB==='reports') main.innerHTML = tplReports();
+  else if (TAB==='dmc') main.innerHTML = tplDMC();
   else if (TAB==='admissionRegister') main.innerHTML = tplAdmissionRegister();
   else if (TAB==='admin') { main.innerHTML = tplAdmin(); loadWhitelist(); return; }
   main.innerHTML += `<div class="notice">${esc(t.sharedNotice)}</div>`;
@@ -2133,6 +2135,179 @@ function filteredRegisterList() {
       || String(r.serial_no||'').includes(registerSearch.trim()))
     .slice()
     .sort((a,b) => Number(a.serial_no||0) - Number(b.serial_no||0));
+}
+
+// --------- DMC (Detail Marks Certificate) Generator ---------
+let dmcResults = []; // temporary storage for uploaded results
+
+function tplDMC() {
+  return `
+    <h2>📜 Detail Marks Certificate (DMC)</h2>
+    
+    <div class="card">
+      <h3 style="margin-top:0;">Upload Result List (Excel)</h3>
+      <p style="font-size:12px;opacity:.7;">Upload an Excel file with columns: Student Name, Class, Subject1 Marks, Subject2 Marks, etc.</p>
+      <label style="margin-bottom:0;">
+        <span>Select Excel File</span>
+        <input type="file" id="dmc-file-input" accept=".xlsx,.xls,.csv" onchange="handleDMCExcelUpload(this.files[0])">
+      </label>
+      <div id="dmc-upload-msg" style="margin-top:8px;font-size:12px;"></div>
+    </div>
+
+    <div class="card">
+      <h3 style="margin-top:0;">Subject Configuration</h3>
+      <p style="font-size:12px;opacity:.7;">Define subjects and total marks (e.g., Urdu-100, English-100, Math-100)</p>
+      <div id="dmc-subject-config" style="margin-bottom:8px;">
+        <div style="display:flex;gap:6px;margin-bottom:8px;">
+          <input type="text" id="dmc-subj-name" placeholder="Subject Name" style="flex:1;">
+          <input type="number" id="dmc-subj-total" placeholder="Total Marks" style="flex:1;" value="100">
+          <button class="btn-ghost" onclick="addDMCSubject()">Add</button>
+        </div>
+        <div id="dmc-subjects-list" style="display:flex;flex-wrap:wrap;gap:6px;"></div>
+      </div>
+      <button class="btn-ghost" onclick="clearDMCSubjects()">Clear All Subjects</button>
+    </div>
+
+    <div class="card">
+      <h3 style="margin-top:0;">Preview & Generate DMC</h3>
+      <div id="dmc-preview"></div>
+      <div style="margin-top:12px;display:flex;gap:6px;">
+        <button class="btn-ghost" onclick="generateDMCPreview()">Preview Certificates</button>
+        <button class="btn-ghost" onclick="printAllDMC()">Print All</button>
+      </div>
+    </div>
+  `;
+}
+
+let dmcSubjects = []; // {name: 'Urdu', total: 100}
+
+function addDMCSubject() {
+  const name = document.getElementById('dmc-subj-name').value.trim();
+  const total = Number(document.getElementById('dmc-subj-total').value) || 100;
+  if (!name) return;
+  dmcSubjects.push({name, total});
+  document.getElementById('dmc-subj-name').value = '';
+  renderDMCSubjects();
+}
+
+function renderDMCSubjects() {
+  document.getElementById('dmc-subjects-list').innerHTML = dmcSubjects.map((s, i) => `
+    <div style="background:#F0EBDA;padding:6px 10px;border-radius:6px;font-size:12px;display:flex;align-items:center;gap:6px;">
+      ${esc(s.name)} (${s.total})
+      <button class="btn-ghost" style="padding:0;font-size:10px;opacity:.6;" onclick="dmcSubjects.splice(${i},1);renderDMCSubjects();">✕</button>
+    </div>
+  `).join('');
+}
+
+function clearDMCSubjects() {
+  dmcSubjects = [];
+  renderDMCSubjects();
+}
+
+function handleDMCExcelUpload(file) {
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try {
+      const data = new Uint8Array(e.target.result);
+      const wb = XLSX.read(data, {type: 'array'});
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(ws);
+      
+      dmcResults = rows.map((r, idx) => ({
+        serialNo: idx + 1,
+        studentName: r['Student Name'] || r['Name'] || r['Student'] || '',
+        class: r['Class'] || r['جماعت'] || '',
+        marks: {} // will be filled from other columns
+      }));
+      
+      // Extract marks from other columns
+      dmcResults.forEach((r, idx) => {
+        const row = rows[idx];
+        Object.keys(row).forEach(col => {
+          if (!['Student Name','Name','Student','Class','جماعت'].includes(col)) {
+            r.marks[col] = Number(row[col]) || 0;
+          }
+        });
+      });
+      
+      document.getElementById('dmc-upload-msg').innerHTML = `✓ Loaded ${dmcResults.length} students`;
+    } catch (err) {
+      document.getElementById('dmc-upload-msg').innerHTML = `✗ Error: ${err.message}`;
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+function generateDMCPreview() {
+  if (dmcResults.length === 0) { alert('Please upload Excel file first'); return; }
+  if (dmcSubjects.length === 0) { alert('Please configure subjects first'); return; }
+  
+  let html = '<div style="max-height:600px;overflow-y:auto;">';
+  dmcResults.slice(0, 3).forEach(r => {
+    html += renderDMCCertificate(r);
+  });
+  html += `</div><p style="font-size:12px;opacity:.5;margin-top:10px;">Showing first 3 of ${dmcResults.length} certificates</p>`;
+  document.getElementById('dmc-preview').innerHTML = html;
+}
+
+function renderDMCCertificate(result) {
+  const totalObtained = Object.values(result.marks).reduce((a,b) => a+Number(b), 0);
+  const totalPossible = dmcSubjects.reduce((a,b) => a+b.total, 0);
+  const percentage = totalPossible ? ((totalObtained / totalPossible) * 100).toFixed(1) : 0;
+  const grade = percentage >= 80 ? 'A' : percentage >= 60 ? 'B' : percentage >= 40 ? 'C' : 'D';
+  
+  const subjectsHtml = dmcSubjects.map(s => {
+    const marks = result.marks[s.name] || 0;
+    return `<tr><td style="padding:6px;border-bottom:1px solid #ddd;">${esc(s.name)}</td><td style="padding:6px;border-bottom:1px solid #ddd;text-align:right;">${marks}/${s.total}</td></tr>`;
+  }).join('');
+  
+  return `
+    <div style="border:2px solid #0F2740;border-radius:8px;padding:20px;margin-bottom:12px;page-break-after:always;background:#fff;font-family:serif;">
+      <div style="text-align:center;border-bottom:2px solid #C9A227;padding-bottom:12px;margin-bottom:12px;">
+        <div style="font-size:18px;font-weight:bold;color:#0F2740;">${CURRENT_PROFILE?.school_name || 'School Name'}</div>
+        <div style="font-size:12px;opacity:.7;">DETAIL MARKS CERTIFICATE</div>
+      </div>
+      
+      <div style="display:flex;justify-content:space-between;margin-bottom:16px;font-size:12px;">
+        <div><strong>Serial No:</strong> ${result.serialNo}</div>
+        <div><strong>Class:</strong> ${esc(result.class)}</div>
+      </div>
+      
+      <div style="text-align:center;margin-bottom:16px;font-size:14px;font-weight:bold;">
+        ${esc(result.studentName)}
+      </div>
+      
+      <table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:16px;">
+        <thead><tr style="background:#0F2740;color:#fff;"><th style="padding:8px;text-align:left;">Subject</th><th style="padding:8px;text-align:right;">Marks</th></tr></thead>
+        <tbody>${subjectsHtml}</tbody>
+        <tfoot><tr style="font-weight:bold;"><td style="padding:8px;border-top:2px solid #0F2740;">Total</td><td style="padding:8px;border-top:2px solid #0F2740;text-align:right;">${totalObtained}/${totalPossible}</td></tr></tfoot>
+      </table>
+      
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;font-size:11px;text-align:center;">
+        <div><strong>Percentage:</strong><br>${percentage}%</div>
+        <div><strong>Grade:</strong><br>${grade}</div>
+        <div><strong>Status:</strong><br>${percentage >= 40 ? 'PASS' : 'FAIL'}</div>
+      </div>
+      
+      <div style="margin-top:24px;border-top:1px solid #ddd;padding-top:12px;text-align:right;font-size:10px;">
+        Signature: _______________
+      </div>
+    </div>
+  `;
+}
+
+function printAllDMC() {
+  if (dmcResults.length === 0) { alert('No results to print'); return; }
+  let html = '<html><head><meta charset="utf-8"><style>body{font-family:serif;margin:0;padding:10px;background:#f5f5f5;}@media print{body{background:#fff;}}</style></head><body>';
+  dmcResults.forEach(r => {
+    html += renderDMCCertificate(r);
+  });
+  html += '</body></html>';
+  const w = window.open('', '', 'height=900,width=800');
+  w.document.write(html);
+  w.document.close();
+  setTimeout(() => w.print(), 500);
 }
 
 function tplAdmissionRegister() {
