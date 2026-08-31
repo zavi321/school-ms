@@ -2143,10 +2143,22 @@ let dmcResults = []; // temporary storage for uploaded results
 function tplDMC() {
   return `
     <h2>📜 Detail Marks Certificate (DMC)</h2>
-    
+
+    <div class="card">
+      <h3 style="margin-top:0;">Class</h3>
+      <p style="font-size:12px;opacity:.7;">Select which class this batch of certificates is for. This is used for every certificate in this upload — unless the Excel file itself has its own "Class" column, in which case that overrides it per row.</p>
+      <label style="margin-bottom:0;">
+        <span>Select Class</span>
+        <select id="dmc-class" onchange="onDMCClassChange()">
+          <option value="">— Select Class —</option>
+          ${CLASS_OPTIONS.map(c => `<option value="${esc(c)}">${esc(c)}</option>`).join('')}
+        </select>
+      </label>
+    </div>
+
     <div class="card">
       <h3 style="margin-top:0;">Upload Result List (Excel)</h3>
-      <p style="font-size:12px;opacity:.7;">Upload an Excel file with columns: Student Name, Father Name, Class, Subject1 Marks, Subject2 Marks, etc.</p>
+      <p style="font-size:12px;opacity:.7;">Upload an Excel file with columns: Student Name, Father Name, Subject1 Marks, Subject2 Marks, etc. (A "Class" column is optional if you've selected a class above.)</p>
       <label style="margin-bottom:0;">
         <span>Select Excel File</span>
         <input type="file" id="dmc-file-input" accept=".xlsx,.xls,.csv" onchange="handleDMCExcelUpload(this.files[0])">
@@ -2177,6 +2189,13 @@ function tplDMC() {
       </div>
     </div>
   `;
+}
+
+function onDMCClassChange() {
+  // If results are already loaded and their rows have no per-row class of their own
+  // (i.e. the Excel file didn't specify one), keep them in sync with the dropdown.
+  const cls = document.getElementById('dmc-class').value;
+  dmcResults.forEach(r => { if (!r.classFromExcel) r.class = cls; });
 }
 
 let dmcSubjects = []; // {name: 'Urdu', total: 100}
@@ -2223,6 +2242,7 @@ function clearDMCSubjects() {
 
 function handleDMCExcelUpload(file) {
   if (!file) return;
+  const selectedClass = document.getElementById('dmc-class').value;
   const reader = new FileReader();
   reader.onload = (e) => {
     try {
@@ -2230,14 +2250,18 @@ function handleDMCExcelUpload(file) {
       const wb = XLSX.read(data, {type: 'array'});
       const ws = wb.Sheets[wb.SheetNames[0]];
       const rows = XLSX.utils.sheet_to_json(ws);
-      
-      dmcResults = rows.map((r, idx) => ({
-        serialNo: idx + 1,
-        studentName: r['Student Name'] || r['Name'] || r['Student'] || '',
-        fatherName: r['Father Name'] || r["Father's Name"] || r['Father'] || r['S/O'] || r['Walid'] || '',
-        class: r['Class'] || r['جماعت'] || '',
-        marks: {} // will be filled from other columns
-      }));
+
+      dmcResults = rows.map((r, idx) => {
+        const excelClass = r['Class'] || r['جماعت'] || '';
+        return {
+          serialNo: idx + 1,
+          studentName: r['Student Name'] || r['Name'] || r['Student'] || '',
+          fatherName: r['Father Name'] || r["Father's Name"] || r['Father'] || r['S/O'] || r['Walid'] || '',
+          class: excelClass || selectedClass || '',
+          classFromExcel: !!excelClass, // if true, onDMCClassChange() won't overwrite this row later
+          marks: {} // will be filled from other columns
+        };
+      });
       
       // Extract marks from other columns
       dmcResults.forEach((r, idx) => {
@@ -2248,8 +2272,11 @@ function handleDMCExcelUpload(file) {
           }
         });
       });
-      
-      document.getElementById('dmc-upload-msg').innerHTML = `✓ Loaded ${dmcResults.length} students`;
+
+      const missingClass = !selectedClass && dmcResults.some(r => !r.class);
+      document.getElementById('dmc-upload-msg').innerHTML = missingClass
+        ? `⚠️ Loaded ${dmcResults.length} students, but no class is set — select a class above (or add a "Class" column to your Excel) before printing.`
+        : `✓ Loaded ${dmcResults.length} students`;
     } catch (err) {
       document.getElementById('dmc-upload-msg').innerHTML = `✗ Error: ${err.message}`;
     }
@@ -2273,7 +2300,8 @@ function renderDMCCertificate(result) {
   const totalObtained = dmcSubjects.reduce((a, s) => a + (Number(result.marks[s.name]) || 0), 0);
   const totalPossible = dmcSubjects.reduce((a,b) => a+b.total, 0);
   const percentage = totalPossible ? ((totalObtained / totalPossible) * 100).toFixed(1) : 0;
-  const grade = percentage >= 80 ? 'A' : percentage >= 60 ? 'B' : percentage >= 40 ? 'C' : 'D';
+  const grade = percentage >= 90 ? 'A+' : percentage >= 80 ? 'A' : percentage >= 70 ? 'B' : percentage >= 60 ? 'C' : percentage >= 40 ? 'D' : 'F';
+  const remark = { 'A+':'Outstanding', 'A':'Excellent', 'B':'Very Good', 'C':'Good', 'D':'Satisfactory', 'F':'Fail' }[grade];
 
   // Position in class: rank this student's total against every other student in the same class.
   const classResults = dmcResults.filter(r => r.class === result.class);
@@ -2316,7 +2344,7 @@ function renderDMCCertificate(result) {
           <div><strong>Percentage:</strong><br>${percentage}%</div>
           <div><strong>Grade:</strong><br>${grade}</div>
           <div><strong>Position:</strong><br>${position} / ${totalStudentsInClass}</div>
-          <div><strong>Status:</strong><br>${percentage >= 40 ? 'PASS' : 'FAIL'}</div>
+          <div><strong>Remarks:</strong><br>${remark}</div>
         </div>
 
         <div style="margin-top:24px;border-top:1px solid #ddd;padding-top:12px;text-align:right;font-size:10px;">
