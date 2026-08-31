@@ -2139,10 +2139,28 @@ function filteredRegisterList() {
 
 // --------- DMC (Detail Marks Certificate) Generator ---------
 let dmcResults = []; // temporary storage for uploaded results
+let dmcLogo = null; // base64 logo image
+let dmcSchoolName = 'SCHOOL NAME'; // editable school name for certificates
 
 function tplDMC() {
   return `
     <h2>📜 Detail Marks Certificate (DMC)</h2>
+
+    <div class="card">
+      <h3 style="margin-top:0;">School Configuration for DMC</h3>
+      <p style="font-size:11px;opacity:.6;">Set your school logo and name for certificates</p>
+      
+      <label>
+        <span>School Logo (Upload Image)</span>
+        <input type="file" id="dmc-logo-input" accept="image/*" onchange="handleDMCLogoUpload(this.files[0])">
+      </label>
+      ${dmcLogo ? `<div style="margin-bottom:12px;"><img src="${dmcLogo}" style="max-height:80px;max-width:150px;border-radius:4px;"></div>` : ''}
+      
+      <label>
+        <span>School Name (for DMC)</span>
+        <input type="text" id="dmc-school-name" value="${dmcSchoolName}" placeholder="e.g., ISLAMIA SCHOOL & COLLEGE MARTUNG" onchange="dmcSchoolName=this.value;">
+      </label>
+    </div>
 
     <div class="card">
       <h3 style="margin-top:0;">Class</h3>
@@ -2303,7 +2321,7 @@ function renderDMCCertificate(result) {
   const grade = percentage >= 90 ? 'A+' : percentage >= 80 ? 'A' : percentage >= 70 ? 'B' : percentage >= 60 ? 'C' : percentage >= 40 ? 'D' : 'F';
   const remark = { 'A+':'Outstanding', 'A':'Excellent', 'B':'Very Good', 'C':'Good', 'D':'Satisfactory', 'F':'Fail' }[grade];
 
-  // Position in class: rank this student's total against every other student in the same class.
+  // Position in class
   const classResults = dmcResults.filter(r => r.class === result.class);
   const classTotals = classResults.map(r => dmcSubjects.reduce((a, s) => a + (Number(r.marks[s.name]) || 0), 0));
   const sortedTotals = [...classTotals].sort((a, b) => b - a);
@@ -2312,47 +2330,105 @@ function renderDMCCertificate(result) {
 
   const subjectsHtml = dmcSubjects.map(s => {
     const marks = result.marks[s.name] || 0;
-    return `<tr><td style="padding:8px;border-bottom:1px solid #ddd;text-align:left;">${esc(s.name)}</td><td style="padding:8px;border-bottom:1px solid #ddd;text-align:center;font-weight:600;">${marks}</td><td style="padding:8px;border-bottom:1px solid #ddd;text-align:center;">${s.total}</td></tr>`;
+    return `<tr style="border-bottom:1px solid #E7E0CE;"><td style="padding:10px;text-align:left;">${esc(s.name)}</td><td style="padding:10px;text-align:center;font-weight:600;font-size:14px;">${marks}</td><td style="padding:10px;text-align:center;font-size:14px;">${s.total}</td></tr>`;
   }).join('');
   
   return `
-    <div style="border:2px solid #0F2740;border-radius:10px;padding:0;margin-bottom:16px;page-break-after:always;background:#fff;font-family:'Fraunces',Inter,serif;overflow:hidden;">
-      <div style="text-align:center;background:linear-gradient(135deg,#0F2740,#163a5c);padding:22px 20px 18px;">
-        <div style="font-family:'Fraunces',serif;font-size:23px;font-weight:700;color:#fff;letter-spacing:.3px;">${esc(CURRENT_PROFILE?.school_name || 'School Name')}</div>
-        <div style="width:60px;height:2px;background:#C9A227;margin:10px auto;"></div>
-        <div style="font-family:Inter,sans-serif;font-size:11px;letter-spacing:3px;color:#C9A227;font-weight:600;">DETAIL MARKS CERTIFICATE</div>
-      </div>
-
-      <div style="padding:20px;font-family:Inter,sans-serif;">
-        <div style="display:flex;justify-content:space-between;margin-bottom:16px;font-size:12px;color:#444;">
-          <div><strong>Serial No:</strong> ${result.serialNo}</div>
-          <div><strong>Class:</strong> ${esc(result.class)}</div>
+    <div style="page-break-after:always;margin-bottom:20px;font-family:Inter,sans-serif;">
+      <div style="max-width:800px;margin:0 auto;background:#fff;padding:40px;position:relative;border:3px solid #0F2740;box-shadow:0 4px 15px rgba(15,39,64,0.15);">
+        
+        <!-- Decorative top border -->
+        <div style="position:absolute;top:0;left:0;right:0;height:8px;background:linear-gradient(90deg,#C92A2A,#0F2740,#C92A2A);">
         </div>
-
-        <div style="text-align:center;margin-bottom:18px;">
-          <div style="font-family:'Fraunces',serif;font-size:19px;font-weight:600;color:#0F2740;">${esc(result.studentName)}</div>
-          ${result.fatherName ? `<div style="font-size:12px;color:#666;margin-top:3px;">Father Name: ${esc(result.fatherName)}</div>` : ''}
+        
+        <!-- Header with logo and school name -->
+        <div style="text-align:center;margin-bottom:20px;padding-top:10px;">
+          ${dmcLogo ? `<img src="${dmcLogo}" style="max-height:80px;margin-bottom:12px;">` : ''}
+          <div style="font-size:24px;font-weight:700;color:#0F2740;letter-spacing:1px;margin-bottom:4px;">${esc(dmcSchoolName)}</div>
+          <div style="font-size:11px;color:#C92A2A;font-weight:600;letter-spacing:2px;">DETAIL MARKS CERTIFICATE</div>
         </div>
-
-        <table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:16px;">
-          <thead><tr style="background:#0F2740;color:#fff;"><th style="padding:8px;text-align:left;">Subject</th><th style="padding:8px;text-align:center;">Obtained Marks</th><th style="padding:8px;text-align:center;">Total Marks</th></tr></thead>
-          <tbody>${subjectsHtml}</tbody>
-          <tfoot><tr style="font-weight:bold;background:#F0EBDA;"><td style="padding:8px;border-top:2px solid #0F2740;">TOTAL</td><td style="padding:8px;border-top:2px solid #0F2740;text-align:center;">${totalObtained}</td><td style="padding:8px;border-top:2px solid #0F2740;text-align:center;">${totalPossible}</td></tr></tfoot>
+        
+        <!-- Serial No and Class -->
+        <div style="display:flex;justify-content:space-between;margin-bottom:24px;font-size:13px;color:#0F2740;">
+          <div><strong>Serial No: ${result.serialNo}</strong></div>
+          <div><strong>Class: ${esc(result.class)}</strong></div>
+        </div>
+        
+        <!-- Student Name -->
+        <div style="text-align:center;margin-bottom:8px;">
+          <div style="font-size:28px;font-weight:700;color:#0F2740;letter-spacing:0.5px;">${esc(result.studentName)}</div>
+        </div>
+        
+        <!-- Father Name -->
+        ${result.fatherName ? `<div style="text-align:center;margin-bottom:20px;font-size:13px;color:#333;">Father Name: ${esc(result.fatherName)}</div>` : '<div style="margin-bottom:20px;"></div>'}
+        
+        <!-- Marks Table -->
+        <table style="width:100%;border-collapse:collapse;margin-bottom:20px;">
+          <thead>
+            <tr style="background:#0F2740;color:#C9A227;">
+              <th style="padding:12px;text-align:left;font-weight:600;border:1px solid #0F2740;">Subject</th>
+              <th style="padding:12px;text-align:center;font-weight:600;border:1px solid #0F2740;">Obtained Marks</th>
+              <th style="padding:12px;text-align:center;font-weight:600;border:1px solid #0F2740;">Total Marks</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${subjectsHtml}
+            <tr style="background:#F0EBDA;font-weight:700;">
+              <td style="padding:12px;text-align:left;border:1px solid #E7E0CE;">TOTAL</td>
+              <td style="padding:12px;text-align:center;border:1px solid #E7E0CE;font-size:15px;">${totalObtained}</td>
+              <td style="padding:12px;text-align:center;border:1px solid #E7E0CE;font-size:15px;">${totalPossible}</td>
+            </tr>
+          </tbody>
         </table>
-
-        <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px;font-size:11px;text-align:center;margin-bottom:4px;">
-          <div><strong>Percentage:</strong><br>${percentage}%</div>
-          <div><strong>Grade:</strong><br>${grade}</div>
-          <div><strong>Position:</strong><br>${position} / ${totalStudentsInClass}</div>
-          <div><strong>Remarks:</strong><br>${remark}</div>
+        
+        <!-- Results Grid -->
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:12px;margin-bottom:24px;padding:16px;background:#F9F7F2;border-radius:8px;">
+          <div style="text-align:center;">
+            <div style="font-size:24px;margin-bottom:6px;">📊</div>
+            <div style="font-size:11px;color:#666;font-weight:500;">Percentage</div>
+            <div style="font-size:16px;font-weight:700;color:#0F2740;margin-top:4px;">${percentage}%</div>
+          </div>
+          <div style="text-align:center;">
+            <div style="font-size:24px;margin-bottom:6px;">⭐</div>
+            <div style="font-size:11px;color:#666;font-weight:500;">Grade</div>
+            <div style="font-size:16px;font-weight:700;color:#0F2740;margin-top:4px;">${grade}</div>
+          </div>
+          <div style="text-align:center;">
+            <div style="font-size:24px;margin-bottom:6px;">🏅</div>
+            <div style="font-size:11px;color:#666;font-weight:500;">Position</div>
+            <div style="font-size:16px;font-weight:700;color:#0F2740;margin-top:4px;">${position} / ${totalStudentsInClass}</div>
+          </div>
+          <div style="text-align:center;">
+            <div style="font-size:24px;margin-bottom:6px;">🎖️</div>
+            <div style="font-size:11px;color:#666;font-weight:500;">Remarks</div>
+            <div style="font-size:14px;font-weight:600;color:#0F2740;margin-top:4px;">${remark}</div>
+          </div>
         </div>
-
-        <div style="margin-top:24px;border-top:1px solid #ddd;padding-top:12px;text-align:right;font-size:10px;">
-          Signature: _______________
+        
+        <!-- Divider -->
+        <div style="height:1px;background:linear-gradient(90deg,transparent,#C9A227,transparent);margin:16px 0;"></div>
+        
+        <!-- Signature Line -->
+        <div style="text-align:right;margin-top:24px;">
+          <div style="font-size:11px;margin-bottom:4px;">Signature: _______________</div>
+        </div>
+        
+        <!-- Decorative bottom border -->
+        <div style="position:absolute;bottom:0;left:0;right:0;height:8px;background:linear-gradient(90deg,#C92A2A,#0F2740,#C92A2A);">
         </div>
       </div>
     </div>
   `;
+}
+
+function handleDMCLogoUpload(file) {
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    dmcLogo = e.target.result;
+    renderTab();
+  };
+  reader.readAsDataURL(file);
 }
 
 function printAllDMC() {
