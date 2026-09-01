@@ -128,6 +128,33 @@
   .type-filter button{flex-shrink:0;border:none;border-radius:999px;padding:6px 13px;font-size:12px;font-weight:600;background:#F0EBDA;color:var(--navy);}
   .type-filter button.on{background:var(--navy);color:var(--gold-soft);}
 
+  /* ---- Admission Register: notebook/ledger-book page look ---- */
+  .reg-book{position:relative;background:#FFFDF6;background-image:repeating-linear-gradient(to bottom, transparent 0px, transparent 31px, #E7E0CE 31px, #E7E0CE 32px);
+    border-radius:4px 12px 12px 4px;border-left:4px solid var(--rust);box-shadow:var(--shadow-md), 3px 3px 0 rgba(15,39,64,.06), 6px 6px 0 rgba(15,39,64,.04);
+    padding:16px 14px 18px 22px;margin-top:4px;}
+  body.ur .reg-book{border-left:none;border-right:4px solid var(--rust);border-radius:12px 4px 4px 12px;padding:16px 22px 18px 14px;}
+  .reg-book::before{content:'';position:absolute;top:0;right:0;width:0;height:0;border-style:solid;border-width:0 16px 16px 0;border-color:transparent #EFE7D2 transparent transparent;filter:drop-shadow(-1px 1px 1px rgba(15,39,64,.08));}
+  body.ur .reg-book::before{right:auto;left:0;border-width:0 0 16px 16px;border-color:transparent transparent transparent #EFE7D2;}
+  .reg-book-title{font-family:Fraunces,serif;color:var(--navy);font-size:15px;font-weight:600;margin:0 0 10px;padding-bottom:8px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:6px;}
+  body.ur .reg-book-title{font-family:'Noto Nastaliq Urdu',serif;}
+  .reg-book-title svg{width:15px;height:15px;flex-shrink:0;opacity:.7;}
+
+  /* ---- On-screen ledger table: mirrors the bound physical Admission &
+     Withdrawal Register page (ruled paper, thin rose grid, centre spine). ---- */
+  .regbook-screen-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;border-radius:6px;box-shadow:var(--shadow-sm);background:#FFFDF6;}
+  table.regbook-screen{border-collapse:collapse;width:100%;min-width:1180px;background:#FFFDF6;}
+  table.regbook-screen th{background:#FFFDF6;color:var(--navy);font-weight:700;font-size:10.5px;padding:9px 6px;text-align:center;border:1px solid #E6AFAF;position:sticky;top:0;line-height:1.25;}
+  table.regbook-screen td{padding:10px 6px;text-align:center;border:1px solid #E6AFAF;font-size:12px;white-space:nowrap;color:var(--ink);}
+  table.regbook-screen td.mo{font-weight:600;color:var(--navy);cursor:pointer;}
+  table.regbook-screen td.due{color:var(--rust);font-weight:600;}
+  table.regbook-screen .rb-spine{border-left:2.5px solid var(--rust);box-shadow:-3px 0 6px rgba(15,39,64,.06);}
+  table.regbook-screen tbody tr{cursor:pointer;}
+  table.regbook-screen tbody tr:hover{background:#FBF1DA;}
+  table.regbook-screen td.act{cursor:default;}
+  table.regbook-screen input.cell-input, table.regbook-screen select.cell-input{border:none;padding:5px 2px;font-size:12px;background:transparent;min-width:100px;width:100%;text-align:center;}
+  table.regbook-screen input.cell-input:focus, table.regbook-screen select.cell-input:focus{background:#FBF1DA;border-radius:4px;}
+  table.regbook-screen td.input-cell{padding:2px;}
+
   .modal-bg{position:fixed;inset:0;background:rgba(15,39,64,.55);z-index:50;display:flex;align-items:flex-end;justify-content:center;}
   .modal{width:100%;max-width:420px;max-height:90vh;overflow-y:auto;background:var(--cream);border-radius:18px 18px 0 0;padding:20px;box-shadow:0 -8px 30px rgba(0,0,0,.2);}
   @media(min-width:640px){.modal-bg{align-items:center;}.modal{border-radius:18px;}}
@@ -223,6 +250,22 @@
     .ledger-print th, .ledger-print td{border:1px solid #999;padding:4px 5px;font-size:9px;word-break:break-word;text-align:left;}
     .ledger-print th{background:#0F2740;color:#E4C765;font-weight:600;}
     .ledger-print .foot{margin-top:20px;font-size:11px;color:#555;text-align:right;}
+
+    /* ---- Admission Register: bound register-book page (matches physical ledger) ---- */
+    .regbook-print{font-family:Inter,sans-serif;background:#fff;padding:10px 14px 18px;position:relative;}
+    .regbook-print .rb-head{display:flex;align-items:baseline;justify-content:center;flex-wrap:wrap;gap:6px;margin-bottom:14px;}
+    .regbook-print .rb-head h2{font-family:Fraunces,serif;font-weight:700;color:#1C2530;margin:0;font-size:20px;}
+    .regbook-print .rb-head .rb-of{font-size:15px;color:#1C2530;}
+    .regbook-print .rb-head .rb-school{font-size:15px;color:#1C2530;border-bottom:1px solid #1C2530;padding:0 10px 2px;min-width:160px;text-align:center;}
+    .regbook-print .rb-meta{text-align:center;font-size:9.5px;color:#888;margin:-8px 0 10px;}
+    .regbook-print table{width:100%;border-collapse:collapse;table-layout:fixed;}
+    .regbook-print th, .regbook-print td{border:1px solid #E6AFAF;padding:4px 4px;font-size:8.5px;word-break:break-word;text-align:center;vertical-align:middle;color:#1C2530;}
+    .regbook-print thead th{font-weight:600;font-size:8px;padding:6px 4px;background:#fff;line-height:1.25;}
+    .regbook-print tbody td{height:15px;}
+    .regbook-print .rb-spine{border-left:2.5px solid #B24A32;box-shadow:-3px 0 6px rgba(15,39,64,.08);}
+    .regbook-print .foot{margin-top:14px;display:flex;justify-content:space-between;align-items:flex-end;gap:16px;}
+    .regbook-print .foot .note{font-size:8px;color:#555;max-width:75%;}
+    .regbook-print .foot .sign{font-style:italic;font-size:9px;color:#1C2530;font-weight:600;white-space:nowrap;}
 
     /* ---- School Leaving Certificate (SLC) ---- */
     .slc-print{font-family:Inter,sans-serif;border:2px solid #0F2740;border-radius:4px;max-width:800px;margin:0 auto;position:relative;}
@@ -393,7 +436,7 @@ const T = {
     // Admission & Withdrawal Register — a standalone record with no link to the
     // students/finance data above.
     admissionRegister:'Admission Register', admissionRegisterDesc:'A standalone admission & withdrawal record, separate from the Students/Finance data.',
-    serialNo:'Serial No.', dobFigures:'Date of Birth (figures)', dobWords:'Date of Birth (in words)', casteTribe:'Caste / Tribe', occupation:'Occupation',
+    serialNo:'Serial No.', dobFigures:'Date of Birth (figures)', dobWords:'Date of Birth (in words)', dobLabel:'Date of Birth in words and figures', casteTribe:'Caste / Tribe', occupation:'Occupation',
     residence:'Residence', classAdmitted:'Class Admitted', arrearsDue:'Arrears Due',
     classWithdrawn:'Class Withdrawn', withdrawalDate:'Date of Withdrawal', remarks:'Remarks',
     addRegisterEntry:'Add Entry', editRegisterEntry:'Edit Entry', searchRegister:'Search name or father\'s name...',
@@ -472,7 +515,7 @@ const T = {
     otpCode:'6 ہندسوں کا کوڈ', markVerified:'فعال کریں', otpConfirmed:'فعال کے طور پر نشان زد ہو گیا۔', otpWrong:'یہ کوڈ غلط ہے یا میعاد ختم ہو گئی ہے۔',
     noWhitelistYet:'ابھی تک کوئی اسکول شامل نہیں کیا گیا۔', notAdmin:'صرف ایڈمن رسائی۔',
     admissionRegister:'داخلہ رجسٹر', admissionRegisterDesc:'ایک علیحدہ داخلہ و اخراج ریکارڈ، طلبہ/مالیات کے ڈیٹا سے الگ۔',
-    serialNo:'سیریل نمبر', dobFigures:'تاریخ پیدائش (ہندسوں میں)', dobWords:'تاریخ پیدائش (الفاظ میں)', casteTribe:'ذات / قبیلہ', occupation:'پیشہ',
+    serialNo:'سیریل نمبر', dobFigures:'تاریخ پیدائش (ہندسوں میں)', dobWords:'تاریخ پیدائش (الفاظ میں)', dobLabel:'تاریخ پیدائش (الفاظ اور ہندسوں میں)', casteTribe:'ذات / قبیلہ', occupation:'پیشہ',
     residence:'رہائش', classAdmitted:'جس جماعت میں داخلہ', arrearsDue:'واجب الادا رقم',
     classWithdrawn:'جس جماعت سے اخراج', withdrawalDate:'تاریخ اخراج', remarks:'تبصرہ',
     addRegisterEntry:'اندراج شامل کریں', editRegisterEntry:'اندراج میں ترمیم', searchRegister:'نام یا والد کا نام تلاش کریں...',
@@ -2859,7 +2902,12 @@ function tplAdmissionRegister() {
       <button class="${registerSubTab==='slc'?'on':''}" onclick="setRegisterSubTab('slc')">${esc(t.registerSlc)}</button>
     </div>`;
   const body = registerSubTab === 'dashboard' ? tplRegisterDashboard() : tplRegisterList();
-  return `<div style="padding-top:16px;">${subnav}${body}</div>`;
+  return `<div style="padding-top:16px;">
+    <div class="reg-book">
+      <div class="reg-book-title">${NAV_ICONS.admissionRegister}${esc(t.admissionRegister)}</div>
+      ${subnav}${body}
+    </div>
+  </div>`;
 }
 
 function tplRegisterDashboard() {
@@ -2867,12 +2915,7 @@ function tplRegisterDashboard() {
   const admittedCount = all.filter(r => !r.withdrawal_date).length;
   const slcCount = all.filter(r => !!r.withdrawal_date).length;
   const totalArrears = all.filter(r => !r.withdrawal_date).reduce((a,b) => a + Number(b.arrears_due||0), 0);
-  const recent = all.slice().sort((a,b) => new Date(b.admission_date||0) - new Date(a.admission_date||0)).slice(0,5);
-  const row = r => `
-    <div class="list-row" style="cursor:pointer;" onclick="openEditAdmissionEntry('${r.id}')">
-      <div><div class="nm">${esc(r.student_name)}</div><div class="sub">${esc(t.admissionDate)}: ${esc(r.admission_date||'—')}</div></div>
-      ${r.withdrawal_date ? `<span class="pill" style="background:#EFEAD9;color:#555;">${esc(t.registerSlc)}</span>` : `<span class="pill good">${esc(t.registerAdmitted)}</span>`}
-    </div>`;
+  const allSorted = all.slice().sort((a,b) => Number(a.serial_no||0) - Number(b.serial_no||0));
 
   return `
     <div class="notice" style="margin-bottom:12px;">${esc(t.admissionRegisterDesc)}</div>
@@ -2882,9 +2925,56 @@ function tplRegisterDashboard() {
       <div class="stat-card"><div class="lbl">${esc(t.arrearsDue)}</div><div class="val" style="color:var(--rust);font-size:18px;">₨${fmt(totalArrears)}</div></div>
       <div class="stat-card"><div class="lbl">${esc(t.serialNo)} (${esc(t.all)})</div><div class="val">${all.length}</div></div>
     </div>
-    <div class="section-title">${esc(t.recentActivity)}</div>
-    <div class="list-card">
-      ${recent.length===0 ? `<div style="padding:16px;text-align:center;opacity:.5;font-size:13px;">—</div>` : recent.map(row).join('')}
+    <div style="display:flex;align-items:center;justify-content:space-between;margin:20px 0 8px;">
+      <div class="section-title" style="margin:0;">${esc(t.admissionRegister)}</div>
+      <button class="icon-btn" style="width:34px;height:34px;" onclick="openAddAdmissionEntry()">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#E4C765" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg>
+      </button>
+    </div>
+    ${registerLedgerTableHtml(allSorted)}`;
+}
+
+// Shared ledger-book table renderer: same column order as the physical bound
+// Admission & Withdrawal Register page, so every saved entry appears as a row
+// on the same "page" (used by both the Dashboard's full-book view and the
+// Admitted/SLC list view) instead of one-at-a-time cards.
+function registerLedgerTableHtml(rows) {
+  const dobText = r => {
+    const parts = [r.dob_words, r.dob_figures].filter(Boolean);
+    return parts.length ? esc(parts.join(' — ')) : '—';
+  };
+  const headCols = [
+    t.admissionDate, t.serialNo, t.studentName, t.dobLabel, t.fatherName,
+    t.casteTribe, t.occupation, t.residence, t.classAdmitted, t.arrearsDue,
+    t.classWithdrawn, t.withdrawalDate, t.remarks, ''
+  ];
+  const SPINE_AFTER = 4; // after Father's Name column, matching the book's fold
+
+  const dataRow = r => `
+    <tr onclick="openEditAdmissionEntry('${r.id}')">
+      <td>${esc(r.admission_date||'—')}</td>
+      <td>${esc(r.serial_no||'—')}</td>
+      <td class="mo">${esc(r.student_name||'—')}</td>
+      <td>${dobText(r)}</td>
+      <td class="rb-spine">${esc(r.father_name||'—')}</td>
+      <td>${esc(r.caste_tribe||'—')}</td>
+      <td>${esc(r.occupation||'—')}</td>
+      <td>${esc(r.residence||'—')}</td>
+      <td>${esc(r.class_admitted||'—')}</td>
+      <td class="${Number(r.arrears_due||0) ? 'due' : ''}">${Number(r.arrears_due||0) ? '₨'+fmt(r.arrears_due) : '—'}</td>
+      <td>${esc(r.class_withdrawn||'—')}</td>
+      <td>${esc(r.withdrawal_date||'—')}</td>
+      <td>${esc(r.remarks||'—')}</td>
+      <td class="act"><span class="print-btn" title="${esc(t.print)}" onclick="event.stopPropagation(); printAdmissionEntry('${r.id}')">🖨️</span></td>
+    </tr>`;
+
+  if (rows.length === 0) return `<div class="empty">${esc(t.noRegisterEntries)}</div>`;
+  return `
+    <div class="regbook-screen-wrap">
+      <table class="regbook-screen">
+        <thead><tr>${headCols.map((c,i) => `<th${i===SPINE_AFTER?' class="rb-spine"':''}>${esc(c)}</th>`).join('')}</tr></thead>
+        <tbody>${rows.map(dataRow).join('')}</tbody>
+      </table>
     </div>`;
 }
 
@@ -2894,17 +2984,6 @@ function tplRegisterList() {
   if (registerPage > totalPages) registerPage = totalPages;
   const start = (registerPage - 1) * REGISTER_PAGE_SIZE;
   const list = full.slice(start, start + REGISTER_PAGE_SIZE);
-
-  const row = r => `
-    <button class="card-btn" onclick="openEditAdmissionEntry('${r.id}')">
-      <div>
-        <div class="nm">${esc(r.serial_no ? '#'+r.serial_no+' — ' : '')}${esc(r.student_name)}</div>
-        <div class="sub">${esc(t.fatherName)}: ${esc(r.father_name||'')} · ${esc(r.class_admitted||'—')}</div>
-      </div>
-      ${registerSubTab==='slc'
-        ? `<span class="print-btn" title="${esc(t.print)}" onclick="event.stopPropagation(); printAdmissionEntry('${r.id}')">🖨️</span>`
-        : (Number(r.arrears_due||0) > 0 ? `<span class="pill bad">₨${fmt(r.arrears_due)}</span>` : '')}
-    </button>`;
 
   const pager = full.length === 0 ? '' : `
     <div class="flexgap" style="align-items:center;margin-top:12px;">
@@ -2923,7 +3002,7 @@ function tplRegisterList() {
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#E4C765" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg>
       </button>
     </div>
-    ${list.length===0 ? `<div class="empty">${esc(t.noRegisterEntries)}</div>` : `<div class="list-card">${list.map(row).join('')}</div>${pager}`}`;
+    ${registerLedgerTableHtml(list)}${list.length ? pager : ''}`;
 }
 
 // Prints one page (up to 30 rows) of the register as a single ledger-style table,
@@ -2935,61 +3014,81 @@ function printAdmissionRegisterPage(page) {
   if (rows.length === 0) return;
 
   const headCols = [
-    t.admissionDate, t.serialNo, t.studentName, t.dobFigures, t.dobWords, t.fatherName,
+    t.admissionDate, t.serialNo, t.studentName, t.dobLabel, t.fatherName,
     t.casteTribe, t.occupation, t.residence, t.classAdmitted, t.arrearsDue,
     t.classWithdrawn, t.withdrawalDate, t.remarks
   ];
-  const bodyRows = rows.map(r => `
+  const SPINE_AFTER = 5; // book fold falls after Father's Name (5th column)
+  const headerHtml = headCols.map((c,i) => `<th${i===SPINE_AFTER?' class="rb-spine"':''}>${esc(c)}</th>`).join('');
+
+  const dobText = r => {
+    const parts = [r.dob_figures, r.dob_words].filter(Boolean);
+    return parts.length ? esc(parts.join(' — ')) : '—';
+  };
+  const dataRow = r => `
     <tr>
       <td>${esc(r.admission_date||'—')}</td>
       <td>${esc(r.serial_no||'—')}</td>
       <td>${esc(r.student_name||'—')}</td>
-      <td>${esc(r.dob_figures||'—')}</td>
-      <td>${esc(r.dob_words||'—')}</td>
+      <td>${dobText(r)}</td>
       <td>${esc(r.father_name||'—')}</td>
-      <td>${esc(r.caste_tribe||'—')}</td>
+      <td class="rb-spine">${esc(r.caste_tribe||'—')}</td>
       <td>${esc(r.occupation||'—')}</td>
       <td>${esc(r.residence||'—')}</td>
       <td>${esc(r.class_admitted||'—')}</td>
-      <td>₨${fmt(r.arrears_due||0)}</td>
+      <td>${Number(r.arrears_due||0) ? '₨'+fmt(r.arrears_due) : '—'}</td>
       <td>${esc(r.class_withdrawn||'—')}</td>
       <td>${esc(r.withdrawal_date||'—')}</td>
       <td>${esc(r.remarks||'—')}</td>
-    </tr>`).join('');
+    </tr>`;
+  const blankRow = `<tr>${headCols.map((_,i)=>`<td${i===SPINE_AFTER?' class="rb-spine"':''}>&nbsp;</td>`).join('')}</tr>`;
+  const bodyRows = rows.map(dataRow).join('') + blankRow.repeat(Math.max(0, REGISTER_PAGE_SIZE - rows.length));
 
   document.getElementById('print-area').innerHTML = `
-    <div class="ledger-print">
-      <h2>${esc(CURRENT_PROFILE.school_name || 'School')}</h2>
-      <div class="sub">${esc(t.admissionRegister)} — Page ${page}</div>
+    <div class="regbook-print">
+      <div class="rb-head">
+        <h2>${esc(t.admissionRegister)}</h2>
+        <span class="rb-of">${LANG==='ur' ? 'کے' : 'of the'}</span>
+        <span class="rb-school">${esc(CURRENT_PROFILE.school_name || 'School')}</span>
+      </div>
+      <div class="rb-meta">Page ${page} &nbsp;·&nbsp; ${esc(todayISO())}</div>
       <table>
-        <thead><tr>${headCols.map(c=>`<th>${esc(c)}</th>`).join('')}</tr></thead>
+        <thead><tr>${headerHtml}</tr></thead>
         <tbody>${bodyRows}</tbody>
       </table>
-      <div class="foot">${esc(t.headOfInstitution || 'Head of the Institution')}</div>
+      <div class="foot">
+        <div class="note">Note: The age entries should be recorded in words and figures, and any change in sub entries should be attested.</div>
+        <div class="sign">${esc(t.headOfInstitution || 'Head of the Institution')}</div>
+      </div>
     </div>`;
   window.print();
 }
 
 function admissionEntryForm(r) {
   r = r || {};
+  const cols = [
+    [t.serialNo, `<input class="cell-input" id="ar-serial" type="number" value="${esc(r.serial_no||'')}">`],
+    [t.admissionDate, `<input class="cell-input" id="ar-admission-date" type="date" value="${esc(r.admission_date||todayISO())}">`],
+    [t.studentName, `<input class="cell-input" id="ar-name" value="${esc(r.student_name||'')}">`],
+    [t.dobFigures, `<input class="cell-input" id="ar-dob-figures" type="date" value="${esc(r.dob_figures||'')}">`],
+    [t.dobWords, `<input class="cell-input" id="ar-dob-words" value="${esc(r.dob_words||'')}">`],
+    [t.fatherName, `<input class="cell-input" id="ar-father" value="${esc(r.father_name||'')}">`],
+    [t.casteTribe, `<input class="cell-input" id="ar-caste" value="${esc(r.caste_tribe||'')}">`],
+    [t.occupation, `<input class="cell-input" id="ar-occupation" value="${esc(r.occupation||'')}">`],
+    [t.residence, `<input class="cell-input" id="ar-residence" value="${esc(r.residence||'')}">`],
+    [t.classAdmitted, `<select class="cell-input" id="ar-class-admitted">${CLASS_OPTIONS.map(c=>`<option ${r.class_admitted===c?'selected':''}>${c}</option>`).join('')}</select>`],
+    [t.arrearsDue, `<input class="cell-input" id="ar-arrears" type="number" value="${esc(r.arrears_due||0)}">`],
+    [t.classWithdrawn, `<select class="cell-input" id="ar-class-withdrawn"><option value="">—</option>${CLASS_OPTIONS.map(c=>`<option ${r.class_withdrawn===c?'selected':''}>${c}</option>`).join('')}</select>`],
+    [t.withdrawalDate, `<input class="cell-input" id="ar-withdrawal-date" type="date" value="${esc(r.withdrawal_date||'')}">`],
+    [t.remarks, `<input class="cell-input" id="ar-remarks" value="${esc(r.remarks||'')}">`],
+  ];
   return `
-    <label><span>${esc(t.serialNo)}</span><input id="ar-serial" type="number" value="${esc(r.serial_no||'')}"></label>
-    <label><span>${esc(t.admissionDate)}</span><input id="ar-admission-date" type="date" value="${esc(r.admission_date||todayISO())}"></label>
-    <label><span>${esc(t.studentName)}</span><input id="ar-name" value="${esc(r.student_name||'')}"></label>
-    <label><span>${esc(t.dobFigures)}</span><input id="ar-dob-figures" type="date" value="${esc(r.dob_figures||'')}"></label>
-    <label><span>${esc(t.dobWords)}</span><input id="ar-dob-words" value="${esc(r.dob_words||'')}"></label>
-    <label><span>${esc(t.fatherName)}</span><input id="ar-father" value="${esc(r.father_name||'')}"></label>
-    <label><span>${esc(t.religion)}</span><input id="ar-religion" value="${esc(r.religion||'')}"></label>
-    <label><span>${esc(t.nationality)}</span><input id="ar-nationality" value="${esc(r.nationality||'')}"></label>
-    <label><span>${esc(t.casteTribe)}</span><input id="ar-caste" value="${esc(r.caste_tribe||'')}"></label>
-    <label><span>${esc(t.occupation)}</span><input id="ar-occupation" value="${esc(r.occupation||'')}"></label>
-    <label><span>${esc(t.residence)}</span><input id="ar-residence" value="${esc(r.residence||'')}"></label>
-    <label><span>${esc(t.classAdmitted)}</span><select id="ar-class-admitted">${CLASS_OPTIONS.map(c=>`<option ${r.class_admitted===c?'selected':''}>${c}</option>`).join('')}</select></label>
-    <label><span>${esc(t.arrearsDue)}</span><input id="ar-arrears" type="number" value="${esc(r.arrears_due||0)}"></label>
-    <label><span>${esc(t.conduct)} (${esc(t.optional)})</span><input id="ar-conduct" value="${esc(r.conduct||'')}"></label>
-    <label><span>${esc(t.classWithdrawn)} (${esc(t.optional)})</span><select id="ar-class-withdrawn"><option value="">—</option>${CLASS_OPTIONS.map(c=>`<option ${r.class_withdrawn===c?'selected':''}>${c}</option>`).join('')}</select></label>
-    <label><span>${esc(t.withdrawalDate)} (${esc(t.optional)})</span><input id="ar-withdrawal-date" type="date" value="${esc(r.withdrawal_date||'')}"></label>
-    <label><span>${esc(t.remarks)} (${esc(t.optional)})</span><input id="ar-remarks" value="${esc(r.remarks||'')}"></label>`;
+    <div class="regbook-screen-wrap" style="margin-bottom:14px;">
+      <table class="regbook-screen">
+        <thead><tr>${cols.map(c => `<th>${esc(c[0])}</th>`).join('')}</tr></thead>
+        <tbody><tr>${cols.map(c => `<td class="input-cell">${c[1]}</td>`).join('')}</tr></tbody>
+      </table>
+    </div>`;
 }
 
 function openAddAdmissionEntry() {
@@ -3010,14 +3109,11 @@ function readAdmissionForm() {
     dob_figures: document.getElementById('ar-dob-figures').value,
     dob_words: document.getElementById('ar-dob-words').value.trim(),
     father_name: document.getElementById('ar-father').value.trim(),
-    religion: document.getElementById('ar-religion').value.trim(),
-    nationality: document.getElementById('ar-nationality').value.trim(),
     caste_tribe: document.getElementById('ar-caste').value.trim(),
     occupation: document.getElementById('ar-occupation').value.trim(),
     residence: document.getElementById('ar-residence').value.trim(),
     class_admitted: document.getElementById('ar-class-admitted').value,
     arrears_due: Number(document.getElementById('ar-arrears').value || 0),
-    conduct: document.getElementById('ar-conduct').value.trim(),
     class_withdrawn: document.getElementById('ar-class-withdrawn').value || null,
     withdrawal_date: document.getElementById('ar-withdrawal-date').value || null,
     remarks: document.getElementById('ar-remarks').value.trim(),
@@ -3035,7 +3131,7 @@ async function submitAddAdmissionEntry() {
 function openEditAdmissionEntry(id) {
   const r = DATA.admissionRegister.find(x => x.id === id);
   if (!r) return;
-  showModal(t.editRegisterEntry, `
+  showModal(r.student_name || t.editRegisterEntry, `
     ${admissionEntryForm(r)}
     <div class="flexgap">
       <button class="btn-ghost" style="color:var(--rust);border-color:var(--rust);" onclick="confirmDelete('admissionEntry','${id}')">${esc(t.delete)}</button>
