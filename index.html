@@ -977,7 +977,7 @@ function renderTab() {
   else if (TAB==='teachers') main.innerHTML = tplTeachers();
   else if (TAB==='finance') main.innerHTML = tplFinance();
   else if (TAB==='reports') main.innerHTML = tplReports();
-  else if (TAB==='dmc') { main.innerHTML = tplDMC(); loadDMCConfig().then(renderDMCSubjects); }
+  else if (TAB==='dmc') { main.innerHTML = tplDMC(); loadDMCConfig().then(() => { if (TAB==='dmc') { main.innerHTML = tplDMC(); renderDMCSubjects(); } }); }
   else if (TAB==='marksSheet') main.innerHTML = tplMarksSheet();
   else if (TAB==='admissionRegister') main.innerHTML = tplAdmissionRegister();
   else if (TAB==='admin') { main.innerHTML = tplAdmin(); loadWhitelist(); return; }
@@ -2141,6 +2141,9 @@ function filteredRegisterList() {
 let dmcResults = []; // temporary storage for uploaded results
 let dmcLogo = null; // base64 logo image
 let dmcSchoolName = 'SCHOOL NAME'; // editable school name for certificates
+let dmcTagline = ''; // optional motto shown under the school name
+let dmcAcademicSession = ''; // optional e.g. "2025-2026"
+let dmcQuote = 'Education is the key to a bright future.'; // optional footer quote
 
 function tplDMC() {
   return `
@@ -2158,7 +2161,19 @@ function tplDMC() {
       
       <label>
         <span>School Name (for DMC)</span>
-        <input type="text" id="dmc-school-name" value="${dmcSchoolName}" placeholder="e.g., ISLAMIA SCHOOL & COLLEGE MARTUNG" onchange="dmcSchoolName=this.value;">
+        <input type="text" id="dmc-school-name" value="${esc(dmcSchoolName)}" placeholder="e.g., ISLAMIA SCHOOL & COLLEGE MARTUNG" onchange="dmcSchoolName=this.value; saveDMCConfig();">
+      </label>
+      <label>
+        <span>Tagline (optional)</span>
+        <input type="text" id="dmc-tagline" value="${esc(dmcTagline)}" placeholder="e.g., Nurturing Knowledge, Building Character" onchange="dmcTagline=this.value; saveDMCConfig();">
+      </label>
+      <label>
+        <span>Academic Session (optional)</span>
+        <input type="text" id="dmc-session" value="${esc(dmcAcademicSession)}" placeholder="e.g., 2025-2026" onchange="dmcAcademicSession=this.value; saveDMCConfig();">
+      </label>
+      <label style="margin-bottom:0;">
+        <span>Footer Quote (optional)</span>
+        <input type="text" id="dmc-quote" value="${esc(dmcQuote)}" placeholder="e.g., Education is the key to a bright future." onchange="dmcQuote=this.value; saveDMCConfig();">
       </label>
     </div>
 
@@ -2223,12 +2238,20 @@ async function loadDMCConfig() {
   if (dmcConfigLoaded) return;
   dmcConfigLoaded = true;
   const { data } = await sb.from('dmc_config').select('*').eq('owner_id', CURRENT_USER.id).maybeSingle();
-  if (data && data.subjects) dmcSubjects = data.subjects;
+  if (!data) return;
+  if (data.subjects) dmcSubjects = data.subjects;
+  if (data.school_name) dmcSchoolName = data.school_name;
+  if (data.logo) dmcLogo = data.logo;
+  if (data.tagline) dmcTagline = data.tagline;
+  if (data.academic_session) dmcAcademicSession = data.academic_session;
+  if (data.quote) dmcQuote = data.quote;
 }
 
 async function saveDMCConfig() {
   const { error } = await sb.from('dmc_config').upsert({
-    owner_id: CURRENT_USER.id, subjects: dmcSubjects, updated_at: new Date().toISOString()
+    owner_id: CURRENT_USER.id, subjects: dmcSubjects, school_name: dmcSchoolName, logo: dmcLogo,
+    tagline: dmcTagline, academic_session: dmcAcademicSession, quote: dmcQuote,
+    updated_at: new Date().toISOString()
   });
   if (error) console.error('DMC config save failed:', error.message);
 }
@@ -2314,6 +2337,20 @@ function generateDMCPreview() {
   document.getElementById('dmc-preview').innerHTML = html;
 }
 
+function dmcSubjectIcon(name) {
+  const n = (name || '').toLowerCase();
+  if (n.includes('eng')) return '🔤';
+  if (n.includes('sci')) return '🧪';
+  if (n.includes('math') || n.includes('riyazi')) return '🧮';
+  if (n.includes('urdu')) return '📖';
+  if (n.includes('islam') || n.includes('quran') || n.includes('deen')) return '🕌';
+  if (n.includes('gk') || n.includes('general') || n.includes('social') || n.includes('geo')) return '🌍';
+  if (n.includes('comp')) return '💻';
+  if (n.includes('art') || n.includes('draw')) return '🎨';
+  if (n.includes('phys') || n.includes('sport') || n.includes('pt ')) return '⚽';
+  return '📘';
+}
+
 function renderDMCCertificate(result) {
   const totalObtained = dmcSubjects.reduce((a, s) => a + (Number(result.marks[s.name]) || 0), 0);
   const totalPossible = dmcSubjects.reduce((a,b) => a+b.total, 0);
@@ -2330,91 +2367,107 @@ function renderDMCCertificate(result) {
 
   const subjectsHtml = dmcSubjects.map(s => {
     const marks = result.marks[s.name] || 0;
-    return `<tr style="border-bottom:1px solid #E7E0CE;"><td style="padding:10px;text-align:left;">${esc(s.name)}</td><td style="padding:10px;text-align:center;font-weight:600;font-size:14px;">${marks}</td><td style="padding:10px;text-align:center;font-size:14px;">${s.total}</td></tr>`;
+    return `
+      <tr style="border-bottom:1px solid #E7E0CE;">
+        <td style="padding:11px 14px;text-align:left;">
+          <span style="display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:50%;background:#0F2740;font-size:13px;margin-right:10px;vertical-align:middle;">${dmcSubjectIcon(s.name)}</span>
+          <span style="font-size:14px;color:#1C2530;vertical-align:middle;">${esc(s.name)}</span>
+        </td>
+        <td style="padding:11px;text-align:center;font-weight:700;font-size:15px;color:#0F2740;">${marks}</td>
+        <td style="padding:11px;text-align:center;font-size:14px;color:#555;">${s.total}</td>
+      </tr>`;
   }).join('');
-  
+
+  const statBlock = (icon, label, value) => `
+    <div style="text-align:center;">
+      <div style="font-size:18px;margin-bottom:4px;">${icon}</div>
+      <div style="font-size:10px;color:#0F2740;font-weight:600;letter-spacing:.04em;text-transform:uppercase;">${label}</div>
+      <div style="font-size:15px;font-weight:700;color:#0F2740;margin-top:2px;">${value}</div>
+    </div>`;
+
   return `
-    <div style="page-break-after:always;margin-bottom:20px;font-family:Inter,sans-serif;">
-      <div style="max-width:800px;margin:0 auto;background:#fff;padding:40px;position:relative;border:3px solid #0F2740;box-shadow:0 4px 15px rgba(15,39,64,0.15);">
-        
-        <!-- Decorative top border -->
-        <div style="position:absolute;top:0;left:0;right:0;height:8px;background:linear-gradient(90deg,#C92A2A,#0F2740,#C92A2A);">
-        </div>
-        
-        <!-- Header with logo and school name -->
-        <div style="text-align:center;margin-bottom:20px;padding-top:10px;">
-          ${dmcLogo ? `<img src="${dmcLogo}" style="max-height:80px;margin-bottom:12px;">` : ''}
-          <div style="font-size:24px;font-weight:700;color:#0F2740;letter-spacing:1px;margin-bottom:4px;">${esc(dmcSchoolName)}</div>
-          <div style="font-size:11px;color:#C92A2A;font-weight:600;letter-spacing:2px;">DETAIL MARKS CERTIFICATE</div>
-        </div>
-        
-        <!-- Serial No and Class -->
-        <div style="display:flex;justify-content:space-between;margin-bottom:24px;font-size:13px;color:#0F2740;">
-          <div><strong>Serial No: ${result.serialNo}</strong></div>
-          <div><strong>Class: ${esc(result.class)}</strong></div>
-        </div>
-        
-        <!-- Student Name -->
-        <div style="text-align:center;margin-bottom:8px;">
-          <div style="font-size:28px;font-weight:700;color:#0F2740;letter-spacing:0.5px;">${esc(result.studentName)}</div>
-        </div>
-        
-        <!-- Father Name -->
-        ${result.fatherName ? `<div style="text-align:center;margin-bottom:20px;font-size:13px;color:#333;">Father Name: ${esc(result.fatherName)}</div>` : '<div style="margin-bottom:20px;"></div>'}
-        
-        <!-- Marks Table -->
-        <table style="width:100%;border-collapse:collapse;margin-bottom:20px;">
-          <thead>
-            <tr style="background:#0F2740;color:#C9A227;">
-              <th style="padding:12px;text-align:left;font-weight:600;border:1px solid #0F2740;">Subject</th>
-              <th style="padding:12px;text-align:center;font-weight:600;border:1px solid #0F2740;">Obtained Marks</th>
-              <th style="padding:12px;text-align:center;font-weight:600;border:1px solid #0F2740;">Total Marks</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${subjectsHtml}
-            <tr style="background:#F0EBDA;font-weight:700;">
-              <td style="padding:12px;text-align:left;border:1px solid #E7E0CE;">TOTAL</td>
-              <td style="padding:12px;text-align:center;border:1px solid #E7E0CE;font-size:15px;">${totalObtained}</td>
-              <td style="padding:12px;text-align:center;border:1px solid #E7E0CE;font-size:15px;">${totalPossible}</td>
-            </tr>
-          </tbody>
-        </table>
-        
-        <!-- Results Grid -->
-        <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:12px;margin-bottom:24px;padding:16px;background:#F9F7F2;border-radius:8px;">
-          <div style="text-align:center;">
-            <div style="font-size:24px;margin-bottom:6px;">📊</div>
-            <div style="font-size:11px;color:#666;font-weight:500;">Percentage</div>
-            <div style="font-size:16px;font-weight:700;color:#0F2740;margin-top:4px;">${percentage}%</div>
+    <div style="page-break-after:always;margin-bottom:24px;font-family:Inter,sans-serif;">
+      <div style="max-width:800px;margin:0 auto;background:#0F2740;padding:12px;border-radius:26px;">
+        <div style="background:#FAF6EC;border:2px solid #C9A227;border-radius:18px;padding:30px 34px 26px;position:relative;">
+
+          <!-- Header: crest, school name + tagline, medal -->
+          <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:14px;">
+            <div style="flex-shrink:0;width:64px;height:64px;">
+              ${dmcLogo
+                ? `<img src="${dmcLogo}" style="width:64px;height:64px;object-fit:contain;border-radius:50%;">`
+                : `<svg viewBox="0 0 64 64" width="64" height="64"><path d="M32 4 L58 12 V32 C58 46 47 56 32 60 C17 56 6 46 6 32 V12 Z" fill="#0F2740" stroke="#C9A227" stroke-width="2"/><circle cx="32" cy="26" r="10" fill="none" stroke="#E4C765" stroke-width="1.5"/><path d="M24 40 L40 40" stroke="#E4C765" stroke-width="1.5"/></svg>`}
+            </div>
+            <div style="flex:1;text-align:center;padding-top:4px;">
+              <div style="font-family:Fraunces,serif;font-weight:700;font-size:23px;color:#0F2740;line-height:1.2;">${esc(dmcSchoolName)}</div>
+              ${dmcTagline ? `<div style="font-family:Fraunces,serif;font-style:italic;font-size:12px;color:#0F2740;opacity:.7;margin-top:5px;">${esc(dmcTagline)}</div>` : ''}
+            </div>
+            <div style="flex-shrink:0;width:44px;height:56px;">
+              <svg viewBox="0 0 44 56" width="44" height="56"><path d="M6 0 H38 V34 L22 24 L6 34 Z" fill="#0F2740"/><circle cx="22" cy="16" r="12" fill="#E4C765" stroke="#C9A227" stroke-width="1.5"/><path d="M16 16 L20 20 L28 11" stroke="#0F2740" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </div>
           </div>
+
+          <div style="height:1px;background:linear-gradient(90deg,transparent,#C9A227,transparent);margin:16px 0 18px;"></div>
+
+          <!-- Title banner -->
           <div style="text-align:center;">
-            <div style="font-size:24px;margin-bottom:6px;">⭐</div>
-            <div style="font-size:11px;color:#666;font-weight:500;">Grade</div>
-            <div style="font-size:16px;font-weight:700;color:#0F2740;margin-top:4px;">${grade}</div>
+            <div style="display:inline-block;background:#0F2740;color:#FAF6EC;padding:9px 24px;border-radius:6px;font-weight:700;font-size:14px;letter-spacing:.05em;">DETAILED MARKS CERTIFICATE</div>
+            ${dmcAcademicSession ? `<div style="margin-top:8px;"><span style="display:inline-block;background:#E4C765;color:#0F2740;padding:4px 16px;border-radius:4px;font-size:10px;font-weight:700;letter-spacing:.04em;">ACADEMIC SESSION ${esc(dmcAcademicSession)}</span></div>` : ''}
           </div>
-          <div style="text-align:center;">
-            <div style="font-size:24px;margin-bottom:6px;">🏅</div>
-            <div style="font-size:11px;color:#666;font-weight:500;">Position</div>
-            <div style="font-size:16px;font-weight:700;color:#0F2740;margin-top:4px;">${position} / ${totalStudentsInClass}</div>
+
+          <!-- Position | Student | Class -->
+          <div style="display:flex;align-items:center;justify-content:space-between;margin:24px 0 6px;gap:8px;">
+            <div style="text-align:center;flex-shrink:0;">
+              <div style="font-size:11px;color:#0F2740;opacity:.75;">Position</div>
+              <div style="font-size:20px;font-weight:700;color:#0F2740;">${position}</div>
+            </div>
+            <div style="flex:1;text-align:center;">
+              <div style="font-family:Fraunces,serif;font-size:25px;font-weight:700;color:#0F2740;">${esc(result.studentName)}</div>
+              ${result.fatherName ? `<div style="font-size:12px;color:#333;margin-top:5px;">Father Name: ${esc(result.fatherName)}</div>` : ''}
+            </div>
+            <div style="text-align:center;flex-shrink:0;">
+              <div style="font-size:11px;color:#0F2740;opacity:.75;">Class</div>
+              <div style="font-size:20px;font-weight:700;color:#0F2740;">${esc(result.class)}</div>
+            </div>
           </div>
-          <div style="text-align:center;">
-            <div style="font-size:24px;margin-bottom:6px;">🎖️</div>
-            <div style="font-size:11px;color:#666;font-weight:500;">Remarks</div>
-            <div style="font-size:14px;font-weight:600;color:#0F2740;margin-top:4px;">${remark}</div>
+
+          <!-- Marks Table -->
+          <table style="width:100%;border-collapse:collapse;margin:20px 0;">
+            <thead>
+              <tr style="background:#0F2740;color:#E4C765;">
+                <th style="padding:12px 14px;text-align:left;font-weight:700;font-size:12px;letter-spacing:.04em;">SUBJECT</th>
+                <th style="padding:12px;text-align:center;font-weight:700;font-size:12px;letter-spacing:.04em;">OBTAINED</th>
+                <th style="padding:12px;text-align:center;font-weight:700;font-size:12px;letter-spacing:.04em;">TOTAL</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${subjectsHtml}
+              <tr style="background:#E4C765;font-weight:700;">
+                <td style="padding:12px 14px;text-align:left;color:#0F2740;">TOTAL</td>
+                <td style="padding:12px;text-align:center;color:#0F2740;font-size:16px;">${totalObtained}</td>
+                <td style="padding:12px;text-align:center;color:#0F2740;font-size:16px;">${totalPossible}</td>
+              </tr>
+            </tbody>
+          </table>
+
+          <!-- Stats row -->
+          <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;padding:14px;background:#F0EBDA;border-radius:10px;border:1px solid #E7E0CE;">
+            ${statBlock('📊','Percentage', percentage+'%')}
+            ${statBlock('⭐','Grade', grade)}
+            ${statBlock('🏅','Out of', totalStudentsInClass)}
+            ${statBlock('💬','Remarks', remark)}
           </div>
-        </div>
-        
-        <!-- Divider -->
-        <div style="height:1px;background:linear-gradient(90deg,transparent,#C9A227,transparent);margin:16px 0;"></div>
-        
-        <!-- Signature Line -->
-        <div style="text-align:right;margin-top:24px;">
-          <div style="font-size:11px;margin-bottom:4px;">Signature: _______________</div>
-        </div>
-        
-        <!-- Decorative bottom border -->
-        <div style="position:absolute;bottom:0;left:0;right:0;height:8px;background:linear-gradient(90deg,#C92A2A,#0F2740,#C92A2A);">
+
+          <!-- Footer: quote + signature -->
+          <div style="display:flex;align-items:flex-end;justify-content:space-between;margin-top:26px;gap:16px;">
+            <div style="flex:1;">
+              ${dmcQuote ? `<div style="font-family:Fraunces,serif;font-style:italic;font-size:12px;color:#0F2740;opacity:.75;max-width:280px;">"${esc(dmcQuote)}"</div>` : ''}
+            </div>
+            <div style="text-align:center;flex-shrink:0;">
+              <div style="width:170px;border-bottom:1px solid #0F2740;margin-bottom:6px;"></div>
+              <div style="font-size:11px;color:#0F2740;">Signature</div>
+            </div>
+          </div>
+
         </div>
       </div>
     </div>
@@ -2426,6 +2479,7 @@ function handleDMCLogoUpload(file) {
   const reader = new FileReader();
   reader.onload = (e) => {
     dmcLogo = e.target.result;
+    saveDMCConfig();
     renderTab();
   };
   reader.readAsDataURL(file);
@@ -2433,7 +2487,7 @@ function handleDMCLogoUpload(file) {
 
 function printAllDMC() {
   if (dmcResults.length === 0) { alert('No results to print'); return; }
-  let html = '<html><head><meta charset="utf-8"><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap"><style>body{font-family:Inter,sans-serif;margin:0;padding:10px;background:#f5f5f5;}@media print{body{background:#fff;}}</style></head><body>';
+  let html = '<html><head><meta charset="utf-8"><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap"><style>*{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;color-adjust:exact!important;}body{font-family:Inter,sans-serif;margin:0;padding:10px;background:#f5f5f5;}@media print{body{background:#fff;}}</style></head><body>';
   dmcResults.forEach(r => {
     html += renderDMCCertificate(r);
   });
