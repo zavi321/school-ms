@@ -2144,6 +2144,8 @@ let dmcSchoolName = 'SCHOOL NAME'; // editable school name for certificates
 let dmcTagline = ''; // optional motto shown under the school name
 let dmcAcademicSession = ''; // optional e.g. "2025-2026"
 let dmcQuote = 'Education is the key to a bright future.'; // optional footer quote
+let dmcBatchSection = ''; // shared section for this batch, applied to all certificates
+let dmcBatchDateOfIssue = todayISO(); // shared date of issue for this batch, applied to all certificates
 
 function tplDMC() {
   return `
@@ -2191,12 +2193,31 @@ function tplDMC() {
 
     <div class="card">
       <h3 style="margin-top:0;">Upload Result List (Excel)</h3>
-      <p style="font-size:12px;opacity:.7;">Upload an Excel file with columns: Student Name, Father Name, Subject1 Marks, Subject2 Marks, etc. (A "Class" column is optional if you've selected a class above.)</p>
+      <p style="font-size:12px;opacity:.7;">Upload an Excel file with columns: Student Name, Father Name, Roll No, Section, Subject1 Marks, Subject2 Marks, etc. (A "Class" column is optional if you've selected a class above.)</p>
       <label style="margin-bottom:0;">
         <span>Select Excel File</span>
         <input type="file" id="dmc-file-input" accept=".xlsx,.xls,.csv" onchange="handleDMCExcelUpload(this.files[0])">
       </label>
       <div id="dmc-upload-msg" style="margin-top:8px;font-size:12px;"></div>
+    </div>
+
+    <div class="card">
+      <h3 style="margin-top:0;">Section & Date of Issue</h3>
+      <p style="font-size:12px;opacity:.7;">These apply to every certificate in this batch.</p>
+      <label>
+        <span>Section</span>
+        <input type="text" id="dmc-batch-section" value="${esc(dmcBatchSection)}" placeholder="e.g., A" onchange="dmcBatchSection=this.value;">
+      </label>
+      <label style="margin-bottom:0;">
+        <span>Date of Issue</span>
+        <input type="date" id="dmc-batch-date" value="${esc(dmcBatchDateOfIssue || todayISO())}" onchange="dmcBatchDateOfIssue=this.value;">
+      </label>
+    </div>
+
+    <div class="card">
+      <h3 style="margin-top:0;">Review & Edit Roll No.</h3>
+      <p style="font-size:12px;opacity:.7;">Fill in or fix each student's Roll No. before printing — useful if it wasn't in your Excel file.</p>
+      <div id="dmc-edit-table"></div>
     </div>
 
     <div class="card">
@@ -2266,6 +2287,18 @@ function addDMCSubject() {
   renderDMCSubjects();
 }
 
+function renderDMCEditTable() {
+  const container = document.getElementById('dmc-edit-table');
+  if (!container) return;
+  if (dmcResults.length === 0) { container.innerHTML = `<p style="font-size:12px;opacity:.5;">Upload a result list above to edit roll numbers.</p>`; return; }
+  container.innerHTML = dmcResults.map((r, i) => `
+    <div style="display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--line);padding:8px 0;">
+      <div style="flex:1;font-size:13px;color:var(--ink);">${r.serialNo}. ${esc(r.studentName || '(No name)')}</div>
+      <input type="text" style="width:110px;" value="${esc(r.rollNo)}" placeholder="Roll No." oninput="dmcResults[${i}].rollNo=this.value">
+    </div>
+  `).join('');
+}
+
 function renderDMCSubjects() {
   document.getElementById('dmc-subjects-list').innerHTML = dmcSubjects.map((s, i) => `
     <div style="background:#F0EBDA;padding:6px 10px;border-radius:6px;font-size:12px;display:flex;align-items:center;gap:6px;">
@@ -2298,6 +2331,7 @@ function handleDMCExcelUpload(file) {
           serialNo: idx + 1,
           studentName: r['Student Name'] || r['Name'] || r['Student'] || '',
           fatherName: r['Father Name'] || r["Father's Name"] || r['Father'] || r['S/O'] || r['Walid'] || '',
+          rollNo: r['Roll No'] || r['Roll No.'] || r['Roll Number'] || r['Roll'] || '',
           class: excelClass || selectedClass || '',
           classFromExcel: !!excelClass, // if true, onDMCClassChange() won't overwrite this row later
           marks: {} // will be filled from other columns
@@ -2305,10 +2339,11 @@ function handleDMCExcelUpload(file) {
       });
       
       // Extract marks from other columns
+      const nonMarkCols = ['Student Name','Name','Student','Class','جماعت','Father Name',"Father's Name",'Father','S/O','Walid','Roll No','Roll No.','Roll Number','Roll','Section','سیکشن','Date of Issue','Issue Date'];
       dmcResults.forEach((r, idx) => {
         const row = rows[idx];
         Object.keys(row).forEach(col => {
-          if (!['Student Name','Name','Student','Class','جماعت','Father Name',"Father's Name",'Father','S/O','Walid'].includes(col)) {
+          if (!nonMarkCols.includes(col)) {
             r.marks[col] = Number(row[col]) || 0;
           }
         });
@@ -2318,6 +2353,7 @@ function handleDMCExcelUpload(file) {
       document.getElementById('dmc-upload-msg').innerHTML = missingClass
         ? `⚠️ Loaded ${dmcResults.length} students, but no class is set — select a class above (or add a "Class" column to your Excel) before printing.`
         : `✓ Loaded ${dmcResults.length} students`;
+      renderDMCEditTable();
     } catch (err) {
       document.getElementById('dmc-upload-msg').innerHTML = `✗ Error: ${err.message}`;
     }
@@ -2351,120 +2387,155 @@ function dmcSubjectIcon(name) {
   return '📘';
 }
 
+function dmcGradeFor(pct) {
+  return pct >= 90 ? 'A++' : pct >= 80 ? 'A+' : pct >= 70 ? 'A' : pct >= 60 ? 'B' : pct >= 50 ? 'C' : pct >= 40 ? 'D' : 'E';
+}
+function dmcRemarkFor(grade) {
+  const map = { 'A++':'Outstanding', 'A+':'Excellent', 'A':'Very Good', 'B':'Good', 'C':'Satisfactory', 'D':'Needs Improvement', 'E':'Fail' };
+  return map[grade] || '';
+}
+
 function renderDMCCertificate(result) {
   const totalObtained = dmcSubjects.reduce((a, s) => a + (Number(result.marks[s.name]) || 0), 0);
   const totalPossible = dmcSubjects.reduce((a,b) => a+b.total, 0);
   const percentage = totalPossible ? ((totalObtained / totalPossible) * 100).toFixed(1) : 0;
-  const grade = percentage >= 90 ? 'A+' : percentage >= 80 ? 'A' : percentage >= 70 ? 'B' : percentage >= 60 ? 'C' : percentage >= 40 ? 'D' : 'F';
-  const remark = { 'A+':'Outstanding', 'A':'Excellent', 'B':'Very Good', 'C':'Good', 'D':'Satisfactory', 'F':'Fail' }[grade];
+  const grade = dmcGradeFor(percentage);
+  const resultStatus = percentage >= 40 ? 'PASS' : 'FAIL';
 
   // Position in class
   const classResults = dmcResults.filter(r => r.class === result.class);
   const classTotals = classResults.map(r => dmcSubjects.reduce((a, s) => a + (Number(r.marks[s.name]) || 0), 0));
   const sortedTotals = [...classTotals].sort((a, b) => b - a);
   const position = sortedTotals.indexOf(totalObtained) + 1;
-  const totalStudentsInClass = classResults.length;
 
-  const subjectsHtml = dmcSubjects.map(s => {
-    const marks = result.marks[s.name] || 0;
+  const subjectsHtml = dmcSubjects.map((s, i) => {
+    const marks = Number(result.marks[s.name]) || 0;
+    const subjPct = s.total ? (marks / s.total) * 100 : 0;
+    const subjGrade = dmcGradeFor(subjPct);
     return `
       <tr style="border-bottom:1px solid #E7E0CE;">
-        <td style="padding:11px 14px;text-align:left;">
-          <span style="display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:50%;background:#0F2740;font-size:13px;margin-right:10px;vertical-align:middle;">${dmcSubjectIcon(s.name)}</span>
-          <span style="font-size:14px;color:#1C2530;vertical-align:middle;">${esc(s.name)}</span>
-        </td>
-        <td style="padding:11px;text-align:center;font-weight:700;font-size:15px;color:#0F2740;">${marks}</td>
-        <td style="padding:11px;text-align:center;font-size:14px;color:#555;">${s.total}</td>
+        <td style="padding:6px 12px;text-align:center;font-size:13px;color:#1C2530;">${i+1}</td>
+        <td style="padding:6px 12px;text-align:left;font-size:14px;font-weight:600;color:#1C2530;">${esc(s.name)}</td>
+        <td style="padding:6px 12px;text-align:center;font-size:14px;color:#333;">${s.total}</td>
+        <td style="padding:6px 12px;text-align:center;font-size:14px;font-weight:700;color:#0F2740;">${marks}</td>
+        <td style="padding:6px 12px;text-align:center;font-size:13px;font-weight:700;color:#0F2740;">${subjGrade}</td>
       </tr>`;
   }).join('');
 
-  const statBlock = (icon, label, value) => `
+  const infoField = (icon, label, value) => `
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+      <span style="flex-shrink:0;width:18px;text-align:center;">${icon}</span>
+      <span style="flex-shrink:0;width:96px;font-size:12px;font-weight:700;color:#0F2740;">${esc(label)}</span>
+      <span style="font-size:12px;color:#1C2530;">:</span>
+      <span style="flex:1;font-size:13px;color:#1C2530;border-bottom:1px solid #C9C2A6;padding-bottom:2px;">${esc(value || '\u2014')}</span>
+    </div>`;
+
+  const summaryBlock = (icon, label, value) => `
     <div style="text-align:center;">
-      <div style="font-size:18px;margin-bottom:4px;">${icon}</div>
-      <div style="font-size:10px;color:#0F2740;font-weight:600;letter-spacing:.04em;text-transform:uppercase;">${label}</div>
-      <div style="font-size:15px;font-weight:700;color:#0F2740;margin-top:2px;">${value}</div>
+      <div style="font-size:17px;margin-bottom:4px;">${icon}</div>
+      <div style="font-size:9px;color:#0F2740;font-weight:700;letter-spacing:.04em;text-transform:uppercase;">${label}</div>
+      <div style="font-size:15px;font-weight:700;color:#0F2740;margin-top:3px;">${value}</div>
     </div>`;
 
   return `
-    <div style="page-break-after:always;margin-bottom:24px;font-family:Inter,sans-serif;">
-      <div style="max-width:800px;margin:0 auto;background:#0F2740;padding:12px;border-radius:26px;">
-        <div style="background:#FAF6EC;border:2px solid #C9A227;border-radius:18px;padding:30px 34px 26px;position:relative;">
+    <div class="dmc-cert" style="page-break-after:always;page-break-inside:avoid;break-inside:avoid;margin-bottom:24px;font-family:Inter,sans-serif;">
+      <div style="max-width:800px;margin:0 auto;background:#0F2740;padding:8px;border-radius:22px;position:relative;overflow:hidden;">
+        <div style="background:#FAF6EC;border:2px solid #C9A227;border-radius:16px;padding:18px 26px 16px;position:relative;">
 
           <!-- Header: crest, school name + tagline, medal -->
           <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:14px;">
-            <div style="flex-shrink:0;width:64px;height:64px;">
+            <div style="flex-shrink:0;width:62px;height:62px;">
               ${dmcLogo
-                ? `<img src="${dmcLogo}" style="width:64px;height:64px;object-fit:contain;border-radius:50%;">`
-                : `<svg viewBox="0 0 64 64" width="64" height="64"><path d="M32 4 L58 12 V32 C58 46 47 56 32 60 C17 56 6 46 6 32 V12 Z" fill="#0F2740" stroke="#C9A227" stroke-width="2"/><circle cx="32" cy="26" r="10" fill="none" stroke="#E4C765" stroke-width="1.5"/><path d="M24 40 L40 40" stroke="#E4C765" stroke-width="1.5"/></svg>`}
+                ? `<img src="${dmcLogo}" style="width:62px;height:62px;object-fit:contain;border-radius:50%;">`
+                : `<svg viewBox="0 0 64 64" width="62" height="62"><path d="M32 4 L58 12 V32 C58 46 47 56 32 60 C17 56 6 46 6 32 V12 Z" fill="#0F2740" stroke="#C9A227" stroke-width="2"/><circle cx="32" cy="26" r="10" fill="none" stroke="#E4C765" stroke-width="1.5"/><path d="M24 40 L40 40" stroke="#E4C765" stroke-width="1.5"/></svg>`}
             </div>
-            <div style="flex:1;text-align:center;padding-top:4px;">
-              <div style="font-family:Fraunces,serif;font-weight:700;font-size:23px;color:#0F2740;line-height:1.2;">${esc(dmcSchoolName)}</div>
-              ${dmcTagline ? `<div style="font-family:Fraunces,serif;font-style:italic;font-size:12px;color:#0F2740;opacity:.7;margin-top:5px;">${esc(dmcTagline)}</div>` : ''}
+            <div style="flex:1;text-align:center;padding-top:2px;">
+              <div style="font-family:Fraunces,serif;font-weight:700;font-size:26px;color:#0F2740;line-height:1.15;letter-spacing:.03em;">${esc(dmcSchoolName)}</div>
+              ${dmcTagline ? `<div style="font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:#0F2740;opacity:.75;margin-top:5px;">${esc(dmcTagline)}</div>` : ''}
             </div>
-            <div style="flex-shrink:0;width:44px;height:56px;">
-              <svg viewBox="0 0 44 56" width="44" height="56"><path d="M6 0 H38 V34 L22 24 L6 34 Z" fill="#0F2740"/><circle cx="22" cy="16" r="12" fill="#E4C765" stroke="#C9A227" stroke-width="1.5"/><path d="M16 16 L20 20 L28 11" stroke="#0F2740" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <div style="flex-shrink:0;width:42px;height:54px;">
+              <svg viewBox="0 0 44 56" width="42" height="54"><path d="M6 0 H38 V34 L22 24 L6 34 Z" fill="#0F2740"/><circle cx="22" cy="16" r="12" fill="#E4C765" stroke="#C9A227" stroke-width="1.5"/><path d="M16 16 L20 20 L28 11" stroke="#0F2740" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
             </div>
           </div>
 
-          <div style="height:1px;background:linear-gradient(90deg,transparent,#C9A227,transparent);margin:16px 0 18px;"></div>
+          <div style="height:1px;background:linear-gradient(90deg,transparent,#C9A227,transparent);margin:10px 0 12px;"></div>
 
           <!-- Title banner -->
           <div style="text-align:center;">
-            <div style="display:inline-block;background:#0F2740;color:#FAF6EC;padding:9px 24px;border-radius:6px;font-weight:700;font-size:14px;letter-spacing:.05em;">DETAILED MARKS CERTIFICATE</div>
-            ${dmcAcademicSession ? `<div style="margin-top:8px;"><span style="display:inline-block;background:#E4C765;color:#0F2740;padding:4px 16px;border-radius:4px;font-size:10px;font-weight:700;letter-spacing:.04em;">ACADEMIC SESSION ${esc(dmcAcademicSession)}</span></div>` : ''}
+            <div style="display:inline-block;background:#0F2740;color:#FAF6EC;padding:9px 26px;border-radius:6px;font-weight:700;font-size:14px;letter-spacing:.06em;">DETAILED MARKS CERTIFICATE</div>
+            ${dmcAcademicSession ? `<div style="margin-top:10px;"><span style="display:inline-block;border:1px solid #C9A227;color:#0F2740;padding:4px 18px;border-radius:999px;font-size:11px;font-weight:700;letter-spacing:.03em;">ACADEMIC SESSION: ${esc(dmcAcademicSession)}</span></div>` : ''}
           </div>
 
-          <!-- Position | Student | Class -->
-          <div style="display:flex;align-items:center;justify-content:space-between;margin:24px 0 6px;gap:8px;">
-            <div style="text-align:center;flex-shrink:0;">
-              <div style="font-size:11px;color:#0F2740;opacity:.75;">Position</div>
-              <div style="font-size:20px;font-weight:700;color:#0F2740;">${position}</div>
-            </div>
-            <div style="flex:1;text-align:center;">
-              <div style="font-family:Fraunces,serif;font-size:25px;font-weight:700;color:#0F2740;">${esc(result.studentName)}</div>
-              ${result.fatherName ? `<div style="font-size:12px;color:#333;margin-top:5px;">Father Name: ${esc(result.fatherName)}</div>` : ''}
-            </div>
-            <div style="text-align:center;flex-shrink:0;">
-              <div style="font-size:11px;color:#0F2740;opacity:.75;">Class</div>
-              <div style="font-size:20px;font-weight:700;color:#0F2740;">${esc(result.class)}</div>
+          <!-- Student Information section -->
+          <div style="margin:14px 0 0;">
+            <div style="display:inline-block;background:#0F2740;color:#E4C765;padding:6px 16px;font-size:11px;font-weight:700;letter-spacing:.05em;border-radius:4px 10px 4px 4px;">STUDENT INFORMATION</div>
+          </div>
+          <div style="border:1px solid #C9A227;border-radius:10px;padding:12px 18px 2px;margin-top:8px;">
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 20px;">
+              <div>
+                ${infoField('&#128100;','Student Name', result.studentName)}
+                ${infoField('&#128100;','Father Name', result.fatherName)}
+                ${infoField('&#128203;','Roll No.', result.rollNo)}
+              </div>
+              <div>
+                ${infoField('&#127891;','Class', result.class)}
+                ${infoField('&#128101;','Section', dmcBatchSection)}
+                ${infoField('&#128197;','Date of Issue', dmcBatchDateOfIssue || todayISO())}
+              </div>
             </div>
           </div>
 
           <!-- Marks Table -->
-          <table style="width:100%;border-collapse:collapse;margin:20px 0;">
+          <table style="width:100%;border-collapse:collapse;margin:8px 0;">
             <thead>
               <tr style="background:#0F2740;color:#E4C765;">
-                <th style="padding:12px 14px;text-align:left;font-weight:700;font-size:12px;letter-spacing:.04em;">SUBJECT</th>
-                <th style="padding:12px;text-align:center;font-weight:700;font-size:12px;letter-spacing:.04em;">OBTAINED</th>
-                <th style="padding:12px;text-align:center;font-weight:700;font-size:12px;letter-spacing:.04em;">TOTAL</th>
+                <th style="padding:8px 12px;text-align:center;font-weight:700;font-size:11px;letter-spacing:.04em;width:44px;">S.NO</th>
+                <th style="padding:8px 12px;text-align:left;font-weight:700;font-size:11px;letter-spacing:.04em;">SUBJECT</th>
+                <th style="padding:8px 12px;text-align:center;font-weight:700;font-size:11px;letter-spacing:.04em;">TOTAL MARKS</th>
+                <th style="padding:8px 12px;text-align:center;font-weight:700;font-size:11px;letter-spacing:.04em;">OBTAINED MARKS</th>
+                <th style="padding:8px 12px;text-align:center;font-weight:700;font-size:11px;letter-spacing:.04em;">GRADE</th>
               </tr>
             </thead>
             <tbody>
               ${subjectsHtml}
               <tr style="background:#E4C765;font-weight:700;">
-                <td style="padding:12px 14px;text-align:left;color:#0F2740;">TOTAL</td>
-                <td style="padding:12px;text-align:center;color:#0F2740;font-size:16px;">${totalObtained}</td>
-                <td style="padding:12px;text-align:center;color:#0F2740;font-size:16px;">${totalPossible}</td>
+                <td colspan="2" style="padding:8px 12px;text-align:left;color:#0F2740;">TOTAL</td>
+                <td style="padding:8px 12px;text-align:center;color:#0F2740;font-size:15px;">${totalPossible}</td>
+                <td style="padding:8px 12px;text-align:center;color:#0F2740;font-size:15px;">${totalObtained}</td>
+                <td style="padding:8px 12px;text-align:center;color:#0F2740;font-size:14px;">${grade}</td>
               </tr>
             </tbody>
           </table>
 
-          <!-- Stats row -->
-          <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;padding:14px;background:#F0EBDA;border-radius:10px;border:1px solid #E7E0CE;">
-            ${statBlock('📊','Percentage', percentage+'%')}
-            ${statBlock('⭐','Grade', grade)}
-            ${statBlock('🏅','Out of', totalStudentsInClass)}
-            ${statBlock('💬','Remarks', remark)}
+          <!-- Summary row -->
+          <div style="border:1px solid #C9A227;border-radius:10px;padding:8px;">
+            <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:6px;">
+              ${summaryBlock('&#127942;','Total Marks', totalPossible)}
+              ${summaryBlock('&#128203;','Obtained Marks', totalObtained)}
+              ${summaryBlock('%','Percentage', percentage+'%')}
+              ${summaryBlock('&#127895;','Grade', grade)}
+              ${summaryBlock('&#129351;','Position', position)}
+            </div>
           </div>
 
-          <!-- Footer: quote + signature -->
-          <div style="display:flex;align-items:flex-end;justify-content:space-between;margin-top:26px;gap:16px;">
-            <div style="flex:1;">
-              ${dmcQuote ? `<div style="font-family:Fraunces,serif;font-style:italic;font-size:12px;color:#0F2740;opacity:.75;max-width:280px;">"${esc(dmcQuote)}"</div>` : ''}
+          <!-- Remarks -->
+          <div style="display:flex;margin-top:10px;border:1px solid #0F2740;border-radius:8px;overflow:hidden;">
+            <div style="background:#0F2740;color:#E4C765;font-weight:700;font-size:13px;letter-spacing:.05em;padding:8px 22px;">REMARKS</div>
+            <div style="flex:1;display:flex;align-items:center;justify-content:center;gap:8px;font-weight:700;font-size:13px;letter-spacing:.05em;color:${resultStatus==='PASS' ? '#3F7154' : '#B24A32'};">${dmcRemarkFor(grade)}</div>
+          </div>
+
+          <!-- Footer: signatures -->
+          <div style="display:flex;align-items:flex-end;justify-content:space-between;margin-top:10px;gap:12px;">
+            <div style="text-align:center;flex:1;">
+              <div style="border-bottom:1px solid #0F2740;margin-bottom:6px;"></div>
+              <div style="font-size:10px;font-weight:600;color:#0F2740;letter-spacing:.03em;">CLASS TEACHER SIGNATURE</div>
             </div>
-            <div style="text-align:center;flex-shrink:0;">
-              <div style="width:170px;border-bottom:1px solid #0F2740;margin-bottom:6px;"></div>
-              <div style="font-size:11px;color:#0F2740;">Signature</div>
+            <div style="text-align:center;flex-shrink:0;width:70px;">
+              <div style="width:56px;height:56px;border:1px dashed #C9A227;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:8px;font-weight:700;color:#0F2740;opacity:.6;margin:0 auto;">SCHOOL<br>STAMP</div>
+            </div>
+            <div style="text-align:center;flex:1;">
+              <div style="border-bottom:1px solid #0F2740;margin-bottom:6px;"></div>
+              <div style="font-size:10px;font-weight:600;color:#0F2740;letter-spacing:.03em;">PRINCIPAL SIGNATURE</div>
             </div>
           </div>
 
@@ -2487,7 +2558,7 @@ function handleDMCLogoUpload(file) {
 
 function printAllDMC() {
   if (dmcResults.length === 0) { alert('No results to print'); return; }
-  let html = '<html><head><meta charset="utf-8"><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap"><style>*{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;color-adjust:exact!important;}body{font-family:Inter,sans-serif;margin:0;padding:10px;background:#f5f5f5;}@media print{body{background:#fff;}}</style></head><body>';
+  let html = '<html><head><meta charset="utf-8"><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap"><style>@page{size:A4;margin:8mm;}*{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;color-adjust:exact!important;}html,body{height:100%;}body{font-family:Inter,sans-serif;margin:0;padding:10px;background:#f5f5f5;}@media print{body{background:#fff;padding:0;}.dmc-cert{page-break-inside:avoid;page-break-after:always;break-inside:avoid;}.dmc-cert:last-child{page-break-after:auto;}}</style></head><body>';
   dmcResults.forEach(r => {
     html += renderDMCCertificate(r);
   });
