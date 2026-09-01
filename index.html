@@ -1106,6 +1106,7 @@ async function loadWhitelist() {
         ? `<button style="font-size:11px;padding:6px 10px;white-space:nowrap;" class="btn-primary" onclick="markWhitelistVerified('${esc(row.email).replace(/'/g,"\\'")}')">${esc(t.markVerified)}</button>`
         : `<span style="font-size:11px;font-weight:600;color:${statusColor(row.status)};white-space:nowrap;">${esc(statusLabel(row.status))}</span>`
       }
+      <button title="${esc(t.delete)}" style="flex-shrink:0;background:none;border:none;color:var(--rust);font-size:16px;cursor:pointer;padding:4px;" onclick="confirmDelete('whitelistEmail','${esc(row.email).replace(/'/g,"\\'")}')">🗑️</button>
     </div>`).join('');
 }
 
@@ -3371,6 +3372,10 @@ async function doDelete(kind, id) {
   }
   if (kind==='admissionEntry') {
     const r1 = await sb.from('admission_register').delete().eq('id', id);
+    if (r1.error) err = r1.error;
+  }
+  if (kind==='whitelistEmail') {
+    const r1 = await sb.from('whitelist_emails').delete().eq('email', id);
     if (r1.error) err = r1.error;
   }
   closeModal(); await loadAllData(); renderTab();
