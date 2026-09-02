@@ -1888,7 +1888,9 @@ async function submitAddStudent() {
 
 // Builds the same 12-month (Feb-Jan academic year) ledger rows used on the physical
 // fee card, so the on-screen ledger and the printed card always match.
-function buildAcademicYearLedger(studentId) {
+// If overrideStartYear is given, that specific academic year is built instead of
+// the auto-detected latest one — used to let the user browse older years' records.
+function buildAcademicYearLedger(studentId, overrideStartYear) {
   const s = DATA.students.find(x => x.id === studentId);
   const entries = studentPayments(studentId);
   const entryByMonth = {};
@@ -1899,7 +1901,9 @@ function buildAcademicYearLedger(studentId) {
   const academicYearOf = (year, month) => (month >= 2 ? year : year - 1);
 
   let startYear;
-  if (entries.length) {
+  if (overrideStartYear) {
+    startYear = overrideStartYear;
+  } else if (entries.length) {
     // Anchor to the most recent entry so newly-added months always show up here,
     // even if that falls in a different calendar year than admission_date.
     const latest = entries.reduce((a, b) => (a.month > b.month ? a : b));
@@ -1941,10 +1945,29 @@ function buildAcademicYearLedger(studentId) {
   return { startYear, rows };
 }
 
-function openStudentDetail(id) {
+// The earliest academic year this student has any record for (from either their
+// earliest fee entry or their admission date) — used to stop "Previous Year" once
+// there's nothing older to show.
+function earliestAcademicYear(studentId) {
+  const s = DATA.students.find(x => x.id === studentId);
+  const academicYearOf = (year, month) => (month >= 2 ? year : year - 1);
+  const entries = studentPayments(studentId);
+  let years = entries.map(e => {
+    const [ey, em] = e.month.split('-').map(Number);
+    return academicYearOf(ey, em);
+  });
+  if (s && s.admission_date) {
+    const d = new Date(s.admission_date);
+    years.push(academicYearOf(d.getFullYear(), d.getMonth() + 1));
+  }
+  return years.length ? Math.min(...years) : null;
+}
+
+function openStudentDetail(id, viewYear) {
   const s = DATA.students.find(x=>x.id===id);
   const entries = studentPayments(id).slice().sort((a,b)=> (a.month>b.month?1:a.month<b.month?-1:0) || (new Date(a.pay_date)-new Date(b.pay_date)));
-  const { startYear, rows } = buildAcademicYearLedger(id);
+  const { startYear, rows } = buildAcademicYearLedger(id, viewYear);
+  const earliestYear = earliestAcademicYear(id);
   const currentBalance = studentBalance(id);
   const totalPaidAllTime = entries.reduce((a,b)=>a+Number(b.amount||0),0);
 
@@ -1991,7 +2014,13 @@ function openStudentDetail(id) {
     </div>
     <div style="margin-top:10px;"><button class="btn-primary" onclick="submitFeePayment('${id}')">+ ${esc(t.save)}</button></div>
 
-    <h4 class="section-title">${esc(t.feeLedger)} · ${startYear}–${startYear+1}</h4>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-top:16px;">
+      <h4 class="section-title" style="margin:0;">${esc(t.feeLedger)} · ${startYear}–${startYear+1}</h4>
+      <div style="display:flex;gap:6px;">
+        <button class="btn-ghost" style="padding:5px 10px;font-size:12px;" ${earliestYear!==null && startYear<=earliestYear?'disabled':''} onclick="openStudentDetail('${id}', ${startYear-1})">‹ ${esc(t.previous)}</button>
+        <button class="btn-ghost" style="padding:5px 10px;font-size:12px;" onclick="openStudentDetail('${id}', ${startYear+1})">${esc(t.next)} ›</button>
+      </div>
+    </div>
     <div class="card-table-wrap">
       <table class="card-table">
         <thead><tr>
@@ -2022,7 +2051,7 @@ function openStudentDetail(id) {
       </table>
     </div>
     <div style="margin-top:16px;display:flex;gap:8px;">
-      <button class="btn-ghost" style="flex:1;" onclick="printFeeCard('${id}')">🖨️ ${esc(t.printCard)}</button>
+      <button class="btn-ghost" style="flex:1;" onclick="printFeeCard('${id}', ${startYear})">🖨️ ${esc(t.printCard)}</button>
       <button class="btn-ghost danger" style="flex:1;" onclick="confirmDelete('student','${id}')">${esc(t.delete)}</button>
     </div>
   `);
@@ -2124,9 +2153,9 @@ async function deleteFeePayment(paymentId, studentId) {
 }
 
 // Print the full 12-month fee card (Feb–Jan), matching the school's printed physical card layout
-function printFeeCard(studentId) {
+function printFeeCard(studentId, viewYear) {
   const s = DATA.students.find(x=>x.id===studentId);
-  const { startYear, rows } = buildAcademicYearLedger(studentId);
+  const { startYear, rows } = buildAcademicYearLedger(studentId, viewYear);
 
   const todayMk = todayISO().slice(0,7);
   const rowsHtml = rows.map(r => `
