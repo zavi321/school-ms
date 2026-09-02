@@ -26,7 +26,7 @@
 <meta name="apple-mobile-web-app-title" content="SchoolMS">
 <link rel="apple-touch-icon" href="icons/icon-180.png">
 <link rel="icon" href="icons/icon-192.png">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700&family=Inter:wght@400;500;600;700&family=Noto+Nastaliq+Urdu:wght@600;700&family=Noto+Sans+Urdu:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,500;0,9..144,600;0,9..144,700;1,9..144,500;1,9..144,600;1,9..144,700&family=Inter:wght@400;500;600;700&family=Noto+Nastaliq+Urdu:wght@600;700&family=Noto+Sans+Urdu:wght@400;500;600&display=swap">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.4/dist/umd/supabase.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <style>
@@ -128,6 +128,33 @@
   .type-filter button{flex-shrink:0;border:none;border-radius:999px;padding:6px 13px;font-size:12px;font-weight:600;background:#F0EBDA;color:var(--navy);}
   .type-filter button.on{background:var(--navy);color:var(--gold-soft);}
 
+  /* ---- Admission Register: notebook/ledger-book page look ---- */
+  .reg-book{position:relative;background:#FFFDF6;background-image:repeating-linear-gradient(to bottom, transparent 0px, transparent 31px, #E7E0CE 31px, #E7E0CE 32px);
+    border-radius:4px 12px 12px 4px;border-left:4px solid var(--rust);box-shadow:var(--shadow-md), 3px 3px 0 rgba(15,39,64,.06), 6px 6px 0 rgba(15,39,64,.04);
+    padding:16px 14px 18px 22px;margin-top:4px;}
+  body.ur .reg-book{border-left:none;border-right:4px solid var(--rust);border-radius:12px 4px 4px 12px;padding:16px 22px 18px 14px;}
+  .reg-book::before{content:'';position:absolute;top:0;right:0;width:0;height:0;border-style:solid;border-width:0 16px 16px 0;border-color:transparent #EFE7D2 transparent transparent;filter:drop-shadow(-1px 1px 1px rgba(15,39,64,.08));}
+  body.ur .reg-book::before{right:auto;left:0;border-width:0 0 16px 16px;border-color:transparent transparent transparent #EFE7D2;}
+  .reg-book-title{font-family:Fraunces,serif;color:var(--navy);font-size:15px;font-weight:600;margin:0 0 10px;padding-bottom:8px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:6px;}
+  body.ur .reg-book-title{font-family:'Noto Nastaliq Urdu',serif;}
+  .reg-book-title svg{width:15px;height:15px;flex-shrink:0;opacity:.7;}
+
+  /* ---- On-screen ledger table: mirrors the bound physical Admission &
+     Withdrawal Register page (ruled paper, thin rose grid, centre spine). ---- */
+  .regbook-screen-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;border-radius:6px;box-shadow:var(--shadow-sm);background:#FFFDF6;}
+  table.regbook-screen{border-collapse:collapse;width:100%;min-width:1180px;background:#FFFDF6;}
+  table.regbook-screen th{background:#FFFDF6;color:var(--navy);font-weight:700;font-size:10.5px;padding:9px 6px;text-align:center;border:1px solid #E6AFAF;position:sticky;top:0;line-height:1.25;}
+  table.regbook-screen td{padding:10px 6px;text-align:center;border:1px solid #E6AFAF;font-size:12px;white-space:nowrap;color:var(--ink);}
+  table.regbook-screen td.mo{font-weight:600;color:var(--navy);cursor:pointer;}
+  table.regbook-screen td.due{color:var(--rust);font-weight:600;}
+  table.regbook-screen .rb-spine{border-left:2.5px solid var(--rust);box-shadow:-3px 0 6px rgba(15,39,64,.06);}
+  table.regbook-screen tbody tr{cursor:pointer;}
+  table.regbook-screen tbody tr:hover{background:#FBF1DA;}
+  table.regbook-screen td.act{cursor:default;}
+  table.regbook-screen input.cell-input, table.regbook-screen select.cell-input{border:none;padding:5px 2px;font-size:12px;background:transparent;min-width:100px;width:100%;text-align:center;}
+  table.regbook-screen input.cell-input:focus, table.regbook-screen select.cell-input:focus{background:#FBF1DA;border-radius:4px;}
+  table.regbook-screen td.input-cell{padding:2px;}
+
   .modal-bg{position:fixed;inset:0;background:rgba(15,39,64,.55);z-index:50;display:flex;align-items:flex-end;justify-content:center;}
   .modal{width:100%;max-width:420px;max-height:90vh;overflow-y:auto;background:var(--cream);border-radius:18px 18px 0 0;padding:20px;box-shadow:0 -8px 30px rgba(0,0,0,.2);}
   @media(min-width:640px){.modal-bg{align-items:center;}.modal{border-radius:18px;}}
@@ -224,25 +251,65 @@
     .ledger-print th{background:#0F2740;color:#E4C765;font-weight:600;}
     .ledger-print .foot{margin-top:20px;font-size:11px;color:#555;text-align:right;}
 
-    /* ---- School Leaving Certificate (SLC) ---- */
-    .slc-print{font-family:Inter,sans-serif;border:2px solid #0F2740;border-radius:4px;max-width:800px;margin:0 auto;position:relative;}
-    .slc-print::before{content:'';position:absolute;inset:6px;border:1px solid #C9A227;border-radius:2px;pointer-events:none;}
-    .slc-head{text-align:center;background:#0F2740;color:#FAF6EC;padding:22px 30px 18px;border-radius:2px 2px 0 0;}
-    .slc-head h2{font-family:Fraunces,serif;color:#FAF6EC;margin:0 0 6px;font-size:24px;}
-    .slc-title{font-size:14px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:#E4C765;}
-    .slc-meta{display:flex;justify-content:space-between;font-size:11px;color:#555;padding:14px 34px 0;letter-spacing:.03em;}
-    .slc-body{font-size:14px;line-height:2;color:#1C2530;text-align:justify;}
-    .slc-remarks{font-size:13px;color:#555;margin-top:10px;}
-    .slc-fields{display:grid;grid-template-columns:1fr 1fr;gap:0 28px;padding:16px 34px 4px;}
-    .slc-field{border-bottom:1px solid #E7E0CE;padding:9px 0;}
-    .slc-field .lbl{display:block;font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:#8A8168;margin-bottom:3px;}
-    .slc-field .val{font-size:14px;color:#0F2740;font-weight:600;}
-    .slc-table{width:100%;border-collapse:collapse;margin-top:14px;}
-    .slc-table td{padding:7px 4px;border-bottom:1px solid #ddd;font-size:13px;}
-    .slc-table .lbl{color:#555;}
-    .slc-sign{margin:50px 34px 26px;display:flex;justify-content:flex-end;}
-    .slc-sign .box{text-align:center;font-size:11px;color:#555;}
-    .slc-sign .line{width:200px;border-bottom:1px solid #333;margin-bottom:6px;}
+    /* ---- Admission Register: bound register-book page (matches physical ledger) ---- */
+    .regbook-print{font-family:Inter,sans-serif;background:#fff;padding:10px 14px 18px;position:relative;}
+    .regbook-print .rb-head{display:flex;align-items:baseline;justify-content:center;flex-wrap:wrap;gap:6px;margin-bottom:14px;}
+    .regbook-print .rb-head h2{font-family:Fraunces,serif;font-weight:700;color:#1C2530;margin:0;font-size:20px;}
+    .regbook-print .rb-head .rb-of{font-size:15px;color:#1C2530;}
+    .regbook-print .rb-head .rb-school{font-size:15px;color:#1C2530;border-bottom:1px solid #1C2530;padding:0 10px 2px;min-width:160px;text-align:center;}
+    .regbook-print .rb-meta{text-align:center;font-size:9.5px;color:#888;margin:-8px 0 10px;}
+    .regbook-print table{width:100%;border-collapse:collapse;table-layout:fixed;}
+    .regbook-print th, .regbook-print td{border:1px solid #E6AFAF;padding:4px 4px;font-size:8.5px;word-break:break-word;text-align:center;vertical-align:middle;color:#1C2530;}
+    .regbook-print thead th{font-weight:600;font-size:8px;padding:6px 4px;background:#fff;line-height:1.25;}
+    .regbook-print tbody td{height:15px;}
+    .regbook-print .rb-spine{border-left:2.5px solid #B24A32;box-shadow:-3px 0 6px rgba(15,39,64,.08);}
+    .regbook-print .foot{margin-top:14px;display:flex;justify-content:space-between;align-items:flex-end;gap:16px;}
+    .regbook-print .foot .note{font-size:8px;color:#555;max-width:75%;}
+    .regbook-print .foot .sign{font-style:italic;font-size:9px;color:#1C2530;font-weight:600;white-space:nowrap;}
+
+    /* ---- School Leaving Certificate (SLC) — formal certificate design ---- */
+    .slc-print{font-family:Inter,sans-serif;max-width:820px;margin:0 auto;position:relative;
+      background:#FFFEFA;
+      background-image:radial-gradient(circle at 50% 0%, rgba(201,162,39,.05), transparent 55%);
+      border:3px solid #0F2740;padding:10px;}
+    .slc-print::before{content:'';position:absolute;inset:6px;border:1.5px solid #C9A227;pointer-events:none;}
+    .slc-print::after{content:'';position:absolute;inset:10px;border:1px solid #C9A227;opacity:.55;pointer-events:none;}
+    .slc-corner{position:absolute;font-size:20px;color:#C9A227;line-height:1;z-index:2;}
+    .slc-corner.tl{top:12px;left:14px;}
+    .slc-corner.tr{top:12px;right:14px;transform:scaleX(-1);}
+    .slc-corner.bl{bottom:10px;left:14px;transform:scaleY(-1);}
+    .slc-corner.br{bottom:10px;right:14px;transform:scale(-1,-1);}
+
+    .slc-inner{position:relative;padding:20px 36px 26px;}
+    .slc-watermark{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;overflow:hidden;pointer-events:none;z-index:0;}
+    .slc-watermark img{width:60%;max-width:300px;object-fit:contain;opacity:.2;filter:blur(1px);}
+    .slc-content{position:relative;z-index:1;}
+    .slc-logo{display:block;margin:0 auto 8px;height:58px;width:58px;object-fit:contain;}
+
+    .slc-head{text-align:center;padding-bottom:14px;border-bottom:1px solid #E7E0CE;}
+    .slc-head .eyebrow{font-size:10px;letter-spacing:.22em;text-transform:uppercase;color:#8A6200;opacity:.8;margin-bottom:6px;}
+    .slc-head h2{font-family:Fraunces,serif;font-weight:700;color:#0F2740;margin:0 0 10px;font-size:26px;letter-spacing:.02em;}
+    .slc-title-wrap{display:flex;align-items:center;justify-content:center;gap:10px;margin-top:2px;}
+    .slc-title-wrap .rule{height:1px;width:46px;background:linear-gradient(90deg,transparent,#C9A227);}
+    .slc-title-wrap .rule.r{background:linear-gradient(90deg,#C9A227,transparent);}
+    .slc-title{font-size:15px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:#B24A32;white-space:nowrap;}
+
+    .slc-meta{display:flex;justify-content:space-between;font-size:11.5px;color:#555;padding:14px 2px 0;letter-spacing:.02em;font-family:Inter,sans-serif;}
+    .slc-meta b{color:#0F2740;font-weight:700;}
+
+    .slc-body{font-family:Fraunces,serif;font-style:italic;font-weight:500;font-size:15.5px;line-height:2.05;color:#1C2530;text-align:justify;margin-top:20px;}
+    body.ur .slc-body{font-family:'Noto Nastaliq Urdu',serif;font-style:normal;line-height:2.5;font-size:16px;}
+    .slc-body .rec{font-style:normal;font-weight:700;color:#0F2740;padding:0 1px;}
+    body.ur .slc-body .rec{font-weight:700;}
+
+    .slc-remarks{font-family:Fraunces,serif;font-style:italic;font-size:14px;color:#555;margin-top:16px;border-top:1px dashed #E7E0CE;padding-top:12px;}
+    body.ur .slc-remarks{font-family:'Noto Nastaliq Urdu',serif;font-style:normal;}
+    .slc-remarks .rec{font-style:normal;font-weight:700;color:#0F2740;}
+
+    .slc-foot{margin-top:56px;display:flex;justify-content:space-between;align-items:flex-end;gap:16px;}
+    .slc-foot .box{text-align:center;font-size:11px;color:#555;min-width:170px;}
+    .slc-foot .box .line{border-bottom:1px solid #333;margin-bottom:6px;height:34px;}
+    .slc-foot .box.seal .line{border-bottom-style:dashed;}
   }
 </style>
 </head>
@@ -393,22 +460,18 @@ const T = {
     // Admission & Withdrawal Register — a standalone record with no link to the
     // students/finance data above.
     admissionRegister:'Admission Register', admissionRegisterDesc:'A standalone admission & withdrawal record, separate from the Students/Finance data.',
-    serialNo:'Serial No.', dobFigures:'Date of Birth (figures)', dobWords:'Date of Birth (in words)', casteTribe:'Caste / Tribe', occupation:'Occupation',
+    serialNo:'Serial No.', dobFigures:'Date of Birth (figures)', dobWords:'Date of Birth (in words)', dobLabel:'Date of Birth in words and figures', casteTribe:'Caste / Tribe', occupation:'Occupation',
     residence:'Residence', classAdmitted:'Class Admitted', arrearsDue:'Arrears Due',
     classWithdrawn:'Class Withdrawn', withdrawalDate:'Date of Withdrawal', remarks:'Remarks',
-    addRegisterEntry:'Add Entry', editRegisterEntry:'Edit Entry', searchRegister:'Search name or father\'s name...',
+    addRegisterEntry:'Add Entry', editRegisterEntry:'Edit Entry', searchRegister:'Search by name, father\'s name, or AD number...',
     noRegisterEntries:'No entries yet. Add your first admission record to get started.', headOfInstitution:'Head of the Institution',
     previous:'Prev', next:'Next', printThisPage:'Print this page',
     religion:'Religion', nationality:'Nationality', conduct:'Conduct', loadingData:'Loading your data…',
+    gender:'Gender', male:'Male', female:'Female',
     defaultersReport:'Defaulters Report', total:'Total',
-    slcTitle:'Students Registration Record', slcNo:'Record No.', slcIssueDate:'Date of Issue',
-    slcSignature:'Signature & Stamp',
+    slcTitle:'School Leaving Certificate', slcNo:'Certificate No.', slcIssueDate:'Date of Issue',
+    slcSignature:'Signature & Stamp', officialSeal:'Office Seal',
     registerDashboard:'Dashboard', registerAdmitted:'Admitted', registerSlc:'SLC',
-    // Global search
-    globalSearch:'Search Student', globalSearchPlaceholder:"Search by student or father's name...",
-    globalSearchHint:'Type a name to search across Students and the Admission Register.',
-    noResults:'No matching records found.', inRegisterOnly:'Admission Register only',
-    registerRecord:'Admission Register Record',
   },
   ur: {
     appName:'مالیاتی و ریکارڈ سسٹم', tagline:'اسکول انتظامیہ کے لیے',
@@ -477,22 +540,18 @@ const T = {
     otpCode:'6 ہندسوں کا کوڈ', markVerified:'فعال کریں', otpConfirmed:'فعال کے طور پر نشان زد ہو گیا۔', otpWrong:'یہ کوڈ غلط ہے یا میعاد ختم ہو گئی ہے۔',
     noWhitelistYet:'ابھی تک کوئی اسکول شامل نہیں کیا گیا۔', notAdmin:'صرف ایڈمن رسائی۔',
     admissionRegister:'داخلہ رجسٹر', admissionRegisterDesc:'ایک علیحدہ داخلہ و اخراج ریکارڈ، طلبہ/مالیات کے ڈیٹا سے الگ۔',
-    serialNo:'سیریل نمبر', dobFigures:'تاریخ پیدائش (ہندسوں میں)', dobWords:'تاریخ پیدائش (الفاظ میں)', casteTribe:'ذات / قبیلہ', occupation:'پیشہ',
+    serialNo:'سیریل نمبر', dobFigures:'تاریخ پیدائش (ہندسوں میں)', dobWords:'تاریخ پیدائش (الفاظ میں)', dobLabel:'تاریخ پیدائش (الفاظ اور ہندسوں میں)', casteTribe:'ذات / قبیلہ', occupation:'پیشہ',
     residence:'رہائش', classAdmitted:'جس جماعت میں داخلہ', arrearsDue:'واجب الادا رقم',
     classWithdrawn:'جس جماعت سے اخراج', withdrawalDate:'تاریخ اخراج', remarks:'تبصرہ',
-    addRegisterEntry:'اندراج شامل کریں', editRegisterEntry:'اندراج میں ترمیم', searchRegister:'نام یا والد کا نام تلاش کریں...',
+    addRegisterEntry:'اندراج شامل کریں', editRegisterEntry:'اندراج میں ترمیم', searchRegister:'نام، والد کا نام، یا AD نمبر تلاش کریں...',
     noRegisterEntries:'ابھی کوئی اندراج نہیں۔ اپنا پہلا داخلہ ریکارڈ شامل کریں۔', headOfInstitution:'سربراہ ادارہ',
     previous:'پچھلا', next:'اگلا', printThisPage:'یہ صفحہ پرنٹ کریں',
     religion:'مذہب', nationality:'قومیت', conduct:'اخلاق', loadingData:'آپ کا ڈیٹا لوڈ ہو رہا ہے…',
+    gender:'جنس', male:'مرد', female:'خاتون',
     defaultersReport:'واجب الادا رپورٹ', total:'کل',
-    slcTitle:'طلبہ رجسٹریشن ریکارڈ', slcNo:'ریکارڈ نمبر', slcIssueDate:'تاریخ اجراء',
-    slcSignature:'دستخط و مہر',
+    slcTitle:'اسکول چھوڑنے کا سرٹیفکیٹ', slcNo:'سرٹیفکیٹ نمبر', slcIssueDate:'تاریخ اجراء',
+    slcSignature:'دستخط و مہر', officialSeal:'مہر دفتر',
     registerDashboard:'ڈیش بورڈ', registerAdmitted:'داخل شدہ', registerSlc:'ایس ایل سی',
-    // Global search
-    globalSearch:'طالب علم تلاش کریں', globalSearchPlaceholder:'طالب علم یا والد کا نام تلاش کریں...',
-    globalSearchHint:'طلبہ اور داخلہ رجسٹر دونوں میں تلاش کے لیے نام لکھیں۔',
-    noResults:'کوئی مماثل ریکارڈ نہیں ملا۔', inRegisterOnly:'صرف داخلہ رجسٹر میں',
-    registerRecord:'داخلہ رجسٹر ریکارڈ',
   }
 };
 
@@ -509,6 +568,16 @@ const fmt = n => Number(n||0).toLocaleString('en-US');
 const monthKey = (d=new Date()) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
 const monthLabel = mk => { const [y,m]=mk.split('-').map(Number); return new Date(y,m-1,1).toLocaleDateString(LANG==='ur'?'ur-PK':'en-US',{month:'short',year:'numeric'}); };
 const todayISO = () => new Date().toISOString().slice(0,10);
+// Reformats a plain 'YYYY-MM-DD' date string to 'DD-MM-YYYY' for display/printing.
+// Anything that isn't a clean ISO date (blank, free text, already-formatted, etc.)
+// is returned unchanged so it never mangles non-date values.
+const fmtDate = (iso) => {
+  if (!iso) return iso;
+  const s = String(iso).slice(0, 10);
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
+  if (!m) return iso;
+  return `${m[3]}-${m[2]}-${m[1]}`;
+};
 const esc = s => (s==null?'':String(s)).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
 // Shared error surface for Supabase writes. Returns true (and alerts the user)
@@ -932,7 +1001,6 @@ function renderApp() {
           <div class="title">${esc(t.appName)}</div>
         </div>
         <div class="top-actions">
-          <button class="pill-btn lock" onclick="openGlobalSearch()" title="${esc(t.globalSearch)}">🔍</button>
           <button class="pill-btn lang" onclick="toggleLangApp()">${esc(t.langToggle)}</button>
           <button class="pill-btn lock" onclick="openSettings()">⚙</button>
         </div>
@@ -988,7 +1056,7 @@ function renderTab() {
   else if (TAB==='teachers') main.innerHTML = tplTeachers();
   else if (TAB==='finance') main.innerHTML = tplFinance();
   else if (TAB==='reports') main.innerHTML = tplReports();
-  else if (TAB==='dmc') { main.innerHTML = tplDMC(); loadDMCConfig().then(renderDMCSubjects); }
+  else if (TAB==='dmc') { main.innerHTML = tplDMC(); loadDMCConfig().then(() => { if (TAB==='dmc') { main.innerHTML = tplDMC(); renderDMCSubjects(); } }); }
   else if (TAB==='marksSheet') main.innerHTML = tplMarksSheet();
   else if (TAB==='admissionRegister') main.innerHTML = tplAdmissionRegister();
   else if (TAB==='admin') { main.innerHTML = tplAdmin(); loadWhitelist(); return; }
@@ -1038,6 +1106,7 @@ async function loadWhitelist() {
         ? `<button style="font-size:11px;padding:6px 10px;white-space:nowrap;" class="btn-primary" onclick="markWhitelistVerified('${esc(row.email).replace(/'/g,"\\'")}')">${esc(t.markVerified)}</button>`
         : `<span style="font-size:11px;font-weight:600;color:${statusColor(row.status)};white-space:nowrap;">${esc(statusLabel(row.status))}</span>`
       }
+      <button title="${esc(t.delete)}" style="flex-shrink:0;background:none;border:none;color:var(--rust);font-size:16px;cursor:pointer;padding:4px;" onclick="confirmDelete('whitelistEmail','${esc(row.email).replace(/'/g,"\\'")}')">🗑️</button>
     </div>`).join('');
 }
 
@@ -1100,7 +1169,7 @@ function exportBackup() {
   });
   addSheet('Students', sortedStudents.map(s=>({
     Name:s.name, Father:s.father_name, Class:s.class_name, Type:typeLabel(s.student_type||'paying'),
-    Admission:s.admission_date, Contact:s.contact, MonthlyFee:s.monthly_fee, Status:s.status,
+    Admission:fmtDate(s.admission_date), Contact:s.contact, MonthlyFee:s.monthly_fee, Status:s.status,
     CurrentBalance: studentBalance(s.id)
   })));
   // Per-student fee ledger sheets — mirrors the school's printed fee card format exactly:
@@ -1150,7 +1219,7 @@ function exportBackup() {
         Month: monthLabel(mk), 'Last Balance': lastBalance, 'School Fee': Number(e.school_fee||0),
         'Sports Fund': Number(e.sports_fund||0), 'Admission Fee': Number(e.admission_fee||0), 'Annual Exam Fee': Number(e.exam_fee||0),
         'Total Dues': totalDues, 'Total Paid': totalPaid, 'Balance': balance,
-        'Receipt No': e.receipt_no||'', Date: e.pay_date||'', Signature: ''
+        'Receipt No': e.receipt_no||'', Date: fmtDate(e.pay_date)||'', Signature: ''
       };
     });
     // Build a safe, unique Excel sheet name (max 31 chars, no illegal characters)
@@ -1161,23 +1230,23 @@ function exportBackup() {
     addSheet(sheetName, ledgerRows);
   });
   addSheet('Teachers', DATA.teachers.map(tc=>({
-    Name:tc.name, Subject:tc.subject, MonthlySalary:tc.monthly_salary, JoinDate:tc.join_date
+    Name:tc.name, Subject:tc.subject, MonthlySalary:tc.monthly_salary, JoinDate:fmtDate(tc.join_date)
   })));
   addSheet('Salary Payments', DATA.salaryPayments.map(p=>{
     const tc = DATA.teachers.find(x=>x.id===p.teacher_id);
-    return { Teacher: tc?tc.name:p.teacher_id, Month:p.month, Amount:p.amount, Date:p.pay_date };
+    return { Teacher: tc?tc.name:p.teacher_id, Month:p.month, Amount:p.amount, Date:fmtDate(p.pay_date) };
   }));
   addSheet('Other Transactions', DATA.transactions.map(x=>({
-    Type:x.type, Category:x.category, Description:x.description, Amount:x.amount, Date:x.txn_date
+    Type:x.type, Category:x.category, Description:x.description, Amount:x.amount, Date:fmtDate(x.txn_date)
   })));
   const s = computeStats();
   addSheet('Summary', [{
     TotalFeesCollected:s.totalCollectedAllTime, TotalSalariesPaid:s.totalSalariesAllTime,
     TotalOtherIncome:s.totalOtherIncomeAllTime, TotalOtherExpense:s.totalOtherExpenseAllTime,
-    NetBalance:s.netBalance, ExportedOn:todayISO()
+    NetBalance:s.netBalance, ExportedOn:fmtDate(todayISO())
   }]);
   const schoolPart = (CURRENT_PROFILE.school_name||'school').replace(/[^a-z0-9]+/gi,'_');
-  XLSX.writeFile(wb, `${schoolPart}_backup_${todayISO()}.xlsx`, { cellStyles: true });
+  XLSX.writeFile(wb, `${schoolPart}_backup_${fmtDate(todayISO())}.xlsx`, { cellStyles: true });
 }
 
 async function submitSettings() {
@@ -1500,92 +1569,14 @@ function buildAcademicYearLedger(studentId) {
   return { startYear, rows };
 }
 
-// ---------------- Global Search (Students + Admission Register) ----------------
-// Available from every tab via the 🔍 button in the header. Searching finds the
-// student by name/father's name and opens their FULL record (fee ledger + a
-// matching Admission Register entry, if one exists — the two are separate
-// tables, matched here only by name since Admission Register has no student_id link).
-let globalSearchQuery = '';
-
-function openGlobalSearch() {
-  globalSearchQuery = '';
-  showModal(t.globalSearch, `
-    <div class="searchbar" style="margin-bottom:12px;">
-      <input id="global-search-input" placeholder="${esc(t.globalSearchPlaceholder)}" oninput="globalSearchQuery=this.value; renderGlobalSearchResults();">
-    </div>
-    <div id="global-search-results"></div>
-  `);
-  const el = document.getElementById('global-search-input');
-  if (el) el.focus();
-  renderGlobalSearchResults();
-}
-
-function renderGlobalSearchResults() {
-  const box = document.getElementById('global-search-results');
-  if (!box) return;
-  const q = globalSearchQuery.trim().toLowerCase();
-  if (!q) { box.innerHTML = `<div class="empty">${esc(t.globalSearchHint)}</div>`; return; }
-
-  const studentMatches = DATA.students.filter(s =>
-    (s.name || '').toLowerCase().includes(q) || (s.father_name || '').toLowerCase().includes(q)
-  );
-  const matchedNames = new Set(studentMatches.map(s => (s.name || '').trim().toLowerCase()));
-  // Admission Register entries for the same person are usually picked up automatically
-  // inside openStudentDetail (matched by name). Only list a register entry here on its
-  // own if no Students-tab record matches it — e.g. an old/withdrawn admission.
-  const registerOnlyMatches = DATA.admissionRegister.filter(r =>
-    ((r.student_name || '').toLowerCase().includes(q) || (r.father_name || '').toLowerCase().includes(q))
-    && !matchedNames.has((r.student_name || '').trim().toLowerCase())
-  );
-
-  if (studentMatches.length === 0 && registerOnlyMatches.length === 0) {
-    box.innerHTML = `<div class="empty">${esc(t.noResults)}</div>`;
-    return;
-  }
-
-  const studentRows = studentMatches.map(s => `
-    <div class="card-btn" onclick="closeModal(); setTab('students'); openStudentDetail('${s.id}')">
-      <div>
-        <div class="nm">${esc(s.name)}</div>
-        <div class="sub">${esc(t.fatherName)}: ${esc(s.father_name || '')} · ${esc(s.class_name || '—')} · ₨${fmt(studentBalance(s.id))} ${esc(t.due)}</div>
-      </div>
-      <span class="pill ${studentBalance(s.id) > 0 ? 'bad' : 'good'}">${esc(t.students)}</span>
-    </div>`).join('');
-
-  const registerRows = registerOnlyMatches.map(r => `
-    <div class="card-btn" onclick="closeModal(); setTab('admissionRegister'); openEditAdmissionEntry('${r.id}')">
-      <div>
-        <div class="nm">${esc(r.student_name)}</div>
-        <div class="sub">${esc(t.fatherName)}: ${esc(r.father_name || '')} · ${esc(r.class_admitted || '—')}</div>
-      </div>
-      <span class="pill" style="background:#EFEAD9;color:#555;">${esc(t.inRegisterOnly)}</span>
-    </div>`).join('');
-
-  box.innerHTML = studentRows + registerRows;
-}
-
 function openStudentDetail(id) {
   const s = DATA.students.find(x=>x.id===id);
   const entries = studentPayments(id).slice().sort((a,b)=> (a.month>b.month?1:a.month<b.month?-1:0) || (new Date(a.pay_date)-new Date(b.pay_date)));
   const { startYear, rows } = buildAcademicYearLedger(id);
   const currentBalance = studentBalance(id);
   const totalPaidAllTime = entries.reduce((a,b)=>a+Number(b.amount||0),0);
-  // Admission Register is a separate table (no student_id link) — matched here by name
-  // so a search/tap on a student can surface their register entry too, if one exists.
-  const regMatch = DATA.admissionRegister.find(r => (r.student_name||'').trim().toLowerCase() === (s.name||'').trim().toLowerCase());
 
   showModal(s.name, `
-    ${regMatch ? `
-    <div class="list-card" style="margin-bottom:16px;cursor:pointer;" onclick="openEditAdmissionEntry('${regMatch.id}')">
-      <div style="padding:10px 14px;font-size:12px;font-weight:600;color:var(--navy);border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;">
-        <span>📋 ${esc(t.registerRecord)}</span>
-        <span style="font-size:11px;opacity:.5;">${esc(t.editRegisterEntry)} ›</span>
-      </div>
-      <div class="list-row"><span style="font-size:12px;opacity:.7;">${esc(t.admissionDate)}</span><span style="font-size:13px;">${esc(regMatch.admission_date||'—')}</span></div>
-      <div class="list-row"><span style="font-size:12px;opacity:.7;">${esc(t.classAdmitted)}</span><span style="font-size:13px;">${esc(regMatch.class_admitted||'—')}</span></div>
-      ${Number(regMatch.arrears_due||0) > 0 ? `<div class="list-row"><span style="font-size:12px;opacity:.7;">${esc(t.arrearsDue)}</span><span class="amt-neg">₨${fmt(regMatch.arrears_due)}</span></div>` : ''}
-      ${regMatch.withdrawal_date ? `<div class="list-row"><span style="font-size:12px;opacity:.7;">${esc(t.withdrawalDate)}</span><span style="font-size:13px;">${esc(regMatch.withdrawal_date)}</span></div>` : ''}
-    </div>` : ''}
     <div style="font-size:12px;opacity:.7;margin-bottom:12px;display:flex;flex-wrap:wrap;gap:12px;">
       <span>${esc(t.className)}: ${esc(s.class_name||'')}</span>
       <span>${esc(t.fatherName)}: ${esc(s.father_name||'')}</span>
@@ -1650,7 +1641,7 @@ function openStudentDetail(id) {
               <td>${r.blank ? '—' : '₨'+fmt(r.totalPaid)}</td>
               <td class="${!r.blank && r.balance>0?'bal-neg':'bal-pos'}">${r.blank ? '—' : '₨'+fmt(r.balance)}</td>
               <td>${r.blank ? '—' : esc(r.e.receipt_no||'—')}</td>
-              <td>${r.blank ? '—' : esc(r.e.pay_date||'')}</td>
+              <td>${r.blank ? '—' : esc(fmtDate(r.e.pay_date)||'')}</td>
               <td>${r.blank ? '' : `<button class="print-btn" title="${esc(t.print)}" onclick="printReceipt('${id}','${r.e.id}')">🖨️</button>`}</td>
               <td>${r.blank ? '' : `<button class="print-btn" title="Send WhatsApp to father" onclick="openFatherWhatsapp('${esc(s.contact||'')}', 'Dear Parent, fee of Rs ${fmt(r.totalPaid)} for ${esc(s.name)} (${esc(monthLabel(r.mk))}) has been received. Thank you. - School')">💬</button>`}</td>
               <td>${r.blank ? '' : `<button class="del-x" onclick="deleteFeePayment('${r.e.id}','${id}')">✕</button>`}</td>
@@ -1749,7 +1740,7 @@ function printReceipt(studentId, entryId) {
         <tr class="total-row"><td>${esc(t.totalAmount)}</td><td style="text-align:right;">₨${fmt(e.amount)}</td></tr>
         <tr><td class="lbl">${esc(t.balanceCol)}</td><td style="text-align:right;">₨${fmt(balance)}</td></tr>
         <tr><td class="lbl">${esc(t.receiptNo)}</td><td style="text-align:right;">${esc(e.receipt_no||'—')}</td></tr>
-        <tr><td class="lbl">${esc(t.dateCol)}</td><td style="text-align:right;">${esc(e.pay_date||'')}</td></tr>
+        <tr><td class="lbl">${esc(t.dateCol)}</td><td style="text-align:right;">${esc(fmtDate(e.pay_date)||'')}</td></tr>
       </table>
       <div class="foot">${esc(t.thankYou)}</div>
     </div>`;
@@ -1778,7 +1769,7 @@ function printFeeCard(studentId) {
       <td class="fc-paid">${r.blank ? '—' : '₨'+fmt(r.totalPaid)}</td>
       <td class="${!r.blank && r.balance > 0 ? 'fc-due' : 'fc-paid'}">${r.blank ? '—' : '₨'+fmt(r.balance)}</td>
       <td class="fc-zero">${r.blank ? '—' : esc(r.e.receipt_no||'—')}</td>
-      <td class="fc-zero">${r.blank ? '—' : esc(r.e.pay_date||'—')}</td>
+      <td class="fc-zero">${r.blank ? '—' : esc(fmtDate(r.e.pay_date)||'—')}</td>
     </tr>`).join('');
 
   document.getElementById('print-area').innerHTML = `
@@ -1918,7 +1909,7 @@ function openTeacherDetail(id) {
             : '';
           return `
           <div class="ledger-row">
-            <div style="font-size:12px;">${esc(monthLabel(p.month))} <span style="opacity:.5;">· ${esc(p.pay_date)}</span>${breakdown}</div>
+            <div style="font-size:12px;">${esc(monthLabel(p.month))} <span style="opacity:.5;">· ${esc(fmtDate(p.pay_date))}</span>${breakdown}</div>
             <div style="display:flex;align-items:center;gap:8px;">
               <span class="amt-neg">₨${fmt(p.amount)}</span>
               <button class="del-btn" onclick="deleteSalaryPayment('${p.id}','${id}')">✕</button>
@@ -1987,7 +1978,7 @@ function tplFinance() {
       ${DATA.transactions.length===0 ? `<div class="empty">${esc(t.noTransactions)}</div>` :
         `<div class="list-card">` + DATA.transactions.map(x=>`
           <div class="list-row">
-            <div><div class="nm">${esc(x.description||'')}</div><div class="sub">${esc(x.category||'')} · ${esc(x.txn_date||'')}</div></div>
+            <div><div class="nm">${esc(x.description||'')}</div><div class="sub">${esc(x.category||'')} · ${esc(fmtDate(x.txn_date)||'')}</div></div>
             <div style="display:flex;align-items:center;gap:8px;">
               <span class="${x.type==='income'?'amt-pos':'amt-neg'}">${x.type==='income'?'+':'−'}₨${fmt(x.amount)}</span>
               <button class="del-btn" onclick="deleteTxn('${x.id}')">✕</button>
@@ -2123,7 +2114,7 @@ function printDefaultersReport() {
   document.getElementById('print-area').innerHTML = `
     <div class="ledger-print">
       <h2>${esc(CURRENT_PROFILE.school_name || 'School')}</h2>
-      <div class="sub">${esc(t.defaultersReport)} — ${esc(todayISO())}</div>
+      <div class="sub">${esc(t.defaultersReport)} — ${esc(fmtDate(todayISO()))}</div>
       <table>
         <thead><tr><th>#</th><th>${esc(t.studentName)}</th><th>${esc(t.fatherName)}</th><th>${esc(t.className)}</th><th>${esc(t.balanceCol)}</th></tr></thead>
         <tbody>${rows}</tbody>
@@ -2168,7 +2159,7 @@ function printReport() {
   document.getElementById('print-area').innerHTML = `
     <div class="receipt-box" style="max-width:100%;">
       <h2>${esc(CURRENT_PROFILE.school_name || 'School')}</h2>
-      <div class="sub">${esc(t.summaryReport)} — ${esc(todayISO())}</div>
+      <div class="sub">${esc(t.summaryReport)} — ${esc(fmtDate(todayISO()))}</div>
       <table><tbody>${summaryRows}</tbody></table>
       <div style="margin-top:16px;font-weight:700;font-size:13px;color:#0F2740;">${esc(t.studentType)}</div>
       <table><tbody>${typeRows}</tbody></table>
@@ -2194,7 +2185,7 @@ function openActivityHistory(kind, refId) {
   const x = DATA.transactions.find(tx => tx.id === refId);
   if (!x) return;
   showModal(x.description||'—', `
-    <div class="list-row"><span style="font-size:13px;opacity:.65;">${esc(t.dateCol)}</span><span style="font-size:13px;">${esc(x.txn_date||'')}</span></div>
+    <div class="list-row"><span style="font-size:13px;opacity:.65;">${esc(t.dateCol)}</span><span style="font-size:13px;">${esc(fmtDate(x.txn_date)||'')}</span></div>
     <div class="list-row"><span style="font-size:13px;opacity:.65;">${esc(t.amount)}</span><span class="${x.type==='income'?'amt-pos':'amt-neg'}">${x.type==='income'?'+':'−'}₨${fmt(x.amount)}</span></div>
   `);
 }
@@ -2208,7 +2199,7 @@ function openActivityHistory(kind, refId) {
 let registerSearch = '';
 let registerPage = 1;
 let registerSubTab = 'dashboard'; // 'dashboard' | 'admitted' | 'slc'
-const REGISTER_PAGE_SIZE = 30;
+const REGISTER_PAGE_SIZE = 20;
 function setRegisterSearch(v) { registerSearch = v; registerPage = 1; renderTab(); }
 function setRegisterPage(p) { registerPage = p; renderTab(); }
 function setRegisterSubTab(k) { registerSubTab = k; registerSearch = ''; registerPage = 1; renderTab(); }
@@ -2230,7 +2221,11 @@ function filteredRegisterList() {
 let dmcResults = []; // temporary storage for uploaded results
 let dmcLogo = null; // base64 logo image
 let dmcSchoolName = 'SCHOOL NAME'; // editable school name for certificates
-let dmcSession = '2025-26'; // editable academic session for certificates
+let dmcTagline = ''; // optional motto shown under the school name
+let dmcAcademicSession = ''; // optional e.g. "2025-2026"
+let dmcQuote = 'Education is the key to a bright future.'; // optional footer quote
+let dmcBatchSection = ''; // shared section for this batch, applied to all certificates
+let dmcBatchDateOfIssue = todayISO(); // shared date of issue for this batch, applied to all certificates
 
 function tplDMC() {
   return `
@@ -2248,12 +2243,19 @@ function tplDMC() {
       
       <label>
         <span>School Name (for DMC)</span>
-        <input type="text" id="dmc-school-name" value="${dmcSchoolName}" placeholder="e.g., ISLAMIA SCHOOL & COLLEGE MARTUNG" onchange="dmcSchoolName=this.value;">
+        <input type="text" id="dmc-school-name" value="${esc(dmcSchoolName)}" placeholder="e.g., ISLAMIA SCHOOL & COLLEGE MARTUNG" onchange="dmcSchoolName=this.value; saveDMCConfig();">
       </label>
-
+      <label>
+        <span>Tagline (optional)</span>
+        <input type="text" id="dmc-tagline" value="${esc(dmcTagline)}" placeholder="e.g., Nurturing Knowledge, Building Character" onchange="dmcTagline=this.value; saveDMCConfig();">
+      </label>
+      <label>
+        <span>Academic Session (optional)</span>
+        <input type="text" id="dmc-session" value="${esc(dmcAcademicSession)}" placeholder="e.g., 2025-2026" onchange="dmcAcademicSession=this.value; saveDMCConfig();">
+      </label>
       <label style="margin-bottom:0;">
-        <span>Academic Session (for DMC)</span>
-        <input type="text" id="dmc-session" value="${dmcSession}" placeholder="e.g., 2025-26" onchange="dmcSession=this.value;">
+        <span>Footer Quote (optional)</span>
+        <input type="text" id="dmc-quote" value="${esc(dmcQuote)}" placeholder="e.g., Education is the key to a bright future." onchange="dmcQuote=this.value; saveDMCConfig();">
       </label>
     </div>
 
@@ -2271,12 +2273,31 @@ function tplDMC() {
 
     <div class="card">
       <h3 style="margin-top:0;">Upload Result List (Excel)</h3>
-      <p style="font-size:12px;opacity:.7;">Upload an Excel file with columns: Student Name, Father Name, Subject1 Marks, Subject2 Marks, etc. (A "Class" column is optional if you've selected a class above.)</p>
+      <p style="font-size:12px;opacity:.7;">Upload an Excel file with columns: Student Name, Father Name, Roll No, Section, Subject1 Marks, Subject2 Marks, etc. (A "Class" column is optional if you've selected a class above.)</p>
       <label style="margin-bottom:0;">
         <span>Select Excel File</span>
         <input type="file" id="dmc-file-input" accept=".xlsx,.xls,.csv" onchange="handleDMCExcelUpload(this.files[0])">
       </label>
       <div id="dmc-upload-msg" style="margin-top:8px;font-size:12px;"></div>
+    </div>
+
+    <div class="card">
+      <h3 style="margin-top:0;">Section & Date of Issue</h3>
+      <p style="font-size:12px;opacity:.7;">These apply to every certificate in this batch.</p>
+      <label>
+        <span>Section</span>
+        <input type="text" id="dmc-batch-section" value="${esc(dmcBatchSection)}" placeholder="e.g., A" onchange="dmcBatchSection=this.value;">
+      </label>
+      <label style="margin-bottom:0;">
+        <span>Date of Issue</span>
+        <input type="date" id="dmc-batch-date" value="${esc(dmcBatchDateOfIssue || todayISO())}" onchange="dmcBatchDateOfIssue=this.value;">
+      </label>
+    </div>
+
+    <div class="card">
+      <h3 style="margin-top:0;">Review & Edit Roll No.</h3>
+      <p style="font-size:12px;opacity:.7;">Fill in or fix each student's Roll No. before printing — useful if it wasn't in your Excel file.</p>
+      <div id="dmc-edit-table"></div>
     </div>
 
     <div class="card">
@@ -2318,12 +2339,20 @@ async function loadDMCConfig() {
   if (dmcConfigLoaded) return;
   dmcConfigLoaded = true;
   const { data } = await sb.from('dmc_config').select('*').eq('owner_id', CURRENT_USER.id).maybeSingle();
-  if (data && data.subjects) dmcSubjects = data.subjects;
+  if (!data) return;
+  if (data.subjects) dmcSubjects = data.subjects;
+  if (data.school_name) dmcSchoolName = data.school_name;
+  if (data.logo) dmcLogo = data.logo;
+  if (data.tagline) dmcTagline = data.tagline;
+  if (data.academic_session) dmcAcademicSession = data.academic_session;
+  if (data.quote) dmcQuote = data.quote;
 }
 
 async function saveDMCConfig() {
   const { error } = await sb.from('dmc_config').upsert({
-    owner_id: CURRENT_USER.id, subjects: dmcSubjects, updated_at: new Date().toISOString()
+    owner_id: CURRENT_USER.id, subjects: dmcSubjects, school_name: dmcSchoolName, logo: dmcLogo,
+    tagline: dmcTagline, academic_session: dmcAcademicSession, quote: dmcQuote,
+    updated_at: new Date().toISOString()
   });
   if (error) console.error('DMC config save failed:', error.message);
 }
@@ -2336,6 +2365,18 @@ function addDMCSubject() {
   document.getElementById('dmc-subj-name').value = '';
   saveDMCConfig();
   renderDMCSubjects();
+}
+
+function renderDMCEditTable() {
+  const container = document.getElementById('dmc-edit-table');
+  if (!container) return;
+  if (dmcResults.length === 0) { container.innerHTML = `<p style="font-size:12px;opacity:.5;">Upload a result list above to edit roll numbers.</p>`; return; }
+  container.innerHTML = dmcResults.map((r, i) => `
+    <div style="display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--line);padding:8px 0;">
+      <div style="flex:1;font-size:13px;color:var(--ink);">${r.serialNo}. ${esc(r.studentName || '(No name)')}</div>
+      <input type="text" style="width:110px;" value="${esc(r.rollNo)}" placeholder="Roll No." oninput="dmcResults[${i}].rollNo=this.value">
+    </div>
+  `).join('');
 }
 
 function renderDMCSubjects() {
@@ -2370,6 +2411,7 @@ function handleDMCExcelUpload(file) {
           serialNo: idx + 1,
           studentName: r['Student Name'] || r['Name'] || r['Student'] || '',
           fatherName: r['Father Name'] || r["Father's Name"] || r['Father'] || r['S/O'] || r['Walid'] || '',
+          rollNo: r['Roll No'] || r['Roll No.'] || r['Roll Number'] || r['Roll'] || '',
           class: excelClass || selectedClass || '',
           classFromExcel: !!excelClass, // if true, onDMCClassChange() won't overwrite this row later
           marks: {} // will be filled from other columns
@@ -2377,10 +2419,11 @@ function handleDMCExcelUpload(file) {
       });
       
       // Extract marks from other columns
+      const nonMarkCols = ['Student Name','Name','Student','Class','جماعت','Father Name',"Father's Name",'Father','S/O','Walid','Roll No','Roll No.','Roll Number','Roll','Section','سیکشن','Date of Issue','Issue Date'];
       dmcResults.forEach((r, idx) => {
         const row = rows[idx];
         Object.keys(row).forEach(col => {
-          if (!['Student Name','Name','Student','Class','جماعت','Father Name',"Father's Name",'Father','S/O','Walid'].includes(col)) {
+          if (!nonMarkCols.includes(col)) {
             r.marks[col] = Number(row[col]) || 0;
           }
         });
@@ -2390,6 +2433,7 @@ function handleDMCExcelUpload(file) {
       document.getElementById('dmc-upload-msg').innerHTML = missingClass
         ? `⚠️ Loaded ${dmcResults.length} students, but no class is set — select a class above (or add a "Class" column to your Excel) before printing.`
         : `✓ Loaded ${dmcResults.length} students`;
+      renderDMCEditTable();
     } catch (err) {
       document.getElementById('dmc-upload-msg').innerHTML = `✗ Error: ${err.message}`;
     }
@@ -2409,154 +2453,171 @@ function generateDMCPreview() {
   document.getElementById('dmc-preview').innerHTML = html;
 }
 
-// Picks a small representative icon per subject name so the marks table
-// visually matches each row, falling back to a generic book icon.
 function dmcSubjectIcon(name) {
   const n = (name || '').toLowerCase();
   if (n.includes('eng')) return '🔤';
   if (n.includes('sci')) return '🧪';
-  if (n.includes('math')) return '🧮';
-  if (n.includes('urdu')) return '📗';
-  if (n.includes('islam') || n.includes('quran') || n.includes('nazira')) return '🕌';
-  if (n.includes('gk') || n.includes('general')) return '🌐';
-  if (n.includes('computer') || n.includes('it')) return '💻';
+  if (n.includes('math') || n.includes('riyazi')) return '🧮';
+  if (n.includes('urdu')) return '📖';
+  if (n.includes('islam') || n.includes('quran') || n.includes('deen')) return '🕌';
+  if (n.includes('gk') || n.includes('general') || n.includes('social') || n.includes('geo')) return '🌍';
+  if (n.includes('comp')) return '💻';
   if (n.includes('art') || n.includes('draw')) return '🎨';
-  if (n.includes('pak') || n.includes('social') || n.includes('study')) return '📜';
-  if (n.includes('phy') || n.includes('sport')) return '🏃';
+  if (n.includes('phys') || n.includes('sport') || n.includes('pt ')) return '⚽';
   return '📘';
+}
+
+function dmcGradeFor(pct) {
+  return pct >= 90 ? 'A++' : pct >= 80 ? 'A+' : pct >= 70 ? 'A' : pct >= 60 ? 'B' : pct >= 50 ? 'C' : pct >= 40 ? 'D' : 'E';
+}
+function dmcRemarkFor(grade) {
+  const map = { 'A++':'Outstanding', 'A+':'Excellent', 'A':'Very Good', 'B':'Good', 'C':'Satisfactory', 'D':'Needs Improvement', 'E':'Fail' };
+  return map[grade] || '';
 }
 
 function renderDMCCertificate(result) {
   const totalObtained = dmcSubjects.reduce((a, s) => a + (Number(result.marks[s.name]) || 0), 0);
   const totalPossible = dmcSubjects.reduce((a,b) => a+b.total, 0);
   const percentage = totalPossible ? ((totalObtained / totalPossible) * 100).toFixed(1) : 0;
-  const grade = percentage >= 90 ? 'A+' : percentage >= 80 ? 'A' : percentage >= 70 ? 'B' : percentage >= 60 ? 'C' : percentage >= 40 ? 'D' : 'F';
-  const remark = { 'A+':'Outstanding', 'A':'Excellent', 'B':'Very Good', 'C':'Good', 'D':'Satisfactory', 'F':'Fail' }[grade];
+  const grade = dmcGradeFor(percentage);
+  const resultStatus = percentage >= 40 ? 'PASS' : 'FAIL';
 
   // Position in class
   const classResults = dmcResults.filter(r => r.class === result.class);
   const classTotals = classResults.map(r => dmcSubjects.reduce((a, s) => a + (Number(r.marks[s.name]) || 0), 0));
   const sortedTotals = [...classTotals].sort((a, b) => b - a);
   const position = sortedTotals.indexOf(totalObtained) + 1;
-  const totalStudentsInClass = classResults.length;
-
-  const iconCircle = (icon, bg, fg) => `<span style="width:22px;height:22px;border-radius:50%;background:${bg};color:${fg};display:inline-flex;align-items:center;justify-content:center;font-size:11px;flex-shrink:0;">${icon}</span>`;
 
   const subjectsHtml = dmcSubjects.map((s, i) => {
-    const marks = result.marks[s.name] || 0;
-    const rowBg = i % 2 === 0 ? '#FFFFFF' : '#FBF8F0';
-    return `<tr style="background:${rowBg};border-bottom:1px solid #E7E0CE;">
-      <td style="padding:10px 12px;text-align:left;">
-        <div style="display:flex;align-items:center;gap:8px;">
-          ${iconCircle(dmcSubjectIcon(s.name), '#0F2740', '#E4C765')}
-          <span style="font-size:13px;font-weight:500;color:#1C2530;">${esc(s.name)}</span>
-        </div>
-      </td>
-      <td style="padding:10px 12px;text-align:center;font-weight:700;font-size:14px;color:#0F2740;">${marks}</td>
-      <td style="padding:10px 12px;text-align:center;font-size:14px;color:#1C2530;">${s.total}</td>
-    </tr>`;
+    const marks = Number(result.marks[s.name]) || 0;
+    const subjPct = s.total ? (marks / s.total) * 100 : 0;
+    const subjGrade = dmcGradeFor(subjPct);
+    return `
+      <tr style="border-bottom:1px solid #E7E0CE;">
+        <td style="padding:6px 12px;text-align:center;font-size:13px;color:#1C2530;">${i+1}</td>
+        <td style="padding:6px 12px;text-align:left;font-size:14px;font-weight:600;color:#1C2530;">${esc(s.name)}</td>
+        <td style="padding:6px 12px;text-align:center;font-size:14px;color:#333;">${s.total}</td>
+        <td style="padding:6px 12px;text-align:center;font-size:14px;font-weight:700;color:#0F2740;">${marks}</td>
+        <td style="padding:6px 12px;text-align:center;font-size:13px;font-weight:700;color:#0F2740;">${subjGrade}</td>
+      </tr>`;
   }).join('');
 
-  const stats = [
-    { icon:'📊', label:'Percentage', val: percentage + '%' },
-    { icon:'⭐', label:'Grade', val: grade },
-    { icon:'🎖️', label:'Out of', val: totalStudentsInClass },
-    { icon:'💬', label:'Remarks', val: remark },
-  ];
-  const statsHtml = stats.map((st, i) => `
-    <div style="text-align:center;flex:1;padding:0 6px;${i>0 ? 'border-left:1px solid #E7E0CE;' : ''}">
-      <div style="font-size:18px;margin-bottom:4px;">${st.icon}</div>
-      <div style="font-size:10px;color:#666;font-weight:600;text-transform:uppercase;letter-spacing:.04em;">${esc(st.label)}</div>
-      <div style="font-size:15px;font-weight:700;color:#0F2740;margin-top:2px;">${esc(String(st.val))}</div>
-    </div>`).join('');
+  const infoField = (icon, label, value) => `
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+      <span style="flex-shrink:0;width:18px;text-align:center;">${icon}</span>
+      <span style="flex-shrink:0;width:96px;font-size:12px;font-weight:700;color:#0F2740;">${esc(label)}</span>
+      <span style="font-size:12px;color:#1C2530;">:</span>
+      <span style="flex:1;font-size:13px;color:#1C2530;border-bottom:1px solid #C9C2A6;padding-bottom:2px;">${esc(value || '\u2014')}</span>
+    </div>`;
+
+  const summaryBlock = (icon, label, value) => `
+    <div style="text-align:center;">
+      <div style="font-size:17px;margin-bottom:4px;">${icon}</div>
+      <div style="font-size:9px;color:#0F2740;font-weight:700;letter-spacing:.04em;text-transform:uppercase;">${label}</div>
+      <div style="font-size:15px;font-weight:700;color:#0F2740;margin-top:3px;">${value}</div>
+    </div>`;
 
   return `
-    <div style="page-break-after:always;margin-bottom:24px;font-family:Inter,sans-serif;">
-      <div style="max-width:800px;margin:0 auto;background:#0F2740;border-radius:30px;padding:10px;box-shadow:0 4px 18px rgba(15,39,64,.2);">
-        <div style="background:#FAF6EC;border:3px solid #C9A227;border-radius:24px;padding:30px 34px 26px;position:relative;overflow:hidden;">
+    <div class="dmc-cert" style="page-break-after:always;page-break-inside:avoid;break-inside:avoid;margin-bottom:24px;font-family:Inter,sans-serif;">
+      <div style="max-width:800px;margin:0 auto;background:#0F2740;padding:8px;border-radius:22px;position:relative;overflow:hidden;">
+        <div style="background:#FAF6EC;border:2px solid #C9A227;border-radius:16px;padding:18px 26px 16px;position:relative;z-index:0;overflow:hidden;">
+          ${dmcLogo ? `<div style="position:absolute;inset:0;z-index:-1;display:flex;align-items:center;justify-content:center;pointer-events:none;overflow:hidden;"><img src="${dmcLogo}" style="width:63%;max-width:364px;object-fit:contain;opacity:.2;filter:blur(1px);"></div>` : ''}
 
-          ${dmcLogo ? `<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none;z-index:0;">
-            <img src="${dmcLogo}" style="width:65%;max-width:400px;object-fit:contain;opacity:0.4;filter:blur(1px);">
-          </div>` : ''}
-
-          <div style="position:relative;z-index:1;">
-
-          <!-- Header: crest / school name / medal -->
-          <div style="display:flex;justify-content:space-between;align-items:flex-start;">
-            <div style="text-align:center;width:72px;flex-shrink:0;">
+          <!-- Header: crest, school name + tagline, medal -->
+          <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:14px;">
+            <div style="flex-shrink:0;width:62px;height:62px;">
               ${dmcLogo
-                ? `<img src="${dmcLogo}" style="width:58px;height:58px;object-fit:contain;border-radius:50%;border:2px solid #C9A227;background:#fff;">`
-                : `<div style="width:58px;height:58px;border-radius:50%;background:#0F2740;border:2px solid #C9A227;display:flex;align-items:center;justify-content:center;font-size:24px;">🛡️</div>`}
+                ? `<img src="${dmcLogo}" style="width:62px;height:62px;object-fit:contain;border-radius:50%;">`
+                : `<svg viewBox="0 0 64 64" width="62" height="62"><path d="M32 4 L58 12 V32 C58 46 47 56 32 60 C17 56 6 46 6 32 V12 Z" fill="#0F2740" stroke="#C9A227" stroke-width="2"/><circle cx="32" cy="26" r="10" fill="none" stroke="#E4C765" stroke-width="1.5"/><path d="M24 40 L40 40" stroke="#E4C765" stroke-width="1.5"/></svg>`}
             </div>
-            <div style="flex:1;text-align:center;padding:2px 8px 0;">
-              <div style="font-family:Georgia,'Times New Roman',serif;font-size:25px;font-weight:700;color:#0F2740;line-height:1.2;letter-spacing:.2px;">${esc(dmcSchoolName || 'SCHOOL NAME')}</div>
-              <div style="font-size:11px;font-style:italic;color:#8A6200;margin-top:5px;">❧ Nurturing Knowledge, Building Character ❧</div>
+            <div style="flex:1;text-align:center;padding-top:2px;">
+              <div style="font-family:Fraunces,serif;font-weight:700;font-size:26px;color:#0F2740;line-height:1.15;letter-spacing:.03em;">${esc(dmcSchoolName)}</div>
+              ${dmcTagline ? `<div style="font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:#0F2740;opacity:.75;margin-top:5px;">${esc(dmcTagline)}</div>` : ''}
             </div>
-            <div style="width:72px;flex-shrink:0;text-align:center;">
-              <div style="width:52px;height:64px;background:#C9A227;border-radius:8px 8px 40% 40%;display:flex;align-items:center;justify-content:center;font-size:22px;margin:0 auto;color:#0F2740;">🏆</div>
+            <div style="flex-shrink:0;width:42px;height:54px;">
+              <svg viewBox="0 0 44 56" width="42" height="54"><path d="M6 0 H38 V34 L22 24 L6 34 Z" fill="#0F2740"/><circle cx="22" cy="16" r="12" fill="#E4C765" stroke="#C9A227" stroke-width="1.5"/><path d="M16 16 L20 20 L28 11" stroke="#0F2740" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
             </div>
           </div>
 
-          <!-- Certificate title banner -->
-          <div style="background:#0F2740;color:#fff;text-align:center;padding:11px;border-radius:12px;font-weight:700;letter-spacing:2px;font-size:14px;margin-top:16px;">DETAILED MARKS CERTIFICATE</div>
+          <div style="height:1px;background:linear-gradient(90deg,transparent,#C9A227,transparent);margin:10px 0 12px;"></div>
+
+          <!-- Title banner -->
           <div style="text-align:center;">
-            <span style="display:inline-block;background:#C9A227;color:#0F2740;font-size:10.5px;font-weight:700;padding:4px 18px;border-radius:0 0 10px 10px;letter-spacing:1px;">ACADEMIC SESSION ${esc(dmcSession || '')}</span>
+            <div style="display:inline-block;background:#0F2740;color:#FAF6EC;padding:9px 26px;border-radius:6px;font-weight:700;font-size:14px;letter-spacing:.06em;">DETAILED MARKS CERTIFICATE</div>
+            ${dmcAcademicSession ? `<div style="margin-top:10px;"><span style="display:inline-block;border:1px solid #C9A227;color:#0F2740;padding:4px 18px;border-radius:999px;font-size:11px;font-weight:700;letter-spacing:.03em;">ACADEMIC SESSION: ${esc(dmcAcademicSession)}</span></div>` : ''}
           </div>
 
-          <!-- Position / Student / Class row -->
-          <div style="display:flex;justify-content:space-between;align-items:center;margin:22px 0 16px;padding:14px 4px;border-top:1px solid #E7E0CE;border-bottom:1px solid #E7E0CE;">
-            <div style="text-align:center;flex:1;">
-              ${iconCircleOutline('🏅')}
-              <div style="font-size:10.5px;color:#666;margin-top:4px;">Position</div>
-              <div style="font-size:17px;font-weight:700;color:#0F2740;font-family:Georgia,serif;">${position}</div>
-            </div>
-            <div style="text-align:center;flex:2;">
-              ${iconCircleOutline('👤')}
-              <div style="font-size:19px;font-weight:700;color:#0F2740;font-family:Georgia,serif;margin-top:4px;">${esc(result.studentName)}</div>
-              ${result.fatherName ? `<div style="font-size:12px;color:#555;margin-top:2px;">Father Name: ${esc(result.fatherName)}</div>` : ''}
-            </div>
-            <div style="text-align:center;flex:1;">
-              ${iconCircleOutline('🎓')}
-              <div style="font-size:10.5px;color:#666;margin-top:4px;">Class</div>
-              <div style="font-size:17px;font-weight:700;color:#0F2740;font-family:Georgia,serif;">${esc(result.class)}</div>
+          <!-- Student Information section -->
+          <div style="margin:14px 0 0;">
+            <div style="display:inline-block;background:#0F2740;color:#E4C765;padding:6px 16px;font-size:11px;font-weight:700;letter-spacing:.05em;border-radius:4px 10px 4px 4px;">STUDENT INFORMATION</div>
+          </div>
+          <div style="border:1px solid #C9A227;border-radius:10px;padding:12px 18px 2px;margin-top:8px;">
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 20px;">
+              <div>
+                ${infoField('&#128100;','Student Name', result.studentName)}
+                ${infoField('&#128100;','Father Name', result.fatherName)}
+                ${infoField('&#128203;','Roll No.', result.rollNo)}
+              </div>
+              <div>
+                ${infoField('&#127891;','Class', result.class)}
+                ${infoField('&#128101;','Section', dmcBatchSection)}
+                ${infoField('&#128197;','Date of Issue', fmtDate(dmcBatchDateOfIssue || todayISO()))}
+              </div>
             </div>
           </div>
 
-          <!-- Marks table -->
-          <table style="width:100%;border-collapse:collapse;margin-bottom:16px;border-radius:10px;overflow:hidden;">
+          <!-- Marks Table -->
+          <table style="width:100%;border-collapse:collapse;margin:8px 0;">
             <thead>
-              <tr style="background:#0F2740;color:#C9A227;">
-                <th style="padding:11px 12px;text-align:left;font-weight:700;font-size:12px;letter-spacing:.03em;">📖 SUBJECT</th>
-                <th style="padding:11px 12px;text-align:center;font-weight:700;font-size:12px;letter-spacing:.03em;">🏅 OBTAINED MARKS</th>
-                <th style="padding:11px 12px;text-align:center;font-weight:700;font-size:12px;letter-spacing:.03em;">📄 TOTAL MARKS</th>
+              <tr style="background:#0F2740;color:#E4C765;">
+                <th style="padding:8px 12px;text-align:center;font-weight:700;font-size:11px;letter-spacing:.04em;width:44px;">S.NO</th>
+                <th style="padding:8px 12px;text-align:left;font-weight:700;font-size:11px;letter-spacing:.04em;">SUBJECT</th>
+                <th style="padding:8px 12px;text-align:center;font-weight:700;font-size:11px;letter-spacing:.04em;">TOTAL MARKS</th>
+                <th style="padding:8px 12px;text-align:center;font-weight:700;font-size:11px;letter-spacing:.04em;">OBTAINED MARKS</th>
+                <th style="padding:8px 12px;text-align:center;font-weight:700;font-size:11px;letter-spacing:.04em;">GRADE</th>
               </tr>
             </thead>
             <tbody>
               ${subjectsHtml}
-              <tr style="background:#C9A227;color:#0F2740;font-weight:700;">
-                <td style="padding:11px 12px;text-align:left;"><div style="display:flex;align-items:center;gap:8px;">${iconCircle('🏆','#0F2740','#E4C765')}<span>TOTAL</span></div></td>
-                <td style="padding:11px 12px;text-align:center;font-size:15px;">${totalObtained}</td>
-                <td style="padding:11px 12px;text-align:center;font-size:15px;">${totalPossible}</td>
+              <tr style="background:#E4C765;font-weight:700;">
+                <td colspan="2" style="padding:8px 12px;text-align:left;color:#0F2740;">TOTAL</td>
+                <td style="padding:8px 12px;text-align:center;color:#0F2740;font-size:15px;">${totalPossible}</td>
+                <td style="padding:8px 12px;text-align:center;color:#0F2740;font-size:15px;">${totalObtained}</td>
+                <td style="padding:8px 12px;text-align:center;color:#0F2740;font-size:14px;">${grade}</td>
               </tr>
             </tbody>
           </table>
 
-          <!-- Stats strip -->
-          <div style="display:flex;align-items:center;padding:14px 8px;border:1px solid #E7E0CE;border-radius:12px;background:#F9F7F2;margin-bottom:22px;">
-            ${statsHtml}
-          </div>
-
-          <!-- Quote + Signature -->
-          <div style="display:flex;justify-content:space-between;align-items:flex-end;gap:16px;">
-            <div style="background:#0F2740;color:#E4C765;border-radius:0 16px 16px 0;padding:12px 18px;font-size:11.5px;font-style:italic;max-width:220px;line-height:1.4;">
-              "Education is the key to a bright future."
-            </div>
-            <div style="text-align:center;flex-shrink:0;">
-              <div style="width:150px;border-bottom:1.5px solid #0F2740;height:28px;"></div>
-              <div style="font-size:11px;color:#555;margin-top:3px;">Signature</div>
+          <!-- Summary row -->
+          <div style="border:1px solid #C9A227;border-radius:10px;padding:8px;">
+            <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:6px;">
+              ${summaryBlock('&#127942;','Total Marks', totalPossible)}
+              ${summaryBlock('&#128203;','Obtained Marks', totalObtained)}
+              ${summaryBlock('%','Percentage', percentage+'%')}
+              ${summaryBlock('&#127895;','Grade', grade)}
+              ${summaryBlock('&#129351;','Position', position)}
             </div>
           </div>
 
+          <!-- Remarks -->
+          <div style="display:flex;margin-top:10px;border:1px solid #0F2740;border-radius:8px;overflow:hidden;">
+            <div style="background:#0F2740;color:#E4C765;font-weight:700;font-size:13px;letter-spacing:.05em;padding:8px 22px;">REMARKS</div>
+            <div style="flex:1;display:flex;align-items:center;justify-content:center;gap:8px;font-weight:700;font-size:13px;letter-spacing:.05em;color:${resultStatus==='PASS' ? '#3F7154' : '#B24A32'};">${dmcRemarkFor(grade)}</div>
+          </div>
+
+          <!-- Footer: signatures -->
+          <div style="display:flex;align-items:flex-end;justify-content:space-between;margin-top:10px;gap:12px;">
+            <div style="text-align:center;flex:1;">
+              <div style="border-bottom:1px solid #0F2740;margin-bottom:6px;"></div>
+              <div style="font-size:10px;font-weight:600;color:#0F2740;letter-spacing:.03em;">CLASS TEACHER SIGNATURE</div>
+            </div>
+            <div style="text-align:center;flex-shrink:0;width:70px;">
+              <div style="width:56px;height:56px;border:1px dashed #C9A227;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:8px;font-weight:700;color:#0F2740;opacity:.6;margin:0 auto;">SCHOOL<br>STAMP</div>
+            </div>
+            <div style="text-align:center;flex:1;">
+              <div style="border-bottom:1px solid #0F2740;margin-bottom:6px;"></div>
+              <div style="font-size:10px;font-weight:600;color:#0F2740;letter-spacing:.03em;">PRINCIPAL SIGNATURE</div>
+            </div>
           </div>
 
         </div>
@@ -2565,16 +2626,12 @@ function renderDMCCertificate(result) {
   `;
 }
 
-// Small outlined circle used for the icons above Position / Student / Class.
-function iconCircleOutline(icon) {
-  return `<div style="width:30px;height:30px;border-radius:50%;border:1.5px solid #0F2740;display:flex;align-items:center;justify-content:center;margin:0 auto;font-size:13px;">${icon}</div>`;
-}
-
 function handleDMCLogoUpload(file) {
   if (!file) return;
   const reader = new FileReader();
   reader.onload = (e) => {
     dmcLogo = e.target.result;
+    saveDMCConfig();
     renderTab();
   };
   reader.readAsDataURL(file);
@@ -2582,7 +2639,7 @@ function handleDMCLogoUpload(file) {
 
 function printAllDMC() {
   if (dmcResults.length === 0) { alert('No results to print'); return; }
-  let html = '<html><head><meta charset="utf-8"><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap"><style>body{font-family:Inter,sans-serif;margin:0;padding:10px;background:#f5f5f5;}@media print{body{background:#fff;}}</style></head><body>';
+  let html = '<html><head><meta charset="utf-8"><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap"><style>@page{size:A4;margin:8mm;}*{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;color-adjust:exact!important;}html,body{height:100%;}body{font-family:Inter,sans-serif;margin:0;padding:10px;background:#f5f5f5;}@media print{body{background:#fff;padding:0;}.dmc-cert{page-break-inside:avoid;page-break-after:always;break-inside:avoid;}.dmc-cert:last-child{page-break-after:auto;}}</style></head><body>';
   dmcResults.forEach(r => {
     html += renderDMCCertificate(r);
   });
@@ -2819,7 +2876,7 @@ function exportMarksSheetExcel(className) {
   XLSX.utils.book_append_sheet(wb, ws, className.slice(0, 31) || 'Marks Sheet');
 
   const schoolPart = (CURRENT_PROFILE?.school_name || 'School').replace(/[^a-zA-Z0-9]/g, '_');
-  XLSX.writeFile(wb, `${schoolPart}_MarksSheet_${className}_${todayISO()}.xlsx`, { cellStyles: true });
+  XLSX.writeFile(wb, `${schoolPart}_MarksSheet_${className}_${fmtDate(todayISO())}.xlsx`, { cellStyles: true });
 }
 
 function printMarksSheet(className) {
@@ -2883,7 +2940,12 @@ function tplAdmissionRegister() {
       <button class="${registerSubTab==='slc'?'on':''}" onclick="setRegisterSubTab('slc')">${esc(t.registerSlc)}</button>
     </div>`;
   const body = registerSubTab === 'dashboard' ? tplRegisterDashboard() : tplRegisterList();
-  return `<div style="padding-top:16px;">${subnav}${body}</div>`;
+  return `<div style="padding-top:16px;">
+    <div class="reg-book">
+      <div class="reg-book-title">${NAV_ICONS.admissionRegister}${esc(t.admissionRegister)}</div>
+      ${subnav}${body}
+    </div>
+  </div>`;
 }
 
 function tplRegisterDashboard() {
@@ -2891,12 +2953,7 @@ function tplRegisterDashboard() {
   const admittedCount = all.filter(r => !r.withdrawal_date).length;
   const slcCount = all.filter(r => !!r.withdrawal_date).length;
   const totalArrears = all.filter(r => !r.withdrawal_date).reduce((a,b) => a + Number(b.arrears_due||0), 0);
-  const recent = all.slice().sort((a,b) => new Date(b.admission_date||0) - new Date(a.admission_date||0)).slice(0,5);
-  const row = r => `
-    <div class="list-row" style="cursor:pointer;" onclick="openEditAdmissionEntry('${r.id}')">
-      <div><div class="nm">${esc(r.student_name)}</div><div class="sub">${esc(t.admissionDate)}: ${esc(r.admission_date||'—')}</div></div>
-      ${r.withdrawal_date ? `<span class="pill" style="background:#EFEAD9;color:#555;">${esc(t.registerSlc)}</span>` : `<span class="pill good">${esc(t.registerAdmitted)}</span>`}
-    </div>`;
+  const allSorted = all.slice().sort((a,b) => Number(a.serial_no||0) - Number(b.serial_no||0));
 
   return `
     <div class="notice" style="margin-bottom:12px;">${esc(t.admissionRegisterDesc)}</div>
@@ -2906,9 +2963,56 @@ function tplRegisterDashboard() {
       <div class="stat-card"><div class="lbl">${esc(t.arrearsDue)}</div><div class="val" style="color:var(--rust);font-size:18px;">₨${fmt(totalArrears)}</div></div>
       <div class="stat-card"><div class="lbl">${esc(t.serialNo)} (${esc(t.all)})</div><div class="val">${all.length}</div></div>
     </div>
-    <div class="section-title">${esc(t.recentActivity)}</div>
-    <div class="list-card">
-      ${recent.length===0 ? `<div style="padding:16px;text-align:center;opacity:.5;font-size:13px;">—</div>` : recent.map(row).join('')}
+    <div style="display:flex;align-items:center;justify-content:space-between;margin:20px 0 8px;">
+      <div class="section-title" style="margin:0;">${esc(t.admissionRegister)}</div>
+      <button class="icon-btn" style="width:34px;height:34px;" onclick="openAddAdmissionEntry()">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#E4C765" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg>
+      </button>
+    </div>
+    ${registerLedgerTableHtml(allSorted)}`;
+}
+
+// Shared ledger-book table renderer: same column order as the physical bound
+// Admission & Withdrawal Register page, so every saved entry appears as a row
+// on the same "page" (used by both the Dashboard's full-book view and the
+// Admitted/SLC list view) instead of one-at-a-time cards.
+function registerLedgerTableHtml(rows) {
+  const dobText = r => {
+    const parts = [r.dob_words, fmtDate(r.dob_figures)].filter(Boolean);
+    return parts.length ? esc(parts.join(' — ')) : '—';
+  };
+  const headCols = [
+    t.admissionDate, t.serialNo, t.studentName, t.dobLabel, t.fatherName,
+    t.casteTribe, t.occupation, t.residence, t.classAdmitted, t.arrearsDue,
+    t.classWithdrawn, t.withdrawalDate, t.remarks, ''
+  ];
+  const SPINE_AFTER = 4; // after Father's Name column, matching the book's fold
+
+  const dataRow = r => `
+    <tr onclick="openEditAdmissionEntry('${r.id}')">
+      <td>${esc(fmtDate(r.admission_date)||'—')}</td>
+      <td>${esc(r.serial_no||'—')}</td>
+      <td class="mo">${esc(r.student_name||'—')}</td>
+      <td>${dobText(r)}</td>
+      <td class="rb-spine">${esc(r.father_name||'—')}</td>
+      <td>${esc(r.caste_tribe||'—')}</td>
+      <td>${esc(r.occupation||'—')}</td>
+      <td>${esc(r.residence||'—')}</td>
+      <td>${esc(r.class_admitted||'—')}</td>
+      <td class="${Number(r.arrears_due||0) ? 'due' : ''}">${Number(r.arrears_due||0) ? '₨'+fmt(r.arrears_due) : '—'}</td>
+      <td>${esc(r.class_withdrawn||'—')}</td>
+      <td>${esc(fmtDate(r.withdrawal_date)||'—')}</td>
+      <td>${esc(r.remarks||'—')}</td>
+      <td class="act">${r.withdrawal_date ? `<span class="print-btn" title="${esc(t.print)}" onclick="event.stopPropagation(); printAdmissionEntry('${r.id}')">🖨️</span>` : ''}</td>
+    </tr>`;
+
+  if (rows.length === 0) return `<div class="empty">${esc(t.noRegisterEntries)}</div>`;
+  return `
+    <div class="regbook-screen-wrap">
+      <table class="regbook-screen">
+        <thead><tr>${headCols.map((c,i) => `<th${i===SPINE_AFTER?' class="rb-spine"':''}>${esc(c)}</th>`).join('')}</tr></thead>
+        <tbody>${rows.map(dataRow).join('')}</tbody>
+      </table>
     </div>`;
 }
 
@@ -2918,17 +3022,6 @@ function tplRegisterList() {
   if (registerPage > totalPages) registerPage = totalPages;
   const start = (registerPage - 1) * REGISTER_PAGE_SIZE;
   const list = full.slice(start, start + REGISTER_PAGE_SIZE);
-
-  const row = r => `
-    <button class="card-btn" onclick="openEditAdmissionEntry('${r.id}')">
-      <div>
-        <div class="nm">${esc(r.serial_no ? '#'+r.serial_no+' — ' : '')}${esc(r.student_name)}</div>
-        <div class="sub">${esc(t.fatherName)}: ${esc(r.father_name||'')} · ${esc(r.class_admitted||'—')}</div>
-      </div>
-      ${registerSubTab==='slc'
-        ? `<span class="print-btn" title="${esc(t.print)}" onclick="event.stopPropagation(); printAdmissionEntry('${r.id}')">🖨️</span>`
-        : (Number(r.arrears_due||0) > 0 ? `<span class="pill bad">₨${fmt(r.arrears_due)}</span>` : '')}
-    </button>`;
 
   const pager = full.length === 0 ? '' : `
     <div class="flexgap" style="align-items:center;margin-top:12px;">
@@ -2942,12 +3035,16 @@ function tplRegisterList() {
 
   return `
     <div class="searchbar">
-      <input placeholder="${esc(t.searchRegister)}" value="${esc(registerSearch)}" oninput="setRegisterSearch(this.value)">
+      <input id="register-search-input" placeholder="${esc(t.searchRegister)}" value="${esc(registerSearch)}" oninput="setRegisterSearch(this.value)">
+      <button class="icon-btn" title="${esc(t.searchRegister)}" onclick="setRegisterSearch(document.getElementById('register-search-input').value)">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#E4C765" stroke-width="2.5"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.35-4.35"/></svg>
+      </button>
+      ${registerSearch.trim() && full.length===1 ? `<button class="icon-btn" title="${esc(t.print)}" onclick="printSingleAdmissionEntry('${full[0].id}')">🖨️</button>` : ''}
       <button class="icon-btn" onclick="openAddAdmissionEntry()">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#E4C765" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg>
       </button>
     </div>
-    ${list.length===0 ? `<div class="empty">${esc(t.noRegisterEntries)}</div>` : `<div class="list-card">${list.map(row).join('')}</div>${pager}`}`;
+    ${registerLedgerTableHtml(list)}${list.length ? pager : ''}`;
 }
 
 // Prints one page (up to 30 rows) of the register as a single ledger-style table,
@@ -2959,61 +3056,81 @@ function printAdmissionRegisterPage(page) {
   if (rows.length === 0) return;
 
   const headCols = [
-    t.admissionDate, t.serialNo, t.studentName, t.dobFigures, t.dobWords, t.fatherName,
+    t.admissionDate, t.serialNo, t.studentName, t.dobLabel, t.fatherName,
     t.casteTribe, t.occupation, t.residence, t.classAdmitted, t.arrearsDue,
     t.classWithdrawn, t.withdrawalDate, t.remarks
   ];
-  const bodyRows = rows.map(r => `
+  const SPINE_AFTER = 5; // book fold falls after Father's Name (5th column)
+  const headerHtml = headCols.map((c,i) => `<th${i===SPINE_AFTER?' class="rb-spine"':''}>${esc(c)}</th>`).join('');
+
+  const dobText = r => {
+    const parts = [fmtDate(r.dob_figures), r.dob_words].filter(Boolean);
+    return parts.length ? esc(parts.join(' — ')) : '—';
+  };
+  const dataRow = r => `
     <tr>
-      <td>${esc(r.admission_date||'—')}</td>
+      <td>${esc(fmtDate(r.admission_date)||'—')}</td>
       <td>${esc(r.serial_no||'—')}</td>
       <td>${esc(r.student_name||'—')}</td>
-      <td>${esc(r.dob_figures||'—')}</td>
-      <td>${esc(r.dob_words||'—')}</td>
+      <td>${dobText(r)}</td>
       <td>${esc(r.father_name||'—')}</td>
-      <td>${esc(r.caste_tribe||'—')}</td>
+      <td class="rb-spine">${esc(r.caste_tribe||'—')}</td>
       <td>${esc(r.occupation||'—')}</td>
       <td>${esc(r.residence||'—')}</td>
       <td>${esc(r.class_admitted||'—')}</td>
-      <td>₨${fmt(r.arrears_due||0)}</td>
+      <td>${Number(r.arrears_due||0) ? '₨'+fmt(r.arrears_due) : '—'}</td>
       <td>${esc(r.class_withdrawn||'—')}</td>
-      <td>${esc(r.withdrawal_date||'—')}</td>
+      <td>${esc(fmtDate(r.withdrawal_date)||'—')}</td>
       <td>${esc(r.remarks||'—')}</td>
-    </tr>`).join('');
+    </tr>`;
+  const blankRow = `<tr>${headCols.map((_,i)=>`<td${i===SPINE_AFTER?' class="rb-spine"':''}>&nbsp;</td>`).join('')}</tr>`;
+  const bodyRows = rows.map(dataRow).join('') + blankRow.repeat(Math.max(0, REGISTER_PAGE_SIZE - rows.length));
 
   document.getElementById('print-area').innerHTML = `
-    <div class="ledger-print">
-      <h2>${esc(CURRENT_PROFILE.school_name || 'School')}</h2>
-      <div class="sub">${esc(t.admissionRegister)} — Page ${page}</div>
+    <div class="regbook-print">
+      <div class="rb-head">
+        <h2>${esc(t.admissionRegister)}</h2>
+        <span class="rb-of">${LANG==='ur' ? 'کے' : 'of the'}</span>
+        <span class="rb-school">${esc(CURRENT_PROFILE.school_name || 'School')}</span>
+      </div>
+      <div class="rb-meta">Page ${page} &nbsp;·&nbsp; ${esc(fmtDate(todayISO()))}</div>
       <table>
-        <thead><tr>${headCols.map(c=>`<th>${esc(c)}</th>`).join('')}</tr></thead>
+        <thead><tr>${headerHtml}</tr></thead>
         <tbody>${bodyRows}</tbody>
       </table>
-      <div class="foot">${esc(t.headOfInstitution || 'Head of the Institution')}</div>
+      <div class="foot">
+        <div class="note">Note: The age entries should be recorded in words and figures, and any change in sub entries should be attested.</div>
+        <div class="sign">${esc(t.headOfInstitution || 'Head of the Institution')}</div>
+      </div>
     </div>`;
   window.print();
 }
 
 function admissionEntryForm(r) {
   r = r || {};
+  const cols = [
+    [t.serialNo, `<input class="cell-input" id="ar-serial" type="number" value="${esc(r.serial_no||'')}">`],
+    [t.admissionDate, `<input class="cell-input" id="ar-admission-date" type="date" value="${esc(r.admission_date||todayISO())}">`],
+    [t.studentName, `<input class="cell-input" id="ar-name" value="${esc(r.student_name||'')}">`],
+    [t.dobFigures, `<input class="cell-input" id="ar-dob-figures" type="date" value="${esc(r.dob_figures||'')}">`],
+    [t.dobWords, `<input class="cell-input" id="ar-dob-words" value="${esc(r.dob_words||'')}">`],
+    [t.fatherName, `<input class="cell-input" id="ar-father" value="${esc(r.father_name||'')}">`],
+    [t.casteTribe, `<input class="cell-input" id="ar-caste" value="${esc(r.caste_tribe||'')}">`],
+    [t.occupation, `<input class="cell-input" id="ar-occupation" value="${esc(r.occupation||'')}">`],
+    [t.residence, `<input class="cell-input" id="ar-residence" value="${esc(r.residence||'')}">`],
+    [t.classAdmitted, `<select class="cell-input" id="ar-class-admitted">${CLASS_OPTIONS.map(c=>`<option ${r.class_admitted===c?'selected':''}>${c}</option>`).join('')}</select>`],
+    [t.arrearsDue, `<input class="cell-input" id="ar-arrears" type="number" value="${esc(r.arrears_due||0)}">`],
+    [t.classWithdrawn, `<select class="cell-input" id="ar-class-withdrawn"><option value="">—</option>${CLASS_OPTIONS.map(c=>`<option ${r.class_withdrawn===c?'selected':''}>${c}</option>`).join('')}</select>`],
+    [t.withdrawalDate, `<input class="cell-input" id="ar-withdrawal-date" type="date" value="${esc(r.withdrawal_date||'')}">`],
+    [t.remarks, `<input class="cell-input" id="ar-remarks" value="${esc(r.remarks||'')}">`],
+  ];
   return `
-    <label><span>${esc(t.serialNo)}</span><input id="ar-serial" type="number" value="${esc(r.serial_no||'')}"></label>
-    <label><span>${esc(t.admissionDate)}</span><input id="ar-admission-date" type="date" value="${esc(r.admission_date||todayISO())}"></label>
-    <label><span>${esc(t.studentName)}</span><input id="ar-name" value="${esc(r.student_name||'')}"></label>
-    <label><span>${esc(t.dobFigures)}</span><input id="ar-dob-figures" type="date" value="${esc(r.dob_figures||'')}"></label>
-    <label><span>${esc(t.dobWords)}</span><input id="ar-dob-words" value="${esc(r.dob_words||'')}"></label>
-    <label><span>${esc(t.fatherName)}</span><input id="ar-father" value="${esc(r.father_name||'')}"></label>
-    <label><span>${esc(t.religion)}</span><input id="ar-religion" value="${esc(r.religion||'')}"></label>
-    <label><span>${esc(t.nationality)}</span><input id="ar-nationality" value="${esc(r.nationality||'')}"></label>
-    <label><span>${esc(t.casteTribe)}</span><input id="ar-caste" value="${esc(r.caste_tribe||'')}"></label>
-    <label><span>${esc(t.occupation)}</span><input id="ar-occupation" value="${esc(r.occupation||'')}"></label>
-    <label><span>${esc(t.residence)}</span><input id="ar-residence" value="${esc(r.residence||'')}"></label>
-    <label><span>${esc(t.classAdmitted)}</span><select id="ar-class-admitted">${CLASS_OPTIONS.map(c=>`<option ${r.class_admitted===c?'selected':''}>${c}</option>`).join('')}</select></label>
-    <label><span>${esc(t.arrearsDue)}</span><input id="ar-arrears" type="number" value="${esc(r.arrears_due||0)}"></label>
-    <label><span>${esc(t.conduct)} (${esc(t.optional)})</span><input id="ar-conduct" value="${esc(r.conduct||'')}"></label>
-    <label><span>${esc(t.classWithdrawn)} (${esc(t.optional)})</span><select id="ar-class-withdrawn"><option value="">—</option>${CLASS_OPTIONS.map(c=>`<option ${r.class_withdrawn===c?'selected':''}>${c}</option>`).join('')}</select></label>
-    <label><span>${esc(t.withdrawalDate)} (${esc(t.optional)})</span><input id="ar-withdrawal-date" type="date" value="${esc(r.withdrawal_date||'')}"></label>
-    <label><span>${esc(t.remarks)} (${esc(t.optional)})</span><input id="ar-remarks" value="${esc(r.remarks||'')}"></label>`;
+    <div class="regbook-screen-wrap" style="margin-bottom:14px;">
+      <table class="regbook-screen">
+        <thead><tr>${cols.map(c => `<th>${esc(c[0])}</th>`).join('')}</tr></thead>
+        <tbody><tr>${cols.map(c => `<td class="input-cell">${c[1]}</td>`).join('')}</tr></tbody>
+      </table>
+    </div>`;
 }
 
 function openAddAdmissionEntry() {
@@ -3034,14 +3151,11 @@ function readAdmissionForm() {
     dob_figures: document.getElementById('ar-dob-figures').value,
     dob_words: document.getElementById('ar-dob-words').value.trim(),
     father_name: document.getElementById('ar-father').value.trim(),
-    religion: document.getElementById('ar-religion').value.trim(),
-    nationality: document.getElementById('ar-nationality').value.trim(),
     caste_tribe: document.getElementById('ar-caste').value.trim(),
     occupation: document.getElementById('ar-occupation').value.trim(),
     residence: document.getElementById('ar-residence').value.trim(),
     class_admitted: document.getElementById('ar-class-admitted').value,
     arrears_due: Number(document.getElementById('ar-arrears').value || 0),
-    conduct: document.getElementById('ar-conduct').value.trim(),
     class_withdrawn: document.getElementById('ar-class-withdrawn').value || null,
     withdrawal_date: document.getElementById('ar-withdrawal-date').value || null,
     remarks: document.getElementById('ar-remarks').value.trim(),
@@ -3059,7 +3173,7 @@ async function submitAddAdmissionEntry() {
 function openEditAdmissionEntry(id) {
   const r = DATA.admissionRegister.find(x => x.id === id);
   if (!r) return;
-  showModal(t.editRegisterEntry, `
+  showModal(r.student_name || t.editRegisterEntry, `
     ${admissionEntryForm(r)}
     <div class="flexgap">
       <button class="btn-ghost" style="color:var(--rust);border-color:var(--rust);" onclick="confirmDelete('admissionEntry','${id}')">${esc(t.delete)}</button>
@@ -3069,45 +3183,142 @@ function openEditAdmissionEntry(id) {
   `);
 }
 
-// Prints a single admission entry as a formal School Leaving Certificate (SLC),
-// using the standard wording/fields expected on this document in Pakistani schools.
-function printAdmissionEntry(id) {
+// Prints a single admission-register entry as a clean one-record sheet — used
+// from the search bar's print button when a search narrows the list to one match.
+async function printSingleAdmissionEntry(id) {
   const r = DATA.admissionRegister.find(x => x.id === id);
   if (!r) return;
+  await loadDMCConfig(); // pulls the editable school logo saved under Certificates (DMC) config
   const dash = '—';
-  const fieldsHtml = [
-    [t.serialNo, r.serial_no || dash],
-    [t.admissionDate, r.admission_date || dash],
-    [t.studentName, r.student_name || dash],
-    [t.fatherName, r.father_name || dash],
-    [t.dobFigures, r.dob_figures || dash],
-    [t.dobWords, r.dob_words || dash],
-    [t.religion, r.religion || dash],
-    [t.nationality, r.nationality || dash],
-    [t.casteTribe, r.caste_tribe || dash],
-    [t.occupation, r.occupation || dash],
-    [t.residence, r.residence || dash],
-    [t.classAdmitted, r.class_admitted || dash],
-    [t.arrearsDue, '₨' + fmt(r.arrears_due || 0)],
-    [t.conduct, r.conduct || dash],
-    [t.classWithdrawn, r.class_withdrawn || dash],
-    [t.withdrawalDate, r.withdrawal_date || dash],
-  ].map(([lbl,val]) => `<div class="slc-field"><span class="lbl">${esc(lbl)}</span><span class="val">${esc(val)}</span></div>`).join('');
+  const rows = [
+    [t.admissionDate, fmtDate(r.admission_date)],
+    [t.serialNo, r.serial_no],
+    [t.studentName, r.student_name],
+    [t.dobLabel, [r.dob_words, fmtDate(r.dob_figures)].filter(Boolean).join(' — ')],
+    [t.fatherName, r.father_name],
+    [t.casteTribe, r.caste_tribe],
+    [t.occupation, r.occupation],
+    [t.residence, r.residence],
+    [t.classAdmitted, r.class_admitted],
+    [t.arrearsDue, Number(r.arrears_due||0) ? '₨'+fmt(r.arrears_due) : dash],
+    [t.classWithdrawn, r.class_withdrawn],
+    [t.withdrawalDate, fmtDate(r.withdrawal_date)],
+    [t.remarks, r.remarks],
+  ];
+  const rowsHtml = rows.map(([label, val]) => `
+    <div style="display:flex;border-bottom:1px dashed #E7E0CE;padding:8px 4px;">
+      <div style="width:170px;flex-shrink:0;font-weight:700;color:#0F2740;font-size:13px;">${esc(label)}</div>
+      <div style="flex:1;font-size:13px;color:#1C2530;">${esc(val || dash)}</div>
+    </div>`).join('');
+
+  document.getElementById('print-area').innerHTML = `
+    <div class="slc-print" style="max-width:640px;">
+      <span class="slc-corner tl">❧</span>
+      <span class="slc-corner tr">❧</span>
+      <span class="slc-corner bl">❧</span>
+      <span class="slc-corner br">❧</span>
+      <div class="slc-inner">
+        ${dmcLogo ? `<div class="slc-watermark"><img src="${dmcLogo}" alt=""></div>` : ''}
+        <div class="slc-content">
+          <div class="slc-head">
+            ${dmcLogo ? `<img class="slc-logo" src="${dmcLogo}" alt="School Logo">` : ''}
+            <div class="eyebrow">${esc(t.headOfInstitution)}</div>
+            <h2>${esc(CURRENT_PROFILE.school_name || 'School')}</h2>
+            <div class="slc-title-wrap">
+              <span class="rule"></span>
+              <span class="slc-title">${esc(t.admissionRegister)}</span>
+              <span class="rule r"></span>
+            </div>
+          </div>
+          <div style="margin-top:16px;">${rowsHtml}</div>
+        </div>
+      </div>
+    </div>`;
+  window.print();
+}
+
+// Prints a single admission entry as a formal School Leaving Certificate (SLC).
+// The certificate is written as a narrative paragraph (not a bare field list),
+// with every actual record value (names, dates, numbers) bolded within the
+// otherwise italic certificate text so they stand out at a glance.
+function rec(val, dash) {
+  // Wraps a record value in a bold span; falls back to a plain dash if empty.
+  return val ? `<b class="rec">${esc(val)}</b>` : `<b class="rec">${esc(dash)}</b>`;
+}
+
+function slcParagraphEn(r, dash) {
+  const rel = 'S/O, D/O';
+  const duesLine = (r.arrears_due && Number(r.arrears_due) > 0)
+    ? `An amount of ${rec('₨' + fmt(r.arrears_due), dash)} stood outstanding against the student at the time of leaving.`
+    : `No dues stood outstanding against the student at the time of leaving.`;
+  return `
+    This is to certify that ${rec(r.student_name, dash)} ${rel} ${rec(r.father_name, dash)},
+    Caste/Tribe ${rec(r.caste_tribe, dash)}, resident of ${rec(r.residence, dash)},
+    bearing Serial No. ${rec(r.serial_no, dash)} in the Admission &amp; Withdrawal Register of this
+    institution, was admitted on ${rec(fmtDate(r.admission_date), dash)} in Class ${rec(r.class_admitted, dash)}.
+    As per the register, his/her date of birth is ${rec(r.dob_words, dash)} (${rec(fmtDate(r.dob_figures), dash)}).
+    He/She remained a student of this institution up to Class ${rec(r.class_withdrawn, dash)} and was
+    struck off the rolls on ${rec(fmtDate(r.withdrawal_date), dash)}. During the period of study, his/her conduct
+    remained ${rec(r.conduct || 'Good', dash)}. ${duesLine} This certificate is issued at his/her request for
+    whatever purpose it may serve.
+  `;
+}
+
+function slcParagraphUr(r, dash) {
+  const rel = 'ولد، بنتِ';
+  const duesLine = (r.arrears_due && Number(r.arrears_due) > 0)
+    ? `اخراج کے وقت طالب علم کے ذمے ${rec('₨' + fmt(r.arrears_due), dash)} واجب الادا تھے۔`
+    : `اخراج کے وقت طالب علم کے ذمے کوئی رقم واجب الادا نہیں تھی۔`;
+  return `
+    یہ تصدیق کی جاتی ہے کہ ${rec(r.student_name, dash)} ${rel} ${rec(r.father_name, dash)}،
+    ذات/قبیلہ ${rec(r.caste_tribe, dash)}،
+    ساکن ${rec(r.residence, dash)}، جو اس ادارے کے داخلہ و اخراج رجسٹر میں سیریل نمبر
+    ${rec(r.serial_no, dash)} پر درج ہے، کو تاریخ ${rec(fmtDate(r.admission_date), dash)} کو جماعت
+    ${rec(r.class_admitted, dash)} میں داخل کیا گیا تھا۔ رجسٹر کے مطابق موصوف/موصوفہ کی تاریخ پیدائش
+    ${rec(r.dob_words, dash)} (${rec(fmtDate(r.dob_figures), dash)}) ہے۔ موصوف/موصوفہ اس ادارے میں جماعت
+    ${rec(r.class_withdrawn, dash)} تک زیرِ تعلیم رہے اور تاریخ ${rec(fmtDate(r.withdrawal_date), dash)} کو
+    رجسٹر سے خارج کیے گئے۔ زیرِ تعلیم رہنے کی مدت کے دوران اخلاق ${rec(r.conduct || 'اچھا', dash)} رہا۔
+    ${duesLine} یہ سرٹیفکیٹ ان کی درخواست پر، جہاں ضرورت ہو استعمال کے لیے، جاری کیا جاتا ہے۔
+  `;
+}
+
+async function printAdmissionEntry(id) {
+  const r = DATA.admissionRegister.find(x => x.id === id);
+  if (!r) return;
+  await loadDMCConfig(); // pulls the editable school logo saved under Certificates (DMC) config
+  const dash = '—';
+  const paragraph = (LANG === 'ur') ? slcParagraphUr(r, dash) : slcParagraphEn(r, dash);
 
   document.getElementById('print-area').innerHTML = `
     <div class="slc-print">
-      <div class="slc-head">
-        <h2>${esc(CURRENT_PROFILE.school_name || 'School')}</h2>
-        <div class="slc-title">${esc(t.slcTitle)}</div>
-      </div>
-      <div class="slc-meta">
-        <span>${esc(t.slcNo)}: ${esc(r.serial_no || dash)}</span>
-        <span>${esc(t.slcIssueDate)}: ${esc(todayISO())}</span>
-      </div>
-      <div class="slc-fields">${fieldsHtml}</div>
-      ${r.remarks ? `<p class="slc-remarks" style="padding:0 34px;">${esc(t.remarks)}: ${esc(r.remarks)}</p>` : ''}
-      <div class="slc-sign">
-        <div class="box"><div class="line"></div>${esc(t.slcSignature)}</div>
+      <span class="slc-corner tl">❧</span>
+      <span class="slc-corner tr">❧</span>
+      <span class="slc-corner bl">❧</span>
+      <span class="slc-corner br">❧</span>
+      <div class="slc-inner">
+        ${dmcLogo ? `<div class="slc-watermark"><img src="${dmcLogo}" alt=""></div>` : ''}
+        <div class="slc-content">
+        <div class="slc-head">
+          ${dmcLogo ? `<img class="slc-logo" src="${dmcLogo}" alt="School Logo">` : ''}
+          <div class="eyebrow">${esc(t.headOfInstitution)}</div>
+          <h2>${esc(CURRENT_PROFILE.school_name || 'School')}</h2>
+          <div class="slc-title-wrap">
+            <span class="rule"></span>
+            <span class="slc-title">${esc(t.slcTitle)}</span>
+            <span class="rule r"></span>
+          </div>
+        </div>
+        <div class="slc-meta">
+          <span><b>${esc(t.slcNo)}:</b> ${esc(r.serial_no || dash)}</span>
+          <span><b>${esc(t.slcIssueDate)}:</b> ${esc(fmtDate(todayISO()))}</span>
+        </div>
+        <div class="slc-body">${paragraph}</div>
+        ${r.remarks ? `<div class="slc-remarks">${esc(t.remarks)}: <b class="rec">${esc(r.remarks)}</b></div>` : ''}
+        <div class="slc-foot">
+          <div class="box seal"><div class="line"></div>${esc(t.officialSeal)}</div>
+          <div class="box"><div class="line"></div>${esc(t.headOfInstitution)}</div>
+        </div>
+        </div>
       </div>
     </div>`;
   window.print();
@@ -3161,6 +3372,10 @@ async function doDelete(kind, id) {
   }
   if (kind==='admissionEntry') {
     const r1 = await sb.from('admission_register').delete().eq('id', id);
+    if (r1.error) err = r1.error;
+  }
+  if (kind==='whitelistEmail') {
+    const r1 = await sb.from('whitelist_emails').delete().eq('email', id);
     if (r1.error) err = r1.error;
   }
   closeModal(); await loadAllData(); renderTab();
