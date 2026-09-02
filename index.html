@@ -472,6 +472,11 @@ const T = {
     slcTitle:'School Leaving Certificate', slcNo:'Certificate No.', slcIssueDate:'Date of Issue',
     slcSignature:'Signature & Stamp', officialSeal:'Office Seal',
     registerDashboard:'Dashboard', registerAdmitted:'Admitted', registerSlc:'SLC',
+    globalSearch:'Search Student', globalSearchPlaceholder:"Search by student or father's name...",
+    noSearchResults:'No matching students found.', hasFeeRecord:'Fee Record', hasRegisterEntry:'Register Entry',
+    viewFeeLedger:'View Full Fee Ledger', viewRegisterEntry:'View Register Entry', printSlc:'Print Leaving Certificate',
+    registerInfo:'Admission Register Info', notInRegister:'No admission register entry found for this name.',
+    notActiveStudent:'No active fee record found for this name.',
   },
   ur: {
     appName:'مالیاتی و ریکارڈ سسٹم', tagline:'اسکول انتظامیہ کے لیے',
@@ -552,6 +557,11 @@ const T = {
     slcTitle:'اسکول چھوڑنے کا سرٹیفکیٹ', slcNo:'سرٹیفکیٹ نمبر', slcIssueDate:'تاریخ اجراء',
     slcSignature:'دستخط و مہر', officialSeal:'مہر دفتر',
     registerDashboard:'ڈیش بورڈ', registerAdmitted:'داخل شدہ', registerSlc:'ایس ایل سی',
+    globalSearch:'طالب علم تلاش کریں', globalSearchPlaceholder:'طالب علم یا والد کے نام سے تلاش کریں...',
+    noSearchResults:'کوئی مماثل طالب علم نہیں ملا۔', hasFeeRecord:'فیس ریکارڈ', hasRegisterEntry:'رجسٹر اندراج',
+    viewFeeLedger:'مکمل فیس کھاتہ دیکھیں', viewRegisterEntry:'رجسٹر اندراج دیکھیں', printSlc:'اسکول چھوڑنے کا سرٹیفکیٹ پرنٹ کریں',
+    registerInfo:'داخلہ رجسٹر کی معلومات', notInRegister:'اس نام کے لیے داخلہ رجسٹر میں کوئی اندراج نہیں ملا۔',
+    notActiveStudent:'اس نام کے لیے کوئی فعال فیس ریکارڈ نہیں ملا۔',
   }
 };
 
@@ -1001,6 +1011,7 @@ function renderApp() {
           <div class="title">${esc(t.appName)}</div>
         </div>
         <div class="top-actions">
+          <button class="pill-btn lock" onclick="openGlobalSearch()" title="${esc(t.globalSearch)}">🔍</button>
           <button class="pill-btn lang" onclick="toggleLangApp()">${esc(t.langToggle)}</button>
           <button class="pill-btn lock" onclick="openSettings()">⚙</button>
         </div>
@@ -1047,6 +1058,132 @@ function setTab(k){
   TAB = k; renderNav(); renderTab();
   const main = document.getElementById('main');
   main.classList.remove('tab-fade'); void main.offsetWidth; main.classList.add('tab-fade');
+}
+
+// ---------------- Global Student Search (fee + admission register, from any tab) ----------------
+let globalSearchQuery = '';
+
+function normName(s) { return (s || '').toString().trim().toLowerCase().replace(/\s+/g, ' '); }
+
+// Merges live student records with admission-register entries into one people index,
+// matched by normalized name (+ father's name where available), since the register
+// has no student_id foreign key back to the students table.
+function buildGlobalPeopleIndex() {
+  const people = [];
+  const byKey = new Map();
+  DATA.students.forEach(s => {
+    const key = normName(s.name) + '|' + normName(s.father_name);
+    const entry = { name: s.name, father_name: s.father_name, class_name: s.class_name, studentId: s.id, registerId: null };
+    byKey.set(key, entry);
+    people.push(entry);
+  });
+  DATA.admissionRegister.forEach(r => {
+    const key = normName(r.student_name) + '|' + normName(r.father_name);
+    if (byKey.has(key)) { byKey.get(key).registerId = r.id; return; }
+    const nameOnlyMatch = people.find(p => !p.registerId && normName(p.name) === normName(r.student_name));
+    if (nameOnlyMatch) { nameOnlyMatch.registerId = r.id; return; }
+    const entry = { name: r.student_name, father_name: r.father_name, class_name: r.class_admitted, studentId: null, registerId: r.id };
+    byKey.set(key + '#' + r.id, entry);
+    people.push(entry);
+  });
+  return people;
+}
+
+function openGlobalSearch() {
+  globalSearchQuery = '';
+  showModal(t.globalSearch, `
+    <div class="searchbar" style="margin-bottom:10px;">
+      <input id="gs-input" placeholder="${esc(t.globalSearchPlaceholder)}" oninput="globalSearchQuery=this.value; renderGlobalSearchResults();">
+    </div>
+    <div id="gs-results"></div>
+  `);
+  const inp = document.getElementById('gs-input');
+  if (inp) inp.focus();
+  renderGlobalSearchResults();
+}
+
+function renderGlobalSearchResults() {
+  const el = document.getElementById('gs-results');
+  if (!el) return;
+  const q = normName(globalSearchQuery);
+  if (!q) { el.innerHTML = ''; return; }
+  const matches = buildGlobalPeopleIndex()
+    .filter(p => (normName(p.name) + ' ' + normName(p.father_name)).includes(q))
+    .slice(0, 40);
+  if (!matches.length) { el.innerHTML = `<div class="empty">${esc(t.noSearchResults)}</div>`; return; }
+  el.innerHTML = `<div class="list-card">` + matches.map(p => `
+    <div class="list-row" style="cursor:pointer;" onclick="openFullRecord('${p.studentId || ''}','${p.registerId || ''}')">
+      <div>
+        <div class="nm">${esc(p.name)}</div>
+        <div class="sub">${esc(t.fatherName)}: ${esc(p.father_name || '')}${p.class_name ? ' · ' + esc(p.class_name) : ''}</div>
+      </div>
+      <div style="display:flex;gap:6px;flex-shrink:0;">
+        ${p.studentId ? `<span class="pill good">${esc(t.hasFeeRecord)}</span>` : ''}
+        ${p.registerId ? `<span class="pill free">${esc(t.hasRegisterEntry)}</span>` : ''}
+      </div>
+    </div>`).join('') + `</div>`;
+}
+
+// Combined view: shows a student's fee-ledger summary and admission-register info
+// together, regardless of which tab they were found from.
+function openFullRecord(studentId, registerId) {
+  const s = studentId ? DATA.students.find(x => x.id === studentId) : null;
+  const r = registerId ? DATA.admissionRegister.find(x => x.id === registerId) : null;
+  if (!s && !r) return;
+  const name = (s && s.name) || (r && r.student_name) || '';
+  const father = (s && s.father_name) || (r && r.father_name) || '';
+
+  let feeSection;
+  if (s) {
+    const entries = studentPayments(s.id);
+    const totalPaidAllTime = entries.reduce((a, b) => a + Number(b.amount || 0), 0);
+    const currentBalance = studentBalance(s.id);
+    feeSection = `
+      <h4 class="section-title" style="margin-top:0;">${esc(t.feeLedger)}</h4>
+      <div style="font-size:12px;opacity:.7;margin-bottom:10px;display:flex;flex-wrap:wrap;gap:10px;">
+        <span>${esc(t.className)}: ${esc(s.class_name || '')}</span>
+        <span>${esc(t.monthlyFee)}: ₨${fmt(s.monthly_fee)}</span>
+        <span>${esc(t.studentType)}: ${esc(typeLabel(s.student_type || 'paying'))}</span>
+      </div>
+      <div style="display:flex;gap:8px;margin-bottom:14px;">
+        <div class="greenbox" style="flex:1;margin-bottom:0;"><div class="lbl">${esc(t.totalCollectedAllTime)}</div><div class="val">₨${fmt(totalPaidAllTime)}</div></div>
+        <div class="greenbox" style="flex:1;margin-bottom:0;background:${currentBalance > 0 ? '#FBEAE5' : '#EAF2EC'};">
+          <div class="lbl" style="color:${currentBalance > 0 ? 'var(--rust)' : 'var(--sage)'};">${esc(t.balanceCol)}</div>
+          <div class="val" style="color:${currentBalance > 0 ? 'var(--rust)' : 'var(--sage)'};">₨${fmt(currentBalance)}</div>
+        </div>
+      </div>
+      <button class="btn-ghost" style="width:100%;margin-bottom:6px;" onclick="closeModal(); openStudentDetail('${s.id}')">${esc(t.viewFeeLedger)} →</button>
+    `;
+  } else {
+    feeSection = `<h4 class="section-title" style="margin-top:0;">${esc(t.feeLedger)}</h4><div class="empty" style="padding:20px;">${esc(t.notActiveStudent)}</div>`;
+  }
+
+  let regSection;
+  if (r) {
+    regSection = `
+      <h4 class="section-title">${esc(t.registerInfo)}</h4>
+      <div style="font-size:13px;line-height:2;">
+        <div>${esc(t.serialNo)}: <b>${esc(r.serial_no || '—')}</b></div>
+        <div>${esc(t.classAdmitted)}: <b>${esc(r.class_admitted || '—')}</b></div>
+        <div>${esc(t.admissionDate)}: <b>${esc(fmtDate(r.admission_date) || '—')}</b></div>
+        ${r.class_withdrawn ? `<div>${esc(t.classWithdrawn)}: <b>${esc(r.class_withdrawn)}</b></div>` : ''}
+        ${r.withdrawal_date ? `<div>${esc(t.withdrawalDate)}: <b>${esc(fmtDate(r.withdrawal_date))}</b></div>` : ''}
+        ${r.arrears_due ? `<div>${esc(t.arrearsDue)}: <b>₨${fmt(r.arrears_due)}</b></div>` : ''}
+      </div>
+      <div style="display:flex;gap:8px;margin-top:12px;">
+        <button class="btn-ghost" style="flex:1;" onclick="closeModal(); openEditAdmissionEntry('${r.id}')">${esc(t.viewRegisterEntry)}</button>
+        <button class="btn-ghost" style="flex:1;" onclick="printAdmissionEntry('${r.id}')">🖨️ ${esc(t.printSlc)}</button>
+      </div>
+    `;
+  } else {
+    regSection = `<h4 class="section-title">${esc(t.registerInfo)}</h4><div class="empty" style="padding:20px;">${esc(t.notInRegister)}</div>`;
+  }
+
+  showModal(name, `
+    <div style="font-size:12px;opacity:.7;margin-bottom:14px;">${esc(t.fatherName)}: ${esc(father || '')}</div>
+    ${feeSection}
+    ${regSection}
+  `);
 }
 
 function renderTab() {
