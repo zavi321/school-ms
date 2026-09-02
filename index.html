@@ -188,6 +188,9 @@
   body.ur table.card-table td.mo{text-align:right;}
   table.card-table td.bal-neg{color:var(--rust);font-weight:700;}
   table.card-table td.bal-pos{color:var(--sage);font-weight:700;}
+  table.card-table tr.dup-row td{background:#FDF1E7;}
+  table.card-table .dup-tag{display:inline-block;margin-left:6px;font-size:9px;font-weight:700;color:#B24A32;background:#FBE3D4;border-radius:999px;padding:2px 7px;white-space:nowrap;}
+  body.ur table.card-table .dup-tag{margin-left:0;margin-right:6px;}
   .del-x{background:none;border:none;color:var(--rust);font-size:12px;padding:0;}
   .print-btn{background:none;border:none;color:var(--navy);font-size:13px;padding:0 4px;}
   .class-header{display:flex;align-items:center;justify-content:space-between;margin:18px 0 8px;padding:10px 12px;background:var(--navy);border-radius:8px;cursor:pointer;box-shadow:0 2px 8px rgba(15,39,64,.18);}
@@ -657,6 +660,30 @@ const fmt = n => Number(n||0).toLocaleString('en-US');
 const monthKey = (d=new Date()) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
 const monthLabel = mk => { const [y,m]=mk.split('-').map(Number); return new Date(y,m-1,1).toLocaleDateString(LANG==='ur'?'ur-PK':'en-US',{month:'short',year:'numeric'}); };
 const todayISO = () => new Date().toISOString().slice(0,10);
+
+// ============================================================================
+// SAFE DATE FIELD READING — mandatory pattern for every <input type="date">
+// ============================================================================
+// Some Android WebView/browser combinations fail to reliably commit a
+// pre-filled date input's value until the user manually opens the picker and
+// interacts with it. Reading `.value` directly in that state silently returns
+// an empty string — which previously caused Save to either do nothing or
+// write a blank/invalid date whenever a date field was left untouched.
+//
+// dateVal() is the single fix point for this: it always returns a usable
+// date string, defaulting to `fallback` (today, by default) when the field
+// reads empty. EVERY date field in this app must be read through dateVal()
+// instead of calling document.getElementById(id).value directly — that is
+// what prevents this bug class from silently resurfacing wherever a new date
+// field gets added later.
+//   dateVal('p-date')                    -> defaults to today if empty
+//   dateVal('ar-withdrawal-date', null)  -> defaults to null if empty (optional field)
+//   dateVal('ar-dob-figures', '')        -> defaults to '' if empty (optional field)
+function dateVal(id, fallback = todayISO()) {
+  const el = document.getElementById(id);
+  const v = el ? el.value : '';
+  return v || fallback;
+}
 // Reformats a plain 'YYYY-MM-DD' date string to 'DD-MM-YYYY' for display/printing.
 // Anything that isn't a clean ISO date (blank, free text, already-formatted, etc.)
 // is returned unchanged so it never mangles non-date values.
@@ -672,16 +699,22 @@ const esc = s => (s==null?'':String(s)).replace(/[&<>"']/g, c=>({'&':'&amp;','<'
 // Prevents double-submission (e.g. from impatient repeated tapping on a slow
 // connection): disables the clicked button for the duration of the async submit
 // function, so a second tap before the first save finishes is simply ignored
-// instead of creating a duplicate record. If the button is still in the page
-// afterwards (e.g. a validation error kept the same modal open), it's re-enabled;
-// on success the modal/tab normally re-renders anyway, replacing the button fresh.
+// instead of creating a duplicate record. Also swaps the button's label to a
+// "Saving…" state so the user gets immediate visual proof the tap registered
+// and doesn't feel the need to keep tapping. If the button is still in the page
+// afterwards (e.g. a validation error kept the same modal open), both the label
+// and disabled state are restored; on success the modal/tab normally re-renders
+// anyway, replacing the button fresh.
 async function guardedSubmit(btn, fn) {
   if (!btn || btn.disabled) return;
+  const savingLabel = LANG === 'ur' ? 'محفوظ ہو رہا ہے…' : 'Saving…';
+  const prevHtml = btn.innerHTML;
   btn.disabled = true;
+  btn.innerHTML = savingLabel;
   try {
     await fn();
   } finally {
-    if (btn.isConnected) btn.disabled = false;
+    if (btn.isConnected) { btn.disabled = false; btn.innerHTML = prevHtml; }
   }
 }
 
@@ -1895,7 +1928,7 @@ async function submitAddStudent() {
     name, father_name: document.getElementById('f-father').value,
     class_name: document.getElementById('f-class').value,
     student_type: type,
-    admission_date: document.getElementById('f-admission').value,
+    admission_date: dateVal('f-admission'),
     monthly_fee: type==='paying' ? Number(fee) : 0, contact: document.getElementById('f-contact').value, status:'active'
   });
   if (reportSaveError(error)) return;
@@ -1909,8 +1942,12 @@ async function submitAddStudent() {
 function buildAcademicYearLedger(studentId, overrideStartYear) {
   const s = DATA.students.find(x => x.id === studentId);
   const entries = studentPayments(studentId);
-  const entryByMonth = {};
-  entries.forEach(e => { entryByMonth[e.month] = e; });
+  // Grouped as arrays (not a single overwrite) so that if more than one payment
+  // row ever exists for the same student+month, every row stays visible and
+  // individually deletable — instead of silently hiding all but one, which
+  // previously let duplicate entries inflate dashboard totals invisibly.
+  const entriesByMonth = {};
+  entries.forEach(e => { (entriesByMonth[e.month] = entriesByMonth[e.month] || []).push(e); });
 
   // The fee card covers Feb–Jan. A calendar month of Feb-Dec belongs to that same
   // year's academic year; January belongs to the *previous* year's academic year.
@@ -1941,22 +1978,29 @@ function buildAcademicYearLedger(studentId, overrideStartYear) {
 
   let running = 0;
   const currentMk = todayISO().slice(0,7);
-  const rows = monthKeys.map(mk => {
-    const e = entryByMonth[mk];
-    const lastBalance = running;
-    if (!e) {
-      running = lastBalance;
+  const rows = [];
+  monthKeys.forEach(mk => {
+    const list = entriesByMonth[mk] || [];
+    if (!list.length) {
+      const lastBalance = running;
       // Months that haven't arrived yet shouldn't show a carried-forward due —
       // only months that have actually passed (or the current month) without an
       // entry represent a real missed/unrecorded payment.
       const isFuture = mk > currentMk;
-      return { mk, lastBalance, blank:true, isFuture };
+      rows.push({ mk, lastBalance, blank:true, isFuture });
+      return;
     }
-    const totalDues = lastBalance + Number(e.school_fee||0) + Number(e.sports_fund||0) + Number(e.admission_fee||0) + Number(e.exam_fee||0);
-    const totalPaid = Number(e.amount||0);
-    const balance = totalDues - totalPaid;
-    running = balance;
-    return { mk, e, lastBalance, totalDues, totalPaid, balance, blank:false };
+    list.forEach((e, i) => {
+      const lastBalance = running;
+      const totalDues = lastBalance + Number(e.school_fee||0) + Number(e.sports_fund||0) + Number(e.admission_fee||0) + Number(e.exam_fee||0);
+      const totalPaid = Number(e.amount||0);
+      const balance = totalDues - totalPaid;
+      running = balance;
+      // dup marks any 2nd+ entry recorded for the same month — flagged in the UI
+      // so an accidental duplicate (e.g. from repeated tapping) is easy to spot
+      // and remove, rather than being invisible while still counted in totals.
+      rows.push({ mk, e, lastBalance, totalDues, totalPaid, balance, blank:false, dup: i>0 });
+    });
   });
   return { startYear, rows };
 }
@@ -2047,8 +2091,8 @@ function openStudentDetail(id, viewYear) {
         </tr></thead>
         <tbody>
           ${rows.map(r=>`
-            <tr>
-              <td class="mo">${esc(monthLabel(r.mk))}</td>
+            <tr class="${!r.blank && r.dup ? 'dup-row' : ''}">
+              <td class="mo">${esc(monthLabel(r.mk))}${!r.blank && r.dup ? ` <span class="dup-tag" title="${LANG==='ur'?'اس مہینے کی دہرائی گئی انٹری — اگر غلطی سے بن گئی ہے تو ہٹا دیں':'Duplicate entry for this month — remove it if added by mistake'}">⚠ ${esc(LANG==='ur'?'ڈپلیکیٹ':'duplicate')}</span>` : ''}</td>
               <td>${r.blank ? '—' : '₨'+fmt(r.lastBalance)}</td>
               <td>${r.blank ? '—' : '₨'+fmt(r.e.school_fee)}</td>
               <td>${r.blank ? '—' : '₨'+fmt(r.e.sports_fund)}</td>
@@ -2090,32 +2134,35 @@ async function submitFeePayment(studentId) {
   const examFee = document.getElementById('p-exam').value || 0;
   const amount = document.getElementById('p-amount').value;
   const receiptNo = document.getElementById('p-receipt').value;
-  const date = document.getElementById('p-date').value;
+  const date = dateVal('p-date');
   if (!month || amount === '') return;
 
-  // Guard against accidentally recording two entries for the same student + month.
-  const dup = studentPayments(studentId).some(p => p.month === month);
-  if (dup) {
-    const proceed = confirm(
-      (LANG==='ur'
-        ? `اس مہینے (${monthLabel(month)}) کے لیے پہلے سے ایک انٹری موجود ہے۔ کیا آپ ایک اور انٹری شامل کرنا چاہتے ہیں؟`
-        : `An entry for ${monthLabel(month)} already exists for this student. Add another entry anyway?`)
-    );
-    if (!proceed) return;
-  }
+  // This is purely for the parent-notification decision below (new entry vs.
+  // correcting an existing one) — it is NOT what prevents duplicates anymore.
+  const { data: existingRows } = await sb.from('fee_payments').select('id').eq('student_id', studentId).eq('month', month);
+  const isNewEntry = !(existingRows && existingRows.length > 0);
 
-  const { error } = await sb.from('fee_payments').insert({
+  const payload = {
     owner_id: CURRENT_USER.id, student_id: studentId, month,
     school_fee: Number(schoolFee), sports_fund: Number(sportsFund),
     admission_fee: Number(admissionFee), exam_fee: Number(examFee),
     amount: Number(amount), receipt_no: receiptNo || null, pay_date: date
-  });
+  };
+  // Root-level duplicate prevention: an atomic upsert keyed on the
+  // (student_id, month) UNIQUE constraint in the database (see the one-time
+  // SQL migration note above submitFeePayment). This makes it impossible for
+  // a second row to ever be created for the same student+month — even if two
+  // saves fire at the exact same instant (a double-tap that slips past the
+  // button's disabled state, two tabs/devices saving together, etc.) — because
+  // the database itself, not just this client's JS, enforces the rule.
+  const { error } = await sb.from('fee_payments').upsert(payload, { onConflict: 'student_id,month' });
   if (reportSaveError(error)) return;
   const student = DATA.students.find(x => x.id === studentId);
-  // Only auto-fire the parent notification when this is a real-time entry (dated today).
-  // Backdated / historical entries (data import, past-month catch-up) should NOT
-  // trigger a "fee has been received" message today, so those are skipped automatically.
-  if (student && date === todayISO()) {
+  // Only auto-fire the parent notification for a genuinely new entry dated today —
+  // not when correcting/updating an existing month's entry (that would otherwise
+  // re-notify the parent every time a typo is fixed), and not for backdated /
+  // historical entries (data import, past-month catch-up).
+  if (isNewEntry && student && date === todayISO()) {
     const msg = `Dear Parent, fee of Rs ${Number(amount).toLocaleString()} for ${student.name} (${month}) has been received. Thank you. - School`;
     openFatherWhatsapp(student.contact, msg); // opens WhatsApp (PC/laptop or phone), pre-filled, ready to send
   }
@@ -2288,7 +2335,7 @@ async function submitAddTeacher() {
   const { error } = await sb.from('teachers').insert({
     owner_id: CURRENT_USER.id,
     name, subject: document.getElementById('f-subject').value,
-    monthly_salary: Number(salary), join_date: document.getElementById('f-join').value,
+    monthly_salary: Number(salary), join_date: dateVal('f-join'),
     contact: document.getElementById('f-contact').value
   });
   if (reportSaveError(error)) return;
@@ -2349,25 +2396,18 @@ async function submitSalaryPayment(teacherId) {
   const base = Number(document.getElementById('p-amount').value || 0);
   const bonus = Number(document.getElementById('p-bonus').value || 0);
   const extra = Number(document.getElementById('p-extra').value || 0);
-  const date = document.getElementById('p-date').value;
+  const date = dateVal('p-date');
   const amount = base + bonus + extra;
   if (!amount) return;
 
-  // Guard against accidentally recording two salary entries for the same teacher + month.
-  const dup = teacherPayments(teacherId).some(p => p.month === month);
-  if (dup) {
-    const proceed = confirm(
-      (LANG==='ur'
-        ? `اس مہینے (${monthLabel(month)}) کے لیے پہلے سے ایک تنخواہ کی انٹری موجود ہے۔ کیا آپ ایک اور انٹری شامل کرنا چاہتے ہیں؟`
-        : `A salary entry for ${monthLabel(month)} already exists for this teacher. Add another entry anyway?`)
-    );
-    if (!proceed) return;
-  }
-
-  const { error } = await sb.from('salary_payments').insert({
+  // Root-level duplicate prevention: an atomic upsert keyed on the
+  // (teacher_id, month) UNIQUE constraint in the database (same fix, and same
+  // one-time SQL migration, as fee_payments above) — makes a duplicate salary
+  // entry for the same teacher+month impossible, even under a race condition.
+  const { error } = await sb.from('salary_payments').upsert({
     owner_id: CURRENT_USER.id, teacher_id: teacherId, month,
     amount, attendance_bonus: bonus, extra_class_fee: extra, pay_date: date
-  });
+  }, { onConflict: 'teacher_id,month' });
   if (reportSaveError(error)) return;
   await loadAllData();
   const tc = DATA.teachers.find(x=>x.id===teacherId);
@@ -2440,7 +2480,7 @@ async function submitAddTxn() {
   const { error } = await sb.from('transactions').insert({
     owner_id: CURRENT_USER.id,
     type: txnType, category: document.getElementById('f-cat').value, description: desc,
-    amount: Number(amt), txn_date: document.getElementById('f-date').value
+    amount: Number(amt), txn_date: dateVal('f-date')
   });
   if (reportSaveError(error)) return;
   closeModal(); await loadAllData(); renderTab();
@@ -3595,9 +3635,9 @@ function openAddAdmissionEntry() {
 function readAdmissionForm() {
   return {
     serial_no: document.getElementById('ar-serial').value ? Number(document.getElementById('ar-serial').value) : null,
-    admission_date: document.getElementById('ar-admission-date').value,
+    admission_date: dateVal('ar-admission-date'),
     student_name: document.getElementById('ar-name').value.trim(),
-    dob_figures: document.getElementById('ar-dob-figures').value,
+    dob_figures: dateVal('ar-dob-figures', ''),
     dob_words: document.getElementById('ar-dob-words').value.trim(),
     father_name: document.getElementById('ar-father').value.trim(),
     caste_tribe: document.getElementById('ar-caste').value.trim(),
@@ -3606,7 +3646,7 @@ function readAdmissionForm() {
     class_admitted: document.getElementById('ar-class-admitted').value,
     arrears_due: Number(document.getElementById('ar-arrears').value || 0),
     class_withdrawn: document.getElementById('ar-class-withdrawn').value || null,
-    withdrawal_date: document.getElementById('ar-withdrawal-date').value || null,
+    withdrawal_date: dateVal('ar-withdrawal-date', null),
     remarks: document.getElementById('ar-remarks').value.trim(),
   };
 }
@@ -3917,9 +3957,16 @@ boot();
 
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('sw.js').catch(() => {});
+    navigator.serviceWorker.register('sw.js').then(reg => {
+      // Actively check for a newer sw.js/cache on every load, instead of only
+      // whenever the browser feels like it — otherwise a freshly-uploaded
+      // index.html can keep getting served from an old cached version for a
+      // long time on phones that rarely fully close the browser.
+      reg.update();
+    }).catch(() => {});
   });
 }
+console.log('SchoolMS build: 2026-09-03-fee-fix'); // bump this string on every deploy to verify (in browser console) which version is actually running
 </script>
 </body>
 </html>
