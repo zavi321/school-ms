@@ -669,6 +669,22 @@ const fmtDate = (iso) => {
 };
 const esc = s => (s==null?'':String(s)).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
+// Prevents double-submission (e.g. from impatient repeated tapping on a slow
+// connection): disables the clicked button for the duration of the async submit
+// function, so a second tap before the first save finishes is simply ignored
+// instead of creating a duplicate record. If the button is still in the page
+// afterwards (e.g. a validation error kept the same modal open), it's re-enabled;
+// on success the modal/tab normally re-renders anyway, replacing the button fresh.
+async function guardedSubmit(btn, fn) {
+  if (!btn || btn.disabled) return;
+  btn.disabled = true;
+  try {
+    await fn();
+  } finally {
+    if (btn.isConnected) btn.disabled = false;
+  }
+}
+
 // Shared error surface for Supabase writes. Returns true (and alerts the user)
 // if an error occurred, so callers can `if (reportSaveError(error)) return;`
 // instead of silently continuing as if the save succeeded.
@@ -1366,7 +1382,7 @@ function tplAdmin() {
       <h3 style="margin-top:0;">${esc(t.addSchoolEmail)}</h3>
       <label><span>${esc(t.email)}</span><input id="wl-email" type="email" placeholder="${esc(t.schoolEmailPlaceholder)}"></label>
       <div id="wl-add-msg"></div>
-      <button class="btn-primary" onclick="submitAddWhitelist()">${esc(t.addToWhitelist)}</button>
+      <button class="btn-primary" onclick="guardedSubmit(this, submitAddWhitelist)">${esc(t.addToWhitelist)}</button>
     </div>
 
     <div class="card" style="margin-bottom:16px;">
@@ -1858,7 +1874,7 @@ function openAddStudent() {
     <label><span>${esc(t.monthlyFee)}</span><input id="f-fee" type="number" value="0"></label>
     <div class="flexgap">
       <button class="btn-ghost" onclick="closeModal()">${esc(t.cancel)}</button>
-      <button class="btn-primary" style="flex:1" onclick="submitAddStudent()">${esc(t.save)}</button>
+      <button class="btn-primary" style="flex:1" onclick="guardedSubmit(this, submitAddStudent)">${esc(t.save)}</button>
     </div>
   `);
 }
@@ -2012,7 +2028,7 @@ function openStudentDetail(id, viewYear) {
       <label style="margin-bottom:0;"><span>${esc(t.totalPaidCol)}</span><input id="p-amount" type="number" placeholder="${esc(t.enterAmount)}" value="${s.monthly_fee||''}"></label>
       <label style="margin-bottom:0;"><span>${esc(t.dateCol)}</span><input id="p-date" type="date" value="${todayISO()}"></label>
     </div>
-    <div style="margin-top:10px;"><button class="btn-primary" onclick="submitFeePayment('${id}')">+ ${esc(t.save)}</button></div>
+    <div style="margin-top:10px;"><button class="btn-primary" onclick="guardedSubmit(this, ()=>submitFeePayment('${id}'))">+ ${esc(t.save)}</button></div>
 
     <div style="display:flex;align-items:center;justify-content:space-between;margin-top:16px;">
       <h4 class="section-title" style="margin:0;">${esc(t.feeLedger)} · ${startYear}–${startYear+1}</h4>
@@ -2260,7 +2276,7 @@ function openAddTeacher() {
     <label><span>${esc(t.contact)}</span><input id="f-contact"></label>
     <div class="flexgap">
       <button class="btn-ghost" onclick="closeModal()">${esc(t.cancel)}</button>
-      <button class="btn-primary" style="flex:1" onclick="submitAddTeacher()">${esc(t.save)}</button>
+      <button class="btn-primary" style="flex:1" onclick="guardedSubmit(this, submitAddTeacher)">${esc(t.save)}</button>
     </div>
   `);
 }
@@ -2299,7 +2315,7 @@ function openTeacherDetail(id) {
       <label style="margin-bottom:0;"><span>${esc(t.extraClass)}</span><input id="p-extra" type="number" value="0"></label>
     </div>
     <div style="margin-top:8px;"><input id="p-date" type="date" value="${todayISO()}"></div>
-    <div style="margin-top:8px;"><button class="btn-primary" onclick="submitSalaryPayment('${id}')">+ ${esc(t.save)}</button></div>
+    <div style="margin-top:8px;"><button class="btn-primary" onclick="guardedSubmit(this, ()=>submitSalaryPayment('${id}'))">+ ${esc(t.save)}</button></div>
     <div class="section-title">${esc(t.salaryLedger)}</div>
     <div class="ledger">
       ${payments.length===0 ? `<div style="padding:10px;text-align:center;font-size:12px;opacity:.5;">—</div>` :
@@ -2402,7 +2418,7 @@ function openAddTxn() {
     <label><span>${esc(t.date)}</span><input id="f-date" type="date" value="${todayISO()}"></label>
     <div class="flexgap">
       <button class="btn-ghost" onclick="closeModal()">${esc(t.cancel)}</button>
-      <button class="btn-primary" style="flex:1" onclick="submitAddTxn()">${esc(t.save)}</button>
+      <button class="btn-primary" style="flex:1" onclick="guardedSubmit(this, submitAddTxn)">${esc(t.save)}</button>
     </div>
   `);
   fillCatOptions();
@@ -3571,7 +3587,7 @@ function openAddAdmissionEntry() {
     ${admissionEntryForm()}
     <div class="flexgap">
       <button class="btn-ghost" onclick="closeModal()">${esc(t.cancel)}</button>
-      <button class="btn-primary" style="flex:1" onclick="submitAddAdmissionEntry()">${esc(t.save)}</button>
+      <button class="btn-primary" style="flex:1" onclick="guardedSubmit(this, submitAddAdmissionEntry)">${esc(t.save)}</button>
     </div>
   `);
 }
@@ -3612,7 +3628,7 @@ function openEditAdmissionEntry(id) {
       <button class="btn-ghost" style="color:var(--rust);border-color:var(--rust);" onclick="confirmDelete('admissionEntry','${id}')">${esc(t.delete)}</button>
       <button class="btn-ghost" onclick="printAdmissionEntry('${id}')">🖨️ ${esc(t.print)}</button>
       <button class="btn-ghost" onclick="printCharacterCertificate('${id}')">🖨️ ${esc(t.printCc)}</button>
-      <button class="btn-primary" style="flex:1" onclick="submitEditAdmissionEntry('${id}')">${esc(t.save)}</button>
+      <button class="btn-primary" style="flex:1" onclick="guardedSubmit(this, ()=>submitEditAdmissionEntry('${id}'))">${esc(t.save)}</button>
     </div>
   `);
 }
