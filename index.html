@@ -1089,6 +1089,26 @@ function buildGlobalPeopleIndex() {
   return people;
 }
 
+// Marks Sheet students live in their own independent table (marks_sheet_data), keyed
+// by class, and are only fetched on first visit to that tab. Preload them here too so
+// they're searchable from global search even if the user never opened that tab.
+function buildMarksheetSearchIndex() {
+  const list = [];
+  Object.keys(msStudents).forEach(cls => {
+    (msStudents[cls] || []).forEach(st => {
+      list.push({ name: st.name, class_name: cls, msId: st.id });
+    });
+  });
+  return list;
+}
+
+// DMC (Detail Marks Certificate) results only exist in-memory for the batch most
+// recently uploaded via Excel in the Certificates tab — they are not saved to the
+// database — so these are searchable only for the current session's upload.
+function buildDMCSearchIndex() {
+  return (dmcResults || []).map(r => ({ name: r.name, class_name: r.class, rollNo: r.rollNo }));
+}
+
 function openGlobalSearch() {
   globalSearchQuery = '';
   showModal(t.globalSearch, `
@@ -1100,6 +1120,9 @@ function openGlobalSearch() {
   const inp = document.getElementById('gs-input');
   if (inp) inp.focus();
   renderGlobalSearchResults();
+  // Marks sheet data may not be loaded yet if the user hasn't visited that tab —
+  // fetch it now and refresh results once it's in, so it's searchable right away.
+  loadMarksSheetData().then(() => { if (document.getElementById('gs-input')) renderGlobalSearchResults(); });
 }
 
 function renderGlobalSearchResults() {
@@ -1107,11 +1130,23 @@ function renderGlobalSearchResults() {
   if (!el) return;
   const q = normName(globalSearchQuery);
   if (!q) { el.innerHTML = ''; return; }
-  const matches = buildGlobalPeopleIndex()
+
+  const peopleMatches = buildGlobalPeopleIndex()
     .filter(p => (normName(p.name) + ' ' + normName(p.father_name)).includes(q))
-    .slice(0, 40);
-  if (!matches.length) { el.innerHTML = `<div class="empty">${esc(t.noSearchResults)}</div>`; return; }
-  el.innerHTML = `<div class="list-card">` + matches.map(p => `
+    .slice(0, 25);
+  const msMatches = buildMarksheetSearchIndex()
+    .filter(p => normName(p.name).includes(q))
+    .slice(0, 15);
+  const dmcMatches = buildDMCSearchIndex()
+    .filter(p => normName(p.name).includes(q))
+    .slice(0, 15);
+
+  if (!peopleMatches.length && !msMatches.length && !dmcMatches.length) {
+    el.innerHTML = `<div class="empty">${esc(t.noSearchResults)}</div>`;
+    return;
+  }
+
+  const peopleRows = peopleMatches.map(p => `
     <div class="list-row" style="cursor:pointer;" onclick="openFullRecord('${p.studentId || ''}','${p.registerId || ''}')">
       <div>
         <div class="nm">${esc(p.name)}</div>
@@ -1121,7 +1156,45 @@ function renderGlobalSearchResults() {
         ${p.studentId ? `<span class="pill good">${esc(t.hasFeeRecord)}</span>` : ''}
         ${p.registerId ? `<span class="pill free">${esc(t.hasRegisterEntry)}</span>` : ''}
       </div>
-    </div>`).join('') + `</div>`;
+    </div>`).join('');
+
+  const msRows = msMatches.map(p => `
+    <div class="list-row" style="cursor:pointer;" onclick="openMarksheetFromSearch('${esc(p.class_name)}')">
+      <div>
+        <div class="nm">${esc(p.name)}</div>
+        <div class="sub">${esc(p.class_name || '')}</div>
+      </div>
+      <div style="display:flex;gap:6px;flex-shrink:0;">
+        <span class="pill orphan">${esc(t.marksSheet)}</span>
+      </div>
+    </div>`).join('');
+
+  const dmcRows = dmcMatches.map(p => `
+    <div class="list-row" style="cursor:pointer;" onclick="openDMCFromSearch()">
+      <div>
+        <div class="nm">${esc(p.name)}</div>
+        <div class="sub">${esc(p.class_name || '')}${p.rollNo ? ' · ' + esc(p.rollNo) : ''}</div>
+      </div>
+      <div style="display:flex;gap:6px;flex-shrink:0;">
+        <span class="pill free">${esc(t.dmc)}</span>
+      </div>
+    </div>`).join('');
+
+  el.innerHTML = `<div class="list-card">${peopleRows}${msRows}${dmcRows}</div>`;
+}
+
+// Jump to the Marks Sheet tab with the matched student's class pre-selected.
+function openMarksheetFromSearch(cls) {
+  closeModal();
+  msSelectedClass = cls;
+  setTab('marksSheet');
+}
+
+// DMC results have no individual record to deep-link to (they're a batch preview),
+// so just take the user to the Certificates tab where the loaded batch is shown.
+function openDMCFromSearch() {
+  closeModal();
+  setTab('dmc');
 }
 
 // Combined view: shows a student's fee-ledger summary and admission-register info
