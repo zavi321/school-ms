@@ -471,6 +471,7 @@ const T = {
     totalStudents:'Active Students', feesCollected:'Fees Collected (this month)', feesDue:'Fees Due (this month)',
     salaryPaid:'Salaries Paid (this month)', netBalance:'Net Balance (all-time)', recentActivity:'Recent Activity',
     totalIncome:'Total Income (all-time)', totalExpense:'Total Expenses (all-time)', teacherSalaries:'Teacher Salaries (all-time)',
+    expenses:'Expenses', collectedFees:'Collected Fees', back:'Back', noRecords:'No records yet',
     addStudent:'Add Student', studentName:'Student Name', fatherName:"Father's Name", className:'Class',
     groupByClass:'By Class', groupByFee:'By Fee', noFeeCategory:'No Fee', studentsCount:'students',
     admissionDate:'Admission Date', monthlyFee:'Monthly Fee (Rs)', contact:'Contact Number',
@@ -561,6 +562,7 @@ const T = {
     totalStudents:'فعال طلبہ', feesCollected:'وصول شدہ فیس (اس ماہ)', feesDue:'واجب الادا فیس (اس ماہ)',
     salaryPaid:'ادا شدہ تنخواہ (اس ماہ)', netBalance:'کل بیلنس', recentActivity:'حالیہ سرگرمی',
     totalIncome:'کل آمدنی', totalExpense:'کل اخراجات', teacherSalaries:'اساتذہ کی تنخواہیں',
+    expenses:'اخراجات', collectedFees:'وصول شدہ فیس', back:'واپس', noRecords:'ابھی کوئی ریکارڈ نہیں',
     addStudent:'طالب علم شامل کریں', studentName:'طالب علم کا نام', fatherName:'والد کا نام', className:'جماعت',
     groupByClass:'جماعت کے مطابق', groupByFee:'فیس کے مطابق', noFeeCategory:'بغیر فیس', studentsCount:'طلباء',
     admissionDate:'داخلہ کی تاریخ', monthlyFee:'ماہانہ فیس (روپے)', contact:'رابطہ نمبر',
@@ -1559,24 +1561,20 @@ async function submitSettings() {
 }
 
 // ---------------- Dashboard ----------------
+// The "Recent Activity" panel is a drill-down menu rather than a flat
+// chronological feed: Teacher Salaries / Expenses / Collected Fees, each
+// opening its own record list. Collected Fees drills one level deeper into
+// a class list, and picking a class shows that class's students.
+let dashActivityView = 'menu'; // 'menu' | 'salaries' | 'expenses' | 'fees-classes' | 'fees-class'
+let dashActivityClass = null;
+function setDashActivityView(view, cls) {
+  dashActivityView = view;
+  dashActivityClass = cls || null;
+  renderTab();
+}
+
 function tplDashboard() {
   const s = computeStats();
-  // Group activity per person/entry so each name appears once; tapping opens their full record
-  const groups = {};
-  const pushEntry = (groupKey, kind, refId, name, amount, date) => {
-    if (!groups[groupKey]) groups[groupKey] = { kind, refId, name, entries: [] };
-    groups[groupKey].entries.push({ amount, date });
-  };
-  DATA.students.forEach(st => studentPayments(st.id).forEach(p => pushEntry('fee-'+st.id, 'fee', st.id, st.name, p.amount, p.pay_date)));
-  DATA.teachers.forEach(tc => teacherPayments(tc.id).forEach(p => pushEntry('salary-'+tc.id, 'salary', tc.id, tc.name, p.amount, p.pay_date)));
-  DATA.transactions.forEach(x => pushEntry('txn-'+x.id, x.type, x.id, x.description, x.amount, x.txn_date));
-
-  const recent = Object.entries(groups).map(([key,g]) => {
-    const sorted = g.entries.slice().sort((a,b)=> new Date(b.date) - new Date(a.date));
-    return { key, kind: g.kind, refId: g.refId, name: g.name, date: sorted[0].date, amount: sorted[0].amount, count: sorted.length };
-  });
-  recent.sort((a,b)=> new Date(b.date) - new Date(a.date));
-  const top = recent.slice(0,8);
 
   return `
     <div style="padding-top:16px;">
@@ -1604,13 +1602,99 @@ function tplDashboard() {
       </div>
 
       <div class="section-title">${esc(t.recentActivity)}</div>
+      ${tplDashActivity()}
+    </div>`;
+}
+
+// Renders whichever level of the Recent Activity drill-down is currently open.
+function tplDashActivity() {
+  const backRow = (label, view, cls) => `
+    <button class="list-row" style="cursor:pointer;width:100%;border:none;background:none;text-align:left;padding:10px 4px;" onclick="setDashActivityView('${view}'${cls?`,'${esc(cls)}'`:''})">
+      <div class="nm" style="color:var(--navy);">‹ ${esc(label)}</div>
+    </button>`;
+
+  if (dashActivityView === 'salaries') {
+    const rows = [];
+    DATA.teachers.forEach(tc => teacherPayments(tc.id).forEach(p => rows.push({ name: tc.name, id: tc.id, amount: p.amount, date: p.pay_date })));
+    rows.sort((a,b)=> new Date(b.date) - new Date(a.date));
+    return `
       <div class="list-card">
-        ${top.length===0 ? `<div style="padding:16px;text-align:center;opacity:.5;font-size:13px;">—</div>` :
-          top.map(r=>`
-            <div class="list-row" style="cursor:pointer;" onclick="openActivityHistory('${r.kind}','${r.refId}')">
-              <div><div class="nm">${esc(r.name)}${r.count>1?` <span style="opacity:.45;font-weight:400;">(${r.count})</span>`:''}</div><div class="sub">${esc(r.date||'')}</div></div>
-              <div class="${(r.kind==='fee'||r.kind==='income')?'amt-pos':'amt-neg'}">${(r.kind==='fee'||r.kind==='income')?'+':'−'}₨${fmt(r.amount)}</div>
+        ${backRow(t.recentActivity, 'menu')}
+        ${rows.length===0 ? `<div style="padding:16px;text-align:center;opacity:.5;font-size:13px;">${esc(t.noRecords)}</div>` :
+          rows.map(r=>`
+            <div class="list-row" style="cursor:pointer;" onclick="openActivityHistory('salary','${r.id}')">
+              <div><div class="nm">${esc(r.name)}</div><div class="sub">${esc(fmtDate(r.date)||'')}</div></div>
+              <div class="amt-neg">−₨${fmt(r.amount)}</div>
             </div>`).join('')}
+      </div>`;
+  }
+
+  if (dashActivityView === 'expenses') {
+    const rows = DATA.transactions.filter(x=>x.type==='expense').slice().sort((a,b)=> new Date(b.txn_date) - new Date(a.txn_date));
+    return `
+      <div class="list-card">
+        ${backRow(t.recentActivity, 'menu')}
+        ${rows.length===0 ? `<div style="padding:16px;text-align:center;opacity:.5;font-size:13px;">${esc(t.noRecords)}</div>` :
+          rows.map(x=>`
+            <div class="list-row" style="cursor:pointer;" onclick="openActivityHistory('expense','${x.id}')">
+              <div><div class="nm">${esc(x.description||'')}</div><div class="sub">${esc(x.category||'')} · ${esc(fmtDate(x.txn_date)||'')}</div></div>
+              <div class="amt-neg">−₨${fmt(x.amount)}</div>
+            </div>`).join('')}
+      </div>`;
+  }
+
+  if (dashActivityView === 'fees-classes') {
+    const groups = {};
+    DATA.students.forEach(s => { const cls = s.class_name || '—'; (groups[cls] = groups[cls]||[]).push(s); });
+    const orderedClasses = [...CLASS_OPTIONS.filter(c => groups[c]), ...Object.keys(groups).filter(c => !CLASS_OPTIONS.includes(c))];
+    return `
+      <div class="list-card">
+        ${backRow(t.recentActivity, 'menu')}
+        ${orderedClasses.length===0 ? `<div style="padding:16px;text-align:center;opacity:.5;font-size:13px;">${esc(t.noRecords)}</div>` :
+          orderedClasses.map(cls=>{
+            const collected = groups[cls].reduce((a,s)=> a + studentPayments(s.id).reduce((x,p)=>x+Number(p.amount),0), 0);
+            return `
+            <div class="list-row" style="cursor:pointer;" onclick="setDashActivityView('fees-class','${esc(cls)}')">
+              <div><div class="nm">${esc(t.className)}: ${esc(cls)}</div><div class="sub">${groups[cls].length} ${esc(t.totalStudents)}</div></div>
+              <div class="amt-pos">+₨${fmt(collected)}</div>
+            </div>`;
+          }).join('')}
+      </div>`;
+  }
+
+  if (dashActivityView === 'fees-class') {
+    const cls = dashActivityClass;
+    const students = DATA.students.filter(s => (s.class_name || '—') === cls);
+    return `
+      <div class="list-card">
+        ${backRow(t.className + ': ' + cls, 'fees-classes')}
+        ${students.length===0 ? `<div style="padding:16px;text-align:center;opacity:.5;font-size:13px;">${esc(t.noRecords)}</div>` :
+          students.map(s=>{
+            const collected = studentPayments(s.id).reduce((a,p)=>a+Number(p.amount),0);
+            const due = Math.max(0, studentBalance(s.id));
+            return `
+            <div class="list-row" style="cursor:pointer;" onclick="openStudentDetail('${s.id}')">
+              <div><div class="nm">${esc(s.name)}</div><div class="sub">${esc(t.fatherName)}: ${esc(s.father_name||'')}${due>0?` · ${esc(t.due)}: ₨${fmt(due)}`:''}</div></div>
+              <div class="amt-pos">+₨${fmt(collected)}</div>
+            </div>`;
+          }).join('')}
+      </div>`;
+  }
+
+  // Default: top-level menu with the three categories.
+  return `
+    <div class="list-card">
+      <div class="list-row" style="cursor:pointer;" onclick="setDashActivityView('salaries')">
+        <div class="nm">${esc(t.teacherSalaries)}</div>
+        <div style="opacity:.5;">›</div>
+      </div>
+      <div class="list-row" style="cursor:pointer;" onclick="setDashActivityView('expenses')">
+        <div class="nm">${esc(t.expenses)}</div>
+        <div style="opacity:.5;">›</div>
+      </div>
+      <div class="list-row" style="cursor:pointer;" onclick="setDashActivityView('fees-classes')">
+        <div class="nm">${esc(t.collectedFees)}</div>
+        <div style="opacity:.5;">›</div>
       </div>
     </div>`;
 }
