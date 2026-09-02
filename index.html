@@ -241,8 +241,10 @@
     .fc-foot .fc-sig{font-size:11px;color:#555;}
     .fc-foot .fc-sig .line{display:inline-block;width:120px;border-bottom:1px solid #999;margin-left:6px;}
 
+    /* ---- Default print page: portrait A4 (certificates, receipts, reports) ---- */
+    @page{margin:10mm;}
+
     /* ---- Admission Register (ledger page print, landscape) ---- */
-    @page{size:landscape;}
     .ledger-print{font-family:Inter,sans-serif;}
     .ledger-print h2{font-family:Fraunces,serif;color:#0F2740;margin:0 0 2px;}
     .ledger-print .sub{color:#555;font-size:12px;margin-bottom:10px;}
@@ -310,6 +312,51 @@
     .slc-foot .box{text-align:center;font-size:11px;color:#555;min-width:170px;}
     .slc-foot .box .line{border-bottom:1px solid #333;margin-bottom:6px;height:34px;}
     .slc-foot .box.seal .line{border-bottom-style:dashed;}
+
+    /* ---- Character Certificate: a grander, full-page variant of the SLC frame ---- */
+    .cc-print{font-family:Fraunces,serif;max-width:850px;margin:0 auto;position:relative;
+      background:#FFFDF7;box-sizing:border-box;display:flex;flex-direction:column;
+      page-break-inside:avoid;break-inside:avoid;page-break-after:avoid;}
+    .cc-print::before{content:'';position:absolute;inset:9px;border:2.5px solid #C9A227;pointer-events:none;}
+    .cc-print::after{content:'';position:absolute;inset:15px;border:1px solid #C9A227;opacity:.55;pointer-events:none;}
+    .cc-corner{position:absolute;font-size:30px;color:#C9A227;line-height:1;z-index:2;}
+    .cc-corner.tl{top:20px;left:24px;}
+    .cc-corner.tr{top:20px;right:24px;transform:scaleX(-1);}
+    .cc-corner.bl{bottom:20px;left:24px;transform:scaleY(-1);}
+    .cc-corner.br{bottom:20px;right:24px;transform:scale(-1,-1);}
+
+    .cc-inner{position:relative;padding:40px 68px 36px;flex:1;display:flex;flex-direction:column;}
+    .cc-watermark{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;overflow:hidden;pointer-events:none;z-index:0;}
+    .cc-watermark img{width:52%;max-width:340px;object-fit:contain;opacity:.14;filter:blur(1px);}
+    .cc-content{position:relative;z-index:1;display:flex;flex-direction:column;flex:1;}
+
+    .cc-logo{display:block;margin:0 auto 12px;height:74px;width:74px;object-fit:contain;}
+    .cc-head{text-align:center;padding-bottom:22px;border-bottom:1.5px solid #E7E0CE;}
+    .cc-head .eyebrow{font-size:11px;letter-spacing:.28em;text-transform:uppercase;color:#8A6200;opacity:.85;margin-bottom:8px;}
+    .cc-head h2{font-family:Fraunces,serif;font-weight:700;color:#0F2740;margin:0 0 14px;font-size:34px;letter-spacing:.02em;}
+    body.ur .cc-head h2{font-family:'Noto Nastaliq Urdu',serif;}
+    .cc-title-wrap{display:flex;align-items:center;justify-content:center;gap:14px;margin-top:4px;}
+    .cc-title-wrap .rule{height:1px;width:64px;background:linear-gradient(90deg,transparent,#C9A227);}
+    .cc-title-wrap .rule.r{background:linear-gradient(90deg,#C9A227,transparent);}
+    .cc-title{font-size:19px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:#B24A32;white-space:nowrap;}
+
+    .cc-meta{display:flex;justify-content:space-between;font-size:12.5px;color:#555;padding:22px 4px 0;letter-spacing:.02em;font-family:Inter,sans-serif;}
+    .cc-meta b{color:#0F2740;font-weight:700;}
+
+    .cc-body{font-family:Fraunces,serif;font-style:italic;font-weight:500;font-size:18px;line-height:2.7;color:#1C2530;
+      text-align:justify;margin-top:28px;flex:1;}
+    body.ur .cc-body{font-family:'Noto Nastaliq Urdu',serif;font-style:normal;line-height:3.1;font-size:19px;}
+    .cc-body .rec{font-style:normal;font-weight:700;color:#0F2740;padding:0 2px;}
+    body.ur .cc-body .rec{font-weight:700;}
+
+    .cc-quote{text-align:center;font-family:Fraunces,serif;font-style:italic;font-size:14.5px;color:#8A6200;
+      margin-top:20px;letter-spacing:.02em;}
+    body.ur .cc-quote{font-family:'Noto Nastaliq Urdu',serif;font-style:normal;}
+
+    .cc-foot{margin-top:50px;display:flex;justify-content:space-between;align-items:flex-end;gap:20px;}
+    .cc-foot .box{text-align:center;font-size:12px;color:#555;min-width:190px;font-family:Inter,sans-serif;}
+    .cc-foot .box .line{border-bottom:1px solid #333;margin-bottom:8px;height:40px;}
+    .cc-foot .box.seal .line{border-bottom-style:dashed;}
   }
 </style>
 </head>
@@ -477,6 +524,7 @@ const T = {
     viewFeeLedger:'View Full Fee Ledger', viewRegisterEntry:'View Register Entry', printSlc:'Print Leaving Certificate',
     registerInfo:'Admission Register Info', notInRegister:'No admission register entry found for this name.',
     notActiveStudent:'No active fee record found for this name.',
+    ccTitle:'Character Certificate', printCc:'Print Character Certificate', ccNo:'Certificate No.', ccIssueDate:'Date of Issue',
   },
   ur: {
     appName:'مالیاتی و ریکارڈ سسٹم', tagline:'اسکول انتظامیہ کے لیے',
@@ -562,6 +610,7 @@ const T = {
     viewFeeLedger:'مکمل فیس کھاتہ دیکھیں', viewRegisterEntry:'رجسٹر اندراج دیکھیں', printSlc:'اسکول چھوڑنے کا سرٹیفکیٹ پرنٹ کریں',
     registerInfo:'داخلہ رجسٹر کی معلومات', notInRegister:'اس نام کے لیے داخلہ رجسٹر میں کوئی اندراج نہیں ملا۔',
     notActiveStudent:'اس نام کے لیے کوئی فعال فیس ریکارڈ نہیں ملا۔',
+    ccTitle:'کریکٹر سرٹیفکیٹ', printCc:'کریکٹر سرٹیفکیٹ پرنٹ کریں', ccNo:'سرٹیفکیٹ نمبر', ccIssueDate:'تاریخ اجراء',
   }
 };
 
@@ -1243,9 +1292,10 @@ function openFullRecord(studentId, registerId) {
         ${r.withdrawal_date ? `<div>${esc(t.withdrawalDate)}: <b>${esc(fmtDate(r.withdrawal_date))}</b></div>` : ''}
         ${r.arrears_due ? `<div>${esc(t.arrearsDue)}: <b>₨${fmt(r.arrears_due)}</b></div>` : ''}
       </div>
-      <div style="display:flex;gap:8px;margin-top:12px;">
+      <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap;">
         <button class="btn-ghost" style="flex:1;" onclick="closeModal(); openEditAdmissionEntry('${r.id}')">${esc(t.viewRegisterEntry)}</button>
         <button class="btn-ghost" style="flex:1;" onclick="printAdmissionEntry('${r.id}')">🖨️ ${esc(t.printSlc)}</button>
+        <button class="btn-ghost" style="flex:1;" onclick="printCharacterCertificate('${r.id}')">🖨️ ${esc(t.printCc)}</button>
       </div>
     `;
   } else {
@@ -3213,7 +3263,7 @@ function registerLedgerTableHtml(rows) {
       <td>${esc(r.class_withdrawn||'—')}</td>
       <td>${esc(fmtDate(r.withdrawal_date)||'—')}</td>
       <td>${esc(r.remarks||'—')}</td>
-      <td class="act">${r.withdrawal_date ? `<span class="print-btn" title="${esc(t.print)}" onclick="event.stopPropagation(); printAdmissionEntry('${r.id}')">🖨️</span>` : ''}</td>
+      <td class="act">${r.withdrawal_date ? `<span class="print-btn" title="${esc(t.print)}" onclick="event.stopPropagation(); printAdmissionEntry('${r.id}')">🖨️</span>` : ''}<span class="print-btn" title="${esc(t.printCc)}" onclick="event.stopPropagation(); printCharacterCertificate('${r.id}')">📜</span></td>
     </tr>`;
 
   if (rows.length === 0) return `<div class="empty">${esc(t.noRegisterEntries)}</div>`;
@@ -3313,7 +3363,22 @@ function printAdmissionRegisterPage(page) {
         <div class="sign">${esc(t.headOfInstitution || 'Head of the Institution')}</div>
       </div>
     </div>`;
+  printWithOrientation('landscape');
+}
+
+// Temporarily overrides the page orientation for a single print job (the wide
+// ledger table needs landscape while every other print — receipts, SLC,
+// character certificate — should stay portrait), then removes the override
+// right after so later prints aren't affected.
+function printWithOrientation(orientation) {
+  const styleEl = document.createElement('style');
+  styleEl.id = 'print-orientation-override';
+  styleEl.textContent = `@media print { @page{ size:${orientation}; margin:8mm; } }`;
+  document.head.appendChild(styleEl);
+  const cleanup = () => { styleEl.remove(); window.removeEventListener('afterprint', cleanup); };
+  window.addEventListener('afterprint', cleanup);
   window.print();
+  setTimeout(cleanup, 3000); // fallback in case afterprint doesn't fire
 }
 
 function admissionEntryForm(r) {
@@ -3385,9 +3450,10 @@ function openEditAdmissionEntry(id) {
   if (!r) return;
   showModal(r.student_name || t.editRegisterEntry, `
     ${admissionEntryForm(r)}
-    <div class="flexgap">
+    <div class="flexgap" style="flex-wrap:wrap;">
       <button class="btn-ghost" style="color:var(--rust);border-color:var(--rust);" onclick="confirmDelete('admissionEntry','${id}')">${esc(t.delete)}</button>
       <button class="btn-ghost" onclick="printAdmissionEntry('${id}')">🖨️ ${esc(t.print)}</button>
+      <button class="btn-ghost" onclick="printCharacterCertificate('${id}')">🖨️ ${esc(t.printCc)}</button>
       <button class="btn-primary" style="flex:1" onclick="submitEditAdmissionEntry('${id}')">${esc(t.save)}</button>
     </div>
   `);
@@ -3534,6 +3600,87 @@ async function printAdmissionEntry(id) {
   window.print();
 }
 
+// Character Certificate — narrative paragraph (same record-value-in-bold treatment
+// as the SLC) but focused purely on conduct/character rather than admission &
+// withdrawal, and usable for currently-enrolled as well as left students.
+function ccParagraphEn(r, dash) {
+  const rel = 'S/O, D/O';
+  const studyLine = r.class_withdrawn
+    ? `and remained on the rolls of this institution up to Class ${rec(r.class_withdrawn, dash)}, from which he/she was struck off on ${rec(fmtDate(r.withdrawal_date), dash)}`
+    : `and is currently studying in Class ${rec(r.class_admitted, dash)} at this institution`;
+  return `
+    This is to certify that ${rec(r.student_name, dash)} ${rel} ${rec(r.father_name, dash)},
+    Caste/Tribe ${rec(r.caste_tribe, dash)}, resident of ${rec(r.residence, dash)}, bearing
+    Serial No. ${rec(r.serial_no, dash)} in the Admission &amp; Withdrawal Register of this institution,
+    was admitted on ${rec(fmtDate(r.admission_date), dash)} in Class ${rec(r.class_admitted, dash)}, ${studyLine}.
+    During the entire period of his/her stay at this institution, his/her character and conduct
+    remained ${rec(r.conduct || 'Good', dash)}, and he/she was never found involved in any activity
+    prejudicial to the discipline or moral atmosphere of the institution. This certificate is issued
+    on his/her request for whatever purpose it may serve.
+  `;
+}
+
+function ccParagraphUr(r, dash) {
+  const rel = 'ولد، بنتِ';
+  const studyLine = r.class_withdrawn
+    ? `اور اس ادارے میں جماعت ${rec(r.class_withdrawn, dash)} تک زیرِ تعلیم رہے، اور تاریخ ${rec(fmtDate(r.withdrawal_date), dash)} کو رجسٹر سے خارج ہوئے`
+    : `اور فی الحال اس ادارے میں جماعت ${rec(r.class_admitted, dash)} میں زیرِ تعلیم ہیں`;
+  return `
+    یہ تصدیق کی جاتی ہے کہ ${rec(r.student_name, dash)} ${rel} ${rec(r.father_name, dash)}،
+    ذات/قبیلہ ${rec(r.caste_tribe, dash)}، ساکن ${rec(r.residence, dash)}، جو اس ادارے کے داخلہ و اخراج
+    رجسٹر میں سیریل نمبر ${rec(r.serial_no, dash)} پر درج ہے، کو تاریخ ${rec(fmtDate(r.admission_date), dash)}
+    کو جماعت ${rec(r.class_admitted, dash)} میں داخل کیا گیا تھا، ${studyLine}۔ اس ادارے میں قیام کے پورے
+    عرصے کے دوران موصوف/موصوفہ کا اخلاق و کردار ${rec(r.conduct || 'اچھا', dash)} رہا، اور وہ کبھی بھی
+    ادارے کے نظم و ضبط یا اخلاقی ماحول کے منافی کسی سرگرمی میں ملوث نہیں پائے گئے۔ یہ سرٹیفکیٹ ان کی
+    درخواست پر، جہاں ضرورت ہو استعمال کے لیے، جاری کیا جاتا ہے۔
+  `;
+}
+
+// Prints a full-page Character Certificate for an admission-register entry —
+// deliberately more spacious than the SLC (larger type, taller line-height,
+// generous margins) so the certificate fills the page the way a formal
+// character certificate is expected to.
+async function printCharacterCertificate(id) {
+  const r = DATA.admissionRegister.find(x => x.id === id);
+  if (!r) return;
+  await loadDMCConfig(); // pulls the editable school logo saved under Certificates (DMC) config
+  const dash = '—';
+  const paragraph = (LANG === 'ur') ? ccParagraphUr(r, dash) : ccParagraphEn(r, dash);
+
+  document.getElementById('print-area').innerHTML = `
+    <div class="cc-print">
+      <span class="cc-corner tl">❧</span>
+      <span class="cc-corner tr">❧</span>
+      <span class="cc-corner bl">❧</span>
+      <span class="cc-corner br">❧</span>
+      <div class="cc-inner">
+        ${dmcLogo ? `<div class="cc-watermark"><img src="${dmcLogo}" alt=""></div>` : ''}
+        <div class="cc-content">
+          <div class="cc-head">
+            ${dmcLogo ? `<img class="cc-logo" src="${dmcLogo}" alt="School Logo">` : ''}
+            <div class="eyebrow">${esc(t.headOfInstitution)}</div>
+            <h2>${esc(CURRENT_PROFILE.school_name || 'School')}</h2>
+            <div class="cc-title-wrap">
+              <span class="rule"></span>
+              <span class="cc-title">${esc(t.ccTitle)}</span>
+              <span class="rule r"></span>
+            </div>
+          </div>
+          <div class="cc-meta">
+            <span><b>${esc(t.ccNo)}:</b> ${esc(r.serial_no || dash)}</span>
+            <span><b>${esc(t.ccIssueDate)}:</b> ${esc(fmtDate(todayISO()))}</span>
+          </div>
+          <div class="cc-body">${paragraph}</div>
+          <div class="cc-quote">${esc(dmcQuote || (LANG === 'ur' ? 'تعلیم مستقبل روشن بنانے کی کنجی ہے۔' : 'Character is the foundation on which a bright future is built.'))}</div>
+          <div class="cc-foot">
+            <div class="box seal"><div class="line"></div>${esc(t.officialSeal)}</div>
+            <div class="box"><div class="line"></div>${esc(t.headOfInstitution)}</div>
+          </div>
+        </div>
+      </div>
+    </div>`;
+  window.print();
+}
 
 async function submitEditAdmissionEntry(id) {
   const entry = readAdmissionForm();
