@@ -432,6 +432,30 @@ function makeOtpVerifyClient() {
 }
 
 
+// Normalizes a Pakistani mobile number (however it was typed/pasted — with or
+// without a leading 0, with or without a country code, with spaces or dashes)
+// into the bare digits-only international format WhatsApp's wa.me links need,
+// e.g. "923001234567". Returns null when no usable 10-digit PK mobile number
+// can be found in the input, so callers can show a clear "no valid number" message
+// instead of silently failing.
+//
+// This function was previously being CALLED (in whatsappUri below) but was never
+// actually defined anywhere in the app — every WhatsApp send attempt was hitting
+// a silent "normalizePkMobile is not defined" error and doing nothing at all,
+// which is why the WhatsApp button (and the automatic fee-received notification)
+// appeared completely inactive no matter what was tapped.
+function normalizePkMobile(raw) {
+  if (!raw) return null;
+  let d = String(raw).replace(/\D/g, ''); // keep digits only
+  if (!d) return null;
+  if (d.startsWith('0092')) d = d.slice(2);        // 00923001234567 -> 923001234567
+  else if (d.startsWith('0')) d = '92' + d.slice(1); // 03001234567 -> 923001234567
+  else if (d.length === 10) d = '92' + d;            // 3001234567 -> 923001234567
+  // A valid PK mobile in wa.me format is "92" + 10 digits = 12 digits total.
+  if (d.length !== 12 || !d.startsWith('92')) return null;
+  return d;
+}
+
 // ---------- WhatsApp helper ----------
 // Opens WhatsApp (desktop app / WhatsApp Web on PC & laptop, or the WhatsApp app on mobile)
 // with the father's number and message pre-filled via the wa.me click-to-chat link.
@@ -457,7 +481,7 @@ const T = {
     salaryPaid:'Salaries Paid (this month)', netBalance:'Net Balance (all-time)', recentActivity:'Recent Activity',
     totalIncome:'Total Income (all-time)', totalExpense:'Total Expenses (all-time)', teacherSalaries:'Teacher Salaries (all-time)',
     expenses:'Expenses', collectedFees:'Collected Fees', back:'Back', noRecords:'No records yet',
-    addStudent:'Add Student', studentName:'Student Name', fatherName:"Father's Name", className:'Class',
+    addStudent:'Add Student', studentName:'Student Name', studentNameUr:'Student Name (Urdu)', fatherName:"Father's Name", className:'Class',
     groupByClass:'By Class', groupByFee:'By Fee', noFeeCategory:'No Fee', studentsCount:'students',
     admissionDate:'Admission Date', monthlyFee:'Monthly Fee (Rs)', contact:'Contact Number',
     studentType:'Student Type', feePaying:'Fee-Paying', free:'Free', orphan:'Orphan', all:'All',
@@ -497,7 +521,7 @@ const T = {
     backToLogin:'Back to Log In',
     passwordTooShort:'Password must be at least 6 characters.', passwordMismatch:'Passwords do not match.',
     signUpSuccess:'Account created! You can now log in.',
-    settings:'Account Settings', changeSchoolName:'School Name', changePassword:'New Password (leave blank to keep current)',
+    settings:'Account Settings', changeSchoolName:'School Name', changeSchoolNameUr:'School Name (Urdu)', changePassword:'New Password (leave blank to keep current)',
     saveSettings:'Save Changes', settingsSaved:'Saved successfully.', logOut:'Log Out',
     exportBackup:'Download Backup (Excel)', exportHint:'Save a full copy of your records to your device.',
     // Whitelist / Admin onboarding
@@ -548,7 +572,7 @@ const T = {
     salaryPaid:'ادا شدہ تنخواہ (اس ماہ)', netBalance:'کل بیلنس', recentActivity:'حالیہ سرگرمی',
     totalIncome:'کل آمدنی', totalExpense:'کل اخراجات', teacherSalaries:'اساتذہ کی تنخواہیں',
     expenses:'اخراجات', collectedFees:'وصول شدہ فیس', back:'واپس', noRecords:'ابھی کوئی ریکارڈ نہیں',
-    addStudent:'طالب علم شامل کریں', studentName:'طالب علم کا نام', fatherName:'والد کا نام', className:'جماعت',
+    addStudent:'طالب علم شامل کریں', studentName:'طالب علم کا نام', studentNameUr:'طالب علم کا نام (اردو)', fatherName:'والد کا نام', className:'جماعت',
     groupByClass:'جماعت کے مطابق', groupByFee:'فیس کے مطابق', noFeeCategory:'بغیر فیس', studentsCount:'طلباء',
     admissionDate:'داخلہ کی تاریخ', monthlyFee:'ماہانہ فیس (روپے)', contact:'رابطہ نمبر',
     studentType:'طالب علم کی قسم', feePaying:'فیس ادا کرنے والا', free:'مفت', orphan:'یتیم', all:'تمام',
@@ -587,7 +611,7 @@ const T = {
     backToLogin:'لاگ ان پر واپس جائیں',
     passwordTooShort:'پاس ورڈ کم از کم 6 حروف کا ہونا چاہیے۔', passwordMismatch:'پاس ورڈ مماثل نہیں ہیں۔',
     signUpSuccess:'اکاؤنٹ بن گیا! اب آپ لاگ ان کر سکتے ہیں۔',
-    settings:'اکاؤنٹ کی ترتیبات', changeSchoolName:'اسکول کا نام', changePassword:'نیا پاس ورڈ (خالی چھوڑیں اگر تبدیل نہیں کرنا)',
+    settings:'اکاؤنٹ کی ترتیبات', changeSchoolName:'اسکول کا نام', changeSchoolNameUr:'اسکول کا نام (اردو)', changePassword:'نیا پاس ورڈ (خالی چھوڑیں اگر تبدیل نہیں کرنا)',
     saveSettings:'تبدیلیاں محفوظ کریں', settingsSaved:'کامیابی سے محفوظ ہو گیا۔', logOut:'لاگ آؤٹ',
     exportBackup:'بیک اپ ڈاؤن لوڈ کریں (ایکسل)', exportHint:'اپنے تمام ریکارڈ کی مکمل کاپی اپنے ڈیوائس میں محفوظ کریں۔',
     notWhitelistedTitle:'یہ ای میل ابھی تک ہمارے ساتھ رجسٹرڈ نہیں ہے۔',
@@ -989,11 +1013,20 @@ function monthsOverdue(s) {
   return Math.floor(studentBalance(s.id) / fee);
 }
 
+// Prefers the Urdu-script name for a student/school when set (via the student's
+// "Name (Urdu)" field or the account's "School Name (Urdu)" setting), falling
+// back to whatever name is on file if no Urdu version has been entered yet.
+function studentNameUrdu(s) { return (s && s.name_ur) || (s && s.name) || ''; }
+function schoolNameUrdu() { return (CURRENT_PROFILE && CURRENT_PROFILE.school_name_ur) || (CURRENT_PROFILE && CURRENT_PROFILE.school_name) || ''; }
+// The sign-off used on all Urdu-language parent messages, e.g.
+// "دی پرنسپل اف دی اقراء اسلامک ایجوکیشنل سسٹم سکول"
+function principalSignOffUrdu() { return `دی پرنسپل اف دی ${schoolNameUrdu()} سکول`; }
+
 function overdueReminderMessage(s) {
   const months = monthsOverdue(s);
   const balance = fmt(studentBalance(s.id));
   return LANG === 'ur'
-    ? `محترم سرپرست، ${s.name} کی اسکول فیس کے واجبات ${months} مہینوں سے زائد ہو چکے ہیں، رقم: روپے ${balance}۔ براہ کرم جلد ادائیگی کریں۔ شکریہ - اسکول`
+    ? `محترم سرپرست، ${studentNameUrdu(s)} کی اسکول فیس کے واجبات ${months} مہینوں سے زائد ہو چکے ہیں، رقم: روپے ${balance}۔ براہ کرم جلد ادائیگی کریں۔ شکریہ\n${principalSignOffUrdu()}`
     : `Dear Parent, ${s.name}'s school fee dues are now ${months}+ months overdue, totaling Rs ${balance}. Please clear the balance at your earliest convenience. Thank you - School`;
 }
 
@@ -1021,7 +1054,7 @@ function duesReminderMessageUrdu(s) {
   const lines = duesBreakdownLinesUrdu(s.id);
   const breakdown = lines.length ? ('\n' + lines.join('\n')) : '';
   const total = fmt(Math.max(0, studentBalance(s.id)));
-  return `محترم سرپرست،\n${s.name} کی فیس کے واجبات درج ذیل ہیں:${breakdown}\nکل بقایا رقم: روپے ${total}\nبراہ کرم جلد از جلد ادائیگی کریں۔ شکریہ - اسکول`;
+  return `محترم سرپرست،\n${studentNameUrdu(s)} کی فیس کے واجبات درج ذیل ہیں:${breakdown}\nکل بقایا رقم: روپے ${total}\nبراہ کرم جلد از جلد ادائیگی کریں۔ شکریہ\n${principalSignOffUrdu()}`;
 }
 
 // Opens WhatsApp with the father's number and the Urdu dues-breakdown message pre-filled.
@@ -1454,6 +1487,7 @@ async function submitAddWhitelist() {
 function openSettings() {
   showModal(t.settings, `
     <label><span>${esc(t.changeSchoolName)}</span><input id="set-school" value="${esc(CURRENT_PROFILE.school_name||'')}"></label>
+    <label><span>${esc(t.changeSchoolNameUr)}</span><input id="set-school-ur" dir="rtl" value="${esc(CURRENT_PROFILE.school_name_ur||'')}"></label>
     <label><span>${esc(t.changePassword)}</span><input id="set-pw" type="password" autocomplete="new-password"></label>
     <div id="set-msg"></div>
     <button class="btn-primary" onclick="submitSettings()">${esc(t.saveSettings)}</button>
@@ -1572,6 +1606,7 @@ function exportBackup() {
 
 async function submitSettings() {
   const schoolName = document.getElementById('set-school').value.trim();
+  const schoolNameUr = document.getElementById('set-school-ur').value.trim();
   const newPw = document.getElementById('set-pw').value;
   const msg = document.getElementById('set-msg');
   msg.innerHTML = '';
@@ -1581,6 +1616,11 @@ async function submitSettings() {
     const { error } = await sb.from('profiles').update({ school_name: schoolName }).eq('id', CURRENT_USER.id);
     if (error) { msg.innerHTML = `<div class="err">${esc(error.message)}</div>`; return; }
     CURRENT_PROFILE.school_name = schoolName;
+  }
+  if (schoolNameUr !== (CURRENT_PROFILE.school_name_ur || '')) {
+    const { error } = await sb.from('profiles').update({ school_name_ur: schoolNameUr || null }).eq('id', CURRENT_USER.id);
+    if (error) { msg.innerHTML = `<div class="err">${esc(error.message)}</div>`; return; }
+    CURRENT_PROFILE.school_name_ur = schoolNameUr;
   }
   if (newPw) {
     const { error } = await sb.auth.updateUser({ password: newPw });
@@ -1881,6 +1921,7 @@ function openOverdueReminders() {
 function openAddStudent() {
   showModal(t.addStudent, `
     <label><span>${esc(t.studentName)}</span><input id="f-name"></label>
+    <label><span>${esc(t.studentNameUr)}</span><input id="f-name-ur" dir="rtl"></label>
     <label><span>${esc(t.fatherName)}</span><input id="f-father"></label>
     <label><span>${esc(t.className)}</span><select id="f-class">${CLASS_OPTIONS.map(c=>`<option>${c}</option>`).join('')}</select></label>
     <label><span>${esc(t.studentType)}</span><select id="f-type" onchange="onAddTypeChange()">${STUDENT_TYPES.map(v=>`<option value="${v}">${esc(typeLabel(v))}</option>`).join('')}</select></label>
@@ -1907,7 +1948,7 @@ async function submitAddStudent() {
   if (!name || fee==='') return;
   const { error } = await sb.from('students').insert({
     owner_id: CURRENT_USER.id,
-    name, father_name: document.getElementById('f-father').value,
+    name, name_ur: document.getElementById('f-name-ur').value.trim() || null, father_name: document.getElementById('f-father').value,
     class_name: document.getElementById('f-class').value,
     student_type: type,
     admission_date: dateVal('f-admission'),
@@ -2025,6 +2066,12 @@ function openStudentDetail(id, viewYear) {
       </label>
       <button class="btn-ghost" onclick="updateStudentType('${id}')">${esc(t.updateType)}</button>
     </div>
+    <div class="row2" style="align-items:end;margin-bottom:16px;">
+      <label style="margin-bottom:0;"><span>${esc(t.studentNameUr)}</span>
+        <input id="d-name-ur" dir="rtl" value="${esc(s.name_ur||'')}">
+      </label>
+      <button class="btn-ghost" onclick="updateStudentNameUr('${id}')">${esc(t.save)}</button>
+    </div>
     <div style="display:flex;gap:8px;margin-bottom:16px;">
       <div class="greenbox" style="flex:1;margin-bottom:0;"><div class="lbl">${esc(t.totalCollectedAllTime)}</div><div class="val">₨${fmt(totalPaidAllTime)}</div></div>
       <div class="greenbox" style="flex:1;margin-bottom:0;background:${currentBalance>0?'#FBEAE5':'#EAF2EC'};">
@@ -2104,6 +2151,13 @@ async function updateStudentType(studentId) {
   const update = { student_type: type };
   if (type !== 'paying') update.monthly_fee = 0;
   const { error } = await sb.from('students').update(update).eq('id', studentId);
+  if (reportSaveError(error)) return;
+  await loadAllData(); openStudentDetail(studentId);
+}
+
+async function updateStudentNameUr(studentId) {
+  const nameUr = document.getElementById('d-name-ur').value.trim();
+  const { error } = await sb.from('students').update({ name_ur: nameUr || null }).eq('id', studentId);
   if (reportSaveError(error)) return;
   await loadAllData(); openStudentDetail(studentId);
 }
