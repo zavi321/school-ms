@@ -448,24 +448,6 @@ function openFatherWhatsapp(mobileRaw, message) {
 }
 // --------------------------------------
 
-// ---------- Local (device SIM) SMS helper ----------
-// Opens the phone's own SMS app with the father's number and message pre-filled.
-// Browsers can't send SMS silently for security reasons — the user still taps "Send" in their SMS app.
-function smsComposeUri(mobileRaw, message) {
-  const mobile = normalizePkMobile(mobileRaw);
-  if (!mobile) return null;
-  const number = '+' + mobile;
-  const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
-  const sep = isIOS ? '&' : '?'; // iOS Messages needs '&' before body, Android needs '?'
-  return `sms:${number}${sep}body=${encodeURIComponent(message)}`;
-}
-function openFatherSms(mobileRaw, message) {
-  const uri = smsComposeUri(mobileRaw, message);
-  if (!uri) { alert('No valid contact number on file for this student.'); return; }
-  window.location.href = uri;
-}
-// ----------------------------------------------------
-
 const T = {
   en: {
     appName:'School Finance & Records', tagline:'For school administration',
@@ -522,7 +504,7 @@ const T = {
     notWhitelistedTitle:'This email is not registered with us yet.',
     notWhitelistedDesc:'To register your school, please contact us on WhatsApp first.',
     contactOnWhatsApp:'Contact us on WhatsApp',
-    sendSmsToFather:'SMS for Parents', overdueRemindersTitle:'Send overdue reminders',
+    sendSmsToFather:'WhatsApp Parents', overdueRemindersTitle:'Send overdue reminders',
     overdueRemindersDesc:'These students are 2+ months behind on fees. Tap Send next to each to open WhatsApp with a month-by-month reminder pre-filled for their father.',
     noOverdueStudents:'No students are 2+ months overdue right now.', send:'Send',
     sendFeeRequest:'Send fee request', feeRequestTitle:'Send fee request', feeRequestDesc:'These students currently have pending dues. Tap Send next to each to open WhatsApp with a month-by-month reminder pre-filled for their father.',
@@ -611,7 +593,7 @@ const T = {
     notWhitelistedTitle:'یہ ای میل ابھی تک ہمارے ساتھ رجسٹرڈ نہیں ہے۔',
     notWhitelistedDesc:'اپنا اسکول رجسٹر کروانے کے لیے پہلے ہم سے واٹس ایپ پر رابطہ کریں۔',
     contactOnWhatsApp:'واٹس ایپ پر رابطہ کریں',
-    sendSmsToFather:'والدین کو SMS', overdueRemindersTitle:'واجبات کی یاد دہانی بھیجیں',
+    sendSmsToFather:'والدین کو واٹس ایپ', overdueRemindersTitle:'واجبات کی یاد دہانی بھیجیں',
     overdueRemindersDesc:'یہ طلبہ 2 یا زائد مہینوں سے فیس کے واجب الادا ہیں۔ ہر ایک کے سامنے "بھیجیں" دبائیں تاکہ والد کے واٹس ایپ پر ہر مہینے کی تفصیل کے ساتھ پیغام کھل جائے۔',
     noOverdueStudents:'فی الحال کوئی طالب علم 2 مہینوں سے زائد واجب الادا نہیں ہے۔', send:'بھیجیں',
     sendFeeRequest:'فیس کی درخواست بھیجیں', feeRequestTitle:'فیس کی درخواست بھیجیں', feeRequestDesc:'ان طلبہ کی فیس واجب الادا ہے۔ ہر ایک کے سامنے "بھیجیں" دبائیں تاکہ والد کے واٹس ایپ پر ہر مہینے کی تفصیل کے ساتھ پیغام کھل جائے۔',
@@ -1043,7 +1025,7 @@ function duesReminderMessageUrdu(s) {
 }
 
 // Opens WhatsApp with the father's number and the Urdu dues-breakdown message pre-filled.
-function sendOverdueReminderSms(id) {
+function sendOverdueReminderWhatsapp(id) {
   const s = DATA.students.find(x => x.id === id);
   if (!s) return;
   openFatherWhatsapp(s.contact, duesReminderMessageUrdu(s));
@@ -1051,7 +1033,7 @@ function sendOverdueReminderSms(id) {
 
 // General fee-request: same month-by-month breakdown message, but available for
 // ANY student with a pending balance (not just those 2+ months overdue).
-function sendFeeRequestSms(id) {
+function sendFeeRequestWhatsapp(id) {
   const s = DATA.students.find(x => x.id === id);
   if (!s) return;
   openFatherWhatsapp(s.contact, duesReminderMessageUrdu(s));
@@ -1069,7 +1051,7 @@ function openFeeRequestReminders() {
           <div class="nm">${esc(s.name)}</div>
           <div class="sub">${esc(t.fatherName)}: ${esc(s.father_name||'')} · ₨${fmt(studentBalance(s.id))} ${esc(t.due)}</div>
         </div>
-        <button class="btn-primary" style="padding:6px 14px;" onclick="sendFeeRequestSms('${s.id}')">${esc(t.send)}</button>
+        <button class="btn-primary" style="padding:6px 14px;" onclick="sendFeeRequestWhatsapp('${s.id}')">${esc(t.send)}</button>
       </div>`).join('');
   showModal(t.feeRequestTitle, `
     <div style="font-size:13px;opacity:.75;margin-bottom:14px;">${esc(t.feeRequestDesc)}</div>
@@ -1810,7 +1792,7 @@ function tplStudents() {
       : `<span class="pill ${due>0?'bad':'good'}">${due>0 ? '₨'+fmt(due)+' '+esc(t.due) : esc(t.paid)}</span>`;
     const overdue = monthsOverdue(s);
     const smsBtn = isFeePaying(s) && studentBalance(s.id) > 0
-      ? `<button class="print-btn" title="${esc(t.sendSmsToFather)}" onclick="event.stopPropagation(); sendOverdueReminderSms('${s.id}')">📩</button>`
+      ? `<button class="print-btn" title="${esc(t.sendSmsToFather)}" onclick="event.stopPropagation(); sendOverdueReminderWhatsapp('${s.id}')">💬</button>`
       : '';
     return `
       <button class="card-btn" onclick="openStudentDetail('${s.id}')">
@@ -1888,7 +1870,7 @@ function openOverdueReminders() {
           <div class="nm">${esc(s.name)}</div>
           <div class="sub">${esc(t.fatherName)}: ${esc(s.father_name||'')} · ₨${fmt(studentBalance(s.id))} (${monthsOverdue(s)}+ ${esc(t.due)})</div>
         </div>
-        <button class="btn-primary" style="padding:6px 14px;" onclick="sendOverdueReminderSms('${s.id}')">${esc(t.send)}</button>
+        <button class="btn-primary" style="padding:6px 14px;" onclick="sendOverdueReminderWhatsapp('${s.id}')">${esc(t.send)}</button>
       </div>`).join('');
   showModal(t.overdueRemindersTitle, `
     <div style="font-size:13px;opacity:.75;margin-bottom:14px;">${esc(t.overdueRemindersDesc)}</div>
@@ -2051,8 +2033,8 @@ function openStudentDetail(id, viewYear) {
       </div>
     </div>
     ${isFeePaying(s) && currentBalance > 0 ? `
-    <button class="btn-ghost" style="width:100%;margin-bottom:16px;color:var(--rust);border-color:var(--rust);" onclick="sendOverdueReminderSms('${id}')">
-      📩 ${esc(t.sendSmsToFather)}
+    <button class="btn-ghost" style="width:100%;margin-bottom:16px;color:var(--rust);border-color:var(--rust);" onclick="sendOverdueReminderWhatsapp('${id}')">
+      💬 ${esc(t.sendSmsToFather)}
     </button>` : ''}
 
     <h4 class="section-title" style="margin-top:0;">${esc(t.addEntry)}</h4>
