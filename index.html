@@ -498,6 +498,8 @@ const T = {
     checkinButton:'Mark Me Present', checkinSuccess:'You are marked present. Thank you!',
     checkinAlready:'You are already marked present today.', checkinInvalid:'This QR code is not valid or has expired.',
     checkinOutsideWindow:'Check-in is only open from 7:00 AM to 2:00 PM.',
+    checkinLogTitle:'Check-in Activity (Today)', checkinLogEmpty:'No check-in activity yet today.',
+    checkinLogOk:'Present', checkinLogAlready:'Duplicate attempt', checkinLogClosed:'Outside hours', checkinLogInvalid:'Invalid',
     checkinOffline:'Saved offline — will sync automatically once you\'re back online.', checkinOfflineNoList:'You are offline and no teacher list is cached yet. Please connect to the internet once to load it.',
     checkinChooseTeacher:'— Select your name —', regenerateCode:'Regenerate Code', regenerateCodeConfirm:'This will invalidate the old QR code — anyone with the old code will no longer be able to check in. Continue?',
     todaysCheckins:'Today\'s Check-ins', noCheckinsYet:'No one has checked in yet today.', checkedInAt:'at',
@@ -603,6 +605,8 @@ const T = {
     checkinButton:'میری حاضری لگائیں', checkinSuccess:'آپ کی حاضری لگ گئی۔ شکریہ!',
     checkinAlready:'آپ کی حاضری آج پہلے ہی لگ چکی ہے۔', checkinInvalid:'یہ QR کوڈ درست نہیں یا میعاد ختم ہو چکی ہے۔',
     checkinOutsideWindow:'حاضری صرف صبح 7 بجے سے دوپہر 2 بجے تک لگائی جا سکتی ہے۔',
+    checkinLogTitle:'حاضری کی سرگرمی (آج)', checkinLogEmpty:'آج تک کوئی سرگرمی نہیں۔',
+    checkinLogOk:'حاضر', checkinLogAlready:'دوبارہ کوشش', checkinLogClosed:'وقت سے باہر', checkinLogInvalid:'غلط',
     checkinOffline:'آف لائن محفوظ ہو گیا — انٹرنیٹ آنے پر خود بخود بھیج دیا جائے گا۔', checkinOfflineNoList:'آپ آف لائن ہیں اور اساتذہ کی فہرست ابھی محفوظ نہیں — براہ کرم ایک بار انٹرنیٹ سے جڑیں۔',
     checkinChooseTeacher:'— اپنا نام منتخب کریں —', regenerateCode:'نیا کوڈ بنائیں', regenerateCodeConfirm:'اس سے پرانا QR کوڈ غیر فعال ہو جائے گا — پرانے کوڈ والے اب حاضری نہیں لگا سکیں گے۔ جاری رکھیں؟',
     todaysCheckins:'آج کی حاضریاں', noCheckinsYet:'ابھی تک کسی نے حاضری نہیں لگائی۔', checkedInAt:'بوقت',
@@ -2519,7 +2523,10 @@ async function openQrCheckin() {
   qrCheckinToken = row.token;
   renderQrCheckinBody();
   clearInterval(qrCheckinPollTimer);
-  qrCheckinPollTimer = setInterval(async () => { await loadAllData(); renderTodaysCheckinsList(); }, 15000);
+  qrCheckinPollTimer = setInterval(async () => {
+    await loadAllData(); renderTodaysCheckinsList();
+    await loadCheckinAttempts(); renderCheckinAttemptsList();
+  }, 15000);
 }
 
 function renderQrCheckinBody() {
@@ -2539,8 +2546,11 @@ function renderQrCheckinBody() {
     <button class="btn-ghost" style="width:100%;" onclick="regenerateCheckinToken()">${esc(t.regenerateCode)}</button>
     <div class="section-title">${esc(t.todaysCheckins)}</div>
     <div id="todays-checkins-list"></div>
+    <div class="section-title">${esc(t.checkinLogTitle)}</div>
+    <div id="checkin-attempts-list"></div>
   `;
   renderTodaysCheckinsList();
+  loadCheckinAttempts().then(renderCheckinAttemptsList);
 }
 
 function renderTodaysCheckinsList() {
@@ -2556,6 +2566,37 @@ function renderTodaysCheckinsList() {
       const time = new Date(r.checked_in_at).toLocaleTimeString(LANG==='ur'?'ur-PK':'en-PK', { hour:'2-digit', minute:'2-digit' });
       return `<div class="ledger-row"><span style="font-size:13px;">✓ ${esc(tc ? tc.name : '—')}</span><span style="font-size:11px;opacity:.6;">${esc(t.checkedInAt)} ${esc(time)}</span></div>`;
     }).join('');
+}
+
+// Full activity log for today: every scan attempt, successful or not — so the
+// principal can see rejected/duplicate/late attempts too, not just the ones
+// that actually counted as present.
+let checkinAttemptsCache = [];
+async function loadCheckinAttempts() {
+  const since = new Date(); since.setHours(0,0,0,0);
+  const { data, error } = await sb.from('checkin_attempts')
+    .select('*')
+    .eq('owner_id', CURRENT_USER.id)
+    .gte('created_at', since.toISOString())
+    .order('created_at', { ascending:false })
+    .limit(100);
+  if (!error) checkinAttemptsCache = data || [];
+}
+function renderCheckinAttemptsList() {
+  const el = document.getElementById('checkin-attempts-list');
+  if (!el) return;
+  if (!checkinAttemptsCache.length) { el.innerHTML = `<div style="padding:10px;text-align:center;font-size:12px;opacity:.5;">${esc(t.checkinLogEmpty)}</div>`; return; }
+  const badgeFor = (result) => {
+    if (result === 'ok') return `<span class="pill good">${esc(t.checkinLogOk)}</span>`;
+    if (result === 'already') return `<span class="pill orphan">${esc(t.checkinLogAlready)}</span>`;
+    if (result === 'closed') return `<span class="pill bad">${esc(t.checkinLogClosed)}</span>`;
+    return `<span class="pill bad">${esc(t.checkinLogInvalid)}</span>`;
+  };
+  el.innerHTML = checkinAttemptsCache.map(a => {
+    const time = new Date(a.created_at).toLocaleTimeString(LANG==='ur'?'ur-PK':'en-PK', { hour:'2-digit', minute:'2-digit' });
+    const name = a.teacher_name || '—';
+    return `<div class="ledger-row"><span style="font-size:13px;">${esc(name)} ${badgeFor(a.result)}</span><span style="font-size:11px;opacity:.6;">${esc(time)}</span></div>`;
+  }).join('');
 }
 
 function regenerateCheckinToken() {
