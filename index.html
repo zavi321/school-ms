@@ -548,6 +548,9 @@ const T = {
     serialNo:'Serial No.', dobFigures:'Date of Birth (figures)', dobWords:'Date of Birth (in words)', dobLabel:'Date of Birth in words and figures', casteTribe:'Caste / Tribe', occupation:'Occupation',
     residence:'Residence', classAdmitted:'Class Admitted', arrearsDue:'Arrears Due',
     classWithdrawn:'Class Withdrawn', withdrawalDate:'Date of Withdrawal', remarks:'Remarks',
+    highMiddleSlcNo:'High/Middle/S.L.C No.', bise:'BISE Enrolment No.',
+    attendancePossible:'Attendance: Possible', attendanceActual:'Attendance: Actual',
+    schoolFundReport:'Report about School Fund', slcIssueDateField:'Date of Issue S.L.C',
     addRegisterEntry:'Add Entry', editRegisterEntry:'Edit Entry', searchRegister:'Search by name, father\'s name, or AD number...',
     noRegisterEntries:'No entries yet. Add your first admission record to get started.', headOfInstitution:'Head of the Institution',
     previous:'Prev', next:'Next', printThisPage:'Print this page',
@@ -635,6 +638,9 @@ const T = {
     serialNo:'سیریل نمبر', dobFigures:'تاریخ پیدائش (ہندسوں میں)', dobWords:'تاریخ پیدائش (الفاظ میں)', dobLabel:'تاریخ پیدائش (الفاظ اور ہندسوں میں)', casteTribe:'ذات / قبیلہ', occupation:'پیشہ',
     residence:'رہائش', classAdmitted:'جس جماعت میں داخلہ', arrearsDue:'واجب الادا رقم',
     classWithdrawn:'جس جماعت سے اخراج', withdrawalDate:'تاریخ اخراج', remarks:'تبصرہ',
+    highMiddleSlcNo:'ہائی/مڈل/ایس ایل سی نمبر', bise:'بی آئی ایس ای انرولمنٹ نمبر',
+    attendancePossible:'حاضری: ممکنہ', attendanceActual:'حاضری: اصل',
+    schoolFundReport:'اسکول فنڈ رپورٹ', slcIssueDateField:'ایس ایل سی جاری کرنے کی تاریخ',
     addRegisterEntry:'اندراج شامل کریں', editRegisterEntry:'اندراج میں ترمیم', searchRegister:'نام، والد کا نام، یا AD نمبر تلاش کریں...',
     noRegisterEntries:'ابھی کوئی اندراج نہیں۔ اپنا پہلا داخلہ ریکارڈ شامل کریں۔', headOfInstitution:'سربراہ ادارہ',
     previous:'پچھلا', next:'اگلا', printThisPage:'یہ صفحہ پرنٹ کریں',
@@ -3651,6 +3657,13 @@ function admissionEntryForm(r) {
     [t.arrearsDue, `<input class="cell-input" id="ar-arrears" type="number" value="${esc(r.arrears_due||0)}">`],
     [t.classWithdrawn, `<select class="cell-input" id="ar-class-withdrawn"><option value="">—</option>${CLASS_OPTIONS.map(c=>`<option ${r.class_withdrawn===c?'selected':''}>${c}</option>`).join('')}</select>`],
     [t.withdrawalDate, `<input class="cell-input" id="ar-withdrawal-date" type="date" value="${esc(r.withdrawal_date||'')}">`],
+    [t.highMiddleSlcNo, `<input class="cell-input" id="ar-hm-slc-no" value="${esc(r.high_middle_slc_no||'')}">`],
+    [t.bise, `<input class="cell-input" id="ar-bise" value="${esc(r.bise_enrolment_no||'')}">`],
+    [t.slcIssueDateField, `<input class="cell-input" id="ar-slc-issue-date" type="date" value="${esc(r.slc_issue_date||'')}">`],
+    [t.attendancePossible, `<input class="cell-input" id="ar-attendance-possible" value="${esc(r.attendance_possible||'')}">`],
+    [t.attendanceActual, `<input class="cell-input" id="ar-attendance-actual" value="${esc(r.attendance_actual||'')}">`],
+    [t.schoolFundReport, `<input class="cell-input" id="ar-school-fund" value="${esc(r.school_fund_report||'')}">`],
+    [t.conduct, `<input class="cell-input" id="ar-conduct" value="${esc(r.conduct||'')}">`],
     [t.remarks, `<input class="cell-input" id="ar-remarks" value="${esc(r.remarks||'')}">`],
   ];
   return `
@@ -3691,6 +3704,13 @@ function readAdmissionForm() {
     arrears_due: Number(document.getElementById('ar-arrears').value || 0),
     class_withdrawn: document.getElementById('ar-class-withdrawn').value || null,
     withdrawal_date: dateVal('ar-withdrawal-date', null),
+    high_middle_slc_no: document.getElementById('ar-hm-slc-no').value.trim(),
+    bise_enrolment_no: document.getElementById('ar-bise').value.trim(),
+    slc_issue_date: dateVal('ar-slc-issue-date', null),
+    attendance_possible: document.getElementById('ar-attendance-possible').value.trim(),
+    attendance_actual: document.getElementById('ar-attendance-actual').value.trim(),
+    school_fund_report: document.getElementById('ar-school-fund').value.trim(),
+    conduct: document.getElementById('ar-conduct').value.trim(),
     remarks: document.getElementById('ar-remarks').value.trim(),
   };
 }
@@ -3782,37 +3802,27 @@ function rec(val, dash) {
 
 function slcParagraphEn(r, dash) {
   const rel = 'S/O, D/O';
-  const duesLine = (r.arrears_due && Number(r.arrears_due) > 0)
-    ? `An amount of ${rec('₨' + fmt(r.arrears_due), dash)} stood outstanding against the student at the time of leaving.`
-    : `No dues stood outstanding against the student at the time of leaving.`;
   return `
     This is to certify that ${rec(r.student_name, dash)} ${rel} ${rec(r.father_name, dash)},
-    Caste/Tribe ${rec(r.caste_tribe, dash)}, resident of ${rec(r.residence, dash)},
-    bearing Serial No. ${rec(r.serial_no, dash)} in the Admission &amp; Withdrawal Register of this
-    institution, was admitted on ${rec(fmtDate(r.admission_date), dash)} in Class ${rec(r.class_admitted, dash)}.
-    As per the register, his/her date of birth is ${rec(r.dob_words, dash)} (${rec(fmtDate(r.dob_figures), dash)}).
-    He/She remained a student of this institution up to Class ${rec(r.class_withdrawn, dash)} and was
-    struck off the rolls on ${rec(fmtDate(r.withdrawal_date), dash)}. During the period of study, his/her conduct
-    remained ${rec(r.conduct || 'Good', dash)}. ${duesLine} This certificate is issued at his/her request for
-    whatever purpose it may serve.
+    resident of ${rec(r.residence, dash)}, bearing Serial No. ${rec(r.serial_no, dash)} in the
+    Admission &amp; Withdrawal Register of this institution, was admitted on ${rec(fmtDate(r.admission_date), dash)}
+    in Class ${rec(r.class_admitted, dash)}. As per the register, his/her date of birth is
+    ${rec(r.dob_words, dash)} (${rec(fmtDate(r.dob_figures), dash)}), and he/she was struck off the rolls
+    on ${rec(fmtDate(r.withdrawal_date), dash)}. During the period of study, his/her conduct remained
+    ${rec(r.conduct || 'Good', dash)}. This certificate is issued at his/her request for whatever purpose it may serve.
   `;
 }
 
 function slcParagraphUr(r, dash) {
   const rel = 'ولد، بنتِ';
-  const duesLine = (r.arrears_due && Number(r.arrears_due) > 0)
-    ? `اخراج کے وقت طالب علم کے ذمے ${rec('₨' + fmt(r.arrears_due), dash)} واجب الادا تھے۔`
-    : `اخراج کے وقت طالب علم کے ذمے کوئی رقم واجب الادا نہیں تھی۔`;
   return `
     یہ تصدیق کی جاتی ہے کہ ${rec(r.student_name_ur || r.student_name, dash)} ${rel} ${rec(r.father_name_ur || r.father_name, dash)}،
-    ذات/قبیلہ ${rec(r.caste_tribe_ur || r.caste_tribe, dash)}،
     ساکن ${rec(r.residence_ur || r.residence, dash)}، جو اس ادارے کے داخلہ و اخراج رجسٹر میں سیریل نمبر
     ${rec(r.serial_no, dash)} پر درج ہے، کو تاریخ ${rec(fmtDate(r.admission_date), dash)} کو جماعت
     ${rec(classNameUrdu(r.class_admitted), dash)} میں داخل کیا گیا تھا۔ رجسٹر کے مطابق موصوف/موصوفہ کی تاریخ پیدائش
-    ${rec(r.dob_words, dash)} (${rec(fmtDate(r.dob_figures), dash)}) ہے۔ موصوف/موصوفہ اس ادارے میں جماعت
-    ${rec(classNameUrdu(r.class_withdrawn), dash)} تک زیرِ تعلیم رہے اور تاریخ ${rec(fmtDate(r.withdrawal_date), dash)} کو
-    رجسٹر سے خارج کیے گئے۔ زیرِ تعلیم رہنے کی مدت کے دوران اخلاق ${rec(r.conduct || 'اچھا', dash)} رہا۔
-    ${duesLine} یہ سرٹیفکیٹ ان کی درخواست پر، جہاں ضرورت ہو استعمال کے لیے، جاری کیا جاتا ہے۔
+    ${rec(r.dob_words, dash)} (${rec(fmtDate(r.dob_figures), dash)}) ہے، اور وہ تاریخ ${rec(fmtDate(r.withdrawal_date), dash)}
+    کو رجسٹر سے خارج کیے گئے۔ زیرِ تعلیم رہنے کی مدت کے دوران اخلاق ${rec(r.conduct || 'اچھا', dash)} رہا۔
+    یہ سرٹیفکیٹ ان کی درخواست پر، جہاں ضرورت ہو استعمال کے لیے، جاری کیا جاتا ہے۔
   `;
 }
 
@@ -3844,10 +3854,18 @@ async function printAdmissionEntry(id) {
         </div>
         <div class="slc-meta">
           <span><b>${esc(t.slcNo)}:</b> ${esc(r.serial_no || dash)}</span>
-          <span><b>${esc(t.slcIssueDate)}:</b> ${esc(fmtDate(todayISO()))}</span>
+          <span><b>${esc(t.slcIssueDate)}:</b> ${esc(fmtDate(r.slc_issue_date || todayISO()))}</span>
+        </div>
+        <div class="slc-meta" style="margin-top:6px;flex-wrap:wrap;gap:8px;">
+          <span><b>${esc(t.highMiddleSlcNo)}:</b> ${esc(r.high_middle_slc_no || dash)}</span>
+          <span><b>${esc(t.bise)}:</b> ${esc(r.bise_enrolment_no || dash)}</span>
         </div>
         <div class="slc-body">${paragraph}</div>
-        ${r.remarks ? `<div class="slc-remarks">${esc(t.remarks)}: <b class="rec">${esc(r.remarks)}</b></div>` : ''}
+        <div class="slc-meta" style="margin-top:14px;flex-wrap:wrap;gap:8px;">
+          <span><b>${esc(t.attendancePossible)}:</b> ${esc(r.attendance_possible || dash)}</span>
+          <span><b>${esc(t.attendanceActual)}:</b> ${esc(r.attendance_actual || dash)}</span>
+        </div>
+        <div class="slc-remarks">${esc(t.schoolFundReport)}: <b class="rec">${esc(r.school_fund_report || dash)}</b></div>
         <div class="slc-foot">
           <div class="box seal"><div class="line"></div>${esc(t.officialSeal)}</div>
           <div class="box"><div class="line"></div>${esc(t.headOfInstitution)}</div>
