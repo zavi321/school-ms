@@ -29,7 +29,6 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,500;0,9..144,600;0,9..144,700;1,9..144,500;1,9..144,600;1,9..144,700&family=Inter:wght@400;500;600;700&family=Noto+Nastaliq+Urdu:wght@600;700&family=Noto+Sans+Urdu:wght@400;500;600&display=swap">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.4/dist/umd/supabase.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
 <style>
   :root{
     --navy:#0F2740; --navy-deep:#0A1B2C; --gold:#C9A227; --gold-soft:#E4C765;
@@ -2465,9 +2464,15 @@ async function submitAttendance(date) {
   closeModal(); await loadAllData(); renderTab();
 }
 
-// Attendance-based salary: full monthly salary minus a per-day deduction for
-// each day marked 'absent' in the given month. 'leave' does not deduct, and
-// days with no attendance record at all (weekends/holidays) are ignored.
+// Attendance-based salary: full monthly salary minus a per-day deduction.
+// 'leave' never deducts, and days with no attendance record at all
+// (weekends/holidays) are ignored.
+// For 'absent' days, the first 2 in a month are forgiven (no deduction).
+// From the 3rd absent day onward, deducted days = absent - 2, e.g.:
+//   1 or 2 absent -> 0 days deducted
+//   3 absent -> 1 day deducted
+//   4 absent -> 2 days deducted
+//   5 absent -> 3 days deducted, and so on.
 function teacherAttendanceForMonth(teacherId, month) {
   return DATA.teacherAttendance.filter(a => a.teacher_id === teacherId && (a.date || '').slice(0,7) === month);
 }
@@ -2480,8 +2485,9 @@ function calcAttendanceSalary(teacherId, month) {
   const [y, m] = month.split('-').map(Number);
   const daysInMonth = new Date(y, m, 0).getDate();
   const dailyRate = Number(tc && tc.monthly_salary || 0) / daysInMonth;
-  const amount = Math.max(0, Math.round(Number(tc && tc.monthly_salary || 0) - dailyRate * absent));
-  return { present, leave, absent, hasRecords: recs.length > 0, amount };
+  const deductedDays = Math.max(0, absent - 2);
+  const amount = Math.max(0, Math.round(Number(tc && tc.monthly_salary || 0) - dailyRate * deductedDays));
+  return { present, leave, absent, deductedDays, hasRecords: recs.length > 0, amount };
 }
 function updateAttendanceSalaryInfo(teacherId) {
   const monthInput = document.getElementById('p-month');
@@ -2491,7 +2497,7 @@ function updateAttendanceSalaryInfo(teacherId) {
   const tc = DATA.teachers.find(x => x.id === teacherId);
   const r = calcAttendanceSalary(teacherId, monthInput.value);
   infoEl.innerHTML = r.hasRecords
-    ? `${esc(t.present)}: ${r.present} · ${esc(t.leave)}: ${r.leave} · ${esc(t.absent)}: ${r.absent} — ${esc(t.suggestedSalary)}: ₨${fmt(r.amount)}`
+    ? `${esc(t.present)}: ${r.present} · ${esc(t.leave)}: ${r.leave} · ${esc(t.absent)}: ${r.absent}${r.deductedDays > 0 ? ` (-${r.deductedDays}d)` : ''} — ${esc(t.suggestedSalary)}: ₨${fmt(r.amount)}`
     : esc(t.noAttendanceMarked);
   amountEl.value = r.hasRecords ? r.amount : (tc && tc.monthly_salary || '');
 }
@@ -2518,17 +2524,20 @@ function renderQrCheckinBody() {
   const url = window.location.origin + window.location.pathname + '?checkin=' + qrCheckinToken;
   const body = document.getElementById('qr-checkin-body');
   if (!body) return;
+  const qrImgUrl = 'https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=' + encodeURIComponent(url);
   body.innerHTML = `
     <p style="font-size:12px;opacity:.7;">${esc(t.checkinQrHint)}</p>
     <div style="display:flex;justify-content:center;margin:12px 0;">
-      <canvas id="qr-canvas"></canvas>
+      <img id="qr-img" src="${esc(qrImgUrl)}" alt="QR" width="220" height="220" style="border:1px solid var(--line);border-radius:8px;background:#fff;" onerror="document.getElementById('qr-fallback').style.display='block';this.style.display='none';">
+    </div>
+    <div id="qr-fallback" style="display:none;font-size:11px;background:#fff;border:1px solid var(--line);border-radius:8px;padding:8px;margin-bottom:10px;">
+      ${esc(LANG==='ur' ? 'QR تصویر لوڈ نہیں ہو سکی — یہ لنک براہ راست WhatsApp پر بھیج دیں:' : 'QR image could not load — share this link directly instead:')}
+      <div style="word-break:break-all;font-weight:600;margin-top:4px;">${esc(url)}</div>
     </div>
     <button class="btn-ghost" style="width:100%;" onclick="regenerateCheckinToken()">${esc(t.regenerateCode)}</button>
     <div class="section-title">${esc(t.todaysCheckins)}</div>
     <div id="todays-checkins-list"></div>
   `;
-  const canvas = document.getElementById('qr-canvas');
-  if (canvas && window.QRCode) QRCode.toCanvas(canvas, url, { width: 200, margin: 1 }, () => {});
   renderTodaysCheckinsList();
 }
 
@@ -2575,7 +2584,7 @@ function openTeacherDetail(id) {
       <input id="p-month" type="month" value="${curMonth}" onchange="updateAttendanceSalaryInfo('${id}')">
       <label style="margin-bottom:0;"><span>${esc(t.baseSalary)}</span><input id="p-amount" type="number" placeholder="${esc(t.enterAmount)}" value="${attInfo.hasRecords ? attInfo.amount : (tc.monthly_salary||'')}"></label>
     </div>
-    <div id="attendance-info" style="font-size:11px;opacity:.7;margin-top:6px;">${attInfo.hasRecords ? `${esc(t.present)}: ${attInfo.present} · ${esc(t.leave)}: ${attInfo.leave} · ${esc(t.absent)}: ${attInfo.absent} — ${esc(t.suggestedSalary)}: ₨${fmt(attInfo.amount)}` : esc(t.noAttendanceMarked)}</div>
+    <div id="attendance-info" style="font-size:11px;opacity:.7;margin-top:6px;">${attInfo.hasRecords ? `${esc(t.present)}: ${attInfo.present} · ${esc(t.leave)}: ${attInfo.leave} · ${esc(t.absent)}: ${attInfo.absent}${attInfo.deductedDays > 0 ? ` (-${attInfo.deductedDays}d)` : ''} — ${esc(t.suggestedSalary)}: ₨${fmt(attInfo.amount)}` : esc(t.noAttendanceMarked)}</div>
     <div class="row2" style="margin-top:8px;">
       <label style="margin-bottom:0;"><span>${esc(t.attendanceBonus)}</span><input id="p-bonus" type="number" value="0"></label>
       <label style="margin-bottom:0;"><span>${esc(t.extraClass)}</span><input id="p-extra" type="number" value="0"></label>
