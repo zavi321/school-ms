@@ -29,6 +29,7 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,500;0,9..144,600;0,9..144,700;1,9..144,500;1,9..144,600;1,9..144,700&family=Inter:wght@400;500;600;700&family=Noto+Nastaliq+Urdu:wght@600;700&family=Noto+Sans+Urdu:wght@400;500;600&display=swap">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.4/dist/umd/supabase.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
 <style>
   :root{
     --navy:#0F2740; --navy-deep:#0A1B2C; --gold:#C9A227; --gold-soft:#E4C765;
@@ -491,6 +492,16 @@ const T = {
     save:'Save', cancel:'Cancel', delete:'Delete', paid:'Paid', due:'Due',
     addTeacher:'Add Teacher', teacherName:'Teacher Name', subject:'Subject / Role', monthlySalary:'Monthly Salary (Rs)',
     joinDate:'Join Date', searchTeachers:'Search teachers...', noTeachers:'No teachers yet. Add your first teacher to get started.',
+    markAttendance:'Mark Attendance', attendanceDate:'Date', present:'Present', absent:'Absent', leave:'Leave',
+    suggestedSalary:'Suggested Salary (from attendance)', noAttendanceMarked:'No attendance marked for this month — full salary shown.',
+    saveAttendance:'Save Attendance', attendanceSaved:'Attendance saved.',
+    qrCheckin:'QR Check-in', checkinTitle:'Teacher Check-in', checkinSelectPrompt:'Select your name to mark yourself present today.',
+    checkinButton:'Mark Me Present', checkinSuccess:'You are marked present. Thank you!',
+    checkinAlready:'You are already marked present today.', checkinInvalid:'This QR code is not valid or has expired.',
+    checkinOffline:'Saved offline — will sync automatically once you\'re back online.', checkinOfflineNoList:'You are offline and no teacher list is cached yet. Please connect to the internet once to load it.',
+    checkinChooseTeacher:'— Select your name —', regenerateCode:'Regenerate Code', regenerateCodeConfirm:'This will invalidate the old QR code — anyone with the old code will no longer be able to check in. Continue?',
+    todaysCheckins:'Today\'s Check-ins', noCheckinsYet:'No one has checked in yet today.', checkedInAt:'at',
+    checkinQrHint:'Print or display this QR code at the entrance. Teachers scan it with their phone camera to mark themselves present — works even briefly offline, syncing once back online.',
     salaryLedger:'Salary Ledger', payMonth:'Pay Month',
     baseSalary:'Base Salary', attendanceBonus:'Attendance Bonus', extraClass:'Extra Class',
     addTransaction:'Add Entry', income:'Income', expense:'Expense', category:'Category', description:'Description', date:'Date',
@@ -585,6 +596,16 @@ const T = {
     save:'محفوظ کریں', cancel:'منسوخ کریں', delete:'حذف کریں', paid:'ادا شدہ', due:'واجب الادا',
     addTeacher:'استاد شامل کریں', teacherName:'استاد کا نام', subject:'مضمون / عہدہ', monthlySalary:'ماہانہ تنخواہ (روپے)',
     joinDate:'شمولیت کی تاریخ', searchTeachers:'اساتذہ تلاش کریں...', noTeachers:'ابھی کوئی استاد شامل نہیں۔',
+    markAttendance:'حاضری لگائیں', attendanceDate:'تاریخ', present:'حاضر', absent:'غیر حاضر', leave:'رخصت',
+    suggestedSalary:'تجویز کردہ تنخواہ (حاضری کی بنیاد پر)', noAttendanceMarked:'اس مہینے کے لیے حاضری درج نہیں — پوری تنخواہ دکھائی جا رہی ہے۔',
+    saveAttendance:'حاضری محفوظ کریں', attendanceSaved:'حاضری محفوظ ہو گئی۔',
+    qrCheckin:'QR چیک اِن', checkinTitle:'اساتذہ حاضری', checkinSelectPrompt:'آج اپنی حاضری لگانے کے لیے اپنا نام منتخب کریں۔',
+    checkinButton:'میری حاضری لگائیں', checkinSuccess:'آپ کی حاضری لگ گئی۔ شکریہ!',
+    checkinAlready:'آپ کی حاضری آج پہلے ہی لگ چکی ہے۔', checkinInvalid:'یہ QR کوڈ درست نہیں یا میعاد ختم ہو چکی ہے۔',
+    checkinOffline:'آف لائن محفوظ ہو گیا — انٹرنیٹ آنے پر خود بخود بھیج دیا جائے گا۔', checkinOfflineNoList:'آپ آف لائن ہیں اور اساتذہ کی فہرست ابھی محفوظ نہیں — براہ کرم ایک بار انٹرنیٹ سے جڑیں۔',
+    checkinChooseTeacher:'— اپنا نام منتخب کریں —', regenerateCode:'نیا کوڈ بنائیں', regenerateCodeConfirm:'اس سے پرانا QR کوڈ غیر فعال ہو جائے گا — پرانے کوڈ والے اب حاضری نہیں لگا سکیں گے۔ جاری رکھیں؟',
+    todaysCheckins:'آج کی حاضریاں', noCheckinsYet:'ابھی تک کسی نے حاضری نہیں لگائی۔', checkedInAt:'بوقت',
+    checkinQrHint:'یہ QR کوڈ داخلی دروازے پر لگائیں یا دکھائیں۔ اساتذہ اپنے فون کیمرے سے اسکین کر کے خود حاضری لگا سکتے ہیں — تھوڑی دیر آف لائن ہونے پر بھی کام کرتا ہے، انٹرنیٹ آنے پر خود بخود بھیج دیتا ہے۔',
     salaryLedger:'تنخواہ کھاتہ', payMonth:'ادائیگی کا مہینہ',
     baseSalary:'بنیادی تنخواہ', attendanceBonus:'حاضری بونس', extraClass:'اضافی کلاس',
     addTransaction:'اندراج شامل کریں', income:'آمدنی', expense:'اخراجات', category:'قسم', description:'تفصیل', date:'تاریخ',
@@ -742,7 +763,7 @@ function reportSaveError(error) {
   return true;
 }
 
-let DATA = { students:[], feePayments:[], teachers:[], salaryPayments:[], transactions:[], admissionRegister:[] };
+let DATA = { students:[], feePayments:[], teachers:[], salaryPayments:[], transactions:[], admissionRegister:[], teacherAttendance:[] };
 let TAB = 'dashboard';
 let CURRENT_USER = null;   // { id, email }
 let CURRENT_PROFILE = null; // { school_name }
@@ -812,6 +833,11 @@ function renderForgotEmail() {
 
 async function boot() {
   document.body.className = LANG === 'ur' ? 'ur' : '';
+
+  // A teacher scanning the Principal's QR code lands here with ?checkin=TOKEN —
+  // this is a public, no-login page, so it's handled before any session check.
+  const checkinToken = new URLSearchParams(window.location.search).get('checkin');
+  if (checkinToken) { renderCheckinEntry(checkinToken); return; }
 
   let handledAsRecovery = false;
   sb.auth.onAuthStateChange((event) => {
@@ -986,14 +1012,14 @@ async function submitLogIn() {
 async function logOut() {
   await sb.auth.signOut();
   CURRENT_USER = null; CURRENT_PROFILE = null;
-  DATA = { students:[], feePayments:[], teachers:[], salaryPayments:[], transactions:[], admissionRegister:[] };
+  DATA = { students:[], feePayments:[], teachers:[], salaryPayments:[], transactions:[], admissionRegister:[], teacherAttendance:[] };
   document.getElementById('app').classList.add('hidden');
   renderLogIn();
 }
 
 // ---------------- Data loading (RLS auto-scopes everything to this school) ----------------
 async function loadAllData() {
-  const [s, fp, tc, sp, tx, ar] = await Promise.all([
+  const [s, fp, tc, sp, tx, ar, ta] = await Promise.all([
     sb.from('students').select('*').order('created_at'),
     sb.from('fee_payments').select('*'),
     sb.from('teachers').select('*').order('created_at'),
@@ -1002,6 +1028,7 @@ async function loadAllData() {
     // Admission & Withdrawal Register: a standalone record, unrelated to the
     // students/fee-finance tables above — it is never joined or cross-referenced.
     sb.from('admission_register').select('*').order('serial_no'),
+    sb.from('teacher_attendance').select('*'),
   ]);
   DATA.students = s.data || [];
   DATA.feePayments = fp.data || [];
@@ -1009,6 +1036,7 @@ async function loadAllData() {
   DATA.salaryPayments = sp.data || [];
   DATA.transactions = tx.data || [];
   DATA.admissionRegister = ar.data || [];
+  DATA.teacherAttendance = ta.data || [];
 }
 
 // How many months' worth of fee a student's current balance represents.
@@ -2338,6 +2366,12 @@ function tplTeachers() {
     <div style="padding-top:16px;">
       <div class="searchbar">
         <input placeholder="${esc(t.searchTeachers)}" value="${esc(teacherSearch)}" oninput="setTeacherSearch(this.value)">
+        <button class="icon-btn" title="${esc(t.markAttendance)}" onclick="openMarkAttendance()">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#E4C765" stroke-width="2.5"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
+        </button>
+        <button class="icon-btn" title="${esc(t.qrCheckin)}" onclick="openQrCheckin()">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#E4C765" stroke-width="2.5"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><path d="M14 14h3v3h-3zM19 14h2v2h-2zM14 19h2v2h-2zM19 19h2v2h-2z"/></svg>
+        </button>
         <button class="icon-btn" onclick="openAddTeacher()">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#E4C765" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg>
         </button>
@@ -2384,10 +2418,152 @@ async function submitAddTeacher() {
   closeModal(); await loadAllData(); renderTab();
 }
 
+let attendanceDraft = {}; // { teacherId: 'present'|'absent'|'leave' } — working state for the currently open Mark Attendance modal
+
+function openMarkAttendance(dateStr) {
+  const date = dateStr || todayISO();
+  // Pre-fill the draft from whatever is already saved for this date.
+  attendanceDraft = {};
+  DATA.teacherAttendance.filter(a => a.date === date).forEach(a => { attendanceDraft[a.teacher_id] = a.status; });
+  showModal(t.markAttendance, `
+    <label><span>${esc(t.attendanceDate)}</span><input id="att-date" type="date" value="${date}" onchange="openMarkAttendance(this.value)"></label>
+    <div id="attendance-roster">${renderAttendanceRoster()}</div>
+    <div class="flexgap" style="margin-top:12px;">
+      <button class="btn-ghost" onclick="closeModal()">${esc(t.cancel)}</button>
+      <button class="btn-primary" style="flex:1" onclick="guardedSubmit(this, ()=>submitAttendance('${date}'))">${esc(t.saveAttendance)}</button>
+    </div>
+  `);
+}
+
+function renderAttendanceRoster() {
+  if (!DATA.teachers.length) return `<div class="empty">${esc(t.noTeachers)}</div>`;
+  const opt = (id, val, label, color) => `<button type="button" onclick="setAttendanceMark('${id}','${val}')" style="flex:1;padding:7px 4px;border-radius:8px;font-size:11px;font-weight:600;border:1.5px solid ${attendanceDraft[id]===val?color:'var(--line)'};background:${attendanceDraft[id]===val?color:'#fff'};color:${attendanceDraft[id]===val?'#fff':'var(--ink)'};">${esc(label)}</button>`;
+  return DATA.teachers.map(tc => `
+    <div style="display:flex;align-items:center;gap:8px;border-bottom:1px solid var(--line);padding:8px 0;">
+      <div style="flex:1;font-size:13px;">${esc(tc.name)}</div>
+      <div style="display:flex;gap:6px;width:180px;">
+        ${opt(tc.id,'present',t.present,'var(--sage)')}
+        ${opt(tc.id,'leave',t.leave,'var(--gold)')}
+        ${opt(tc.id,'absent',t.absent,'var(--rust)')}
+      </div>
+    </div>`).join('');
+}
+
+function setAttendanceMark(teacherId, status) {
+  attendanceDraft[teacherId] = attendanceDraft[teacherId] === status ? undefined : status;
+  const el = document.getElementById('attendance-roster');
+  if (el) el.innerHTML = renderAttendanceRoster();
+}
+
+async function submitAttendance(date) {
+  const rows = Object.keys(attendanceDraft)
+    .filter(id => attendanceDraft[id])
+    .map(id => ({ owner_id: CURRENT_USER.id, teacher_id: id, date, status: attendanceDraft[id] }));
+  if (!rows.length) { closeModal(); return; }
+  const { error } = await sb.from('teacher_attendance').upsert(rows, { onConflict: 'teacher_id,date' });
+  if (reportSaveError(error)) return;
+  closeModal(); await loadAllData(); renderTab();
+}
+
+// Attendance-based salary: full monthly salary minus a per-day deduction for
+// each day marked 'absent' in the given month. 'leave' does not deduct, and
+// days with no attendance record at all (weekends/holidays) are ignored.
+function teacherAttendanceForMonth(teacherId, month) {
+  return DATA.teacherAttendance.filter(a => a.teacher_id === teacherId && (a.date || '').slice(0,7) === month);
+}
+function calcAttendanceSalary(teacherId, month) {
+  const tc = DATA.teachers.find(x => x.id === teacherId);
+  const recs = teacherAttendanceForMonth(teacherId, month);
+  const present = recs.filter(r => r.status === 'present').length;
+  const leave = recs.filter(r => r.status === 'leave').length;
+  const absent = recs.filter(r => r.status === 'absent').length;
+  const [y, m] = month.split('-').map(Number);
+  const daysInMonth = new Date(y, m, 0).getDate();
+  const dailyRate = Number(tc && tc.monthly_salary || 0) / daysInMonth;
+  const amount = Math.max(0, Math.round(Number(tc && tc.monthly_salary || 0) - dailyRate * absent));
+  return { present, leave, absent, hasRecords: recs.length > 0, amount };
+}
+function updateAttendanceSalaryInfo(teacherId) {
+  const monthInput = document.getElementById('p-month');
+  const infoEl = document.getElementById('attendance-info');
+  const amountEl = document.getElementById('p-amount');
+  if (!monthInput || !infoEl || !amountEl) return;
+  const tc = DATA.teachers.find(x => x.id === teacherId);
+  const r = calcAttendanceSalary(teacherId, monthInput.value);
+  infoEl.innerHTML = r.hasRecords
+    ? `${esc(t.present)}: ${r.present} · ${esc(t.leave)}: ${r.leave} · ${esc(t.absent)}: ${r.absent} — ${esc(t.suggestedSalary)}: ₨${fmt(r.amount)}`
+    : esc(t.noAttendanceMarked);
+  amountEl.value = r.hasRecords ? r.amount : (tc && tc.monthly_salary || '');
+}
+
+// ---------------- QR Check-in (Principal side: show the QR, watch live check-ins) ----------------
+let qrCheckinPollTimer = null;
+let qrCheckinToken = null;
+
+async function openQrCheckin() {
+  showModal(t.qrCheckin, `<div id="qr-checkin-body" style="text-align:center;padding:20px 0;opacity:.6;">…</div>`);
+  let { data: row } = await sb.from('checkin_tokens').select('*').eq('owner_id', CURRENT_USER.id).maybeSingle();
+  if (!row) {
+    const ins = await sb.from('checkin_tokens').insert({ owner_id: CURRENT_USER.id }).select().single();
+    row = ins.data;
+  }
+  if (!row) { document.getElementById('qr-checkin-body').innerHTML = `<div class="err">Could not create check-in code.</div>`; return; }
+  qrCheckinToken = row.token;
+  renderQrCheckinBody();
+  clearInterval(qrCheckinPollTimer);
+  qrCheckinPollTimer = setInterval(async () => { await loadAllData(); renderTodaysCheckinsList(); }, 15000);
+}
+
+function renderQrCheckinBody() {
+  const url = window.location.origin + window.location.pathname + '?checkin=' + qrCheckinToken;
+  const body = document.getElementById('qr-checkin-body');
+  if (!body) return;
+  body.innerHTML = `
+    <p style="font-size:12px;opacity:.7;">${esc(t.checkinQrHint)}</p>
+    <div style="display:flex;justify-content:center;margin:12px 0;">
+      <canvas id="qr-canvas"></canvas>
+    </div>
+    <button class="btn-ghost" style="width:100%;" onclick="regenerateCheckinToken()">${esc(t.regenerateCode)}</button>
+    <div class="section-title">${esc(t.todaysCheckins)}</div>
+    <div id="todays-checkins-list"></div>
+  `;
+  const canvas = document.getElementById('qr-canvas');
+  if (canvas && window.QRCode) QRCode.toCanvas(canvas, url, { width: 200, margin: 1 }, () => {});
+  renderTodaysCheckinsList();
+}
+
+function renderTodaysCheckinsList() {
+  const el = document.getElementById('todays-checkins-list');
+  if (!el) return;
+  const today = todayISO();
+  const rows = DATA.teacherAttendance.filter(a => a.date === today && a.checked_in_at);
+  if (!rows.length) { el.innerHTML = `<div style="padding:10px;text-align:center;font-size:12px;opacity:.5;">${esc(t.noCheckinsYet)}</div>`; return; }
+  el.innerHTML = rows
+    .sort((a,b) => new Date(b.checked_in_at) - new Date(a.checked_in_at))
+    .map(r => {
+      const tc = DATA.teachers.find(x => x.id === r.teacher_id);
+      const time = new Date(r.checked_in_at).toLocaleTimeString(LANG==='ur'?'ur-PK':'en-PK', { hour:'2-digit', minute:'2-digit' });
+      return `<div class="ledger-row"><span style="font-size:13px;">✓ ${esc(tc ? tc.name : '—')}</span><span style="font-size:11px;opacity:.6;">${esc(t.checkedInAt)} ${esc(time)}</span></div>`;
+    }).join('');
+}
+
+function regenerateCheckinToken() {
+  if (!confirm(t.regenerateCodeConfirm)) return;
+  (async () => {
+    const newToken = (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random().toString(16).slice(2)).replace(/-/g,'');
+    const { error } = await sb.from('checkin_tokens').update({ token: newToken }).eq('owner_id', CURRENT_USER.id);
+    if (reportSaveError(error)) return;
+    qrCheckinToken = newToken;
+    renderQrCheckinBody();
+  })();
+}
+
 function openTeacherDetail(id) {
   const tc = DATA.teachers.find(x=>x.id===id);
   const payments = teacherPayments(id).slice().sort((a,b)=> new Date(b.pay_date)-new Date(a.pay_date));
   const totalPaid = payments.reduce((a,b)=>a+Number(b.amount),0);
+  const curMonth = monthKey();
+  const attInfo = calcAttendanceSalary(id, curMonth);
   showModal(tc.name, `
     <div style="font-size:12px;opacity:.7;margin-bottom:12px;display:flex;flex-wrap:wrap;gap:12px;">
       <span>${esc(t.subject)}: ${esc(tc.subject||'')}</span>
@@ -2396,9 +2572,10 @@ function openTeacherDetail(id) {
     <div class="greenbox"><div class="lbl">${esc(t.totalSalariesAllTime)}</div><div class="val">₨${fmt(totalPaid)}</div></div>
     <div class="section-title" style="margin-top:0;">${esc(t.payMonth)}</div>
     <div class="row2">
-      <input id="p-month" type="month" value="${monthKey()}">
-      <label style="margin-bottom:0;"><span>${esc(t.baseSalary)}</span><input id="p-amount" type="number" placeholder="${esc(t.enterAmount)}" value="${tc.monthly_salary||''}"></label>
+      <input id="p-month" type="month" value="${curMonth}" onchange="updateAttendanceSalaryInfo('${id}')">
+      <label style="margin-bottom:0;"><span>${esc(t.baseSalary)}</span><input id="p-amount" type="number" placeholder="${esc(t.enterAmount)}" value="${attInfo.hasRecords ? attInfo.amount : (tc.monthly_salary||'')}"></label>
     </div>
+    <div id="attendance-info" style="font-size:11px;opacity:.7;margin-top:6px;">${attInfo.hasRecords ? `${esc(t.present)}: ${attInfo.present} · ${esc(t.leave)}: ${attInfo.leave} · ${esc(t.absent)}: ${attInfo.absent} — ${esc(t.suggestedSalary)}: ₨${fmt(attInfo.amount)}` : esc(t.noAttendanceMarked)}</div>
     <div class="row2" style="margin-top:8px;">
       <label style="margin-bottom:0;"><span>${esc(t.attendanceBonus)}</span><input id="p-bonus" type="number" value="0"></label>
       <label style="margin-bottom:0;"><span>${esc(t.extraClass)}</span><input id="p-extra" type="number" value="0"></label>
@@ -3985,7 +4162,7 @@ function showModal(title, bodyHtml) {
       </div>
     </div>`;
 }
-function closeModal() { document.getElementById('modal-root').innerHTML = ''; }
+function closeModal() { clearInterval(qrCheckinPollTimer); document.getElementById('modal-root').innerHTML = ''; }
 
 function confirmDelete(kind, id) {
   showModal(t.delete, `
@@ -4009,6 +4186,8 @@ async function doDelete(kind, id) {
   if (kind==='teacher') {
     const r1 = await sb.from('salary_payments').delete().eq('teacher_id', id);
     if (r1.error) err = r1.error;
+    const r1b = await sb.from('teacher_attendance').delete().eq('teacher_id', id);
+    if (r1b.error) err = r1b.error;
     const r2 = await sb.from('teachers').delete().eq('id', id);
     if (r2.error) err = r2.error;
   }
@@ -4022,6 +4201,121 @@ async function doDelete(kind, id) {
   }
   closeModal(); await loadAllData(); renderTab();
   if (err) alert((LANG==='ur' ? 'حذف کرنے میں خرابی: ' : 'Delete failed: ') + err.message);
+}
+
+// ---------------- Public QR Check-in (no login — reached via ?checkin=TOKEN) ----------------
+const CHECKIN_QUEUE_KEY = 'sms_checkin_queue';
+const checkinTeacherListCacheKey = (token) => 'sms_checkin_teachers_' + token;
+
+function getCheckinQueue() {
+  try { return JSON.parse(localStorage.getItem(CHECKIN_QUEUE_KEY) || '[]'); } catch(e) { return []; }
+}
+function setCheckinQueue(q) { localStorage.setItem(CHECKIN_QUEUE_KEY, JSON.stringify(q)); }
+
+async function renderCheckinEntry(token) {
+  document.getElementById('loading').classList.add('hidden');
+  renderAuthShell(`<div id="checkin-body"><div style="text-align:center;padding:20px 0;opacity:.6;">…</div></div>`);
+  await flushCheckinQueue(); // try to clear any older offline check-ins first
+  await loadCheckinTeachers(token);
+  // Keep trying quietly in the background in case connectivity returns mid-visit.
+  window.addEventListener('online', () => flushCheckinQueue());
+  setInterval(() => { if (navigator.onLine) flushCheckinQueue(); }, 20000);
+}
+
+async function loadCheckinTeachers(token) {
+  const body = document.getElementById('checkin-body');
+  let teachers = null, schoolName = '';
+  if (navigator.onLine) {
+    try {
+      const { data, error } = await sb.rpc('checkin_get_teachers', { p_token: token });
+      if (!error && data && data.length) {
+        teachers = data.map(r => ({ id: r.id, name: r.name }));
+        schoolName = data[0].school_name || '';
+        localStorage.setItem(checkinTeacherListCacheKey(token), JSON.stringify({ teachers, schoolName }));
+      } else if (!error && data && data.length === 0) {
+        // Valid RPC call, zero rows: either an invalid token or a school with no teachers yet.
+        teachers = [];
+      }
+    } catch(e) { /* fall through to cache below */ }
+  }
+  if (teachers === null) {
+    try {
+      const cached = JSON.parse(localStorage.getItem(checkinTeacherListCacheKey(token)) || 'null');
+      if (cached) { teachers = cached.teachers; schoolName = cached.schoolName; }
+    } catch(e) {}
+  }
+  if (teachers === null) {
+    body.innerHTML = `<p style="font-size:13px;">${esc(t.checkinOfflineNoList)}</p>`;
+    return;
+  }
+  if (!teachers.length) {
+    body.innerHTML = `<p style="font-size:13px;">${esc(t.checkinInvalid)}</p>`;
+    return;
+  }
+  const queue = getCheckinQueue();
+  const queuedForToken = queue.filter(q => q.token === token).length;
+  body.innerHTML = `
+    ${schoolName ? `<p style="font-size:12px;opacity:.6;margin-top:0;">${esc(schoolName)}</p>` : ''}
+    <p style="font-size:13px;">${esc(t.checkinSelectPrompt)}</p>
+    <label><span>${esc(t.teacherName)}</span>
+      <select id="checkin-teacher">
+        <option value="">${esc(t.checkinChooseTeacher)}</option>
+        ${teachers.map(tc => `<option value="${esc(tc.id)}">${esc(tc.name)}</option>`).join('')}
+      </select>
+    </label>
+    <div id="checkin-msg" style="font-size:12px;margin-bottom:8px;"></div>
+    <button class="btn-primary" style="width:100%;" onclick="submitCheckin('${token}')">${esc(t.checkinButton)}</button>
+    ${queuedForToken ? `<p style="font-size:11px;opacity:.6;margin-top:10px;">${esc(t.checkinOffline)} (${queuedForToken})</p>` : ''}
+  `;
+}
+
+async function submitCheckin(token) {
+  const sel = document.getElementById('checkin-teacher');
+  const msg = document.getElementById('checkin-msg');
+  const teacherId = sel && sel.value;
+  if (!teacherId) return;
+  msg.innerHTML = '';
+
+  if (!navigator.onLine) { queueCheckin(token, teacherId); return; }
+
+  try {
+    const { data, error } = await sb.rpc('checkin_mark_present', { p_token: token, p_teacher_id: teacherId });
+    if (error) throw error;
+    if (data === false) { msg.innerHTML = `<span class="err">${esc(t.checkinInvalid)}</span>`; return; }
+    msg.innerHTML = `<span class="ok">✓ ${esc(t.checkinSuccess)}</span>`;
+    sel.disabled = true;
+  } catch (e) {
+    // Network hiccup even though navigator.onLine said we're online — queue it rather than lose it.
+    queueCheckin(token, teacherId);
+  }
+}
+
+function queueCheckin(token, teacherId) {
+  const q = getCheckinQueue();
+  q.push({ token, teacherId, ts: Date.now() });
+  setCheckinQueue(q);
+  const msg = document.getElementById('checkin-msg');
+  if (msg) msg.innerHTML = `<span class="ok">${esc(t.checkinOffline)}</span>`;
+}
+
+async function flushCheckinQueue() {
+  if (!navigator.onLine) return;
+  let q = getCheckinQueue();
+  if (!q.length) return;
+  const remaining = [];
+  for (const item of q) {
+    try {
+      const { error } = await sb.rpc('checkin_mark_present', { p_token: item.token, p_teacher_id: item.teacherId });
+      if (error) remaining.push(item);
+    } catch(e) { remaining.push(item); }
+  }
+  setCheckinQueue(remaining);
+  // Refresh the on-screen queued-count / message if the check-in page is still open.
+  const body = document.getElementById('checkin-body');
+  if (body && !remaining.length && q.length) {
+    const msg = document.getElementById('checkin-msg');
+    if (msg) msg.innerHTML = `<span class="ok">✓ ${esc(t.checkinSuccess)}</span>`;
+  }
 }
 
 boot();
