@@ -494,6 +494,11 @@ const T = {
     markAttendance:'Mark Attendance', attendanceDate:'Date', present:'Present', absent:'Absent', leave:'Leave',
     suggestedSalary:'Suggested Salary (from attendance)', noAttendanceMarked:'No attendance marked for this month — full salary shown.',
     saveAttendance:'Save Attendance', attendanceSaved:'Attendance saved.',
+    morning:'Morning', afternoon:'Afternoon', teacherRegister:'Register', teacherRegisterTitle:'Teacher Attendance Register',
+    registerMonth:'Month', registerSelectTeacher:'Teacher', registerAllTeachers:'All Teachers',
+    registerLegend:'P = Present · L = Leave · A = Absent · — = not yet due',
+    registerTapHint:'Tap a mark to change it (Morning and Afternoon are set independently).',
+    registerSaved:'Updated.',
     qrCheckin:'QR Check-in', checkinTitle:'Teacher Check-in', checkinSelectPrompt:'Select your name to mark yourself present today.',
     checkinButton:'Mark Me Present', checkinSuccess:'You are marked present. Thank you!',
     checkinAlready:'You are already marked present today.', checkinInvalid:'This QR code is not valid or has expired.',
@@ -601,6 +606,11 @@ const T = {
     markAttendance:'حاضری لگائیں', attendanceDate:'تاریخ', present:'حاضر', absent:'غیر حاضر', leave:'رخصت',
     suggestedSalary:'تجویز کردہ تنخواہ (حاضری کی بنیاد پر)', noAttendanceMarked:'اس مہینے کے لیے حاضری درج نہیں — پوری تنخواہ دکھائی جا رہی ہے۔',
     saveAttendance:'حاضری محفوظ کریں', attendanceSaved:'حاضری محفوظ ہو گئی۔',
+    morning:'صبح', afternoon:'دوپہر', teacherRegister:'رجسٹر', teacherRegisterTitle:'اساتذہ حاضری رجسٹر',
+    registerMonth:'مہینہ', registerSelectTeacher:'استاد', registerAllTeachers:'تمام اساتذہ',
+    registerLegend:'P = حاضر · L = رخصت · A = غیر حاضر · — = ابھی وقت نہیں ہوا',
+    registerTapHint:'نشان تبدیل کرنے کے لیے اس پر ٹیپ کریں (صبح اور دوپہر الگ الگ لگتے ہیں)۔',
+    registerSaved:'اپڈیٹ ہو گیا۔',
     qrCheckin:'QR چیک اِن', checkinTitle:'اساتذہ حاضری', checkinSelectPrompt:'آج اپنی حاضری لگانے کے لیے اپنا نام منتخب کریں۔',
     checkinButton:'میری حاضری لگائیں', checkinSuccess:'آپ کی حاضری لگ گئی۔ شکریہ!',
     checkinAlready:'آپ کی حاضری آج پہلے ہی لگ چکی ہے۔', checkinInvalid:'یہ QR کوڈ درست نہیں یا میعاد ختم ہو چکی ہے۔',
@@ -1452,6 +1462,7 @@ function renderTab() {
   else if (TAB==='dmc') { main.innerHTML = tplDMC(); loadDMCConfig().then(() => { if (TAB==='dmc') { main.innerHTML = tplDMC(); renderDMCSubjects(); } }); }
   else if (TAB==='marksSheet') main.innerHTML = tplMarksSheet();
   else if (TAB==='admissionRegister') main.innerHTML = tplAdmissionRegister();
+  else if (TAB==='teacherRegister') main.innerHTML = tplTeacherRegister();
   else if (TAB==='admin') { main.innerHTML = tplAdmin(); loadWhitelist(); return; }
   main.innerHTML += `<div class="notice">${esc(t.sharedNotice)}</div>`;
   main.innerHTML += `<div class="notice" style="margin-top:8px;font-size:10px;">${esc(t.copyrightNotice)}</div>`;
@@ -2377,6 +2388,9 @@ function tplTeachers() {
         <button class="icon-btn" title="${esc(t.qrCheckin)}" onclick="openQrCheckin()">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#E4C765" stroke-width="2.5"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><path d="M14 14h3v3h-3zM19 14h2v2h-2zM14 19h2v2h-2zM19 19h2v2h-2z"/></svg>
         </button>
+        <button class="icon-btn" title="${esc(t.teacherRegister)}" onclick="openTeacherRegister()">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#E4C765" stroke-width="2.5"><path d="M4 19.5A2.5 2.5 0 016.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"/><path d="M9 7h7M9 11h7"/></svg>
+        </button>
         <button class="icon-btn" onclick="openAddTeacher()">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#E4C765" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg>
         </button>
@@ -2423,16 +2437,33 @@ async function submitAddTeacher() {
   closeModal(); await loadAllData(); renderTab();
 }
 
-let attendanceDraft = {}; // { teacherId: 'present'|'absent'|'leave' } — working state for the currently open Mark Attendance modal
+let attendanceDraft = {}; // { teacherId: { am:'present'|'absent'|'leave'|undefined, pm: same } } — working state for the currently open Mark Attendance modal
+
+// Combines the morning + afternoon marks for one day into the single overall
+// 'status' the rest of the app (salary calc, old reports) already understands.
+// - either session on leave -> the whole day counts as leave (never deducts)
+// - both sessions present -> present
+// - both sessions known but not both present -> absent (a single missed scan
+//   fails the day, per school policy)
+// - only one session marked so far (the other still empty) -> null, i.e. not
+//   final yet; salary calc ignores days with no status, same as before.
+function deriveDayStatus(am, pm) {
+  if (am === 'leave' || pm === 'leave') return 'leave';
+  if (am && pm) return (am === 'present' && pm === 'present') ? 'present' : 'absent';
+  return null;
+}
 
 function openMarkAttendance() {
   // Attendance is always for today — the date is fixed from the device's/
   // server's current day and cannot be changed by hand, so nobody can go
-  // back (or forward) and mark a different day's attendance.
+  // back (or forward) and mark a different day's attendance here. (Past
+  // dates can still be corrected from the Register screen.)
   const date = todayISO();
   // Pre-fill the draft from whatever is already saved for today.
   attendanceDraft = {};
-  DATA.teacherAttendance.filter(a => a.date === date).forEach(a => { attendanceDraft[a.teacher_id] = a.status; });
+  DATA.teacherAttendance.filter(a => a.date === date).forEach(a => {
+    attendanceDraft[a.teacher_id] = { am: a.status_am || undefined, pm: a.status_pm || undefined };
+  });
   showModal(t.markAttendance, `
     <label><span>${esc(t.attendanceDate)}</span><input id="att-date" type="date" value="${date}" disabled></label>
     <div id="attendance-roster">${renderAttendanceRoster()}</div>
@@ -2445,28 +2476,51 @@ function openMarkAttendance() {
 
 function renderAttendanceRoster() {
   if (!DATA.teachers.length) return `<div class="empty">${esc(t.noTeachers)}</div>`;
-  const opt = (id, val, label, color) => `<button type="button" onclick="setAttendanceMark('${id}','${val}')" style="flex:1;padding:7px 4px;border-radius:8px;font-size:11px;font-weight:600;border:1.5px solid ${attendanceDraft[id]===val?color:'var(--line)'};background:${attendanceDraft[id]===val?color:'#fff'};color:${attendanceDraft[id]===val?'#fff':'var(--ink)'};">${esc(label)}</button>`;
+  const opt = (id, session, val, label, color) => {
+    const cur = (attendanceDraft[id] || {})[session];
+    return `<button type="button" onclick="setAttendanceMark('${id}','${session}','${val}')" style="flex:1;padding:6px 3px;border-radius:8px;font-size:10.5px;font-weight:600;border:1.5px solid ${cur===val?color:'var(--line)'};background:${cur===val?color:'#fff'};color:${cur===val?'#fff':'var(--ink)'};">${esc(label)}</button>`;
+  };
   return DATA.teachers.map(tc => `
-    <div style="display:flex;align-items:center;gap:8px;border-bottom:1px solid var(--line);padding:8px 0;">
-      <div style="flex:1;font-size:13px;">${esc(tc.name)}</div>
-      <div style="display:flex;gap:6px;width:180px;">
-        ${opt(tc.id,'present',t.present,'var(--sage)')}
-        ${opt(tc.id,'leave',t.leave,'var(--gold)')}
-        ${opt(tc.id,'absent',t.absent,'var(--rust)')}
+    <div style="border-bottom:1px solid var(--line);padding:8px 0;">
+      <div style="font-size:13px;font-weight:600;margin-bottom:6px;">${esc(tc.name)}</div>
+      <div style="display:flex;align-items:center;gap:6px;margin-bottom:5px;">
+        <div style="width:56px;font-size:10.5px;opacity:.65;">${esc(t.morning)}</div>
+        <div style="display:flex;gap:5px;flex:1;">
+          ${opt(tc.id,'am','present',t.present,'var(--sage)')}
+          ${opt(tc.id,'am','leave',t.leave,'var(--gold)')}
+          ${opt(tc.id,'am','absent',t.absent,'var(--rust)')}
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;gap:6px;">
+        <div style="width:56px;font-size:10.5px;opacity:.65;">${esc(t.afternoon)}</div>
+        <div style="display:flex;gap:5px;flex:1;">
+          ${opt(tc.id,'pm','present',t.present,'var(--sage)')}
+          ${opt(tc.id,'pm','leave',t.leave,'var(--gold)')}
+          ${opt(tc.id,'pm','absent',t.absent,'var(--rust)')}
+        </div>
       </div>
     </div>`).join('');
 }
 
-function setAttendanceMark(teacherId, status) {
-  attendanceDraft[teacherId] = attendanceDraft[teacherId] === status ? undefined : status;
+function setAttendanceMark(teacherId, session, status) {
+  if (!attendanceDraft[teacherId]) attendanceDraft[teacherId] = {};
+  const rec = attendanceDraft[teacherId];
+  rec[session] = rec[session] === status ? undefined : status;
   const el = document.getElementById('attendance-roster');
   if (el) el.innerHTML = renderAttendanceRoster();
 }
 
 async function submitAttendance(date) {
   const rows = Object.keys(attendanceDraft)
-    .filter(id => attendanceDraft[id])
-    .map(id => ({ owner_id: CURRENT_USER.id, teacher_id: id, date, status: attendanceDraft[id] }));
+    .filter(id => attendanceDraft[id].am || attendanceDraft[id].pm)
+    .map(id => {
+      const rec = attendanceDraft[id];
+      return {
+        owner_id: CURRENT_USER.id, teacher_id: id, date,
+        status_am: rec.am || null, status_pm: rec.pm || null,
+        status: deriveDayStatus(rec.am, rec.pm)
+      };
+    });
   if (!rows.length) { closeModal(); return; }
   const { error } = await sb.from('teacher_attendance').upsert(rows, { onConflict: 'teacher_id,date' });
   if (reportSaveError(error)) return;
@@ -2509,6 +2563,112 @@ function updateAttendanceSalaryInfo(teacherId) {
     ? `${esc(t.present)}: ${r.present} · ${esc(t.leave)}: ${r.leave} · ${esc(t.absent)}: ${r.absent}${r.deductedDays > 0 ? ` (-${r.deductedDays}d)` : ''} — ${esc(t.suggestedSalary)}: ₨${fmt(r.amount)}`
     : esc(t.noAttendanceMarked);
   amountEl.value = r.hasRecords ? r.amount : (tc && tc.monthly_salary || '');
+}
+
+// ---------------- Teacher Attendance Register (month grid, Morning + Afternoon per date) ----------------
+let registerMonth = monthKey();
+let registerTeacherFilter = 'all';
+
+function openTeacherRegister() {
+  TAB = 'teacherRegister';
+  renderTab();
+}
+
+function datesInMonth(monthStr) {
+  const [y, m] = monthStr.split('-').map(Number);
+  const days = new Date(y, m, 0).getDate();
+  const out = [];
+  for (let d = 1; d <= days; d++) out.push(`${monthStr}-${String(d).padStart(2,'0')}`);
+  return out;
+}
+
+// What a single Morning/Afternoon cell should show for a given teacher+date,
+// falling back to a computed default when nothing has been scanned/entered yet:
+// - a real record always wins
+// - a past due-time with no record reads as Absent (a missed scan)
+// - a not-yet-due slot (later today, or a future date) shows as pending ('—')
+function registerCellInfo(teacherId, date, session) {
+  const rec = DATA.teacherAttendance.find(a => a.teacher_id === teacherId && a.date === date);
+  const explicit = rec ? (session === 'am' ? rec.status_am : rec.status_pm) : null;
+  if (explicit) return { code: explicit[0].toUpperCase(), status: explicit, pending: false };
+  const today = todayISO();
+  let due;
+  if (date < today) due = true;
+  else if (date > today) due = false;
+  else {
+    const hour = new Date().getHours();
+    due = session === 'am' ? hour >= 12 : hour >= 14;
+  }
+  return due ? { code: 'A', status: 'absent', pending: false } : { code: '—', status: null, pending: true };
+}
+
+function registerCellColor(status) {
+  if (status === 'present') return 'var(--sage)';
+  if (status === 'leave') return 'var(--gold)';
+  if (status === 'absent') return 'var(--rust)';
+  return 'var(--ink)';
+}
+
+function tplTeacherRegister() {
+  const teachersToShow = registerTeacherFilter === 'all' ? DATA.teachers : DATA.teachers.filter(x => x.id === registerTeacherFilter);
+  const dates = datesInMonth(registerMonth);
+  const head1 = teachersToShow.map(tc => `<th colspan="2">${esc(tc.name)}</th>`).join('');
+  const head2 = teachersToShow.map(() => `<th>${esc(t.morning)[0]}</th><th>${esc(t.afternoon)[0]}</th>`).join('');
+  const rows = dates.map(date => {
+    const cells = teachersToShow.map(tc => {
+      const am = registerCellInfo(tc.id, date, 'am');
+      const pm = registerCellInfo(tc.id, date, 'pm');
+      const cell = (info, session) => `<td style="cursor:pointer;color:${registerCellColor(info.status)};font-weight:700;opacity:${info.pending?0.4:1};" onclick="registerCycleMark('${tc.id}','${date}','${session}')">${esc(info.code)}</td>`;
+      return cell(am,'am') + cell(pm,'pm');
+    }).join('');
+    const d = new Date(date + 'T00:00:00');
+    const label = d.toLocaleDateString(LANG==='ur'?'ur-PK':'en-PK', { day:'2-digit', month:'short' });
+    return `<tr><td class="mo" style="text-align:left;white-space:nowrap;">${esc(label)}</td>${cells}</tr>`;
+  }).join('');
+  return `
+    <div style="padding-top:16px;">
+      <div class="flexgap" style="margin-top:0;">
+        <button class="btn-ghost" style="flex:none;padding:9px 14px;" onclick="setTab('teachers')">‹ ${esc(t.back)}</button>
+        <div style="flex:1;font-family:Fraunces,serif;font-size:16px;color:var(--navy);align-self:center;">${esc(t.teacherRegisterTitle)}</div>
+      </div>
+      <div class="row2" style="margin-top:14px;">
+        <label><span>${esc(t.registerMonth)}</span><input type="month" value="${registerMonth}" onchange="registerMonth=this.value; renderTab();"></label>
+        <label><span>${esc(t.registerSelectTeacher)}</span>
+          <select onchange="registerTeacherFilter=this.value; renderTab();">
+            <option value="all" ${registerTeacherFilter==='all'?'selected':''}>${esc(t.registerAllTeachers)}</option>
+            ${DATA.teachers.map(tc => `<option value="${tc.id}" ${registerTeacherFilter===tc.id?'selected':''}>${esc(tc.name)}</option>`).join('')}
+          </select>
+        </label>
+      </div>
+      ${DATA.teachers.length===0 ? `<div class="empty">${esc(t.noTeachers)}</div>` : `
+      <div class="card-table-wrap" style="margin-top:6px;">
+        <table class="card-table">
+          <thead><tr><th rowspan="2" style="text-align:left;">${esc(t.dateCol)}</th>${head1}</tr><tr>${head2}</tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+      <p style="font-size:10.5px;opacity:.55;margin-top:8px;">${esc(t.registerLegend)}<br>${esc(t.registerTapHint)}</p>`}
+    </div>`;
+}
+
+// Tapping a cell cycles Present -> Leave -> Absent -> (cleared, back to computed
+// default) and saves immediately, so corrections don't need the Mark Attendance modal.
+async function registerCycleMark(teacherId, date, session) {
+  const rec = DATA.teacherAttendance.find(a => a.teacher_id === teacherId && a.date === date) || {};
+  const cur = session === 'am' ? rec.status_am : rec.status_pm;
+  const order = ['present','leave','absent', null];
+  const next = order[(order.indexOf(cur || null) + 1) % order.length];
+  const otherSession = session === 'am' ? (rec.status_pm || null) : (rec.status_am || null);
+  const payload = {
+    owner_id: CURRENT_USER.id, teacher_id: teacherId, date,
+    status_am: session === 'am' ? next : (rec.status_am || null),
+    status_pm: session === 'pm' ? next : (rec.status_pm || null),
+  };
+  payload.status = deriveDayStatus(payload.status_am, payload.status_pm);
+  const { error } = await sb.from('teacher_attendance').upsert(payload, { onConflict: 'teacher_id,date' });
+  if (reportSaveError(error)) return;
+  await loadAllData();
+  if (TAB === 'teacherRegister') renderTab();
 }
 
 // ---------------- QR Check-in (Principal side: show the QR, watch live check-ins) ----------------
@@ -2560,14 +2720,17 @@ function renderTodaysCheckinsList() {
   const el = document.getElementById('todays-checkins-list');
   if (!el) return;
   const today = todayISO();
-  const rows = DATA.teacherAttendance.filter(a => a.date === today && a.checked_in_at);
+  const rows = DATA.teacherAttendance.filter(a => a.date === today && (a.checked_in_at_am || a.checked_in_at_pm || a.checked_in_at));
   if (!rows.length) { el.innerHTML = `<div style="padding:10px;text-align:center;font-size:12px;opacity:.5;">${esc(t.noCheckinsYet)}</div>`; return; }
+  const fmtTime = iso => new Date(iso).toLocaleTimeString(LANG==='ur'?'ur-PK':'en-PK', { hour:'2-digit', minute:'2-digit' });
   el.innerHTML = rows
-    .sort((a,b) => new Date(b.checked_in_at) - new Date(a.checked_in_at))
+    .sort((a,b) => new Date(b.checked_in_at_pm || b.checked_in_at_am || b.checked_in_at) - new Date(a.checked_in_at_pm || a.checked_in_at_am || a.checked_in_at))
     .map(r => {
       const tc = DATA.teachers.find(x => x.id === r.teacher_id);
-      const time = new Date(r.checked_in_at).toLocaleTimeString(LANG==='ur'?'ur-PK':'en-PK', { hour:'2-digit', minute:'2-digit' });
-      return `<div class="ledger-row"><span style="font-size:13px;">✓ ${esc(tc ? tc.name : '—')}</span><span style="font-size:11px;opacity:.6;">${esc(t.checkedInAt)} ${esc(time)}</span></div>`;
+      const amTxt = r.checked_in_at_am ? `${esc(t.morning)}: ${esc(fmtTime(r.checked_in_at_am))}` : '';
+      const pmTxt = r.checked_in_at_pm ? `${esc(t.afternoon)}: ${esc(fmtTime(r.checked_in_at_pm))}` : '';
+      const both = [amTxt, pmTxt].filter(Boolean).join(' · ') || (r.checked_in_at ? `${esc(t.checkedInAt)} ${esc(fmtTime(r.checked_in_at))}` : '');
+      return `<div class="ledger-row"><span style="font-size:13px;">✓ ${esc(tc ? tc.name : '—')}</span><span style="font-size:11px;opacity:.6;">${both}</span></div>`;
     }).join('');
 }
 
