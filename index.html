@@ -497,6 +497,7 @@ const T = {
     qrCheckin:'QR Check-in', checkinTitle:'Teacher Check-in', checkinSelectPrompt:'Select your name to mark yourself present today.',
     checkinButton:'Mark Me Present', checkinSuccess:'You are marked present. Thank you!',
     checkinAlready:'You are already marked present today.', checkinInvalid:'This QR code is not valid or has expired.',
+    checkinOutsideWindow:'Check-in is only open from 7:00 AM to 2:00 PM.',
     checkinOffline:'Saved offline — will sync automatically once you\'re back online.', checkinOfflineNoList:'You are offline and no teacher list is cached yet. Please connect to the internet once to load it.',
     checkinChooseTeacher:'— Select your name —', regenerateCode:'Regenerate Code', regenerateCodeConfirm:'This will invalidate the old QR code — anyone with the old code will no longer be able to check in. Continue?',
     todaysCheckins:'Today\'s Check-ins', noCheckinsYet:'No one has checked in yet today.', checkedInAt:'at',
@@ -601,6 +602,7 @@ const T = {
     qrCheckin:'QR چیک اِن', checkinTitle:'اساتذہ حاضری', checkinSelectPrompt:'آج اپنی حاضری لگانے کے لیے اپنا نام منتخب کریں۔',
     checkinButton:'میری حاضری لگائیں', checkinSuccess:'آپ کی حاضری لگ گئی۔ شکریہ!',
     checkinAlready:'آپ کی حاضری آج پہلے ہی لگ چکی ہے۔', checkinInvalid:'یہ QR کوڈ درست نہیں یا میعاد ختم ہو چکی ہے۔',
+    checkinOutsideWindow:'حاضری صرف صبح 7 بجے سے دوپہر 2 بجے تک لگائی جا سکتی ہے۔',
     checkinOffline:'آف لائن محفوظ ہو گیا — انٹرنیٹ آنے پر خود بخود بھیج دیا جائے گا۔', checkinOfflineNoList:'آپ آف لائن ہیں اور اساتذہ کی فہرست ابھی محفوظ نہیں — براہ کرم ایک بار انٹرنیٹ سے جڑیں۔',
     checkinChooseTeacher:'— اپنا نام منتخب کریں —', regenerateCode:'نیا کوڈ بنائیں', regenerateCodeConfirm:'اس سے پرانا QR کوڈ غیر فعال ہو جائے گا — پرانے کوڈ والے اب حاضری نہیں لگا سکیں گے۔ جاری رکھیں؟',
     todaysCheckins:'آج کی حاضریاں', noCheckinsYet:'ابھی تک کسی نے حاضری نہیں لگائی۔', checkedInAt:'بوقت',
@@ -4290,9 +4292,20 @@ async function submitCheckin(token) {
   try {
     const { data, error } = await sb.rpc('checkin_mark_present', { p_token: token, p_teacher_id: teacherId });
     if (error) throw error;
-    if (data === false) { msg.innerHTML = `<span class="err">${esc(t.checkinInvalid)}</span>`; return; }
-    msg.innerHTML = `<span class="ok">✓ ${esc(t.checkinSuccess)}</span>`;
-    sel.disabled = true;
+    // The server decides everything (date, time-of-day, whether it's already
+    // marked) — the client never sends or trusts a date/time of its own.
+    if (data === 'ok') {
+      msg.innerHTML = `<span class="ok">✓ ${esc(t.checkinSuccess)}</span>`;
+      sel.disabled = true;
+    } else if (data === 'already') {
+      msg.innerHTML = `<span class="ok">${esc(t.checkinAlready)}</span>`;
+      sel.disabled = true;
+    } else if (data === 'closed') {
+      msg.innerHTML = `<span class="err">${esc(t.checkinOutsideWindow)}</span>`;
+    } else {
+      // 'invalid', or an old un-migrated function still returning boolean false.
+      msg.innerHTML = `<span class="err">${esc(t.checkinInvalid)}</span>`;
+    }
   } catch (e) {
     // Network hiccup even though navigator.onLine said we're online — queue it rather than lose it.
     queueCheckin(token, teacherId);
@@ -4312,18 +4325,31 @@ async function flushCheckinQueue() {
   let q = getCheckinQueue();
   if (!q.length) return;
   const remaining = [];
+  let lastResult = null; // how the most recently-resolved queued item came back
   for (const item of q) {
     try {
-      const { error } = await sb.rpc('checkin_mark_present', { p_token: item.token, p_teacher_id: item.teacherId });
-      if (error) remaining.push(item);
+      const { data, error } = await sb.rpc('checkin_mark_present', { p_token: item.token, p_teacher_id: item.teacherId });
+      if (error) { remaining.push(item); continue; }
+      // 'ok' / 'already' / 'closed' / 'invalid' are all final answers straight from
+      // the server's own clock — none of them improve by retrying later, so the
+      // queued item is resolved (for better or worse) either way.
+      lastResult = data;
     } catch(e) { remaining.push(item); }
   }
   setCheckinQueue(remaining);
-  // Refresh the on-screen queued-count / message if the check-in page is still open.
+  // Refresh the on-screen message if the check-in page is still open.
   const body = document.getElementById('checkin-body');
-  if (body && !remaining.length && q.length) {
+  if (body && lastResult) {
     const msg = document.getElementById('checkin-msg');
-    if (msg) msg.innerHTML = `<span class="ok">✓ ${esc(t.checkinSuccess)}</span>`;
+    if (msg) {
+      if (lastResult === 'ok' || lastResult === 'already') {
+        msg.innerHTML = `<span class="ok">✓ ${esc(t.checkinSuccess)}</span>`;
+      } else if (lastResult === 'closed') {
+        msg.innerHTML = `<span class="err">${esc(t.checkinOutsideWindow)}</span>`;
+      } else {
+        msg.innerHTML = `<span class="err">${esc(t.checkinInvalid)}</span>`;
+      }
+    }
   }
 }
 
