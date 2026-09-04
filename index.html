@@ -2425,13 +2425,16 @@ async function submitAddTeacher() {
 
 let attendanceDraft = {}; // { teacherId: 'present'|'absent'|'leave' } — working state for the currently open Mark Attendance modal
 
-function openMarkAttendance(dateStr) {
-  const date = dateStr || todayISO();
-  // Pre-fill the draft from whatever is already saved for this date.
+function openMarkAttendance() {
+  // Attendance is always for today — the date is fixed from the device's/
+  // server's current day and cannot be changed by hand, so nobody can go
+  // back (or forward) and mark a different day's attendance.
+  const date = todayISO();
+  // Pre-fill the draft from whatever is already saved for today.
   attendanceDraft = {};
   DATA.teacherAttendance.filter(a => a.date === date).forEach(a => { attendanceDraft[a.teacher_id] = a.status; });
   showModal(t.markAttendance, `
-    <label><span>${esc(t.attendanceDate)}</span><input id="att-date" type="date" value="${date}" onchange="openMarkAttendance(this.value)"></label>
+    <label><span>${esc(t.attendanceDate)}</span><input id="att-date" type="date" value="${date}" disabled></label>
     <div id="attendance-roster">${renderAttendanceRoster()}</div>
     <div class="flexgap" style="margin-top:12px;">
       <button class="btn-ghost" onclick="closeModal()">${esc(t.cancel)}</button>
