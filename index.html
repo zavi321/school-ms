@@ -1180,12 +1180,20 @@ function computeStats() {
   let feesCollectedThisMonth=0, feesDueThisMonth=0;
   let payingCount=0, freeCount=0, orphanCount=0;
   active.forEach(s=>{
-    const paid = studentPayments(s.id).filter(p=>p.month===cur).reduce((a,b)=>a+Number(b.amount),0);
+    const curEntries = studentPayments(s.id).filter(p=>p.month===cur);
+    const paid = curEntries.reduce((a,b)=>a+Number(b.amount),0);
     feesCollectedThisMonth += paid;
-    // Uses the same running ledger as the student detail screen (includes sports fund,
-    // admission fee, exam fee, and any carried-forward balance from earlier months) so
-    // this figure always matches what each student's balance shows.
-    if (isFeePaying(s)) { feesDueThisMonth += Math.max(0, studentBalance(s.id)); payingCount++; }
+    // "Due (this month)" must reflect ONLY this calendar month's own charges that
+    // remain unpaid — NOT studentBalance(), which is the all-time running balance
+    // including every earlier carried-forward month. Using studentBalance() here
+    // previously made this card silently show each student's total lifetime dues
+    // under a "this month" label, which could be badly misread by school staff.
+    // Total all-time dues are shown separately under "Dues Outstanding" in Reports.
+    if (isFeePaying(s)) {
+      const monthCharge = curEntries.reduce((a,e)=>a+Number(e.school_fee||0)+Number(e.sports_fund||0)+Number(e.admission_fee||0)+Number(e.exam_fee||0),0);
+      feesDueThisMonth += Math.max(0, monthCharge - paid);
+      payingCount++;
+    }
     else if ((s.student_type)==='orphan') orphanCount++;
     else freeCount++;
   });
@@ -4622,7 +4630,7 @@ if ('serviceWorker' in navigator) {
     }).catch(() => {});
   });
 }
-console.log('SchoolMS build: 2026-09-03-fee-fix'); // bump this string on every deploy to verify (in browser console) which version is actually running
+console.log('SchoolMS build: 2026-09-05-dashboard-due-fix'); // bump this string on every deploy to verify (in browser console) which version is actually running
 </script>
 </body>
 </html>
