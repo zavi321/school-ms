@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="ur" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<title>WhatsApp Message</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background: #e5ddd5;
+    display: flex;
+    justify-content: center;
+    padding: 20px;
+  }
+  .phone {
+    width: 380px;
+    background: #e5ddd5;
+    border-radius: 20px;
+    overflow: hidden;
+    box-shadow: 0 8px 30px rgba(0,0,0,0.25);
+  }
+  .header {
+    background: #075E54;
+    color: white;
+    padding: 14px 16px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    direction: ltr;
+  }
+  .avatar {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: #128C7E;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: bold;
+    font-size: 16px;
+  }
+  .header .info { direction: rtl; text-align: right; }
+  .header .name { font-weight: 600; font-size: 16px; }
+  .header .status { font-size: 12px; color: #d0f0e8; }
+  .chat-bg {
+    background-image: url('https://i.pinimg.com/originals/85/ec/df/85ecdf593dd013a0417a4d3c0bb2dc93.jpg');
+    background-size: cover;
+    padding: 16px 12px;
+    min-height: 420px;
+  }
+  .bubble {
+    background: #ffffff;
+    border-radius: 8px;
+    padding: 10px 12px;
+    max-width: 90%;
+    margin-bottom: 8px;
+    box-shadow: 0 1px 1px rgba(0,0,0,0.1);
+    position: relative;
+    line-height: 1.9;
+    font-size: 14.5px;
+    color: #111;
+    text-align: right;
+  }
+  .bubble .line { margin: 2px 0; }
+  .bubble .highlight { font-weight: 700; color: #d32f2f; }
+  .bubble .total { font-weight: 700; color: #075E54; }
+  .bubble .footer-name { font-weight: 600; margin-top: 8px; display: inline-block; }
+  .time {
+    font-size: 11px;
+    color: #999;
+    text-align: left;
+    margin-top: 4px;
+  }
+  .input-bar {
+    background: #f0f0f0;
+    padding: 10px 14px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    direction: ltr;
+  }
+  .input-bar input {
+    flex: 1;
+    border: none;
+    border-radius: 20px;
+    padding: 10px 14px;
+    background: white;
+  }
+  .send {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background: #075E54;
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+</style>
+</head>
+<body>
+  <div class="phone">
+    <div class="header">
+      <div class="avatar">IE</div>
+      <div class="info">
+        <div class="name">اقرا اسلامک ایجوکیشنل سسٹم</div>
+        <div class="status">آن لائن</div>
+      </div>
+    </div>
+    <div class="chat-bg">
+      <div class="bubble">
+        <div class="line">محترم سرپرست،</div>
+        <div class="line">ابراھیم کی فیس کے واجبات درج ذیل ہیں:</div>
+        <div class="line" style="margin-top:6px;">اگست:</div>
+        <div class="line">ٹیوشن فیس: روپے ______</div>
+        <div class="line">داخلہ فیس: روپے ______</div>
+        <div class="line">امتحانی فیس: روپے ______</div>
+        <div class="line">دیگر واجبات: روپے ______</div>
+        <div class="line total" style="margin-top:6px;">کل بقایا رقم: روپے 20,000</div>
+        <div class="line highlight" style="margin-top:6px;">براہ کرم جلد از جلد ادائیگی کریں۔ شکریہ</div>
+        <div class="footer-name">دی پرنسپل اف دی دی اقرا اسلامک ایجوکیشنل سیسٹم آلوچ ضلع شانگلہ</div>
+        <div class="time">10:24 ✓✓</div>
+      </div>
+    </div>
+    <div class="input-bar">
+      <input type="text" placeholder="Message" disabled>
+      <div class="send">➤</div>
+    </div>
+  </div>
+</body>
+</html>
