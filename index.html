@@ -1072,12 +1072,22 @@ async function loadAllData() {
   DATA.holidays = hd.data || [];
 }
 
-// How many months' worth of fee a student's current balance represents.
-// Used to flag students who are 2+ months behind, e.g. for the "send SMS to father" reminder.
+// How many distinct months a student has unpaid dues for, counted directly
+// from their fee ledger (the same rows shown in the month-by-month WhatsApp
+// breakdown) — NOT the old balance ÷ monthly_fee approach, which overcounted
+// whenever a one-time charge (admission fee, exam fee, sports fund) was part
+// of the balance: e.g. 1 unpaid month + a one-time Rs 5,000 admission fee on
+// top of a Rs 1,000 monthly fee produced "6+ months overdue" for what was
+// really just 1 month, which then went straight into the parent-facing
+// WhatsApp reminder text.
 function monthsOverdue(s) {
-  const fee = Number(s.monthly_fee || 0);
-  if (!isFeePaying(s) || fee <= 0) return 0;
-  return Math.floor(studentBalance(s.id) / fee);
+  if (!isFeePaying(s)) return 0;
+  const { rows } = buildAcademicYearLedger(s.id);
+  return rows.filter(r => {
+    if (r.blank) return false;
+    const monthDue = Number(r.e.school_fee||0) + Number(r.e.sports_fund||0) + Number(r.e.admission_fee||0) + Number(r.e.exam_fee||0) - Number(r.e.amount||0);
+    return monthDue > 0;
+  }).length;
 }
 
 // Prefers the Urdu-script name for a student/school when set (via the student's
@@ -1087,7 +1097,7 @@ function studentNameUrdu(s) { return (s && s.name_ur) || (s && s.name) || ''; }
 function schoolNameUrdu() { return (CURRENT_PROFILE && CURRENT_PROFILE.school_name_ur) || (CURRENT_PROFILE && CURRENT_PROFILE.school_name) || ''; }
 // The sign-off used on all Urdu-language parent messages, e.g.
 // "دی پرنسپل اف دی اقراء اسلامک ایجوکیشنل سسٹم سکول"
-function principalSignOffUrdu() { return `دی پرنسپل اف دی ${schoolNameUrdu()} سکول`; }
+function principalSignOffUrdu() { return `دی پرنسپل اف دی ${schoolNameUrdu()}`; }
 
 function overdueReminderMessage(s) {
   const months = monthsOverdue(s);
