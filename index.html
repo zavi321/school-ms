@@ -3872,7 +3872,7 @@ function printMarksSheet(className) {
     </head>
     <body>
       <div class="header">
-        <div class="school-name">${CURRENT_PROFILE?.school_name || 'School Name'}</div>
+        <div class="school-name">${esc(CURRENT_PROFILE?.school_name || 'School Name')}</div>
         <div class="class-name">Marks Sheet - ${esc(className)}</div>
       </div>
       
