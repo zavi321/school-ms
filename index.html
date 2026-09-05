@@ -191,6 +191,18 @@
   table.card-table tr.dup-row td{background:#FDF1E7;}
   table.card-table .dup-tag{display:inline-block;margin-left:6px;font-size:9px;font-weight:700;color:#B24A32;background:#FBE3D4;border-radius:999px;padding:2px 7px;white-space:nowrap;}
   body.ur table.card-table .dup-tag{margin-left:0;margin-right:6px;}
+  /* Physical-register look for the Teacher Attendance Register */
+  table.reg-physical{border-collapse:collapse;width:100%;min-width:640px;font-size:11.5px;background:#FFFDF7;}
+  table.reg-physical th, table.reg-physical td{border:1px solid #C9BFA6;}
+  table.reg-physical thead th{background:var(--navy);color:var(--gold-soft);font-weight:700;padding:6px 5px;text-align:center;white-space:nowrap;position:sticky;top:0;}
+  table.reg-physical thead tr.sub-head th{background:#EFE6CC;color:var(--navy);font-size:10px;font-weight:700;}
+  table.reg-physical td{padding:6px 5px;text-align:center;white-space:nowrap;font-weight:700;}
+  table.reg-physical td.date-col{font-weight:700;color:var(--navy);text-align:left;background:#F6F0DE;white-space:nowrap;}
+  body.ur table.reg-physical td.date-col{text-align:right;}
+  table.reg-physical tbody tr:nth-child(even) td{background:rgba(201,191,166,0.12);}
+  table.reg-physical tbody tr:nth-child(even) td.date-col{background:#F0E9D4;}
+  table.reg-physical tr.hol-row td{background:#F3E3DC !important;color:#8A5A45;}
+  table.reg-physical tr.hol-row td.date-col{font-weight:700;}
   .del-x{background:none;border:none;color:var(--rust);font-size:12px;padding:0;}
   .print-btn{background:none;border:none;color:var(--navy);font-size:13px;padding:0 4px;}
   .class-header{display:flex;align-items:center;justify-content:space-between;margin:18px 0 8px;padding:10px 12px;background:var(--navy);border-radius:8px;cursor:pointer;box-shadow:0 2px 8px rgba(15,39,64,.18);}
@@ -499,6 +511,8 @@ const T = {
     registerLegend:'P = Present · L = Leave · A = Absent · — = not yet due',
     registerTapHint:'Tap a mark to change it (Morning and Afternoon are set independently).',
     registerSaved:'Updated.',
+    time1:'1st Time', time2:'2nd Time', srNo:'Sr.',
+    holiday:'Holiday', tapToUnmark:'tap to un-mark', holidayHint:'Sundays are always a holiday. Tap any other date to mark/unmark it as a holiday.',
     qrCheckin:'QR Check-in', checkinTitle:'Teacher Check-in', checkinSelectPrompt:'Select your name to mark yourself present today.',
     checkinButton:'Mark Me Present', checkinSuccess:'You are marked present. Thank you!',
     checkinAlready:'You are already marked present today.', checkinInvalid:'This QR code is not valid or has expired.',
@@ -611,6 +625,8 @@ const T = {
     registerLegend:'P = حاضر · L = رخصت · A = غیر حاضر · — = ابھی وقت نہیں ہوا',
     registerTapHint:'نشان تبدیل کرنے کے لیے اس پر ٹیپ کریں (صبح اور دوپہر الگ الگ لگتے ہیں)۔',
     registerSaved:'اپڈیٹ ہو گیا۔',
+    time1:'پہلا وقت', time2:'دوسرا وقت', srNo:'نمبر',
+    holiday:'چھٹی', tapToUnmark:'ہٹانے کے لیے ٹیپ کریں', holidayHint:'اتوار ہمیشہ چھٹی ہوتی ہے۔ کسی بھی دوسری تاریخ کو چھٹی کے طور پر لگانے/ہٹانے کے لیے اس پر ٹیپ کریں۔',
     qrCheckin:'QR چیک اِن', checkinTitle:'اساتذہ حاضری', checkinSelectPrompt:'آج اپنی حاضری لگانے کے لیے اپنا نام منتخب کریں۔',
     checkinButton:'میری حاضری لگائیں', checkinSuccess:'آپ کی حاضری لگ گئی۔ شکریہ!',
     checkinAlready:'آپ کی حاضری آج پہلے ہی لگ چکی ہے۔', checkinInvalid:'یہ QR کوڈ درست نہیں یا میعاد ختم ہو چکی ہے۔',
@@ -778,7 +794,7 @@ function reportSaveError(error) {
   return true;
 }
 
-let DATA = { students:[], feePayments:[], teachers:[], salaryPayments:[], transactions:[], admissionRegister:[], teacherAttendance:[] };
+let DATA = { students:[], feePayments:[], teachers:[], salaryPayments:[], transactions:[], admissionRegister:[], teacherAttendance:[], holidays:[] };
 let TAB = 'dashboard';
 let CURRENT_USER = null;   // { id, email }
 let CURRENT_PROFILE = null; // { school_name }
@@ -1027,14 +1043,14 @@ async function submitLogIn() {
 async function logOut() {
   await sb.auth.signOut();
   CURRENT_USER = null; CURRENT_PROFILE = null;
-  DATA = { students:[], feePayments:[], teachers:[], salaryPayments:[], transactions:[], admissionRegister:[], teacherAttendance:[] };
+  DATA = { students:[], feePayments:[], teachers:[], salaryPayments:[], transactions:[], admissionRegister:[], teacherAttendance:[], holidays:[] };
   document.getElementById('app').classList.add('hidden');
   renderLogIn();
 }
 
 // ---------------- Data loading (RLS auto-scopes everything to this school) ----------------
 async function loadAllData() {
-  const [s, fp, tc, sp, tx, ar, ta] = await Promise.all([
+  const [s, fp, tc, sp, tx, ar, ta, hd] = await Promise.all([
     sb.from('students').select('*').order('created_at'),
     sb.from('fee_payments').select('*'),
     sb.from('teachers').select('*').order('created_at'),
@@ -1044,6 +1060,7 @@ async function loadAllData() {
     // students/fee-finance tables above — it is never joined or cross-referenced.
     sb.from('admission_register').select('*').order('serial_no'),
     sb.from('teacher_attendance').select('*'),
+    sb.from('holidays').select('*'),
   ]);
   DATA.students = s.data || [];
   DATA.feePayments = fp.data || [];
@@ -1052,6 +1069,7 @@ async function loadAllData() {
   DATA.transactions = tx.data || [];
   DATA.admissionRegister = ar.data || [];
   DATA.teacherAttendance = ta.data || [];
+  DATA.holidays = hd.data || [];
 }
 
 // How many months' worth of fee a student's current balance represents.
@@ -2609,21 +2627,49 @@ function registerCellColor(status) {
   return 'var(--ink)';
 }
 
+// Sunday is always a holiday and can't be un-marked; any other date can be
+// toggled on/off as a holiday by the admin (e.g. Eid, a school event day).
+// Holiday rows skip attendance entirely — no P/L/A is expected that day.
+function isSunday(date) { return new Date(date + 'T00:00:00').getDay() === 0; }
+function isHoliday(date) { return isSunday(date) || DATA.holidays.some(h => h.date === date); }
+
+async function toggleHoliday(date) {
+  if (isSunday(date)) return; // Sunday is a fixed holiday, nothing to toggle
+  const existing = DATA.holidays.find(h => h.date === date);
+  if (existing) {
+    const { error } = await sb.from('holidays').delete().eq('id', existing.id);
+    if (reportSaveError(error)) return;
+  } else {
+    const { error } = await sb.from('holidays').insert({ owner_id: CURRENT_USER.id, date });
+    if (reportSaveError(error)) return;
+  }
+  await loadAllData();
+  if (TAB === 'teacherRegister') renderTab();
+}
+
 function tplTeacherRegister() {
   const teachersToShow = registerTeacherFilter === 'all' ? DATA.teachers : DATA.teachers.filter(x => x.id === registerTeacherFilter);
   const dates = datesInMonth(registerMonth);
+  const colCount = 1 + teachersToShow.length * 2;
   const head1 = teachersToShow.map(tc => `<th colspan="2">${esc(tc.name)}</th>`).join('');
-  const head2 = teachersToShow.map(() => `<th>${esc(t.morning)[0]}</th><th>${esc(t.afternoon)[0]}</th>`).join('');
+  const head2 = teachersToShow.map(() => `<th>${esc(t.time1)}</th><th>${esc(t.time2)}</th>`).join('');
   const rows = dates.map(date => {
+    const d = new Date(date + 'T00:00:00');
+    const dayNum = d.getDate();
+    const wk = d.toLocaleDateString(LANG==='ur'?'ur-PK':'en-PK', { weekday:'short' });
+    const sunday = isSunday(date);
+    const holiday = isHoliday(date);
+    const dateCell = `<td class="date-col" style="${sunday?'':'cursor:pointer;'}" ${sunday?'':`onclick="toggleHoliday('${date}')"`}>${dayNum} <span style="font-weight:400;opacity:.6;font-size:9.5px;">${esc(wk)}</span></td>`;
+    if (holiday) {
+      return `<tr class="hol-row">${dateCell}<td colspan="${colCount-1}" style="font-style:italic;opacity:.65;font-weight:600;">${esc(t.holiday)}${sunday?'':` · ${esc(t.tapToUnmark)}`}</td></tr>`;
+    }
     const cells = teachersToShow.map(tc => {
       const am = registerCellInfo(tc.id, date, 'am');
       const pm = registerCellInfo(tc.id, date, 'pm');
-      const cell = (info, session) => `<td style="cursor:pointer;color:${registerCellColor(info.status)};font-weight:700;opacity:${info.pending?0.4:1};" onclick="registerCycleMark('${tc.id}','${date}','${session}')">${esc(info.code)}</td>`;
+      const cell = (info, session) => `<td style="cursor:pointer;color:${registerCellColor(info.status)};" onclick="registerCycleMark('${tc.id}','${date}','${session}')">${esc(info.code)}</td>`;
       return cell(am,'am') + cell(pm,'pm');
     }).join('');
-    const d = new Date(date + 'T00:00:00');
-    const label = d.toLocaleDateString(LANG==='ur'?'ur-PK':'en-PK', { day:'2-digit', month:'short' });
-    return `<tr><td class="mo" style="text-align:left;white-space:nowrap;">${esc(label)}</td>${cells}</tr>`;
+    return `<tr>${dateCell}${cells}</tr>`;
   }).join('');
   return `
     <div style="padding-top:16px;">
@@ -2642,12 +2688,15 @@ function tplTeacherRegister() {
       </div>
       ${DATA.teachers.length===0 ? `<div class="empty">${esc(t.noTeachers)}</div>` : `
       <div class="card-table-wrap" style="margin-top:6px;">
-        <table class="card-table">
-          <thead><tr><th rowspan="2" style="text-align:left;">${esc(t.dateCol)}</th>${head1}</tr><tr>${head2}</tr></thead>
+        <table class="reg-physical">
+          <thead>
+            <tr><th rowspan="2" style="text-align:left;">${esc(t.dateCol)}</th>${head1}</tr>
+            <tr class="sub-head">${head2}</tr>
+          </thead>
           <tbody>${rows}</tbody>
         </table>
       </div>
-      <p style="font-size:10.5px;opacity:.55;margin-top:8px;">${esc(t.registerLegend)}<br>${esc(t.registerTapHint)}</p>`}
+      <p style="font-size:10.5px;opacity:.55;margin-top:8px;">${esc(t.registerLegend)}<br>${esc(t.registerTapHint)}<br>${esc(t.holidayHint)}</p>`}
     </div>`;
 }
 
