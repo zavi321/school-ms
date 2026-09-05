@@ -2002,7 +2002,7 @@ function openAddStudent() {
     <label><span>${esc(t.className)}</span><select id="f-class">${CLASS_OPTIONS.map(c=>`<option>${c}</option>`).join('')}</select></label>
     <label><span>${esc(t.studentType)}</span><select id="f-type" onchange="onAddTypeChange()">${STUDENT_TYPES.map(v=>`<option value="${v}">${esc(typeLabel(v))}</option>`).join('')}</select></label>
     <label><span>${esc(t.admissionDate)}</span><input id="f-admission" type="date" value="${todayISO()}"></label>
-    <label><span>${esc(t.contact)}</span><input id="f-contact"></label>
+    <label><span>${esc(t.contact)}</span><input id="f-contact" type="tel" placeholder="03XXXXXXXXX"></label>
     <label><span>${esc(t.monthlyFee)}</span><input id="f-fee" type="number" value="0"></label>
     <div class="flexgap">
       <button class="btn-ghost" onclick="closeModal()">${esc(t.cancel)}</button>
@@ -2441,7 +2441,7 @@ function openAddTeacher() {
     <label><span>${esc(t.subject)}</span><input id="f-subject"></label>
     <label><span>${esc(t.monthlySalary)}</span><input id="f-salary" type="number"></label>
     <label><span>${esc(t.joinDate)}</span><input id="f-join" type="date" value="${todayISO()}"></label>
-    <label><span>${esc(t.contact)}</span><input id="f-contact"></label>
+    <label><span>${esc(t.contact)}</span><input id="f-contact" type="tel" placeholder="03XXXXXXXXX"></label>
     <div class="flexgap">
       <button class="btn-ghost" onclick="closeModal()">${esc(t.cancel)}</button>
       <button class="btn-primary" style="flex:1" onclick="guardedSubmit(this, submitAddTeacher)">${esc(t.save)}</button>
