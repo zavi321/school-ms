@@ -107,6 +107,10 @@
   .balance-card::after{content:'';position:absolute;right:-20px;bottom:-20px;width:90px;height:90px;border-radius:999px;background:var(--gold);opacity:.08;}
   .balance-card .lbl{color:var(--gold-soft);opacity:.85;font-size:12px;}
   .balance-card .val{color:#fff;font-size:30px;font-weight:600;font-family:Fraunces,serif;margin-top:4px;}
+  .dues-card{background:var(--rust);border-radius:14px;padding:16px;margin-top:10px;box-shadow:var(--shadow-md);position:relative;overflow:hidden;}
+  .dues-card::after{content:'';position:absolute;right:-20px;bottom:-20px;width:90px;height:90px;border-radius:999px;background:#fff;opacity:.08;}
+  .dues-card .lbl{color:#fff;opacity:.85;font-size:12px;}
+  .dues-card .val{color:#fff;font-size:30px;font-weight:600;font-family:Fraunces,serif;margin-top:4px;}
 
   .section-title{font-size:14px;font-weight:600;color:var(--navy);margin:20px 0 8px;padding-left:9px;border-left:3px solid var(--rust);}
   body.ur .section-title{padding-left:0;padding-right:9px;border-left:none;border-right:3px solid var(--rust);}
@@ -497,7 +501,7 @@ const T = {
     dashboard:'Dashboard', students:'Students', teachers:'Teachers', finance:'Finance', reports:'Reports', dmc:'Certificates', marksSheet:'Marks Sheet',
     thisMonth:'This Month',
     totalStudents:'Active Students', feesCollected:'Fees Collected (this month)', feesDue:'Fees Due (this month)',
-    salaryPaid:'Salaries Paid (this month)', netBalance:'Net Balance (all-time)', recentActivity:'Recent Activity',
+    salaryPaid:'Salaries Paid (this month)', netBalance:'Net Balance (all-time)', totalDuesAllTime:'Total Dues (all-time)', recentActivity:'Recent Activity',
     totalIncome:'Total Income (all-time)', totalExpense:'Total Expenses (all-time)', teacherSalaries:'Teacher Salaries (all-time)',
     expenses:'Expenses', collectedFees:'Collected Fees', back:'Back', noRecords:'No records yet',
     addStudent:'Add Student', studentName:'Student Name', studentNameUr:'Student Name (Urdu)', fatherName:"Father's Name", fatherNameUr:"Father's Name (Urdu)", casteTribeUr:'Caste/Tribe (Urdu)', residenceUr:'Residence (Urdu)', className:'Class',
@@ -611,7 +615,7 @@ const T = {
     dashboard:'ڈیش بورڈ', students:'طلبہ', teachers:'اساتذہ', finance:'مالیات', reports:'رپورٹس', dmc:'سرٹیفکیٹس', marksSheet:'نتائج کی فہرست',
     thisMonth:'اس ماہ',
     totalStudents:'فعال طلبہ', feesCollected:'وصول شدہ فیس (اس ماہ)', feesDue:'واجب الادا فیس (اس ماہ)',
-    salaryPaid:'ادا شدہ تنخواہ (اس ماہ)', netBalance:'کل بیلنس', recentActivity:'حالیہ سرگرمی',
+    salaryPaid:'ادا شدہ تنخواہ (اس ماہ)', netBalance:'کل بیلنس', totalDuesAllTime:'کل واجب الادا (تمام وقت)', recentActivity:'حالیہ سرگرمی',
     totalIncome:'کل آمدنی', totalExpense:'کل اخراجات', teacherSalaries:'اساتذہ کی تنخواہیں',
     expenses:'اخراجات', collectedFees:'وصول شدہ فیس', back:'واپس', noRecords:'ابھی کوئی ریکارڈ نہیں',
     addStudent:'طالب علم شامل کریں', studentName:'طالب علم کا نام', studentNameUr:'طالب علم کا نام (اردو)', fatherName:'والد کا نام', fatherNameUr:'والد کا نام (اردو)', casteTribeUr:'ذات/قبیلہ (اردو)', residenceUr:'رہائش (اردو)', className:'جماعت',
@@ -1239,9 +1243,14 @@ function computeStats() {
   const totalExpenseAllTime = totalSalariesAllTime + totalOtherExpenseAllTime;
   const netBalance = totalIncomeAllTime - totalExpenseAllTime;
 
+  // Sum of every fee-paying active student's outstanding running balance —
+  // the all-time counterpart to "Fees Due (this month)" above.
+  let totalDuesAllTime = 0;
+  active.forEach(s=>{ if (isFeePaying(s)) totalDuesAllTime += Math.max(0, studentBalance(s.id)); });
+
   return { activeCount:active.length, feesCollectedThisMonth, feesDueThisMonth, salaryPaidThisMonth,
     totalCollectedAllTime, totalSalariesAllTime, totalOtherIncomeAllTime, totalOtherExpenseAllTime,
-    totalIncomeAllTime, totalExpenseAllTime, netBalance, payingCount, freeCount, orphanCount };
+    totalIncomeAllTime, totalExpenseAllTime, netBalance, totalDuesAllTime, payingCount, freeCount, orphanCount };
 }
 
 // ---------------- App shell render ----------------
@@ -1761,6 +1770,7 @@ function tplDashboard() {
         <div class="stat-card"><div class="lbl">${esc(t.teacherSalaries)}</div><div class="val">₨${fmt(s.totalSalariesAllTime)}</div></div>
       </div>
       <div class="balance-card"><div class="lbl">${esc(t.netBalance)}</div><div class="val">₨${fmt(s.netBalance)}</div></div>
+      <div class="dues-card"><div class="lbl">${esc(t.totalDuesAllTime)}</div><div class="val">₨${fmt(s.totalDuesAllTime)}</div></div>
 
       <div class="section-title">${esc(t.thisMonth)}</div>
       <div class="stat-grid">
