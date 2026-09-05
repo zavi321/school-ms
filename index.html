@@ -1107,20 +1107,32 @@ function overdueReminderMessage(s) {
     : `Dear Parent, ${s.name}'s school fee dues are now ${months}+ months overdue, totaling Rs ${balance}. Please clear the balance at your earliest convenience. Thank you - School`;
 }
 
-// Month-by-month breakdown of unpaid dues (e.g. "فروری: روپے 500" / "مارچ: روپے 600"),
-// built from the same academic-year ledger shown on the student's fee card so the
-// figures always match what's on screen. A month only appears here if that month's
+// Month-by-month breakdown of unpaid dues, now itemized by fee category
+// (School Fee / Sports Fund / Admission Fee / Exam Fee / Paid / Balance) —
+// pulled straight from the same fee-card entry fields shown in "Add Month
+// Entry" — rather than just one lump total per month. Built from the same
+// academic-year ledger shown on the student's fee card so the figures
+// always match what's on screen. A month only appears here if that month's
 // own charges weren't fully paid off — not the running cumulative balance.
 const UR_MONTH_NAMES = ['جنوری','فروری','مارچ','اپریل','مئی','جون','جولائی','اگست','ستمبر','اکتوبر','نومبر','دسمبر'];
 function duesBreakdownLinesUrdu(studentId) {
   const { rows } = buildAcademicYearLedger(studentId);
+  const L = T.ur;
   return rows
     .filter(r => !r.blank)
     .map(r => {
-      const monthDue = Number(r.e.school_fee||0) + Number(r.e.sports_fund||0) + Number(r.e.admission_fee||0) + Number(r.e.exam_fee||0) - Number(r.e.amount||0);
+      const e = r.e;
+      const monthDue = Number(e.school_fee||0) + Number(e.sports_fund||0) + Number(e.admission_fee||0) + Number(e.exam_fee||0) - Number(e.amount||0);
       if (monthDue <= 0) return null;
       const monthNum = Number(r.mk.split('-')[1]);
-      return `${UR_MONTH_NAMES[monthNum-1]}: روپے ${fmt(monthDue)}`;
+      const parts = [];
+      if (Number(e.school_fee||0) > 0) parts.push(`${L.schoolFeeCol}: روپے ${fmt(e.school_fee)}`);
+      if (Number(e.sports_fund||0) > 0) parts.push(`${L.sportsFund}: روپے ${fmt(e.sports_fund)}`);
+      if (Number(e.admission_fee||0) > 0) parts.push(`${L.admissionFeeCol}: روپے ${fmt(e.admission_fee)}`);
+      if (Number(e.exam_fee||0) > 0) parts.push(`${L.examFeeCol}: روپے ${fmt(e.exam_fee)}`);
+      parts.push(`${L.totalPaidCol}: روپے ${fmt(e.amount||0)}`);
+      parts.push(`${L.balanceCol}: روپے ${fmt(monthDue)}`);
+      return `${UR_MONTH_NAMES[monthNum-1]}:\n` + parts.map(p => `- ${p}`).join('\n');
     })
     .filter(Boolean);
 }
@@ -1129,7 +1141,7 @@ function duesBreakdownLinesUrdu(studentId) {
 // are the intended recipients.
 function duesReminderMessageUrdu(s) {
   const lines = duesBreakdownLinesUrdu(s.id);
-  const breakdown = lines.length ? ('\n' + lines.join('\n')) : '';
+  const breakdown = lines.length ? ('\n\n' + lines.join('\n\n')) : '';
   const total = fmt(Math.max(0, studentBalance(s.id)));
   return `محترم سرپرست،\n${studentNameUrdu(s)} کی فیس کے واجبات درج ذیل ہیں:${breakdown}\nکل بقایا رقم: روپے ${total}\nبراہ کرم جلد از جلد ادائیگی کریں۔ شکریہ\n${principalSignOffUrdu()}`;
 }
