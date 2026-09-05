@@ -73,7 +73,7 @@
   #app{padding-bottom:90px;}
   /* On wider screens (laptop/desktop) keep the phone-style layout centered
      instead of stretching cards, header, and nav full-width edge to edge. */
-  @media(min-width:640px){
+  @media(min-width:640px) and (pointer:fine){
     body{display:flex;justify-content:center;background:var(--navy-deep);}
     #app{max-width:480px;width:100%;min-height:100vh;background:var(--cream);box-shadow:0 0 0 1px rgba(228,199,101,.35), 0 0 40px rgba(0,0,0,.5);}
     .auth-wrap{max-width:480px;margin:0 auto;min-height:100vh;}
@@ -164,7 +164,7 @@
 
   .modal-bg{position:fixed;inset:0;background:rgba(15,39,64,.55);z-index:50;display:flex;align-items:flex-end;justify-content:center;}
   .modal{width:100%;max-width:420px;max-height:90vh;overflow-y:auto;background:var(--cream);border-radius:18px 18px 0 0;padding:20px;box-shadow:0 -8px 30px rgba(0,0,0,.2);}
-  @media(min-width:640px){.modal-bg{align-items:center;}.modal{border-radius:18px;}}
+  @media(min-width:640px) and (pointer:fine){.modal-bg{align-items:center;}.modal{border-radius:18px;}}
   .modal-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;padding-bottom:12px;border-bottom:1px solid var(--line);}
   .modal-head h3{margin:0;font-size:17px;color:var(--navy);font-family:Fraunces,serif;}
   body.ur .modal-head h3{font-family:'Noto Nastaliq Urdu',serif;}
