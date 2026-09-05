@@ -1514,7 +1514,7 @@ function renderTab() {
   else if (TAB==='teachers') main.innerHTML = tplTeachers();
   else if (TAB==='finance') main.innerHTML = tplFinance();
   else if (TAB==='reports') main.innerHTML = tplReports();
-  else if (TAB==='dmc') { main.innerHTML = tplDMC(); loadDMCConfig().then(() => { if (TAB==='dmc') { main.innerHTML = tplDMC(); renderDMCSubjects(); } }); }
+  else if (TAB==='dmc') { main.innerHTML = tplDMC(); Promise.all([loadDMCConfig(), loadCertificateLog()]).then(() => { if (TAB==='dmc') { main.innerHTML = tplDMC(); renderDMCSubjects(); } }); }
   else if (TAB==='marksSheet') main.innerHTML = tplMarksSheet();
   else if (TAB==='admissionRegister') main.innerHTML = tplAdmissionRegister();
   else if (TAB==='teacherRegister') main.innerHTML = tplTeacherRegister();
@@ -3199,6 +3199,24 @@ function filteredRegisterList() {
 
 // --------- DMC (Detail Marks Certificate) Generator ---------
 let dmcResults = []; // temporary storage for uploaded results
+let certLogCache = null; // cache of recently-issued certificates (DMC / SLC / Character Certificate)
+
+// Records that a certificate was issued (fire-and-forget — a logging failure
+// should never block the actual print). Shared by DMC, SLC, and Character
+// Certificate print flows so all three show up in one combined history.
+async function logCertificateIssued(certType, studentName, className, refId) {
+  try {
+    await sb.from('certificate_log').insert({
+      owner_id: CURRENT_USER.id, cert_type: certType,
+      student_name: studentName || null, class_name: className || null, ref_id: refId || null
+    });
+  } catch (e) { /* non-critical */ }
+}
+async function loadCertificateLog() {
+  const { data, error } = await sb.from('certificate_log').select('*')
+    .eq('owner_id', CURRENT_USER.id).order('issued_at', { ascending: false }).limit(30);
+  if (!error) certLogCache = data || [];
+}
 let dmcLogo = null; // base64 logo image
 let dmcSchoolName = 'SCHOOL NAME'; // editable school name for certificates
 let dmcTagline = ''; // optional motto shown under the school name
@@ -3301,6 +3319,19 @@ function tplDMC() {
         <button class="btn-ghost" onclick="generateDMCPreview()">Preview Certificates</button>
         <button class="btn-ghost" onclick="printAllDMC()">Print All</button>
       </div>
+    </div>
+
+    <div class="card">
+      <h3 style="margin-top:0;">Recent Certificates Issued</h3>
+      <p style="font-size:11px;opacity:.6;">Last 30 DMCs, SLCs, and Character Certificates printed — a record, not a redo button.</p>
+      ${certLogCache === null ? `<p style="font-size:12px;opacity:.6;">Loading…</p>` :
+        (certLogCache.length ? `<div class="list-card">` + certLogCache.map(c => `
+          <div class="list-row">
+            <div>
+              <div class="nm">${esc(c.student_name || '—')}</div>
+              <div class="sub">${esc(c.cert_type)}${c.class_name ? ' · ' + esc(c.class_name) : ''} · ${esc(fmtDate(c.issued_at))}</div>
+            </div>
+          </div>`).join('') + `</div>` : `<div class="empty">No certificates issued yet.</div>`)}
     </div>
   `;
 }
@@ -3628,6 +3659,7 @@ function printAllDMC() {
   w.document.write(html);
   w.document.close();
   setTimeout(() => w.print(), 500);
+  dmcResults.forEach(r => logCertificateIssued('DMC', r.studentName, r.class));
 }
 
 // --------- MARKS SHEET (Independent - separate from Students database) ---------
@@ -4355,6 +4387,7 @@ async function printAdmissionEntry(id) {
       </div>
     </div>`;
   printAsA4();
+  logCertificateIssued('SLC', r.student_name, r.class_withdrawn || r.class_admitted, r.id);
 }
 
 // Character Certificate — narrative paragraph (same record-value-in-bold treatment
@@ -4446,6 +4479,7 @@ async function printCharacterCertificate(id) {
       </div>
     </div>`;
   printAsA4();
+  logCertificateIssued('Character Certificate', r.student_name, r.class_admitted, r.id);
 }
 
 async function submitEditAdmissionEntry(id) {
