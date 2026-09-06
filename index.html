@@ -526,7 +526,7 @@ const T = {
     holiday:'Holiday', tapToUnmark:'tap to un-mark', holidayHint:'Sundays are always a holiday. Tap any other date to mark/unmark it as a holiday.',
     qrCheckin:'QR Check-in', checkinTitle:'Teacher Check-in', checkinSelectPrompt:'Select your name to mark yourself present today.',
     checkinButton:'Mark Me Present', checkinSuccess:'You are marked present. Thank you!',
-    enableNotifications:'Get a reminder if I forget to check in', notificationsEnabled:'Reminders are on for this phone.',
+    enableNotifications:'Notify me if a teacher misses check-in', notificationsEnabled:'Reminders are on for this phone.',
     notificationsFailed:'Could not enable reminders — check notification permission in your browser settings.', notificationsUnsupported:'This browser does not support notifications.',
     checkinAlready:'You are already marked present today.', checkinInvalid:'This QR code is not valid or has expired.',
     checkinOutsideWindow:'Check-in is only open from 7:00 AM to 2:00 PM.',
@@ -642,7 +642,7 @@ const T = {
     holiday:'چھٹی', tapToUnmark:'ہٹانے کے لیے ٹیپ کریں', holidayHint:'اتوار ہمیشہ چھٹی ہوتی ہے۔ کسی بھی دوسری تاریخ کو چھٹی کے طور پر لگانے/ہٹانے کے لیے اس پر ٹیپ کریں۔',
     qrCheckin:'QR چیک اِن', checkinTitle:'اساتذہ حاضری', checkinSelectPrompt:'آج اپنی حاضری لگانے کے لیے اپنا نام منتخب کریں۔',
     checkinButton:'میری حاضری لگائیں', checkinSuccess:'آپ کی حاضری لگ گئی۔ شکریہ!',
-    enableNotifications:'اگر میں چیک اِن کرنا بھول جاؤں تو یاد دہانی بھیجیں', notificationsEnabled:'اس فون پر یاد دہانی فعال ہے۔',
+    enableNotifications:'اگر کوئی ٹیچر چیک ان نہ کرے تو مجھے آگاہ کریں', notificationsEnabled:'اس فون پر یاد دہانی فعال ہے۔',
     notificationsFailed:'یاد دہانی فعال نہیں ہو سکی — اپنے براؤزر کی نوٹیفیکیشن اجازت چیک کریں۔', notificationsUnsupported:'یہ براؤزر نوٹیفیکیشن سپورٹ نہیں کرتا۔',
     checkinAlready:'آپ کی حاضری آج پہلے ہی لگ چکی ہے۔', checkinInvalid:'یہ QR کوڈ درست نہیں یا میعاد ختم ہو چکی ہے۔',
     checkinOutsideWindow:'حاضری صرف صبح 7 بجے سے دوپہر 2 بجے تک لگائی جا سکتی ہے۔',
@@ -1775,6 +1775,9 @@ function tplDashboard() {
       </div>
       <div class="balance-card"><div class="lbl">${esc(t.netBalance)}</div><div class="val">₨${fmt(s.netBalance)}</div></div>
       <div class="dues-card"><div class="lbl">${esc(t.totalDuesAllTime)}</div><div class="val">₨${fmt(s.totalDuesAllTime)}</div></div>
+      <div id="admin-notify-row" style="margin-top:10px;">
+        <button class="btn-ghost" style="width:100%;" onclick="subscribeAdminToPush(document.getElementById('admin-notify-row'))">${esc(t.enableNotifications)}</button>
+      </div>
 
       <div class="section-title">${esc(t.thisMonth)}</div>
       <div class="stat-grid">
@@ -4638,11 +4641,9 @@ async function submitCheckin(token) {
     if (data === 'ok') {
       msg.innerHTML = `<span class="ok">✓ ${esc(t.checkinSuccess)}</span>`;
       sel.disabled = true;
-      renderNotifyOptIn(token, teacherId);
     } else if (data === 'already') {
       msg.innerHTML = `<span class="ok">${esc(t.checkinAlready)}</span>`;
       sel.disabled = true;
-      renderNotifyOptIn(token, teacherId);
     } else if (data === 'closed') {
       msg.innerHTML = `<span class="err">${esc(t.checkinOutsideWindow)}</span>`;
     } else {
@@ -4667,39 +4668,32 @@ function urlBase64ToUint8Array(base64String) {
   return Uint8Array.from([...raw].map(c => c.charCodeAt(0)));
 }
 
-// Shown once, right after a teacher checks in — lets them opt into a push
-// reminder for mornings they forget to scan. Skipped silently on browsers
-// that don't support push (e.g. this exact device already declined, or it's
-// an unsupported in-app browser) rather than showing a dead-end button.
-function renderNotifyOptIn(token, teacherId) {
-  if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
-  const msg = document.getElementById('checkin-msg');
-  if (!msg || Notification.permission === 'denied') return;
-  const row = document.createElement('div');
-  row.style.marginTop = '10px';
-  row.innerHTML = `<button class="btn-ghost" style="width:100%;" id="notify-optin-btn">${esc(t.enableNotifications)}</button>`;
-  msg.after(row);
-  document.getElementById('notify-optin-btn').onclick = () => subscribeToPush(token, teacherId, row);
-}
-
-async function subscribeToPush(token, teacherId, uiRow) {
+// Called from the admin dashboard — subscribes the PRINCIPAL's own browser
+// to push notifications listing which teachers haven't checked in. Unlike
+// the (removed) teacher-facing version, this uses the admin's own logged-in
+// session (RLS-scoped to auth.uid()) instead of a QR token, since the
+// principal is authenticated here, not visiting an anonymous check-in page.
+async function subscribeAdminToPush(uiEl) {
+  if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+    uiEl.innerHTML = `<span class="err">${esc(t.notificationsUnsupported)}</span>`;
+    return;
+  }
   try {
     const permission = await Notification.requestPermission();
-    if (permission !== 'granted') { uiRow.innerHTML = `<span class="err">${esc(t.notificationsFailed)}</span>`; return; }
+    if (permission !== 'granted') { uiEl.innerHTML = `<span class="err">${esc(t.notificationsFailed)}</span>`; return; }
     const reg = await navigator.serviceWorker.ready;
     let sub = await reg.pushManager.getSubscription();
     if (!sub) {
       sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY) });
     }
     const raw = sub.toJSON();
-    const { data, error } = await sb.rpc('save_push_subscription', {
-      p_token: token, p_teacher_id: teacherId,
-      p_endpoint: raw.endpoint, p_p256dh: raw.keys.p256dh, p_auth: raw.keys.auth
-    });
-    if (error || data !== 'ok') throw new Error('save failed');
-    uiRow.innerHTML = `<span class="ok">✓ ${esc(t.notificationsEnabled)}</span>`;
+    const { error } = await sb.from('admin_push_subscriptions').upsert({
+      owner_id: CURRENT_USER.id, endpoint: raw.endpoint, p256dh: raw.keys.p256dh, auth: raw.keys.auth
+    }, { onConflict: 'owner_id,endpoint' });
+    if (error) throw error;
+    uiEl.innerHTML = `<span class="ok">✓ ${esc(t.notificationsEnabled)}</span>`;
   } catch (e) {
-    uiRow.innerHTML = `<span class="err">${esc(t.notificationsFailed)}</span>`;
+    uiEl.innerHTML = `<span class="err">${esc(t.notificationsFailed)}</span>`;
   }
 }
 
