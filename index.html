@@ -26,7 +26,7 @@
 <meta name="apple-mobile-web-app-title" content="SchoolMS">
 <link rel="apple-touch-icon" href="icons/icon-180.png">
 <link rel="icon" href="icons/icon-192.png">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,500;0,9..144,600;0,9..144,700;1,9..144,500;1,9..144,600;1,9..144,700&family=Inter:wght@400;500;600;700&family=Noto+Nastaliq+Urdu:wght@600;700&family=Noto+Sans+Urdu:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,500;0,9..144,600;0,9..144,700;1,9..144,500;1,9..144,600;1,9..144,700&family=Berkshire+Swash&family=Aref+Ruqaa:wght@400;700&family=Inter:wght@400;500;600;700&family=Noto+Nastaliq+Urdu:wght@600;700&family=Noto+Sans+Urdu:wght@400;500;600&display=swap">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.4/dist/umd/supabase.js" integrity="sha384-ysv13JVP3fufiEXfjML9OdCa/rRbMJvUBOWyor82wfuK8INNZAvmbxHgKIHi+oqz" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js" integrity="sha384-vtjasyidUo0kW94K5MXDXntzOJpQgBKXmE7e2Ga4LG0skTTLeBi97eFAXsqewJjw" crossorigin="anonymous"></script>
 <style>
@@ -325,9 +325,12 @@
     .slc-head{text-align:center;padding-bottom:14px;border-bottom:1px solid #E7E0CE;}
     .slc-head .eyebrow{font-size:13px;letter-spacing:.22em;text-transform:uppercase;color:#8A6200;opacity:.85;margin-bottom:8px;
       text-shadow:1px 1px 0 rgba(255,255,255,.6),1px 2px 2px rgba(0,0,0,.18);}
-    .slc-head h2{font-family:Fraunces,serif;font-weight:700;color:#0F2740;margin:0 0 12px;font-size:38px;letter-spacing:.02em;
+    .slc-head h2{font-family:'Aref Ruqaa',serif;font-weight:700;margin:0;font-size:36px;letter-spacing:.03em;color:#0F2740;
       text-shadow:1px 1px 0 #C9A227,2px 2px 0 #B8941F,3px 3px 0 #A67F17,5px 5px 8px rgba(15,39,64,.4);}
-    .slc-title-wrap{display:flex;align-items:center;justify-content:center;gap:10px;margin-top:4px;}
+    .slc-name-wrap{display:flex;align-items:center;justify-content:center;gap:12px;margin-bottom:12px;}
+    .slc-name-wrap .flourish{color:#C9A227;font-size:15px;flex-shrink:0;}
+    .slc-name-wrap h2{text-align:center;}
+    .slc-title-wrap{display:flex;align-items:center;justify-content:center;gap:12px;margin-top:4px;}
     .slc-title-wrap .rule{height:1px;width:46px;background:linear-gradient(90deg,transparent,#C9A227);}
     .slc-title-wrap .rule.r{background:linear-gradient(90deg,#C9A227,transparent);}
     .slc-title{font-size:21px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:#B24A32;white-space:nowrap;
@@ -380,8 +383,11 @@
     .cc-head{text-align:center;padding-bottom:14px;border-bottom:1.5px solid #E7E0CE;}
     .cc-head .eyebrow{font-size:12px;letter-spacing:.26em;text-transform:uppercase;color:#8A6200;opacity:.9;margin-bottom:6px;
       text-shadow:1px 1px 0 rgba(255,255,255,.6),1px 2px 2px rgba(0,0,0,.18);}
-    .cc-head h2{font-family:Fraunces,serif;font-weight:700;color:#0F2740;margin:0 0 10px;font-size:36px;letter-spacing:.02em;
+    .cc-head h2{font-family:'Aref Ruqaa',serif;font-weight:700;margin:0;font-size:34px;letter-spacing:.03em;color:#0F2740;
       text-shadow:1px 1px 0 #C9A227,2px 2px 0 #B8941F,3px 3px 0 #A67F17,4px 4px 7px rgba(15,39,64,.4);}
+    .cc-name-wrap{display:flex;align-items:center;justify-content:center;gap:14px;margin-bottom:10px;}
+    .cc-name-wrap .flourish{color:#C9A227;font-size:15px;flex-shrink:0;}
+    .cc-name-wrap h2{text-align:center;}
     body.ur .cc-head h2{font-family:'Noto Nastaliq Urdu',serif;}
     .cc-title-wrap{display:flex;align-items:center;justify-content:center;gap:14px;margin-top:5px;}
     .cc-title-wrap .rule{height:1px;width:64px;background:linear-gradient(90deg,transparent,#C9A227);}
@@ -3245,7 +3251,7 @@ let dmcBatchDateOfIssue = todayISO(); // shared date of issue for this batch, ap
 // Editable certificate colors (the layout itself is fixed — only the colors
 // are customizable per school).
 let dmcDesign = {
-  certTitle: 'DETAILED MARKS CERTIFICATE',
+  certTitle: 'DETAIL MARKS CERTIFICATE',
   primaryColor: '#0F2740', // navy — header banner, table header, borders
   accentColor: '#C9A227',  // gold — border trim, session pill, accents
   bgColor: '#FAF6EC',      // cream — certificate background
@@ -3272,7 +3278,7 @@ function tplDMC() {
 
     <div class="card">
       <h3 style="margin-top:0;">School Configuration for DMC</h3>
-      <p style="font-size:11px;opacity:.6;">Set your school logo and name for certificates</p>
+      <p style="font-size:11px;opacity:.6;">Set your school logo and name for certificates. The certificate's colors are picked automatically from your logo — no separate color settings needed.</p>
       
       <label>
         <span>School Logo (Upload Image)</span>
@@ -3581,22 +3587,33 @@ function renderDMCCertificate(result) {
   const bg = dmcDesign.bgColor      || '#FAF6EC';   // background (cream by default)
   const acLight = lightenColor(ac, 0.45);           // soft accent tint (was the fixed #E4C765)
 
+  // Long school names must never be clipped, so the header font size scales
+  // down as the name gets longer instead of using a fixed size that overflows.
+  const nameLen = (dmcSchoolName || '').length;
+  const nameFontSize = nameLen > 42 ? 22 : nameLen > 34 ? 26 : nameLen > 26 ? 30 : nameLen > 18 ? 34 : 40;
+
   return `
     <div class="dmc-cert" style="page-break-after:always;page-break-inside:avoid;break-inside:avoid;margin-bottom:24px;font-family:Inter,sans-serif;">
       <div style="max-width:800px;margin:0 auto;background:${pc};padding:8px;border-radius:22px;position:relative;overflow:hidden;">
         <div style="background:${bg};border:2px solid ${ac};border-radius:16px;padding:18px 26px 16px;position:relative;z-index:0;overflow:hidden;">
           ${dmcLogo ? `<div style="position:absolute;inset:0;z-index:-1;display:flex;align-items:center;justify-content:center;pointer-events:none;overflow:hidden;"><img src="${dmcLogo}" style="width:63%;max-width:364px;object-fit:contain;opacity:.2;filter:blur(1px);"></div>` : ''}
 
-          <!-- Header: crest, school name + tagline, medal -->
+          <!-- Header: logo back on the side (as in the original layout), with
+               the school name as a plain auto-sizing line so long names never
+               get clipped. -->
           <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:14px;">
             <div style="flex-shrink:0;width:62px;height:62px;">
               ${dmcLogo
-                ? `<img src="${dmcLogo}" style="width:62px;height:62px;object-fit:contain;border-radius:50%;">`
+                ? `<img src="${dmcLogo}" style="width:62px;height:62px;object-fit:contain;border-radius:50%;border:2px solid ${ac};">`
                 : `<svg viewBox="0 0 64 64" width="62" height="62"><path d="M32 4 L58 12 V32 C58 46 47 56 32 60 C17 56 6 46 6 32 V12 Z" fill="${pc}" stroke="${ac}" stroke-width="2"/><circle cx="32" cy="26" r="10" fill="none" stroke="${acLight}" stroke-width="1.5"/><path d="M24 40 L40 40" stroke="${acLight}" stroke-width="1.5"/></svg>`}
             </div>
-            <div style="flex:1;text-align:center;padding-top:2px;">
-              <div style="font-family:Fraunces,serif;font-weight:700;font-size:26px;color:${pc};line-height:1.15;letter-spacing:.03em;">${esc(dmcSchoolName)}</div>
-              ${dmcTagline ? `<div style="font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:${pc};opacity:.75;margin-top:5px;">${esc(dmcTagline)}</div>` : ''}
+            <div style="flex:1;padding-top:2px;">
+              <div style="display:flex;align-items:center;justify-content:center;gap:8px;">
+                <span style="color:${ac};font-size:${Math.max(nameFontSize*0.45,12)}px;flex-shrink:0;">✦</span>
+                <div style="font-family:'Aref Ruqaa',serif;font-weight:700;line-height:1.3;letter-spacing:.02em;font-size:${nameFontSize}px;color:${pc};text-align:center;text-shadow:1px 1px 0 ${acLight},2px 2px 0 ${ac},3px 3px 6px rgba(0,0,0,.35);">${esc(dmcSchoolName)}</div>
+                <span style="color:${ac};font-size:${Math.max(nameFontSize*0.45,12)}px;flex-shrink:0;">✦</span>
+              </div>
+              ${dmcTagline ? `<div style="display:flex;align-items:center;justify-content:center;gap:8px;margin-top:5px;"><span style="color:${ac};font-size:10px;flex-shrink:0;">✦</span><div style="font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:${pc};opacity:.75;text-align:center;">${esc(dmcTagline)}</div><span style="color:${ac};font-size:10px;flex-shrink:0;">✦</span></div>` : ''}
             </div>
             <div style="flex-shrink:0;width:42px;height:54px;">
               <svg viewBox="0 0 44 56" width="42" height="54"><path d="M6 0 H38 V34 L22 24 L6 34 Z" fill="${pc}"/><circle cx="22" cy="16" r="12" fill="${acLight}" stroke="${ac}" stroke-width="1.5"/><path d="M16 16 L20 20 L28 11" stroke="${pc}" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -3607,7 +3624,7 @@ function renderDMCCertificate(result) {
 
           <!-- Title banner -->
           <div style="text-align:center;">
-            <div style="display:inline-block;background:${pc};color:${bg};padding:9px 26px;border-radius:6px;font-weight:700;font-size:14px;letter-spacing:.06em;">${esc((dmcDesign.certTitle || 'DETAILED MARKS CERTIFICATE').toUpperCase())}</div>
+            <div style="display:inline-block;background:${pc};color:${bg};padding:9px 26px;border-radius:6px;font-weight:700;font-size:14px;letter-spacing:.06em;">${esc((dmcDesign.certTitle || 'DETAIL MARKS CERTIFICATE').toUpperCase())}</div>
             ${dmcAcademicSession ? `<div style="margin-top:10px;"><span style="display:inline-block;border:1px solid ${ac};color:${pc};padding:4px 18px;border-radius:999px;font-size:11px;font-weight:700;letter-spacing:.03em;">ACADEMIC SESSION: ${esc(dmcAcademicSession)}</span></div>` : ''}
           </div>
 
@@ -3691,11 +3708,67 @@ function renderDMCCertificate(result) {
 }
 
 
-function handleDMCLogoUpload(file) {
+// Reads the uploaded logo's pixels (via an offscreen canvas) and picks two
+// theme colors from it: the most common non-background color (primary) and
+// a second, meaningfully different color (accent) — so the certificate's
+// look always matches the school's own logo automatically.
+function extractColorsFromLogo(dataUrl) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      try {
+        const size = 48;
+        const canvas = document.createElement('canvas');
+        canvas.width = size; canvas.height = size;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, size, size);
+        const { data } = ctx.getImageData(0, 0, size, size);
+
+        const buckets = {}; // quantized color -> {count, r, g, b}
+        for (let i = 0; i < data.length; i += 4) {
+          const r = data[i], g = data[i+1], b = data[i+2], a = data[i+3];
+          if (a < 200) continue;                       // skip transparent pixels
+          if ((r + g + b) / 3 > 235) continue;          // skip near-white background
+          const qr = Math.round(r / 24) * 24, qg = Math.round(g / 24) * 24, qb = Math.round(b / 24) * 24;
+          const key = qr + ',' + qg + ',' + qb;
+          if (!buckets[key]) buckets[key] = { count: 0, r: qr, g: qg, b: qb };
+          buckets[key].count++;
+        }
+        const sorted = Object.values(buckets).sort((a, b) => b.count - a.count);
+        if (!sorted.length) return resolve(null);
+
+        const toHex = c => '#' + [c.r, c.g, c.b].map(v => Math.max(0, Math.min(255, v)).toString(16).padStart(2, '0')).join('');
+        const dist = (a, b) => Math.abs(a.r-b.r) + Math.abs(a.g-b.g) + Math.abs(a.b-b.b);
+
+        // Primary should be dark enough that white/cream text stays readable
+        // on it (it's used as banner/table-header backgrounds) — darken it a
+        // touch if the dominant logo color turns out to be a light one.
+        let primary = sorted[0];
+        const brightness = (primary.r + primary.g + primary.b) / 3;
+        if (brightness > 150) {
+          const f = 0.55;
+          primary = { r: Math.round(primary.r*f), g: Math.round(primary.g*f), b: Math.round(primary.b*f) };
+        }
+        // Accent: the next dominant color that's visibly different from primary.
+        const accent = sorted.find(c => dist(c, sorted[0]) > 90) || sorted[Math.min(1, sorted.length - 1)];
+
+        resolve({ primary: toHex(primary), accent: toHex(accent) });
+      } catch (e) {
+        resolve(null);
+      }
+    };
+    img.onerror = () => resolve(null);
+    img.src = dataUrl;
+  });
+}
+
+async function handleDMCLogoUpload(file) {
   if (!file) return;
   const reader = new FileReader();
-  reader.onload = (e) => {
+  reader.onload = async (e) => {
     dmcLogo = e.target.result;
+    const colors = await extractColorsFromLogo(dmcLogo);
+    if (colors) { dmcDesign.primaryColor = colors.primary; dmcDesign.accentColor = colors.accent; }
     saveDMCConfig();
     renderTab();
   };
@@ -3704,7 +3777,7 @@ function handleDMCLogoUpload(file) {
 
 function printAllDMC() {
   if (dmcResults.length === 0) { alert('No results to print'); return; }
-  let html = '<html><head><meta charset="utf-8"><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap"><style>@page{size:A4;margin:8mm;}*{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;color-adjust:exact!important;}html,body{height:100%;}body{font-family:Inter,sans-serif;margin:0;padding:10px;background:#f5f5f5;}@media print{body{background:#fff;padding:0;}.dmc-cert{page-break-inside:avoid;page-break-after:always;break-inside:avoid;}.dmc-cert:last-child{page-break-after:auto;}}</style></head><body>';
+  let html = '<html><head><meta charset="utf-8"><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700&family=Berkshire+Swash&family=Aref+Ruqaa:wght@400;700&family=Inter:wght@400;500;600;700&display=swap"><style>@page{size:A4;margin:8mm;}*{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;color-adjust:exact!important;}html,body{height:100%;}body{font-family:Inter,sans-serif;margin:0;padding:10px;background:#f5f5f5;}@media print{body{background:#fff;padding:0;}.dmc-cert{page-break-inside:avoid;page-break-after:always;break-inside:avoid;}.dmc-cert:last-child{page-break-after:auto;}}</style></head><body>';
   dmcResults.forEach(r => {
     html += renderDMCCertificate(r);
   });
@@ -4344,7 +4417,7 @@ async function printSingleAdmissionEntry(id) {
           <div class="slc-head">
             ${dmcLogo ? `<img class="slc-logo" src="${dmcLogo}" alt="School Logo">` : ''}
             <div class="eyebrow">${esc(t.headOfInstitution)}</div>
-            <h2>${esc(CURRENT_PROFILE.school_name || 'School')}</h2>
+            <div class="slc-name-wrap"><span class="flourish">✦</span><h2>${esc(CURRENT_PROFILE.school_name || 'School')}</h2><span class="flourish">✦</span></div>
             <div class="slc-title-wrap">
               <span class="rule"></span>
               <span class="slc-title">${esc(t.admissionRegister)}</span>
@@ -4412,7 +4485,7 @@ async function printAdmissionEntry(id) {
         <div class="slc-head">
           ${dmcLogo ? `<img class="slc-logo" src="${dmcLogo}" alt="School Logo">` : ''}
           <div class="eyebrow">${esc(t.headOfInstitution)}</div>
-          <h2>${esc((LANG === 'ur' ? schoolNameUrdu() : CURRENT_PROFILE.school_name) || 'School')}</h2>
+          <div class="slc-name-wrap"><span class="flourish">✦</span><h2>${esc((LANG === 'ur' ? schoolNameUrdu() : CURRENT_PROFILE.school_name) || 'School')}</h2><span class="flourish">✦</span></div>
           <div class="slc-title-wrap">
             <span class="rule"></span>
             <span class="slc-title">${esc(t.slcTitle)}</span>
@@ -4512,7 +4585,7 @@ async function printCharacterCertificate(id) {
           <div class="cc-head">
             ${dmcLogo ? `<img class="cc-logo" src="${dmcLogo}" alt="School Logo">` : ''}
             <div class="eyebrow">${esc(t.headOfInstitution)}</div>
-            <h2>${esc((LANG === 'ur' ? schoolNameUrdu() : CURRENT_PROFILE.school_name) || 'School')}</h2>
+            <div class="cc-name-wrap"><span class="flourish">✦</span><h2>${esc((LANG === 'ur' ? schoolNameUrdu() : CURRENT_PROFILE.school_name) || 'School')}</h2><span class="flourish">✦</span></div>
             <div class="cc-title-wrap">
               <span class="rule"></span>
               <span class="cc-title">${esc(t.ccTitle)}</span>
@@ -4788,7 +4861,7 @@ if ('serviceWorker' in navigator) {
     }).catch(() => {});
   });
 }
-console.log('SchoolMS build: 2026-09-06-dmc-fixed-design'); // bump this string on every deploy to verify (in browser console) which version is actually running
+console.log('SchoolMS build: 2026-09-06-dmc-logo-colors'); // bump this string on every deploy to verify (in browser console) which version is actually running
 </script>
 </body>
 </html>
