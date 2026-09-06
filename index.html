@@ -1527,7 +1527,7 @@ function renderTab() {
   else if (TAB==='teachers') main.innerHTML = tplTeachers();
   else if (TAB==='finance') main.innerHTML = tplFinance();
   else if (TAB==='reports') main.innerHTML = tplReports();
-  else if (TAB==='dmc') { main.innerHTML = tplDMC(); Promise.all([loadDMCConfig(), loadCertificateLog()]).then(() => { if (TAB==='dmc') { main.innerHTML = tplDMC(); renderDMCSubjects(); } }); }
+  else if (TAB==='dmc') { main.innerHTML = tplDMC(); loadDMCConfig().then(() => { if (TAB==='dmc') { main.innerHTML = tplDMC(); renderDMCSubjects(); } }); }
   else if (TAB==='marksSheet') main.innerHTML = tplMarksSheet();
   else if (TAB==='admissionRegister') main.innerHTML = tplAdmissionRegister();
   else if (TAB==='teacherRegister') main.innerHTML = tplTeacherRegister();
@@ -3242,6 +3242,30 @@ let dmcQuote = ''; // optional footer quote — falls back to a language-appropr
 let dmcBatchSection = ''; // shared section for this batch, applied to all certificates
 let dmcBatchDateOfIssue = todayISO(); // shared date of issue for this batch, applied to all certificates
 
+// Editable certificate colors (the layout itself is fixed — only the colors
+// are customizable per school).
+let dmcDesign = {
+  certTitle: 'DETAILED MARKS CERTIFICATE',
+  primaryColor: '#0F2740', // navy — header banner, table header, borders
+  accentColor: '#C9A227',  // gold — border trim, session pill, accents
+  bgColor: '#FAF6EC',      // cream — certificate background
+  showPosition: true,      // "Position in class" summary block
+  showStamp: true,         // dashed "SCHOOL STAMP" circle in footer
+  teacherLabel: 'CLASS TEACHER SIGNATURE',
+  principalLabel: 'PRINCIPAL SIGNATURE'
+};
+
+// Lighten a #rrggbb hex color by `pct` (0-1) toward white — used to derive the
+// soft highlight shade (e.g. table's TOTAL row) from just the one accent color
+// the school picks, instead of needing a second color input for it.
+function lightenColor(hex, pct) {
+  const h = (hex || '#C9A227').replace('#', '');
+  const num = parseInt(h.length === 3 ? h.split('').map(c => c + c).join('') : h, 16);
+  const r = (num >> 16) & 255, g = (num >> 8) & 255, b = num & 255;
+  const mix = c => Math.round(c + (255 - c) * pct);
+  return `#${[mix(r), mix(g), mix(b)].map(v => v.toString(16).padStart(2, '0')).join('')}`;
+}
+
 function tplDMC() {
   return `
     <h2>📜 Detail Marks Certificate (DMC)</h2>
@@ -3337,19 +3361,6 @@ function tplDMC() {
         <button class="btn-ghost" onclick="printAllDMC()">Print All</button>
       </div>
     </div>
-
-    <div class="card">
-      <h3 style="margin-top:0;">Recent Certificates Issued</h3>
-      <p style="font-size:11px;opacity:.6;">Last 30 DMCs, SLCs, and Character Certificates printed — a record, not a redo button.</p>
-      ${certLogCache === null ? `<p style="font-size:12px;opacity:.6;">Loading…</p>` :
-        (certLogCache.length ? `<div class="list-card">` + certLogCache.map(c => `
-          <div class="list-row">
-            <div>
-              <div class="nm">${esc(c.student_name || '—')}</div>
-              <div class="sub">${esc(c.cert_type)}${c.class_name ? ' · ' + esc(c.class_name) : ''} · ${esc(fmtDate(c.issued_at))}</div>
-            </div>
-          </div>`).join('') + `</div>` : `<div class="empty">No certificates issued yet.</div>`)}
-    </div>
   `;
 }
 
@@ -3374,15 +3385,26 @@ async function loadDMCConfig() {
   if (data.tagline) dmcTagline = data.tagline;
   if (data.academic_session) dmcAcademicSession = data.academic_session;
   if (data.quote) dmcQuote = data.quote;
+  // Merge onto the defaults rather than replacing, so a school that saved
+  // their design before a new toggle was added still gets that toggle's
+  // default instead of `undefined`.
+  if (data.design) dmcDesign = { ...dmcDesign, ...data.design };
 }
 
 async function saveDMCConfig() {
   const { error } = await sb.from('dmc_config').upsert({
     owner_id: CURRENT_USER.id, subjects: dmcSubjects, school_name: dmcSchoolName, logo: dmcLogo,
-    tagline: dmcTagline, academic_session: dmcAcademicSession, quote: dmcQuote,
+    tagline: dmcTagline, academic_session: dmcAcademicSession, quote: dmcQuote, design: dmcDesign,
     updated_at: new Date().toISOString()
   });
   if (error) console.error('DMC config save failed:', error.message);
+}
+
+// Re-renders the (already-generated) certificate preview after a design
+// tweak, so a school editing colors/labels sees the result immediately
+// instead of having to click "Preview Certificates" again.
+function renderDMCPreviewIfOpen() {
+  if (dmcResults.length > 0 && document.getElementById('dmc-preview')) generateDMCPreview();
 }
 
 function addDMCSubject() {
@@ -3496,11 +3518,18 @@ function dmcSubjectIcon(name) {
 }
 
 function dmcGradeFor(pct) {
-  return pct >= 90 ? 'A++' : pct >= 80 ? 'A+' : pct >= 70 ? 'A' : pct >= 60 ? 'B' : pct >= 50 ? 'C' : pct >= 40 ? 'D' : 'E';
+  return pct >= 80 ? 'A+' : pct >= 70 ? 'A' : pct >= 60 ? 'B' : pct >= 50 ? 'C' : pct >= 40 ? 'D' : 'F';
 }
 function dmcRemarkFor(grade) {
-  const map = { 'A++':'Outstanding', 'A+':'Excellent', 'A':'Very Good', 'B':'Good', 'C':'Satisfactory', 'D':'Needs Improvement', 'E':'Fail' };
+  const map = { 'A+':'Outstanding', 'A':'Excellent', 'B':'Very Good', 'C':'Good', 'D':'Satisfactory', 'F':'Needs Improvement' };
   return map[grade] || '';
+}
+// A color per grade, so the Grade/Remarks shown on the certificate are
+// visually color-coded (green for strong grades, fading through gold/orange
+// down to a soft red for the lowest one) instead of all one plain color.
+function dmcGradeColor(grade) {
+  const map = { 'A+':'#2F7D4F', 'A':'#3F7154', 'B':'#3D7A9E', 'C':'#B2871F', 'D':'#B2752F', 'F':'#B24A32' };
+  return map[grade] || '#1C2530';
 }
 
 function renderDMCCertificate(result) {
@@ -3538,17 +3567,24 @@ function renderDMCCertificate(result) {
       <span style="flex:1;font-size:13px;color:#1C2530;border-bottom:1px solid #C9C2A6;padding-bottom:2px;">${esc(value || '\u2014')}</span>
     </div>`;
 
-  const summaryBlock = (icon, label, value) => `
+  const summaryBlock = (icon, label, value, valueColor) => `
     <div style="text-align:center;">
       <div style="font-size:17px;margin-bottom:4px;">${icon}</div>
       <div style="font-size:9px;color:#0F2740;font-weight:700;letter-spacing:.04em;text-transform:uppercase;">${label}</div>
-      <div style="font-size:15px;font-weight:700;color:#0F2740;margin-top:3px;">${value}</div>
+      <div style="font-size:15px;font-weight:700;color:${valueColor || '#0F2740'};margin-top:3px;">${value}</div>
     </div>`;
+
+  // Design values are per-school (dmcDesign), so the same rendering logic
+  // above produces a differently-styled certificate for every school.
+  const pc = dmcDesign.primaryColor || '#0F2740';   // primary (navy by default)
+  const ac = dmcDesign.accentColor  || '#C9A227';   // accent (gold by default)
+  const bg = dmcDesign.bgColor      || '#FAF6EC';   // background (cream by default)
+  const acLight = lightenColor(ac, 0.45);           // soft accent tint (was the fixed #E4C765)
 
   return `
     <div class="dmc-cert" style="page-break-after:always;page-break-inside:avoid;break-inside:avoid;margin-bottom:24px;font-family:Inter,sans-serif;">
-      <div style="max-width:800px;margin:0 auto;background:#0F2740;padding:8px;border-radius:22px;position:relative;overflow:hidden;">
-        <div style="background:#FAF6EC;border:2px solid #C9A227;border-radius:16px;padding:18px 26px 16px;position:relative;z-index:0;overflow:hidden;">
+      <div style="max-width:800px;margin:0 auto;background:${pc};padding:8px;border-radius:22px;position:relative;overflow:hidden;">
+        <div style="background:${bg};border:2px solid ${ac};border-radius:16px;padding:18px 26px 16px;position:relative;z-index:0;overflow:hidden;">
           ${dmcLogo ? `<div style="position:absolute;inset:0;z-index:-1;display:flex;align-items:center;justify-content:center;pointer-events:none;overflow:hidden;"><img src="${dmcLogo}" style="width:63%;max-width:364px;object-fit:contain;opacity:.2;filter:blur(1px);"></div>` : ''}
 
           <!-- Header: crest, school name + tagline, medal -->
@@ -3556,30 +3592,30 @@ function renderDMCCertificate(result) {
             <div style="flex-shrink:0;width:62px;height:62px;">
               ${dmcLogo
                 ? `<img src="${dmcLogo}" style="width:62px;height:62px;object-fit:contain;border-radius:50%;">`
-                : `<svg viewBox="0 0 64 64" width="62" height="62"><path d="M32 4 L58 12 V32 C58 46 47 56 32 60 C17 56 6 46 6 32 V12 Z" fill="#0F2740" stroke="#C9A227" stroke-width="2"/><circle cx="32" cy="26" r="10" fill="none" stroke="#E4C765" stroke-width="1.5"/><path d="M24 40 L40 40" stroke="#E4C765" stroke-width="1.5"/></svg>`}
+                : `<svg viewBox="0 0 64 64" width="62" height="62"><path d="M32 4 L58 12 V32 C58 46 47 56 32 60 C17 56 6 46 6 32 V12 Z" fill="${pc}" stroke="${ac}" stroke-width="2"/><circle cx="32" cy="26" r="10" fill="none" stroke="${acLight}" stroke-width="1.5"/><path d="M24 40 L40 40" stroke="${acLight}" stroke-width="1.5"/></svg>`}
             </div>
             <div style="flex:1;text-align:center;padding-top:2px;">
-              <div style="font-family:Fraunces,serif;font-weight:700;font-size:26px;color:#0F2740;line-height:1.15;letter-spacing:.03em;">${esc(dmcSchoolName)}</div>
-              ${dmcTagline ? `<div style="font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:#0F2740;opacity:.75;margin-top:5px;">${esc(dmcTagline)}</div>` : ''}
+              <div style="font-family:Fraunces,serif;font-weight:700;font-size:26px;color:${pc};line-height:1.15;letter-spacing:.03em;">${esc(dmcSchoolName)}</div>
+              ${dmcTagline ? `<div style="font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:${pc};opacity:.75;margin-top:5px;">${esc(dmcTagline)}</div>` : ''}
             </div>
             <div style="flex-shrink:0;width:42px;height:54px;">
-              <svg viewBox="0 0 44 56" width="42" height="54"><path d="M6 0 H38 V34 L22 24 L6 34 Z" fill="#0F2740"/><circle cx="22" cy="16" r="12" fill="#E4C765" stroke="#C9A227" stroke-width="1.5"/><path d="M16 16 L20 20 L28 11" stroke="#0F2740" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              <svg viewBox="0 0 44 56" width="42" height="54"><path d="M6 0 H38 V34 L22 24 L6 34 Z" fill="${pc}"/><circle cx="22" cy="16" r="12" fill="${acLight}" stroke="${ac}" stroke-width="1.5"/><path d="M16 16 L20 20 L28 11" stroke="${pc}" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
             </div>
           </div>
 
-          <div style="height:1px;background:linear-gradient(90deg,transparent,#C9A227,transparent);margin:10px 0 12px;"></div>
+          <div style="height:1px;background:linear-gradient(90deg,transparent,${ac},transparent);margin:10px 0 12px;"></div>
 
           <!-- Title banner -->
           <div style="text-align:center;">
-            <div style="display:inline-block;background:#0F2740;color:#FAF6EC;padding:9px 26px;border-radius:6px;font-weight:700;font-size:14px;letter-spacing:.06em;">DETAILED MARKS CERTIFICATE</div>
-            ${dmcAcademicSession ? `<div style="margin-top:10px;"><span style="display:inline-block;border:1px solid #C9A227;color:#0F2740;padding:4px 18px;border-radius:999px;font-size:11px;font-weight:700;letter-spacing:.03em;">ACADEMIC SESSION: ${esc(dmcAcademicSession)}</span></div>` : ''}
+            <div style="display:inline-block;background:${pc};color:${bg};padding:9px 26px;border-radius:6px;font-weight:700;font-size:14px;letter-spacing:.06em;">${esc((dmcDesign.certTitle || 'DETAILED MARKS CERTIFICATE').toUpperCase())}</div>
+            ${dmcAcademicSession ? `<div style="margin-top:10px;"><span style="display:inline-block;border:1px solid ${ac};color:${pc};padding:4px 18px;border-radius:999px;font-size:11px;font-weight:700;letter-spacing:.03em;">ACADEMIC SESSION: ${esc(dmcAcademicSession)}</span></div>` : ''}
           </div>
 
           <!-- Student Information section -->
           <div style="margin:14px 0 0;">
-            <div style="display:inline-block;background:#0F2740;color:#E4C765;padding:6px 16px;font-size:11px;font-weight:700;letter-spacing:.05em;border-radius:4px 10px 4px 4px;">STUDENT INFORMATION</div>
+            <div style="display:inline-block;background:${pc};color:${acLight};padding:6px 16px;font-size:11px;font-weight:700;letter-spacing:.05em;border-radius:4px 10px 4px 4px;">STUDENT INFORMATION</div>
           </div>
-          <div style="border:1px solid #C9A227;border-radius:10px;padding:12px 18px 2px;margin-top:8px;">
+          <div style="border:1px solid ${ac};border-radius:10px;padding:12px 18px 2px;margin-top:8px;">
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 20px;">
               <div>
                 ${infoField('&#128100;','Student Name', result.studentName)}
@@ -3597,7 +3633,7 @@ function renderDMCCertificate(result) {
           <!-- Marks Table -->
           <table style="width:100%;border-collapse:collapse;margin:8px 0;">
             <thead>
-              <tr style="background:#0F2740;color:#E4C765;">
+              <tr style="background:${pc};color:${acLight};">
                 <th style="padding:8px 12px;text-align:center;font-weight:700;font-size:11px;letter-spacing:.04em;width:44px;">S.NO</th>
                 <th style="padding:8px 12px;text-align:left;font-weight:700;font-size:11px;letter-spacing:.04em;">SUBJECT</th>
                 <th style="padding:8px 12px;text-align:center;font-weight:700;font-size:11px;letter-spacing:.04em;">TOTAL MARKS</th>
@@ -3607,44 +3643,44 @@ function renderDMCCertificate(result) {
             </thead>
             <tbody>
               ${subjectsHtml}
-              <tr style="background:#E4C765;font-weight:700;">
-                <td colspan="2" style="padding:8px 12px;text-align:left;color:#0F2740;">TOTAL</td>
-                <td style="padding:8px 12px;text-align:center;color:#0F2740;font-size:15px;">${totalPossible}</td>
-                <td style="padding:8px 12px;text-align:center;color:#0F2740;font-size:15px;">${totalObtained}</td>
-                <td style="padding:8px 12px;text-align:center;color:#0F2740;font-size:14px;">${grade}</td>
+              <tr style="background:${acLight};font-weight:700;">
+                <td colspan="2" style="padding:8px 12px;text-align:left;color:${pc};">TOTAL</td>
+                <td style="padding:8px 12px;text-align:center;color:${pc};font-size:15px;">${totalPossible}</td>
+                <td style="padding:8px 12px;text-align:center;color:${pc};font-size:15px;">${totalObtained}</td>
+                <td style="padding:8px 12px;text-align:center;color:${dmcGradeColor(grade)};font-size:14px;">${grade}</td>
               </tr>
             </tbody>
           </table>
 
           <!-- Summary row -->
-          <div style="border:1px solid #C9A227;border-radius:10px;padding:8px;">
-            <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:6px;">
+          <div style="border:1px solid ${ac};border-radius:10px;padding:8px;">
+            <div style="display:grid;grid-template-columns:repeat(${dmcDesign.showPosition ? 5 : 4},1fr);gap:6px;">
               ${summaryBlock('&#127942;','Total Marks', totalPossible)}
               ${summaryBlock('&#128203;','Obtained Marks', totalObtained)}
               ${summaryBlock('%','Percentage', percentage+'%')}
-              ${summaryBlock('&#127895;','Grade', grade)}
-              ${summaryBlock('&#129351;','Position', position)}
+              ${summaryBlock('&#127895;','Grade', grade, dmcGradeColor(grade))}
+              ${dmcDesign.showPosition ? summaryBlock('&#129351;','Position', position) : ''}
             </div>
           </div>
 
           <!-- Remarks -->
-          <div style="display:flex;margin-top:10px;border:1px solid #0F2740;border-radius:8px;overflow:hidden;">
-            <div style="background:#0F2740;color:#E4C765;font-weight:700;font-size:13px;letter-spacing:.05em;padding:8px 22px;">REMARKS</div>
-            <div style="flex:1;display:flex;align-items:center;justify-content:center;gap:8px;font-weight:700;font-size:13px;letter-spacing:.05em;color:${resultStatus==='PASS' ? '#3F7154' : '#B24A32'};">${dmcRemarkFor(grade)}</div>
+          <div style="display:flex;margin-top:10px;border:1px solid ${pc};border-radius:8px;overflow:hidden;">
+            <div style="background:${pc};color:${acLight};font-weight:700;font-size:13px;letter-spacing:.05em;padding:8px 22px;">REMARKS</div>
+            <div style="flex:1;display:flex;align-items:center;justify-content:center;gap:8px;font-weight:700;font-size:13px;letter-spacing:.05em;color:${dmcGradeColor(grade)};">${dmcRemarkFor(grade)}</div>
           </div>
 
           <!-- Footer: signatures -->
           <div style="display:flex;align-items:flex-end;justify-content:space-between;margin-top:10px;gap:12px;">
             <div style="text-align:center;flex:1;">
-              <div style="border-bottom:1px solid #0F2740;margin-bottom:6px;"></div>
-              <div style="font-size:10px;font-weight:600;color:#0F2740;letter-spacing:.03em;">CLASS TEACHER SIGNATURE</div>
+              <div style="border-bottom:1px solid ${pc};margin-bottom:6px;"></div>
+              <div style="font-size:10px;font-weight:600;color:${pc};letter-spacing:.03em;">${esc((dmcDesign.teacherLabel || 'CLASS TEACHER SIGNATURE').toUpperCase())}</div>
             </div>
-            <div style="text-align:center;flex-shrink:0;width:70px;">
-              <div style="width:56px;height:56px;border:1px dashed #C9A227;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:8px;font-weight:700;color:#0F2740;opacity:.6;margin:0 auto;">SCHOOL<br>STAMP</div>
-            </div>
+            ${dmcDesign.showStamp ? `<div style="text-align:center;flex-shrink:0;width:70px;">
+              <div style="width:56px;height:56px;border:1px dashed ${ac};border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:8px;font-weight:700;color:${pc};opacity:.6;margin:0 auto;">SCHOOL<br>STAMP</div>
+            </div>` : ''}
             <div style="text-align:center;flex:1;">
-              <div style="border-bottom:1px solid #0F2740;margin-bottom:6px;"></div>
-              <div style="font-size:10px;font-weight:600;color:#0F2740;letter-spacing:.03em;">PRINCIPAL SIGNATURE</div>
+              <div style="border-bottom:1px solid ${pc};margin-bottom:6px;"></div>
+              <div style="font-size:10px;font-weight:600;color:${pc};letter-spacing:.03em;">${esc((dmcDesign.principalLabel || 'PRINCIPAL SIGNATURE').toUpperCase())}</div>
             </div>
           </div>
 
@@ -3653,6 +3689,7 @@ function renderDMCCertificate(result) {
     </div>
   `;
 }
+
 
 function handleDMCLogoUpload(file) {
   if (!file) return;
@@ -4751,7 +4788,7 @@ if ('serviceWorker' in navigator) {
     }).catch(() => {});
   });
 }
-console.log('SchoolMS build: 2026-09-05-dashboard-due-fix'); // bump this string on every deploy to verify (in browser console) which version is actually running
+console.log('SchoolMS build: 2026-09-06-dmc-fixed-design'); // bump this string on every deploy to verify (in browser console) which version is actually running
 </script>
 </body>
 </html>
