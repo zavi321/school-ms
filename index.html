@@ -598,6 +598,7 @@ const T = {
     generate:'Generate', saved:'Saved.',
     linkStudent:'Link to Student (for fee status)', linkStudentNone:'— Not linked —',
     parentCode:'Parent Portal Code', parentSchoolCodeMissing:'Set a School Code in Settings first so this code works.',
+    parentCodeNone:'No parent code yet for this entry.', parentGenerateCode:'Generate Parent Code',
     parentPortalTitle:'Parent Portal', parentPortalDesc:'Enter your School Code, your child\'s Roll No. and PIN to view fee status and results.',
     parentSchoolCodeLabel:'School Code', parentRollLabel:'Roll No.', parentPinLabel:'PIN',
     parentViewButton:'View', parentNotFound:'No matching record found — please check the School Code, Roll No. and PIN.',
@@ -722,6 +723,7 @@ const T = {
     generate:'بنائیں', saved:'محفوظ ہو گیا۔',
     linkStudent:'طالب علم سے منسلک کریں (فیس اسٹیٹس کے لیے)', linkStudentNone:'— منسلک نہیں —',
     parentCode:'پیرنٹ پورٹل کوڈ', parentSchoolCodeMissing:'پہلے سیٹنگز میں اسکول کوڈ سیٹ کریں تاکہ یہ کوڈ کام کرے۔',
+    parentCodeNone:'اس اندراج کے لیے ابھی کوئی پیرنٹ کوڈ نہیں ہے۔', parentGenerateCode:'پیرنٹ کوڈ بنائیں',
     parentPortalTitle:'پیرنٹ پورٹل', parentPortalDesc:'فیس اسٹیٹس اور نتیجہ دیکھنے کے لیے اسکول کوڈ، بچے کا رول نمبر اور پن درج کریں۔',
     parentSchoolCodeLabel:'اسکول کوڈ', parentRollLabel:'رول نمبر', parentPinLabel:'پن',
     parentViewButton:'دیکھیں', parentNotFound:'کوئی ریکارڈ نہیں ملا — براہ کرم اسکول کوڈ، رول نمبر اور پن چیک کریں۔',
@@ -4685,7 +4687,11 @@ function openEditAdmissionEntry(id) {
     <div style="background:var(--surface2);border-radius:8px;padding:10px 12px;margin-bottom:12px;font-size:13px;">
       <b>${esc(t.parentCode)}:</b> ${esc(CURRENT_PROFILE.school_code || '—')} / ${esc(r.serial_no || '—')} / ${esc(r.parent_pin)}
       ${!CURRENT_PROFILE.school_code ? `<div style="color:var(--rust);margin-top:4px;">${esc(t.parentSchoolCodeMissing)}</div>` : ''}
-    </div>` : '';
+    </div>` : `
+    <div style="background:var(--surface2);border-radius:8px;padding:10px 12px;margin-bottom:12px;font-size:13px;">
+      <span style="opacity:.7;">${esc(t.parentCodeNone)}</span>
+      <button type="button" class="btn-ghost" style="margin-top:6px;width:100%;" onclick="generateParentPinForEntry('${id}')">${esc(t.parentGenerateCode)}</button>
+    </div>`;
   showModal(r.student_name || t.editRegisterEntry, `
     ${codeBox}
     ${admissionEntryForm(r)}
@@ -4696,6 +4702,17 @@ function openEditAdmissionEntry(id) {
       <button class="btn-primary" style="flex:1" onclick="guardedSubmit(this, ()=>submitEditAdmissionEntry('${id}'))">${esc(t.save)}</button>
     </div>
   `);
+}
+
+// Backfills a Parent PIN for an admission-register entry created before the
+// Parent Portal feature existed — new entries already get one automatically
+// (see submitAddAdmissionEntry), this just covers the older ones on demand.
+async function generateParentPinForEntry(id) {
+  const pin = String(Math.floor(1000 + Math.random() * 9000));
+  const { error } = await sb.from('admission_register').update({ parent_pin: pin }).eq('id', id);
+  if (reportSaveError(error)) return;
+  await loadAllData();
+  openEditAdmissionEntry(id); // re-open so the new code box shows immediately
 }
 
 // Prints a single admission-register entry as a clean one-record sheet — used
