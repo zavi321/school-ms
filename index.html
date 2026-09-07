@@ -1446,7 +1446,39 @@ function renderGlobalSearchResults() {
       </div>
     </div>`).join('');
 
-  el.innerHTML = `<div class="list-card">${peopleRows}${msRows}${dmcRows}</div>`;
+  el.innerHTML = `<div class="list-card">${peopleRows}${msRows}${dmcRows}</div><div id="gs-archive-results" style="margin-top:10px;"></div>`;
+
+  // Live in-memory matches above only cover people still loaded/uploaded this
+  // session. Also query the permanent dmc_records archive so a certificate
+  // issued years ago still turns up by name. Debounced + guarded against
+  // stale results so a fast typer doesn't see an old query's results land late.
+  clearTimeout(gsArchiveSearchTimer);
+  if (q.length >= 3) {
+    gsArchiveSearchTimer = setTimeout(() => searchDMCArchive(q), 350);
+  }
+}
+
+let gsArchiveSearchTimer = null;
+async function searchDMCArchive(q) {
+  const box = document.getElementById('gs-archive-results');
+  if (!box) return;
+  const { data, error } = await sb.from('dmc_records')
+    .select('id,student_name,class_name,academic_year,roll_no')
+    .eq('owner_id', CURRENT_USER.id).ilike('student_name', `%${q}%`)
+    .order('academic_year', { ascending: false }).limit(20);
+  if (error || !data) return;
+  const inp = document.getElementById('gs-input');
+  if (!inp || normName(inp.value) !== q) return; // a newer search has since superseded this one
+  if (!data.length) { box.innerHTML = ''; return; }
+  box.innerHTML = `<div class="section-title" style="margin-top:0;">${esc(t.dmc || 'DMC')} — Purana Record (Archive)</div><div class="list-card">` +
+    data.map(r => `
+      <div class="list-row" style="cursor:pointer;" onclick="viewSavedDMCRecord('${r.id}')">
+        <div>
+          <div class="nm">${esc(r.student_name)}</div>
+          <div class="sub">${esc(r.class_name || '')} · ${esc(r.academic_year || '')}${r.roll_no ? ' · Roll: ' + esc(r.roll_no) : ''}</div>
+        </div>
+        <span class="pill free">${esc(t.dmc || 'DMC')}</span>
+      </div>`).join('') + `</div>`;
 }
 
 // Jump to the Marks Sheet tab with the matched student's class pre-selected.
@@ -3775,6 +3807,94 @@ async function handleDMCLogoUpload(file) {
   reader.readAsDataURL(file);
 }
 
+// Permanently archives this batch of DMC results (full marks included) to the
+// dmc_records table, so a student's certificate can be found and reprinted
+// years later by name — unlike dmcResults, which only lives in memory for the
+// current session/upload and is lost as soon as the tab closes.
+async function saveDMCRecords(results) {
+  if (!results.length) return;
+  const year = dmcAcademicSession || 'Unspecified';
+  const rows = results.map(r => {
+    const totalObtained = dmcSubjects.reduce((a, s) => a + (Number(r.marks[s.name]) || 0), 0);
+    const totalPossible = dmcSubjects.reduce((a, s) => a + s.total, 0);
+    const percentage = totalPossible ? +(totalObtained / totalPossible * 100).toFixed(1) : 0;
+    const classTotals = results.filter(x => x.class === r.class)
+      .map(x => dmcSubjects.reduce((a, s) => a + (Number(x.marks[s.name]) || 0), 0));
+    const position = [...classTotals].sort((a, b) => b - a).indexOf(totalObtained) + 1;
+    return {
+      owner_id: CURRENT_USER.id, academic_year: year, class_name: r.class || '',
+      roll_no: r.rollNo || '', student_name: r.studentName || '', father_name: r.fatherName || '',
+      section: dmcBatchSection || '', date_of_issue: dmcBatchDateOfIssue || todayISO(),
+      marks: r.marks || {}, subjects: dmcSubjects,
+      total_obtained: totalObtained, total_possible: totalPossible, percentage,
+      grade: dmcGradeFor(percentage), position, updated_at: new Date().toISOString()
+    };
+  });
+  const { error } = await sb.from('dmc_records')
+    .upsert(rows, { onConflict: 'owner_id,academic_year,class_name,roll_no,student_name' });
+  if (error) console.error('DMC record archive failed:', error.message);
+}
+
+// Fetches one archived DMC record and its class cohort (for position ranking),
+// temporarily swaps the live DMC globals for that record's own saved values,
+// renders the certificate exactly as it looked when issued, then restores the
+// live globals so the rest of the app is unaffected.
+async function viewSavedDMCRecord(id) {
+  const { data: rec, error } = await sb.from('dmc_records').select('*').eq('id', id).eq('owner_id', CURRENT_USER.id).maybeSingle();
+  if (error || !rec) { alert('Record not found'); return; }
+  const { data: cohort } = await sb.from('dmc_records').select('student_name,marks,class_name')
+    .eq('owner_id', CURRENT_USER.id).eq('academic_year', rec.academic_year).eq('class_name', rec.class_name);
+
+  const backup = { subjects: dmcSubjects, session: dmcAcademicSession, section: dmcBatchSection, date: dmcBatchDateOfIssue, results: dmcResults };
+  dmcSubjects = (rec.subjects && rec.subjects.length) ? rec.subjects : dmcSubjects;
+  dmcAcademicSession = rec.academic_year || dmcAcademicSession;
+  dmcBatchSection = rec.section || '';
+  dmcBatchDateOfIssue = rec.date_of_issue || todayISO();
+  dmcResults = (cohort || []).map(c => ({ studentName: c.student_name, class: c.class_name, marks: c.marks }));
+
+  const pseudo = { studentName: rec.student_name, fatherName: rec.father_name, rollNo: rec.roll_no, class: rec.class_name, marks: rec.marks };
+  const certHtml = renderDMCCertificate(pseudo);
+
+  dmcSubjects = backup.subjects; dmcAcademicSession = backup.session; dmcBatchSection = backup.section;
+  dmcBatchDateOfIssue = backup.date; dmcResults = backup.results;
+
+  closeModal();
+  showModal(`${rec.student_name} — ${rec.academic_year}`, `
+    <div style="max-height:65vh;overflow-y:auto;">${certHtml}</div>
+    <div style="margin-top:12px;">
+      <button class="btn-primary" onclick="printSavedDMCRecord('${id}')">🖨️ Print</button>
+    </div>
+  `);
+}
+
+// Same swap-render-restore approach as viewSavedDMCRecord, but opens a print
+// window instead of a modal — used for reprinting one archived certificate.
+async function printSavedDMCRecord(id) {
+  const { data: rec, error } = await sb.from('dmc_records').select('*').eq('id', id).eq('owner_id', CURRENT_USER.id).maybeSingle();
+  if (error || !rec) { alert('Record not found'); return; }
+  const { data: cohort } = await sb.from('dmc_records').select('student_name,marks,class_name')
+    .eq('owner_id', CURRENT_USER.id).eq('academic_year', rec.academic_year).eq('class_name', rec.class_name);
+
+  const backup = { subjects: dmcSubjects, session: dmcAcademicSession, section: dmcBatchSection, date: dmcBatchDateOfIssue, results: dmcResults };
+  dmcSubjects = (rec.subjects && rec.subjects.length) ? rec.subjects : dmcSubjects;
+  dmcAcademicSession = rec.academic_year || dmcAcademicSession;
+  dmcBatchSection = rec.section || '';
+  dmcBatchDateOfIssue = rec.date_of_issue || todayISO();
+  dmcResults = (cohort || []).map(c => ({ studentName: c.student_name, class: c.class_name, marks: c.marks }));
+
+  const pseudo = { studentName: rec.student_name, fatherName: rec.father_name, rollNo: rec.roll_no, class: rec.class_name, marks: rec.marks };
+  const certHtml = renderDMCCertificate(pseudo);
+
+  dmcSubjects = backup.subjects; dmcAcademicSession = backup.session; dmcBatchSection = backup.section;
+  dmcBatchDateOfIssue = backup.date; dmcResults = backup.results;
+
+  const html = '<html><head><meta charset="utf-8"><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700&family=Berkshire+Swash&family=Aref+Ruqaa:wght@400;700&family=Inter:wght@400;500;600;700&display=swap"><style>@page{size:A4;margin:8mm;}*{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;color-adjust:exact!important;}body{font-family:Inter,sans-serif;margin:0;padding:10px;}</style></head><body>' + certHtml + '</body></html>';
+  const w = window.open('', '', 'height=900,width=800');
+  w.document.write(html);
+  w.document.close();
+  setTimeout(() => w.print(), 500);
+}
+
 function printAllDMC() {
   if (dmcResults.length === 0) { alert('No results to print'); return; }
   let html = '<html><head><meta charset="utf-8"><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700&family=Berkshire+Swash&family=Aref+Ruqaa:wght@400;700&family=Inter:wght@400;500;600;700&display=swap"><style>@page{size:A4;margin:8mm;}*{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;color-adjust:exact!important;}html,body{height:100%;}body{font-family:Inter,sans-serif;margin:0;padding:10px;background:#f5f5f5;}@media print{body{background:#fff;padding:0;}.dmc-cert{page-break-inside:avoid;page-break-after:always;break-inside:avoid;}.dmc-cert:last-child{page-break-after:auto;}}</style></head><body>';
@@ -3787,6 +3907,7 @@ function printAllDMC() {
   w.document.close();
   setTimeout(() => w.print(), 500);
   dmcResults.forEach(r => logCertificateIssued('DMC', r.studentName, r.class));
+  saveDMCRecords(dmcResults);
 }
 
 // --------- MARKS SHEET (Independent - separate from Students database) ---------
@@ -3798,17 +3919,45 @@ let msSelectedClass = '';
 let msNewStudentName = '';
 let msLoaded = false;
 let msSaveTimer = null;
+// Which academic year's sheet is currently loaded. Each year gets its own row
+// in marks_sheet_data (owner_id + academic_year together are unique), so
+// switching years never overwrites a previous year's marks.
+let msAcademicYear = '';
+let msLoadedYear = null; // the year msStudents/msMarksData currently reflect
+let msYearsList = [];    // years this school has previously saved, for the dropdown
+
+async function loadMarksSheetYearsList() {
+  const { data } = await sb.from('marks_sheet_data').select('academic_year')
+    .eq('owner_id', CURRENT_USER.id).order('academic_year', { ascending: false });
+  msYearsList = (data || []).map(r => r.academic_year).filter(Boolean);
+}
 
 async function loadMarksSheetData() {
-  if (msLoaded) return;
+  if (msLoaded && msLoadedYear === msAcademicYear) return;
   msLoaded = true;
-  const { data } = await sb.from('marks_sheet_data').select('*').eq('owner_id', CURRENT_USER.id).maybeSingle();
+  await loadMarksSheetYearsList();
+  if (!msAcademicYear) msAcademicYear = msYearsList[0] || dmcAcademicSession || '';
+  msLoadedYear = msAcademicYear;
+  const { data } = await sb.from('marks_sheet_data').select('*')
+    .eq('owner_id', CURRENT_USER.id).eq('academic_year', msAcademicYear).maybeSingle();
   if (data) {
     msClasses = data.classes && data.classes.length ? data.classes : msClasses;
     msSubjects = data.subjects || [];
     msStudents = data.students || {};
     msMarksData = data.marks || {};
+  } else {
+    // No saved sheet yet for this year — start blank rather than showing
+    // whatever a previously-loaded year left in memory.
+    msSubjects = []; msStudents = {}; msMarksData = {};
   }
+}
+
+// Switches the working year (e.g. moving to a new session, or looking back at
+// an old one) and reloads that year's own data from the database.
+function changeMarksSheetYear(year) {
+  msAcademicYear = year || '';
+  msLoadedYear = null; // force loadMarksSheetData() to actually refetch
+  loadMarksSheetData().then(renderTab);
 }
 
 // Debounced save so rapid marks entry (many onchange events) doesn't spam the database.
@@ -3816,10 +3965,11 @@ function saveMarksSheetData() {
   clearTimeout(msSaveTimer);
   msSaveTimer = setTimeout(async () => {
     const { error } = await sb.from('marks_sheet_data').upsert({
-      owner_id: CURRENT_USER.id, classes: msClasses, subjects: msSubjects,
+      owner_id: CURRENT_USER.id, academic_year: msAcademicYear || 'Unspecified', classes: msClasses, subjects: msSubjects,
       students: msStudents, marks: msMarksData, updated_at: new Date().toISOString()
-    });
+    }, { onConflict: 'owner_id,academic_year' });
     if (error) console.error('Marks sheet save failed:', error.message);
+    else if (!msYearsList.includes(msAcademicYear)) loadMarksSheetYearsList();
   }, 500);
 }
 
@@ -3864,7 +4014,17 @@ function tplMarksSheet() {
   
   return `
     <h2>📋 Marks Sheet (Independent)</h2>
-    
+
+    <div class="card">
+      <h3 style="margin-top:0;">Academic Year</h3>
+      <p style="font-size:11px;opacity:.6;">Har saal ka data alag save hota hai — is se purana saal overwrite nahi hoga. Naya saal shuru karne ke liye yahan naya year likhein (jaise 2026-2027).</p>
+      <div style="display:flex;gap:6px;">
+        <input type="text" id="ms-year" list="ms-years-list" value="${esc(msAcademicYear)}" placeholder="e.g., 2025-2026" style="flex:1;" onchange="changeMarksSheetYear(this.value)">
+        <datalist id="ms-years-list">${msYearsList.map(y => `<option value="${esc(y)}">`).join('')}</datalist>
+      </div>
+      ${msYearsList.length ? `<p style="font-size:11px;opacity:.5;margin:6px 0 0;">Purane saal: ${msYearsList.map(esc).join(', ')}</p>` : ''}
+    </div>
+
     <div class="card">
       <h3 style="margin-top:0;">Classes</h3>
       <p style="font-size:11px;opacity:.6;">Add or remove classes</p>
@@ -4861,7 +5021,7 @@ if ('serviceWorker' in navigator) {
     }).catch(() => {});
   });
 }
-console.log('SchoolMS build: 2026-09-06-dmc-logo-colors'); // bump this string on every deploy to verify (in browser console) which version is actually running
+console.log('SchoolMS build: 2026-09-07-dmc-archive-marks-year'); // bump this string on every deploy to verify (in browser console) which version is actually running
 </script>
 </body>
 </html>
