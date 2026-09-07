@@ -604,6 +604,7 @@ const T = {
     parentViewButton:'View', parentNotFound:'No matching record found — please check the School Code, Roll No. and PIN.',
     parentFeeBalance:'Fee Balance Due', parentLastPayment:'Last Payment', parentNoFeeLinked:'Fee status is not available for this student yet.',
     parentResults:'Results', parentNoResults:'No results published yet.', parentBackToStart:'Search Again',
+    parentFeeHistory:'View Full Fee History', parentMonth:'Month', parentDues:'Dues', parentPaid:'Paid', parentBalance:'Balance',
     // Admission & Withdrawal Register — a standalone record with no link to the
     // students/finance data above.
     admissionRegister:'Admission Register', admissionRegisterDesc:'A standalone admission & withdrawal record, separate from the Students/Finance data.',
@@ -729,6 +730,7 @@ const T = {
     parentViewButton:'دیکھیں', parentNotFound:'کوئی ریکارڈ نہیں ملا — براہ کرم اسکول کوڈ، رول نمبر اور پن چیک کریں۔',
     parentFeeBalance:'واجب الادا فیس', parentLastPayment:'آخری ادائیگی', parentNoFeeLinked:'اس طالب علم کی فیس اسٹیٹس ابھی دستیاب نہیں ہے۔',
     parentResults:'نتیجہ', parentNoResults:'ابھی تک کوئی نتیجہ شائع نہیں ہوا۔', parentBackToStart:'دوبارہ تلاش کریں',
+    parentFeeHistory:'مکمل فیس تاریخ دیکھیں', parentMonth:'مہینہ', parentDues:'واجبات', parentPaid:'ادا شدہ', parentBalance:'بیلنس',
     admissionRegister:'داخلہ رجسٹر', admissionRegisterDesc:'ایک علیحدہ داخلہ و اخراج ریکارڈ، طلبہ/مالیات کے ڈیٹا سے الگ۔',
     serialNo:'سیریل نمبر', dobFigures:'تاریخ پیدائش (ہندسوں میں)', dobWords:'تاریخ پیدائش (الفاظ میں)', dobLabel:'تاریخ پیدائش (الفاظ اور ہندسوں میں)', casteTribe:'ذات / قبیلہ', occupation:'پیشہ',
     residence:'رہائش', classAdmitted:'جس جماعت میں داخلہ', arrearsDue:'واجب الادا رقم',
@@ -5255,35 +5257,75 @@ async function submitParentPortalLookup() {
   renderParentPortalResult(data[0]);
 }
 
+let PP_CURRENT = null; // last-loaded parent portal record, so click-to-expand handlers can read it back
+
 function renderParentPortalResult(r) {
+  PP_CURRENT = r;
   const body = document.getElementById('parent-portal-body');
   const name = (LANG === 'ur' && r.student_name_ur) ? r.student_name_ur : r.student_name;
-  const feeHtml = (r.last_payment_month || r.fee_balance) ? `
+
+  const dobLine = (r.dob_figures || r.dob_words) ? `${esc(t.dobLabel || 'Date of Birth')}: ${esc(r.dob_words || fmtDate(r.dob_figures) || '')}` : '';
+  const admLine = r.admission_date ? `${esc(t.admissionDate)}: ${esc(fmtDate(r.admission_date))}` : '';
+
+  const history = r.fee_history || [];
+  const feeHtml = (history.length || r.fee_balance) ? `
     <div class="card" style="margin:12px 0;">
       <div class="row2">
         <div><div class="sub">${esc(t.parentFeeBalance)}</div><div class="nm">₨${fmt(r.fee_balance||0)}</div></div>
         <div><div class="sub">${esc(t.parentLastPayment)}</div><div class="nm">${r.last_payment_month ? esc(monthLabel(r.last_payment_month)) + ' — ₨' + fmt(r.last_payment_amount||0) : '—'}</div></div>
       </div>
+      ${history.length ? `<button type="button" class="btn-ghost" style="width:100%;margin-top:10px;" onclick="togglePpFeeHistory()">${esc(t.parentFeeHistory)}</button><div id="pp-fee-history" class="hidden" style="margin-top:8px;"></div>` : ''}
     </div>` : `<p style="font-size:12px;opacity:.6;">${esc(t.parentNoFeeLinked)}</p>`;
 
   const results = r.results || [];
   const resultsHtml = results.length ? `
     <div class="section-title" style="margin-top:14px;">${esc(t.parentResults)}</div>
-    <div class="list-card">${results.map(res => `
-      <div class="list-row">
-        <div>
-          <div class="nm">${esc(res.class_name || '')} — ${esc(res.academic_year || '')}</div>
-          <div class="sub">${esc(t.grade || 'Grade')}: ${esc(res.grade || '—')} · ${res.total_obtained}/${res.total_possible} (${res.percentage ? Number(res.percentage).toFixed(1) : '—'}%)${res.position ? ' · #' + esc(res.position) : ''}</div>
+    <div class="list-card">${results.map((res, i) => `
+      <div class="list-row" style="cursor:pointer;flex-direction:column;align-items:stretch;" onclick="togglePpMarks(${i})">
+        <div style="display:flex;justify-content:space-between;">
+          <div>
+            <div class="nm">${esc(res.class_name || '')} — ${esc(res.academic_year || '')}</div>
+            <div class="sub">${esc(t.grade || 'Grade')}: ${esc(res.grade || '—')} · ${res.total_obtained}/${res.total_possible} (${res.percentage ? Number(res.percentage).toFixed(1) : '—'}%)${res.position ? ' · #' + esc(res.position) : ''}</div>
+          </div>
+          <span style="opacity:.5;">▾</span>
         </div>
+        <div id="pp-marks-${i}" class="hidden" style="margin-top:8px;"></div>
       </div>`).join('')}</div>` : `<p style="font-size:12px;opacity:.6;margin-top:14px;">${esc(t.parentNoResults)}</p>`;
 
   body.innerHTML = `
     <h2>${esc(name)}</h2>
     <p class="desc">${esc(r.school_name || '')} · ${esc(r.class_admitted || '')}${r.father_name ? ' · ' + esc(r.father_name) : ''}</p>
+    ${(admLine || dobLine) ? `<p class="desc" style="margin-top:-4px;">${[admLine, dobLine].filter(Boolean).join(' · ')}</p>` : ''}
     ${feeHtml}
     ${resultsHtml}
     <button class="btn-ghost" style="width:100%;margin-top:16px;" onclick="document.getElementById('parent-portal-body').innerHTML = parentPortalFormHtml()">${esc(t.parentBackToStart)}</button>
   `;
+}
+
+function togglePpFeeHistory() {
+  const box = document.getElementById('pp-fee-history');
+  if (!box || !PP_CURRENT) return;
+  if (!box.classList.contains('hidden')) { box.classList.add('hidden'); return; }
+  const rows = PP_CURRENT.fee_history || [];
+  box.innerHTML = `<table style="width:100%;font-size:12px;border-collapse:collapse;">
+    <thead><tr><th style="text-align:left;padding:4px 0;">${esc(t.parentMonth || 'Month')}</th><th style="text-align:right;">${esc(t.parentDues || 'Dues')}</th><th style="text-align:right;">${esc(t.parentPaid || 'Paid')}</th><th style="text-align:right;">${esc(t.parentBalance || 'Balance')}</th></tr></thead>
+    <tbody>${rows.map(x => `<tr style="border-top:1px solid var(--line);"><td style="padding:4px 0;">${esc(monthLabel(x.month))}</td><td style="text-align:right;">₨${fmt(x.dues)}</td><td style="text-align:right;">₨${fmt(x.paid)}</td><td style="text-align:right;">₨${fmt(x.balance)}</td></tr>`).join('')}</tbody>
+  </table>`;
+  box.classList.remove('hidden');
+}
+
+function togglePpMarks(i) {
+  const box = document.getElementById('pp-marks-' + i);
+  if (!box || !PP_CURRENT) return;
+  if (!box.classList.contains('hidden')) { box.classList.add('hidden'); return; }
+  const res = (PP_CURRENT.results || [])[i];
+  if (!res) return;
+  const subjects = res.subjects || [];
+  const marks = res.marks || {};
+  box.innerHTML = `<table style="width:100%;font-size:12px;border-collapse:collapse;" onclick="event.stopPropagation()">
+    <tbody>${subjects.map(s => `<tr style="border-top:1px solid var(--line);"><td style="padding:4px 0;">${esc(s.name)}</td><td style="text-align:right;">${esc(marks[s.name] ?? '—')}/${esc(s.total)}</td></tr>`).join('')}</tbody>
+  </table>`;
+  box.classList.remove('hidden');
 }
 console.log('SchoolMS build: 2026-09-07-dmc-archive-marks-year'); // bump this string on every deploy to verify (in browser console) which version is actually running
 </script>
