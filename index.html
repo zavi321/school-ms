@@ -4676,7 +4676,7 @@ function readAdmissionForm() {
 async function submitAddAdmissionEntry() {
   const entry = readAdmissionForm();
   if (!entry.student_name) return;
-  entry.parent_pin = String(Math.floor(1000 + Math.random() * 9000));
+  entry.parent_pin = String(Math.floor(100000 + Math.random() * 900000));
   const { error } = await sb.from('admission_register').insert({ owner_id: CURRENT_USER.id, ...entry });
   if (reportSaveError(error)) return;
   closeModal(); await loadAllData(); renderTab();
@@ -4710,7 +4710,7 @@ function openEditAdmissionEntry(id) {
 // Parent Portal feature existed — new entries already get one automatically
 // (see submitAddAdmissionEntry), this just covers the older ones on demand.
 async function generateParentPinForEntry(id) {
-  const pin = String(Math.floor(1000 + Math.random() * 9000));
+  const pin = String(Math.floor(100000 + Math.random() * 900000));
   const { error } = await sb.from('admission_register').update({ parent_pin: pin }).eq('id', id);
   if (reportSaveError(error)) return;
   await loadAllData();
@@ -5233,7 +5233,7 @@ function parentPortalFormHtml() {
     <p class="desc">${esc(t.parentPortalDesc)}</p>
     <label><span>${esc(t.parentSchoolCodeLabel)}</span><input id="pp-school-code" style="text-transform:uppercase;" autocapitalize="characters"></label>
     <label><span>${esc(t.parentRollLabel)}</span><input id="pp-roll" type="number" inputmode="numeric"></label>
-    <label><span>${esc(t.parentPinLabel)}</span><input id="pp-pin" type="text" inputmode="numeric" maxlength="4"></label>
+    <label><span>${esc(t.parentPinLabel)}</span><input id="pp-pin" type="text" inputmode="numeric" maxlength="6"></label>
     <div id="pp-msg" style="font-size:12px;margin-bottom:8px;"></div>
     <button class="btn-primary" style="width:100%;" onclick="submitParentPortalLookup()">${esc(t.parentViewButton)}</button>
   `;
