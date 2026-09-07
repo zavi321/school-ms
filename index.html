@@ -2043,6 +2043,9 @@ function tplStudents() {
               <button class="btn-ghost" style="flex:1;" onclick="openOverdueReminders()">
                 📩 ${esc(t.overdueRemindersTitle)} (${overdueCount})
               </button>` : ''}
+            <button class="btn-ghost" style="flex:1;" onclick="openPromoteAllConfirm()">
+              🎓 Promote All (New Year)
+            </button>
           </div>`;
       })()}
       ${list.length===0 ? `<div class="empty">${esc(t.noStudents)}</div>` :
@@ -2075,6 +2078,63 @@ function tplStudents() {
         `;
         }).join('')}
     </div>`;
+}
+
+// ---------------- Promote All Students (bulk class advancement for a new academic year) ----------------
+
+// Shows exactly what will move where before touching anything, since this
+// affects every active student at once and can't be undone with one click.
+function openPromoteAllConfirm() {
+  const active = DATA.students.filter(s => s.status !== 'inactive');
+  const counts = {};
+  active.forEach(s => { const c = s.class_name || '—'; counts[c] = (counts[c]||0) + 1; });
+
+  const rows = CLASS_OPTIONS.map((cls, i) => {
+    const n = counts[cls] || 0;
+    if (!n) return '';
+    const next = CLASS_OPTIONS[i + 1];
+    return `<div class="list-row">
+      <div class="nm">${esc(cls)} (${n})</div>
+      <div class="sub">${next ? `→ ${esc(next)}` : 'Graduating — class me koi tabdeeli nahi hogi'}</div>
+    </div>`;
+  }).join('');
+
+  // Any student sitting in a class name outside CLASS_OPTIONS (custom/typo'd
+  // class) has no "next" class to move to and would be silently skipped —
+  // flag that clearly instead of the admin discovering it after the fact.
+  const unknownCount = active.filter(s => !CLASS_OPTIONS.includes(s.class_name)).length;
+
+  showModal('🎓 Promote All Students', `
+    <p style="font-size:13px;opacity:.75;">Har student agli class me move ho jayega. 12th grade wale students ki class change nahi hogi (graduating) — unhe manually handle karein.</p>
+    <div class="list-card" style="margin:10px 0;">${rows || `<div class="empty">Koi active student nahi mila</div>`}</div>
+    ${unknownCount ? `<p class="err">⚠️ ${unknownCount} student(s) ki class list me nahi hai (custom/typo) — inki class promote nahi hogi.</p>` : ''}
+    <p style="font-size:12px;opacity:.6;">Fee/DMC records par koi asar nahi padega — sirf class field badlega.</p>
+    <div style="display:flex;gap:8px;margin-top:14px;">
+      <button class="btn-ghost" style="flex:1;" onclick="closeModal()">Cancel</button>
+      <button class="btn-primary" style="flex:1;" onclick="runPromoteAllStudents()">Confirm — Promote All</button>
+    </div>
+  `);
+}
+
+async function runPromoteAllStudents() {
+  const active = DATA.students.filter(s => s.status !== 'inactive');
+  const byClass = {};
+  active.forEach(s => { const c = s.class_name || ''; (byClass[c] = byClass[c] || []).push(s.id); });
+
+  // One update call per class (not per student) — moves every student in that
+  // class to the next one in a single request, so even 10,000 students only
+  // needs ~13 requests total (one per non-final class), not 10,000.
+  for (let i = 0; i < CLASS_OPTIONS.length - 1; i++) {
+    const cls = CLASS_OPTIONS[i], next = CLASS_OPTIONS[i + 1];
+    const ids = byClass[cls];
+    if (!ids || !ids.length) continue;
+    const { error } = await sb.from('students').update({ class_name: next }).in('id', ids);
+    if (error) console.error(`Promote ${cls} → ${next} failed:`, error.message);
+  }
+
+  closeModal();
+  await loadAllData();
+  renderTab();
 }
 
 function openOverdueReminders() {
@@ -2246,6 +2306,15 @@ function openStudentDetail(id, viewYear) {
       <button class="btn-ghost" onclick="updateStudentType('${id}')">${esc(t.updateType)}</button>
     </div>
     <div class="row2" style="align-items:end;margin-bottom:16px;">
+      <label style="margin-bottom:0;"><span>${esc(t.className)}</span>
+        <select id="d-class">
+          ${CLASS_OPTIONS.map(c=>`<option value="${esc(c)}" ${s.class_name===c?'selected':''}>${esc(c)}</option>`).join('')}
+          ${!CLASS_OPTIONS.includes(s.class_name) && s.class_name ? `<option value="${esc(s.class_name)}" selected>${esc(s.class_name)}</option>` : ''}
+        </select>
+      </label>
+      <button class="btn-ghost" onclick="updateStudentClass('${id}')">${esc(t.save)}</button>
+    </div>
+    <div class="row2" style="align-items:end;margin-bottom:16px;">
       <label style="margin-bottom:0;"><span>${esc(t.studentNameUr)}</span>
         <input id="d-name-ur" dir="rtl" value="${esc(s.name_ur||'')}">
       </label>
@@ -2337,6 +2406,13 @@ async function updateStudentType(studentId) {
 async function updateStudentNameUr(studentId) {
   const nameUr = document.getElementById('d-name-ur').value.trim();
   const { error } = await sb.from('students').update({ name_ur: nameUr || null }).eq('id', studentId);
+  if (reportSaveError(error)) return;
+  await loadAllData(); openStudentDetail(studentId);
+}
+
+async function updateStudentClass(studentId) {
+  const cls = document.getElementById('d-class').value;
+  const { error } = await sb.from('students').update({ class_name: cls }).eq('id', studentId);
   if (reportSaveError(error)) return;
   await loadAllData(); openStudentDetail(studentId);
 }
