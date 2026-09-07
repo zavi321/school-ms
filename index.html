@@ -931,17 +931,21 @@ async function afterLogin() {
   maybeRunExamRecordsCleanup(); // fire-and-forget safety net (see function below)
 }
 
-// Deletes DMC records and marks sheets older than 2 years. The real schedule
-// is a Supabase pg_cron job that runs daily on the server regardless of
-// whether anyone opens the app — this is only a fallback so cleanup still
-// happens on the next login if that server job was ever missed/unavailable.
-// Guarded to run at most once per calendar day per browser via localStorage.
+// Deletes DMC records and marks sheets older than 2 years, and fully-paid
+// (no dues) fee ledgers for academic years that have already ended. The real
+// schedule is a pair of Supabase pg_cron jobs that run daily on the server
+// regardless of whether anyone opens the app — this is only a fallback so
+// cleanup still happens on the next login if those server jobs were ever
+// missed/unavailable. Guarded to run at most once per calendar day per browser.
 function maybeRunExamRecordsCleanup() {
   const todayStr = todayISO();
   if (localStorage.getItem('examRecordsCleanupRanOn') === todayStr) return;
   localStorage.setItem('examRecordsCleanupRanOn', todayStr);
   sb.rpc('cleanup_old_exam_records').then(({ error }) => {
     if (error) console.error('Exam records cleanup failed:', error.message);
+  });
+  sb.rpc('cleanup_cleared_fee_records').then(({ error }) => {
+    if (error) console.error('Fee records cleanup failed:', error.message);
   });
 }
 
