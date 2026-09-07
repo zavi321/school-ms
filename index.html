@@ -629,6 +629,25 @@ const T = {
     registerInfo:'Admission Register Info', notInRegister:'No admission register entry found for this name.',
     notActiveStudent:'No active fee record found for this name.',
     ccTitle:'Character Certificate', printCc:'Print Character Certificate', ccNo:'Certificate No.', ccIssueDate:'Date of Issue',
+    // ---- Class Logins (owner side) + Class/Teacher Portal (public, no real login) ----
+    classLoginsBtn:'Class Logins', classLoginsTitle:'Class Logins',
+    classLoginsDesc:'Create a login for each class so a teacher can mark attendance and enter exam marks from a shared class device — no separate account needed.',
+    addClassLogin:'Add Class Login', editClassLogin:'Edit Class Login', noClassLogins:'No class logins yet. Add one for each class.',
+    loginId:'Login ID', classLoginPassword:'Password', loginIdTaken:'This Login ID is already in use — please choose another.',
+    viewAttendance:'Attendance', viewMarks:'Exam Marks', classLoginSavedHint:'Share this Login ID & Password with the class teacher.',
+    selectDate:'Date', noAttendanceRecords:'No attendance recorded for this date.', noExamsYet:'No exams saved yet.',
+    examMarksTitle:'Exam Marks', backToClassLogins:'Back to Class Logins', shareLoginLink:'Portal Link',
+    classPortalTitle:'Class Login', classPortalDesc:'Enter your School Code and the Login ID & Password given by your school.',
+    classPortalLoginButton:'Log In', classPortalInvalid:'Incorrect School Code, Login ID or Password.',
+    classPortalMenuAttendance:'Mark Attendance', classPortalMenuMarks:'Enter Exam Marks',
+    classPortalLogout:'Switch Class', classPortalBackToMenu:'Back',
+    classPortalAttendanceSaved:'Attendance saved.', classPortalOffline:'Saved offline — will sync automatically once you\'re back online.',
+    classPortalOfflineNoList:'You are offline and this class list is not cached yet. Please connect to the internet once to load it.',
+    classPortalExamName:'Exam Name', classPortalExamNamePlaceholder:'e.g. Mid-Term 2026',
+    classPortalAddSubject:'Add Subject', classPortalSubjectName:'Subject', classPortalSubjectTotal:'Total Marks',
+    classPortalNoSubjects:'Add at least one subject first.', classPortalSaveMarks:'Save Marks', classPortalMarksSaved:'Marks saved.',
+    classPortalNoStudents:'No students found for this class yet.', classPortalMarksExceed:'Marks cannot exceed the subject total.',
+    classPortalLoadExam:'Load a saved exam to edit', classPortalNewExam:'— New Exam —',
   },
   ur: {
     appName:'مالیاتی و ریکارڈ سسٹم', tagline:'اسکول انتظامیہ کے لیے',
@@ -753,6 +772,25 @@ const T = {
     registerInfo:'داخلہ رجسٹر کی معلومات', notInRegister:'اس نام کے لیے داخلہ رجسٹر میں کوئی اندراج نہیں ملا۔',
     notActiveStudent:'اس نام کے لیے کوئی فعال فیس ریکارڈ نہیں ملا۔',
     ccTitle:'کریکٹر سرٹیفکیٹ', printCc:'کریکٹر سرٹیفکیٹ پرنٹ کریں', ccNo:'سرٹیفکیٹ نمبر', ccIssueDate:'تاریخ اجراء',
+    // ---- Class Logins / Class Portal ----
+    classLoginsBtn:'کلاس لاگ اِن', classLoginsTitle:'کلاس لاگ اِنز',
+    classLoginsDesc:'ہر کلاس کے لیے ایک لاگ اِن بنائیں تاکہ استاد مشترکہ کلاس ڈیوائس سے حاضری اور امتحانی نمبرات درج کر سکیں — الگ اکاؤنٹ کی ضرورت نہیں۔',
+    addClassLogin:'کلاس لاگ اِن شامل کریں', editClassLogin:'کلاس لاگ اِن میں ترمیم', noClassLogins:'ابھی کوئی کلاس لاگ اِن نہیں۔ ہر کلاس کے لیے ایک شامل کریں۔',
+    loginId:'لاگ اِن آئی ڈی', classLoginPassword:'پاس ورڈ', loginIdTaken:'یہ لاگ اِن آئی ڈی پہلے سے استعمال میں ہے — دوسری منتخب کریں۔',
+    viewAttendance:'حاضری', viewMarks:'امتحانی نمبرات', classLoginSavedHint:'یہ لاگ اِن آئی ڈی اور پاس ورڈ کلاس ٹیچر کو دیں۔',
+    selectDate:'تاریخ', noAttendanceRecords:'اس تاریخ کے لیے کوئی حاضری درج نہیں۔', noExamsYet:'ابھی کوئی امتحان محفوظ نہیں۔',
+    examMarksTitle:'امتحانی نمبرات', backToClassLogins:'کلاس لاگ اِنز پر واپس', shareLoginLink:'پورٹل لنک',
+    classPortalTitle:'کلاس لاگ اِن', classPortalDesc:'اپنا اسکول کوڈ اور اسکول کی طرف سے دی گئی لاگ اِن آئی ڈی و پاس ورڈ درج کریں۔',
+    classPortalLoginButton:'لاگ اِن', classPortalInvalid:'غلط اسکول کوڈ، لاگ اِن آئی ڈی یا پاس ورڈ۔',
+    classPortalMenuAttendance:'حاضری لگائیں', classPortalMenuMarks:'امتحانی نمبرات درج کریں',
+    classPortalLogout:'کلاس تبدیل کریں', classPortalBackToMenu:'واپس',
+    classPortalAttendanceSaved:'حاضری محفوظ ہو گئی۔', classPortalOffline:'آف لائن محفوظ ہو گیا — انٹرنیٹ آنے پر خود بخود بھیج دیا جائے گا۔',
+    classPortalOfflineNoList:'آپ آف لائن ہیں اور یہ کلاس لسٹ ابھی محفوظ نہیں — براہ کرم ایک بار انٹرنیٹ سے جڑیں۔',
+    classPortalExamName:'امتحان کا نام', classPortalExamNamePlaceholder:'مثال: مڈ ٹرم 2026',
+    classPortalAddSubject:'مضمون شامل کریں', classPortalSubjectName:'مضمون', classPortalSubjectTotal:'کل نمبر',
+    classPortalNoSubjects:'پہلے کم از کم ایک مضمون شامل کریں۔', classPortalSaveMarks:'نمبرات محفوظ کریں', classPortalMarksSaved:'نمبرات محفوظ ہو گئے۔',
+    classPortalNoStudents:'اس کلاس کے لیے ابھی کوئی طالب علم نہیں ملا۔', classPortalMarksExceed:'نمبر مضمون کے کل نمبروں سے زیادہ نہیں ہو سکتے۔',
+    classPortalLoadExam:'محفوظ امتحان میں ترمیم کے لیے منتخب کریں', classPortalNewExam:'— نیا امتحان —',
   }
 };
 
@@ -839,7 +877,7 @@ function reportSaveError(error) {
   return true;
 }
 
-let DATA = { students:[], feePayments:[], teachers:[], salaryPayments:[], transactions:[], admissionRegister:[], teacherAttendance:[], holidays:[] };
+let DATA = { students:[], feePayments:[], teachers:[], salaryPayments:[], transactions:[], admissionRegister:[], teacherAttendance:[], holidays:[], classLogins:[] };
 let TAB = 'dashboard';
 let CURRENT_USER = null;   // { id, email }
 let CURRENT_PROFILE = null; // { school_name }
@@ -920,6 +958,14 @@ async function boot() {
   // RPC (see parent_portal_lookup) so no table data is ever exposed directly.
   const parentPortal = new URLSearchParams(window.location.search).get('parent');
   if (parentPortal) { renderParentPortal(); return; }
+
+  // A teacher using the shared class device lands here with ?class=1 — a
+  // public, no-real-login page. They enter School Code + the class's Login
+  // ID + Password, verified server-side each time via class_login_verify (and
+  // again on every attendance/marks write), so this device never holds a
+  // Supabase Auth session of its own. See class_attendance_marks_migration.sql.
+  const classPortal = new URLSearchParams(window.location.search).get('class');
+  if (classPortal) { renderClassPortalEntry(); return; }
 
 
   let handledAsRecovery = false;
@@ -1121,7 +1167,7 @@ async function logOut() {
 
 // ---------------- Data loading (RLS auto-scopes everything to this school) ----------------
 async function loadAllData() {
-  const [s, fp, tc, sp, tx, ar, ta, hd] = await Promise.all([
+  const [s, fp, tc, sp, tx, ar, ta, hd, cl] = await Promise.all([
     sb.from('students').select('*').order('created_at'),
     sb.from('fee_payments').select('*'),
     sb.from('teachers').select('*').order('created_at'),
@@ -1132,6 +1178,10 @@ async function loadAllData() {
     sb.from('admission_register').select('*').order('serial_no'),
     sb.from('teacher_attendance').select('*'),
     sb.from('holidays').select('*'),
+    // Class Logins: one login per class, used by teachers on a shared class
+    // device (no real Supabase Auth session — see class_login_verify etc.).
+    // The owner reads this table directly; only the RPCs can write to it.
+    sb.from('class_logins').select('*').order('created_at'),
   ]);
   DATA.students = s.data || [];
   DATA.feePayments = fp.data || [];
@@ -1141,6 +1191,7 @@ async function loadAllData() {
   DATA.admissionRegister = ar.data || [];
   DATA.teacherAttendance = ta.data || [];
   DATA.holidays = hd.data || [];
+  DATA.classLogins = cl.data || [];
 }
 
 // How many distinct months a student has unpaid dues for, counted directly
@@ -1619,6 +1670,7 @@ function renderTab() {
   else if (TAB==='marksSheet') main.innerHTML = tplMarksSheet();
   else if (TAB==='admissionRegister') main.innerHTML = tplAdmissionRegister();
   else if (TAB==='teacherRegister') main.innerHTML = tplTeacherRegister();
+  else if (TAB==='classLogins') main.innerHTML = tplClassLogins();
   else if (TAB==='admin') { main.innerHTML = tplAdmin(); loadWhitelist(); return; }
   main.innerHTML += `<div class="notice">${esc(t.sharedNotice)}</div>`;
   main.innerHTML += `<div class="notice" style="margin-top:8px;font-size:10px;">${esc(t.copyrightNotice)}</div>`;
@@ -2657,6 +2709,9 @@ function tplTeachers() {
         <button class="icon-btn" title="${esc(t.teacherRegister)}" onclick="openTeacherRegister()">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#E4C765" stroke-width="2.5"><path d="M4 19.5A2.5 2.5 0 016.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"/><path d="M9 7h7M9 11h7"/></svg>
         </button>
+        <button class="icon-btn" title="${esc(t.classLoginsBtn)}" onclick="openClassLogins()">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#E4C765" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 11-7.778 7.778 5.5 5.5 0 017.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3"/></svg>
+        </button>
         <button class="icon-btn" onclick="openAddTeacher()">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#E4C765" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg>
         </button>
@@ -2966,6 +3021,141 @@ async function registerCycleMark(teacherId, date, session) {
   if (reportSaveError(error)) return;
   await loadAllData();
   if (TAB === 'teacherRegister') renderTab();
+}
+
+// ---------------- Class Logins (owner side: create/manage, view attendance & marks) ----------------
+// One login per class. No real Supabase Auth session is ever issued for
+// these — a teacher on the shared class device visits ?class=1 and enters
+// School Code + this Login ID + Password, which the class_login_verify RPC
+// checks fresh server-side on every visit (see class_attendance_marks_migration.sql).
+function openClassLogins() {
+  TAB = 'classLogins';
+  renderTab();
+}
+
+function tplClassLogins() {
+  const rows = DATA.classLogins.slice().sort((a,b) => (a.class_name||'').localeCompare(b.class_name||''));
+  return `
+    <div style="padding-top:16px;">
+      <div class="flexgap" style="margin-top:0;">
+        <button class="btn-ghost" style="flex:none;padding:9px 14px;" onclick="setTab('teachers')">‹ ${esc(t.back)}</button>
+        <div style="flex:1;font-family:Fraunces,serif;font-size:16px;color:var(--navy);align-self:center;">${esc(t.classLoginsTitle)}</div>
+        <button class="icon-btn" onclick="openAddClassLogin()">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#E4C765" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg>
+        </button>
+      </div>
+      <p style="font-size:11px;opacity:.6;margin:10px 0 14px;">${esc(t.classLoginsDesc)}</p>
+      ${!CURRENT_PROFILE.school_code ? `<div class="notice" style="margin-top:0;">${esc(t.parentSchoolCodeMissing)}</div>` : ''}
+      ${rows.length===0 ? `<div class="empty">${esc(t.noClassLogins)}</div>` :
+        rows.map(cl => `
+          <div class="card-btn" style="cursor:default;flex-direction:column;align-items:stretch;">
+            <div style="display:flex;justify-content:space-between;align-items:center;">
+              <div><div class="nm">${esc(cl.class_name)}</div><div class="sub">${esc(t.loginId)}: ${esc(cl.login_id)}</div></div>
+              <div style="display:flex;gap:6px;">
+                <button title="${esc(t.editClassLogin)}" style="background:none;border:none;font-size:15px;padding:4px;" onclick="openAddClassLogin('${cl.id}')">✎</button>
+                <button title="${esc(t.delete)}" style="background:none;border:none;color:var(--rust);font-size:15px;padding:4px;" onclick="confirmDelete('classLogin','${cl.id}')">🗑️</button>
+              </div>
+            </div>
+            <div class="flexgap" style="margin-top:10px;">
+              <button class="btn-ghost" style="flex:1;font-size:12px;padding:8px;" onclick="openClassAttendanceView('${esc(cl.class_name).replace(/'/g,"\\'")}')">${esc(t.viewAttendance)}</button>
+              <button class="btn-ghost" style="flex:1;font-size:12px;padding:8px;" onclick="openClassMarksView('${esc(cl.class_name).replace(/'/g,"\\'")}')">${esc(t.viewMarks)}</button>
+            </div>
+          </div>`).join('')}
+    </div>`;
+}
+
+function openAddClassLogin(id) {
+  const existing = id ? DATA.classLogins.find(x => x.id === id) : null;
+  showModal(existing ? t.editClassLogin : t.addClassLogin, `
+    <label><span>${esc(t.className)}</span>
+      <select id="cl-class">${CLASS_OPTIONS.map(c => `<option ${existing && existing.class_name===c?'selected':''}>${esc(c)}</option>`).join('')}</select>
+    </label>
+    <label><span>${esc(t.loginId)}</span><input id="cl-login" value="${existing?esc(existing.login_id):''}" autocapitalize="none"></label>
+    <label><span>${esc(t.classLoginPassword)}</span><input id="cl-pw" value="${existing?esc(existing.password):''}"></label>
+    <p style="font-size:11px;opacity:.6;margin:-6px 0 12px;">${esc(t.classLoginSavedHint)}</p>
+    <div id="cl-msg"></div>
+    <div class="flexgap">
+      <button class="btn-ghost" onclick="closeModal()">${esc(t.cancel)}</button>
+      <button class="btn-primary" style="flex:1" onclick="guardedSubmit(this, ()=>submitClassLogin('${existing?existing.id:''}'))">${esc(t.save)}</button>
+    </div>
+  `);
+}
+
+async function submitClassLogin(id) {
+  const msg = document.getElementById('cl-msg');
+  const className = document.getElementById('cl-class').value;
+  const loginId = document.getElementById('cl-login').value.trim();
+  const password = document.getElementById('cl-pw').value;
+  if (!loginId || !password) return;
+  const payload = { owner_id: CURRENT_USER.id, class_name: className, login_id: loginId, password };
+  const { error } = id
+    ? await sb.from('class_logins').update(payload).eq('id', id)
+    : await sb.from('class_logins').insert(payload);
+  if (error) {
+    msg.innerHTML = `<div class="err">${error.code === '23505' ? esc(t.loginIdTaken) : esc(error.message)}</div>`;
+    return;
+  }
+  closeModal(); await loadAllData(); renderTab();
+}
+
+// ---------------- Class Logins — owner's read-only view of attendance & marks entered by the class ----------------
+let classViewDate = todayISO();
+
+async function openClassAttendanceView(className) {
+  showModal(className + ' — ' + t.viewAttendance, `
+    <label><span>${esc(t.selectDate)}</span><input id="cav-date" type="date" value="${classViewDate}" onchange="classViewDate=this.value; renderClassAttendanceView('${className.replace(/'/g,"\\'")}')"></label>
+    <div id="cav-body">…</div>
+  `);
+  await renderClassAttendanceView(className);
+}
+
+async function renderClassAttendanceView(className) {
+  const body = document.getElementById('cav-body');
+  if (!body) return;
+  body.innerHTML = '…';
+  const { data, error } = await sb.from('student_attendance').select('*')
+    .eq('class_name', className).eq('date', classViewDate);
+  if (error) { body.innerHTML = `<div class="err">${esc(error.message)}</div>`; return; }
+  if (!data || !data.length) { body.innerHTML = `<div class="empty">${esc(t.noAttendanceRecords)}</div>`; return; }
+  const studentName = (sid) => { const s = DATA.students.find(x => x.id === sid); return s ? s.name : sid; };
+  body.innerHTML = `<div class="list-card">${data.map(r => `
+    <div class="list-row">
+      <div class="nm">${esc(studentName(r.student_id))}</div>
+      <div style="display:flex;gap:6px;">
+        <span class="pill ${r.status_am==='present'?'good':r.status_am==='leave'?'free':r.status_am?'bad':''}">${esc(t.morning)}: ${esc(r.status_am ? (r.status_am==='present'?t.present:r.status_am==='leave'?t.leave:t.absent) : '—')}</span>
+        <span class="pill ${r.status_pm==='present'?'good':r.status_pm==='leave'?'free':r.status_pm?'bad':''}">${esc(t.afternoon)}: ${esc(r.status_pm ? (r.status_pm==='present'?t.present:r.status_pm==='leave'?t.leave:t.absent) : '—')}</span>
+      </div>
+    </div>`).join('')}</div>`;
+}
+
+async function openClassMarksView(className) {
+  showModal(className + ' — ' + t.examMarksTitle, `<div id="cmv-body">…</div>`);
+  const { data, error } = await sb.from('class_exam_marks').select('*').eq('class_name', className).order('updated_at', { ascending: false });
+  const body = document.getElementById('cmv-body');
+  if (error) { body.innerHTML = `<div class="err">${esc(error.message)}</div>`; return; }
+  if (!data || !data.length) { body.innerHTML = `<div class="empty">${esc(t.noExamsYet)}</div>`; return; }
+  body.innerHTML = `<div class="list-card">${data.map(ex => `
+    <button type="button" class="list-row" style="width:100%;text-align:left;border:none;background:none;cursor:pointer;" onclick='renderClassMarksDetail(${JSON.stringify(ex.id)})'>
+      <div class="nm">${esc(ex.exam_name)}</div><span style="opacity:.5;">›</span>
+    </button>`).join('')}</div><div id="cmv-detail"></div>`;
+  window.__classExamCache = data;
+}
+
+function renderClassMarksDetail(examId) {
+  const ex = (window.__classExamCache || []).find(x => x.id === examId);
+  const detail = document.getElementById('cmv-detail');
+  if (!ex || !detail) return;
+  const subjects = ex.subjects || [];
+  const marks = ex.marks || {};
+  const studentName = (sid) => { const s = DATA.students.find(x => x.id === sid); return s ? s.name : sid; };
+  const studentIds = Object.keys(marks);
+  detail.innerHTML = `
+    <div class="card-table-wrap" style="margin-top:12px;">
+      <table class="card-table">
+        <thead><tr><th style="text-align:left;">${esc(t.studentName)}</th>${subjects.map(s=>`<th>${esc(s.name)} /${esc(s.total)}</th>`).join('')}</tr></thead>
+        <tbody>${studentIds.map(sid => `<tr><td class="mo">${esc(studentName(sid))}</td>${subjects.map(s=>`<td>${esc((marks[sid]||{})[s.name] ?? '—')}</td>`).join('')}</tr>`).join('')}</tbody>
+      </table>
+    </div>`;
 }
 
 // ---------------- QR Check-in (Principal side: show the QR, watch live check-ins) ----------------
@@ -5004,6 +5194,10 @@ async function doDelete(kind, id) {
     const r1 = await sb.from('whitelist_emails').delete().eq('email', id);
     if (r1.error) err = r1.error;
   }
+  if (kind==='classLogin') {
+    const r1 = await sb.from('class_logins').delete().eq('id', id);
+    if (r1.error) err = r1.error;
+  }
   closeModal(); await loadAllData(); renderTab();
   if (err) alert((LANG==='ur' ? 'حذف کرنے میں خرابی: ' : 'Delete failed: ') + err.message);
 }
@@ -5186,6 +5380,340 @@ async function flushCheckinQueue() {
       }
     }
   }
+}
+
+// ---------------- Class / Teacher Portal (public, no real login — reached via ?class=1) ----------------
+// A teacher on the shared class device logs in once with School Code + the
+// class's Login ID + Password (set by the owner under Teachers > Class
+// Logins). No Supabase Auth session is ever created for this device — every
+// write (attendance mark, exam marks save) re-verifies those same three
+// values server-side, so the device can safely stay "logged in" indefinitely,
+// including while offline, per class_attendance_marks_migration.sql.
+const CLASS_SESSION_KEY = 'sms_class_session'; // { schoolCode, loginId, password, ownerId, className, students, schoolName }
+const CLASS_QUEUE_KEY = 'sms_class_queue';
+
+function getClassSession() { try { return JSON.parse(localStorage.getItem(CLASS_SESSION_KEY) || 'null'); } catch(e) { return null; } }
+function setClassSession(s) { localStorage.setItem(CLASS_SESSION_KEY, JSON.stringify(s)); }
+function clearClassSession() { localStorage.removeItem(CLASS_SESSION_KEY); }
+function getClassQueue() { try { return JSON.parse(localStorage.getItem(CLASS_QUEUE_KEY) || '[]'); } catch(e) { return []; } }
+function setClassQueue(q) { localStorage.setItem(CLASS_QUEUE_KEY, JSON.stringify(q)); }
+
+let CLASS_PORTAL_SCREEN = 'menu'; // 'menu' | 'attendance' | 'marks'
+
+async function renderClassPortalEntry() {
+  document.getElementById('loading').classList.add('hidden');
+  renderAuthShell(`<div id="class-portal-body"><div style="text-align:center;padding:20px 0;opacity:.6;">…</div></div>`);
+  await flushClassQueue(); // clear any older offline writes first
+  const session = getClassSession();
+  if (session) {
+    CLASS_PORTAL_SCREEN = 'menu';
+    // Silently try to refresh the roster if online; the cached one still works if this fails.
+    if (navigator.onLine) {
+      try {
+        const { data } = await sb.rpc('class_login_verify', { p_school_code: session.schoolCode, p_login_id: session.loginId, p_password: session.password });
+        if (data && data.length) {
+          session.students = data[0].students || [];
+          session.className = data[0].class_name;
+          setClassSession(session);
+        }
+      } catch(e) {}
+    }
+    renderClassPortalMenu();
+  } else {
+    renderClassPortalLoginForm();
+  }
+  window.addEventListener('online', () => flushClassQueue());
+  setInterval(() => { if (navigator.onLine) flushClassQueue(); }, 20000);
+}
+
+function renderClassPortalLoginForm() {
+  const body = document.getElementById('class-portal-body');
+  body.innerHTML = `
+    <h2>${esc(t.classPortalTitle)}</h2>
+    <p class="desc">${esc(t.classPortalDesc)}</p>
+    <label><span>${esc(t.parentSchoolCodeLabel)}</span><input id="cp-school-code" style="text-transform:uppercase;" autocapitalize="characters"></label>
+    <label><span>${esc(t.loginId)}</span><input id="cp-login" autocapitalize="none"></label>
+    <label><span>${esc(t.classLoginPassword)}</span><input id="cp-pw" type="password"></label>
+    <div id="cp-msg" style="font-size:12px;margin-bottom:8px;"></div>
+    <button class="btn-primary" style="width:100%;" onclick="submitClassPortalLogin()">${esc(t.classPortalLoginButton)}</button>
+  `;
+}
+
+async function submitClassPortalLogin() {
+  const msg = document.getElementById('cp-msg');
+  const schoolCode = document.getElementById('cp-school-code').value.trim();
+  const loginId = document.getElementById('cp-login').value.trim();
+  const password = document.getElementById('cp-pw').value;
+  if (!schoolCode || !loginId || !password) return;
+  msg.textContent = '…';
+  if (!navigator.onLine) { msg.innerHTML = `<div class="err">${esc(t.classPortalOfflineNoList)}</div>`; return; }
+  try {
+    const { data, error } = await sb.rpc('class_login_verify', { p_school_code: schoolCode, p_login_id: loginId, p_password: password });
+    if (error || !data || !data.length) { msg.innerHTML = `<div class="err">${esc(t.classPortalInvalid)}</div>`; return; }
+    setClassSession({
+      schoolCode, loginId, password,
+      ownerId: data[0].owner_id, className: data[0].class_name, students: data[0].students || []
+    });
+    CLASS_PORTAL_SCREEN = 'menu';
+    renderClassPortalMenu();
+  } catch(e) {
+    msg.innerHTML = `<div class="err">${esc(t.classPortalInvalid)}</div>`;
+  }
+}
+
+function classPortalLogout() {
+  clearClassSession();
+  renderClassPortalLoginForm();
+}
+
+function renderClassPortalMenu() {
+  const session = getClassSession();
+  const body = document.getElementById('class-portal-body');
+  if (!session || !body) return;
+  const queue = getClassQueue();
+  body.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+      <h2 style="margin:0;">${esc(session.className)}</h2>
+      <button class="btn-ghost" style="flex:none;padding:7px 12px;font-size:12px;" onclick="classPortalLogout()">${esc(t.classPortalLogout)}</button>
+    </div>
+    <p class="desc">${session.students.length} ${esc(t.studentsCount)}</p>
+    <button class="btn-primary" style="width:100%;margin-bottom:10px;" onclick="renderClassPortalAttendance()">${esc(t.classPortalMenuAttendance)}</button>
+    <button class="btn-primary" style="width:100%;" onclick="renderClassPortalMarks()">${esc(t.classPortalMenuMarks)}</button>
+    ${queue.length ? `<p style="font-size:11px;opacity:.6;margin-top:14px;">${esc(t.classPortalOffline)} (${queue.length})</p>` : ''}
+  `;
+}
+
+// ---- Attendance (today only, same Present/Leave/Absent x AM/PM pattern as the Teachers tab) ----
+let classAttendanceDraft = {}; // { studentId: { am, pm } }
+
+function renderClassPortalAttendance() {
+  CLASS_PORTAL_SCREEN = 'attendance';
+  const session = getClassSession();
+  const body = document.getElementById('class-portal-body');
+  if (!session || !body) return;
+  classAttendanceDraft = {};
+  const date = todayISO();
+  if (!session.students.length) {
+    body.innerHTML = `
+      <button class="btn-ghost" style="padding:9px 14px;margin-bottom:10px;" onclick="renderClassPortalMenu()">‹ ${esc(t.classPortalBackToMenu)}</button>
+      <div class="empty">${esc(t.classPortalNoStudents)}</div>`;
+    return;
+  }
+  body.innerHTML = `
+    <button class="btn-ghost" style="padding:9px 14px;margin-bottom:10px;" onclick="renderClassPortalMenu()">‹ ${esc(t.classPortalBackToMenu)}</button>
+    <h2 style="margin-top:0;">${esc(t.markAttendance)}</h2>
+    <p class="desc">${esc(fmtDate(date))}</p>
+    <div id="cp-att-roster">${classPortalRosterHtml(session)}</div>
+    <div id="cp-att-msg" style="font-size:12px;margin:10px 0;"></div>
+    <button class="btn-primary" style="width:100%;" onclick="submitClassPortalAttendance('${date}')">${esc(t.saveAttendance)}</button>
+  `;
+}
+
+function classPortalRosterHtml(session) {
+  const opt = (id, session_, val, label, color) => {
+    const cur = (classAttendanceDraft[id] || {})[session_];
+    return `<button type="button" onclick="setClassAttendanceMark('${id}','${session_}','${val}')" style="flex:1;padding:6px 3px;border-radius:8px;font-size:10.5px;font-weight:600;border:1.5px solid ${cur===val?color:'var(--line)'};background:${cur===val?color:'#fff'};color:${cur===val?'#fff':'var(--ink)'};">${esc(label)}</button>`;
+  };
+  return session.students.slice().sort((a,b)=>Number(a.roll_no||0)-Number(b.roll_no||0)).map(st => `
+    <div style="border-bottom:1px solid var(--line);padding:8px 0;">
+      <div style="font-size:13px;font-weight:600;margin-bottom:6px;">${st.roll_no ? '#'+esc(st.roll_no)+' — ' : ''}${esc(st.name)}</div>
+      <div style="display:flex;align-items:center;gap:6px;margin-bottom:5px;">
+        <div style="width:56px;font-size:10.5px;opacity:.65;">${esc(t.morning)}</div>
+        <div style="display:flex;gap:5px;flex:1;">${opt(st.id,'am','present',t.present,'var(--sage)')}${opt(st.id,'am','leave',t.leave,'var(--gold)')}${opt(st.id,'am','absent',t.absent,'var(--rust)')}</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:6px;">
+        <div style="width:56px;font-size:10.5px;opacity:.65;">${esc(t.afternoon)}</div>
+        <div style="display:flex;gap:5px;flex:1;">${opt(st.id,'pm','present',t.present,'var(--sage)')}${opt(st.id,'pm','leave',t.leave,'var(--gold)')}${opt(st.id,'pm','absent',t.absent,'var(--rust)')}</div>
+      </div>
+    </div>`).join('');
+}
+
+function setClassAttendanceMark(studentId, session_, status) {
+  if (!classAttendanceDraft[studentId]) classAttendanceDraft[studentId] = {};
+  const rec = classAttendanceDraft[studentId];
+  rec[session_] = rec[session_] === status ? undefined : status;
+  const el = document.getElementById('cp-att-roster');
+  if (el) el.innerHTML = classPortalRosterHtml(getClassSession());
+}
+
+async function submitClassPortalAttendance(date) {
+  const session = getClassSession();
+  const msg = document.getElementById('cp-att-msg');
+  const entries = [];
+  Object.keys(classAttendanceDraft).forEach(studentId => {
+    const rec = classAttendanceDraft[studentId];
+    if (rec.am) entries.push({ studentId, session: 'am', status: rec.am });
+    if (rec.pm) entries.push({ studentId, session: 'pm', status: rec.pm });
+  });
+  if (!entries.length) return;
+  if (msg) msg.textContent = '…';
+  let anyFailed = false;
+  for (const e of entries) {
+    if (!navigator.onLine) { queueClassWrite({ type:'attendance', schoolCode:session.schoolCode, loginId:session.loginId, password:session.password, studentId:e.studentId, date, session:e.session, status:e.status }); continue; }
+    try {
+      const { data, error } = await sb.rpc('class_attendance_mark', {
+        p_school_code: session.schoolCode, p_login_id: session.loginId, p_password: session.password,
+        p_student_id: e.studentId, p_date: date, p_session: e.session, p_status: e.status
+      });
+      if (error || data !== true) throw new Error('failed');
+    } catch(err) {
+      queueClassWrite({ type:'attendance', schoolCode:session.schoolCode, loginId:session.loginId, password:session.password, studentId:e.studentId, date, session:e.session, status:e.status });
+      anyFailed = true;
+    }
+  }
+  if (msg) msg.innerHTML = anyFailed ? `<span class="ok">${esc(t.classPortalOffline)}</span>` : `<span class="ok">✓ ${esc(t.classPortalAttendanceSaved)}</span>`;
+}
+
+// ---- Exam marks (exam name + dynamic subjects + a mark per student per subject) ----
+let classMarksDraft = { examName: '', subjects: [], marks: {} }; // subjects: [{name,total}], marks: { studentId: { subjectName: score } }
+
+async function renderClassPortalMarks() {
+  CLASS_PORTAL_SCREEN = 'marks';
+  const session = getClassSession();
+  const body = document.getElementById('class-portal-body');
+  if (!session || !body) return;
+  classMarksDraft = { examName: '', subjects: [], marks: {} };
+  let savedExams = [];
+  if (navigator.onLine) {
+    try {
+      const { data } = await sb.from('class_exam_marks').select('exam_name,marks,subjects')
+        .eq('owner_id', session.ownerId).eq('class_name', session.className);
+      // A class login has no table SELECT rights of its own (see RLS policy —
+      // only the owner can read directly), so this will simply come back
+      // empty for the class device; kept here in case that policy is ever
+      // widened. New/edited exams still save fine via the RPC below either way.
+      savedExams = data || [];
+    } catch(e) {}
+  }
+  body.innerHTML = `
+    <button class="btn-ghost" style="padding:9px 14px;margin-bottom:10px;" onclick="renderClassPortalMenu()">‹ ${esc(t.classPortalBackToMenu)}</button>
+    <h2 style="margin-top:0;">${esc(t.classPortalMenuMarks)}</h2>
+    <label><span>${esc(t.classPortalExamName)}</span><input id="cp-exam-name" placeholder="${esc(t.classPortalExamNamePlaceholder)}" value="${esc(classMarksDraft.examName)}" oninput="classMarksDraft.examName=this.value"></label>
+    <div id="cp-subjects">${classPortalSubjectsHtml()}</div>
+    <button class="btn-ghost" style="width:100%;margin:8px 0;" onclick="addClassSubject()">${esc(t.classPortalAddSubject)}</button>
+    <div id="cp-marks-grid">${classPortalMarksGridHtml(session)}</div>
+    <div id="cp-marks-msg" style="font-size:12px;margin:10px 0;"></div>
+    <button class="btn-primary" style="width:100%;" onclick="submitClassPortalMarks()">${esc(t.classPortalSaveMarks)}</button>
+  `;
+}
+
+function classPortalSubjectsHtml() {
+  if (!classMarksDraft.subjects.length) return `<p style="font-size:12px;opacity:.6;">${esc(t.classPortalNoSubjects)}</p>`;
+  return classMarksDraft.subjects.map((s, i) => `
+    <div class="row2" style="margin-bottom:6px;align-items:end;">
+      <label style="margin:0;"><span>${esc(t.classPortalSubjectName)}</span><input value="${esc(s.name)}" oninput="renameClassSubject(${i},this.value)"></label>
+      <div style="display:flex;gap:6px;">
+        <label style="margin:0;flex:1;"><span>${esc(t.classPortalSubjectTotal)}</span><input type="number" value="${s.total}" oninput="retotalClassSubject(${i},this.value)"></label>
+        <button type="button" style="flex:none;background:none;border:none;color:var(--rust);font-size:16px;" onclick="removeClassSubject(${i})">✕</button>
+      </div>
+    </div>`).join('');
+}
+
+function addClassSubject() {
+  classMarksDraft.subjects.push({ name: '', total: 100 });
+  document.getElementById('cp-subjects').innerHTML = classPortalSubjectsHtml();
+  document.getElementById('cp-marks-grid').innerHTML = classPortalMarksGridHtml(getClassSession());
+}
+function removeClassSubject(i) {
+  classMarksDraft.subjects.splice(i, 1);
+  document.getElementById('cp-subjects').innerHTML = classPortalSubjectsHtml();
+  document.getElementById('cp-marks-grid').innerHTML = classPortalMarksGridHtml(getClassSession());
+}
+function renameClassSubject(i, val) {
+  const oldName = classMarksDraft.subjects[i].name;
+  classMarksDraft.subjects[i].name = val;
+  // Carry any already-entered marks over to the renamed subject key.
+  Object.keys(classMarksDraft.marks).forEach(sid => {
+    const row = classMarksDraft.marks[sid];
+    if (row && oldName in row) { row[val] = row[oldName]; delete row[oldName]; }
+  });
+  document.getElementById('cp-marks-grid').innerHTML = classPortalMarksGridHtml(getClassSession());
+}
+function retotalClassSubject(i, val) {
+  classMarksDraft.subjects[i].total = Number(val || 0);
+}
+
+function classPortalMarksGridHtml(session) {
+  if (!session || !session.students.length) return `<div class="empty">${esc(t.classPortalNoStudents)}</div>`;
+  if (!classMarksDraft.subjects.length) return '';
+  const students = session.students.slice().sort((a,b)=>Number(a.roll_no||0)-Number(b.roll_no||0));
+  return `
+    <div class="card-table-wrap" style="margin-top:8px;">
+      <table class="card-table">
+        <thead><tr><th style="text-align:left;">${esc(t.studentName)}</th>${classMarksDraft.subjects.map(s=>`<th>${esc(s.name||'—')} /${esc(s.total)}</th>`).join('')}</tr></thead>
+        <tbody>${students.map(st => `
+          <tr><td class="mo">${st.roll_no?'#'+esc(st.roll_no)+' ':''}${esc(st.name)}</td>
+          ${classMarksDraft.subjects.map(s => `<td style="padding:3px;"><input type="number" style="width:56px;text-align:center;padding:5px 2px;" value="${(classMarksDraft.marks[st.id]||{})[s.name] ?? ''}" onchange="setClassMark('${st.id}','${esc(s.name).replace(/'/g,"\\'")}',this.value,${s.total})"></td>`).join('')}
+          </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>`;
+}
+
+function setClassMark(studentId, subjectName, value, total) {
+  let v = value === '' ? null : Number(value);
+  if (v !== null && total && v > Number(total)) { alert(t.classPortalMarksExceed); v = Number(total); }
+  if (!classMarksDraft.marks[studentId]) classMarksDraft.marks[studentId] = {};
+  if (v === null) delete classMarksDraft.marks[studentId][subjectName];
+  else classMarksDraft.marks[studentId][subjectName] = v;
+}
+
+async function submitClassPortalMarks() {
+  const session = getClassSession();
+  const msg = document.getElementById('cp-marks-msg');
+  const examName = (classMarksDraft.examName || '').trim();
+  if (!examName || !classMarksDraft.subjects.length) return;
+  const payload = { schoolCode: session.schoolCode, loginId: session.loginId, password: session.password, examName, marks: classMarksDraft.marks, subjects: classMarksDraft.subjects };
+  if (msg) msg.textContent = '…';
+  if (!navigator.onLine) {
+    queueClassWrite({ type:'marks', ...payload });
+    if (msg) msg.innerHTML = `<span class="ok">${esc(t.classPortalOffline)}</span>`;
+    return;
+  }
+  try {
+    const { data, error } = await sb.rpc('class_exam_marks_save', {
+      p_school_code: session.schoolCode, p_login_id: session.loginId, p_password: session.password,
+      p_exam_name: examName, p_marks: classMarksDraft.marks, p_subjects: classMarksDraft.subjects
+    });
+    if (error || data !== true) throw new Error('failed');
+    if (msg) msg.innerHTML = `<span class="ok">✓ ${esc(t.classPortalMarksSaved)}</span>`;
+  } catch(e) {
+    queueClassWrite({ type:'marks', ...payload });
+    if (msg) msg.innerHTML = `<span class="ok">${esc(t.classPortalOffline)}</span>`;
+  }
+}
+
+function queueClassWrite(item) {
+  const q = getClassQueue();
+  q.push({ ...item, ts: Date.now() });
+  setClassQueue(q);
+}
+
+async function flushClassQueue() {
+  if (!navigator.onLine) return;
+  let q = getClassQueue();
+  if (!q.length) return;
+  const remaining = [];
+  for (const item of q) {
+    try {
+      if (item.type === 'attendance') {
+        const { error } = await sb.rpc('class_attendance_mark', {
+          p_school_code: item.schoolCode, p_login_id: item.loginId, p_password: item.password,
+          p_student_id: item.studentId, p_date: item.date, p_session: item.session, p_status: item.status
+        });
+        if (error) remaining.push(item);
+      } else if (item.type === 'marks') {
+        const { error } = await sb.rpc('class_exam_marks_save', {
+          p_school_code: item.schoolCode, p_login_id: item.loginId, p_password: item.password,
+          p_exam_name: item.examName, p_marks: item.marks, p_subjects: item.subjects
+        });
+        if (error) remaining.push(item);
+      }
+    } catch(e) { remaining.push(item); }
+  }
+  setClassQueue(remaining);
+  const body = document.getElementById('class-portal-body');
+  if (body && CLASS_PORTAL_SCREEN === 'menu') renderClassPortalMenu();
 }
 
 boot();
