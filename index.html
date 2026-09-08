@@ -4061,12 +4061,23 @@ function handleDMCExcelUpload(file) {
       
       // Extract marks from other columns
       const nonMarkCols = ['Student Name','Name','Student','Class','جماعت','Father Name',"Father's Name",'Father','S/O','Walid','Roll No','Roll No.','Roll Number','Roll','Section','سیکشن','Date of Issue','Issue Date'];
+      // Normalize a column/subject name for matching: trim, lowercase,
+      // collapse spaces, and drop a trailing "marks" word — so an Excel
+      // header like "Math Marks" or " math " still matches a configured
+      // subject named "Math" instead of silently becoming a new key and
+      // showing 0 obtained marks on the DMC.
+      const normalizeName = (s) => String(s || '').trim().toLowerCase().replace(/\s+/g, ' ').replace(/\s*marks?$/, '');
       dmcResults.forEach((r, idx) => {
         const row = rows[idx];
         Object.keys(row).forEach(col => {
-          if (!nonMarkCols.includes(col)) {
-            r.marks[col] = Number(row[col]) || 0;
-          }
+          if (nonMarkCols.includes(col)) return;
+          const normCol = normalizeName(col);
+          // Prefer the canonical subject name from dmcSubjects config if it
+          // matches (even loosely) so totals/percentage calculations
+          // (which look up marks by s.name) always find the value.
+          const matchedSubject = dmcSubjects.find(s => normalizeName(s.name) === normCol);
+          const key = matchedSubject ? matchedSubject.name : col;
+          r.marks[key] = Number(row[col]) || 0;
         });
       });
 
