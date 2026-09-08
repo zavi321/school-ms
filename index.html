@@ -6010,10 +6010,10 @@ function renderClassPortalAttendance() {
   body.innerHTML = `
     <button class="btn-ghost" style="padding:9px 14px;margin-bottom:10px;" onclick="renderClassPortalMenu()">‹ ${esc(t.classPortalBackToMenu)}</button>
     <h2 style="margin-top:0;">${esc(t.markAttendance)}</h2>
-    <p class="desc">${esc(fmtDate(date))}</p>
+    <label><span>${esc(t.attendanceDate)}</span><input type="date" id="cp-att-date" value="${date}" max="${todayISO()}"></label>
     <div id="cp-att-roster">${classPortalRosterHtml(session)}</div>
     <div id="cp-att-msg" style="font-size:12px;margin:10px 0;"></div>
-    <button class="btn-primary" style="width:100%;" onclick="submitClassPortalAttendance('${date}')">${esc(t.saveAttendance)}</button>
+    <button class="btn-primary" style="width:100%;" onclick="submitClassPortalAttendance()">${esc(t.saveAttendance)}</button>
   `;
 }
 
@@ -6044,9 +6044,11 @@ function setClassAttendanceMark(studentId, session_, status) {
   if (el) el.innerHTML = classPortalRosterHtml(getClassSession());
 }
 
-async function submitClassPortalAttendance(date) {
+async function submitClassPortalAttendance() {
   const session = getClassSession();
   const msg = document.getElementById('cp-att-msg');
+  const dateInput = document.getElementById('cp-att-date');
+  const date = (dateInput && dateInput.value) ? dateInput.value : todayISO();
   const entries = [];
   Object.keys(classAttendanceDraft).forEach(studentId => {
     const rec = classAttendanceDraft[studentId];
