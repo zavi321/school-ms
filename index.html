@@ -657,6 +657,9 @@ const T = {
     classPortalMenuAddStudent:'Add Student', classPortalAddStudentTitle:'Add Student', classPortalAddStudentDesc:"Enter the student's name to add them to this class.",
     classPortalStudentNamePlaceholder:'Student Name', classPortalAddStudentSaved:'Student added.', classPortalAddStudentOffline:'You are offline — connect to the internet to add a student.',
     classPortalLoadExam:'Load a saved exam to edit', classPortalNewExam:'— New Exam —',
+    classPortalMenuMarksView:'View Marks Sheet', classPortalSelectExam:'Select Exam', classPortalNoExams:'No exam marks saved yet.',
+    classPortalTotal:'Total', classPortalDownloadExcel:'Download Excel', classPortalSendWhatsapp:'Send via WhatsApp',
+    classPortalWhatsappFallbackMsg:'Marks sheet Excel file has been downloaded to your phone — please attach it here and send.',
   },
   ur: {
     appName:'مالیاتی و ریکارڈ سسٹم', tagline:'اسکول انتظامیہ کے لیے',
@@ -809,6 +812,9 @@ const T = {
     classPortalMenuAddStudent:'طالب علم شامل کریں', classPortalAddStudentTitle:'طالب علم شامل کریں', classPortalAddStudentDesc:'طالب علم کا نام درج کریں تاکہ اسے اس کلاس میں شامل کیا جا سکے۔',
     classPortalStudentNamePlaceholder:'طالب علم کا نام', classPortalAddStudentSaved:'طالب علم شامل ہو گیا۔', classPortalAddStudentOffline:'آپ آف لائن ہیں — طالب علم شامل کرنے کے لیے انٹرنیٹ سے جڑیں۔',
     classPortalLoadExam:'محفوظ امتحان میں ترمیم کے لیے منتخب کریں', classPortalNewExam:'— نیا امتحان —',
+    classPortalMenuMarksView:'مارکس شیٹ دیکھیں', classPortalSelectExam:'امتحان منتخب کریں', classPortalNoExams:'ابھی تک کوئی امتحانی نمبرات محفوظ نہیں۔',
+    classPortalTotal:'ٹوٹل', classPortalDownloadExcel:'ایکسل ڈاؤن لوڈ کریں', classPortalSendWhatsapp:'واٹس ایپ پر بھیجیں',
+    classPortalWhatsappFallbackMsg:'مارکس شیٹ کی ایکسل فائل آپ کے فون میں ڈاؤن لوڈ ہو گئی ہے — براہ کرم یہاں اٹیچ کر کے بھیج دیں۔',
   }
 };
 
@@ -5599,7 +5605,7 @@ function clearClassSession() { localStorage.removeItem(CLASS_SESSION_KEY); }
 function getClassQueue() { try { return JSON.parse(localStorage.getItem(CLASS_QUEUE_KEY) || '[]'); } catch(e) { return []; } }
 function setClassQueue(q) { localStorage.setItem(CLASS_QUEUE_KEY, JSON.stringify(q)); }
 
-let CLASS_PORTAL_SCREEN = 'menu'; // 'menu' | 'attendance' | 'marks'
+let CLASS_PORTAL_SCREEN = 'menu'; // 'menu' | 'attendance' | 'marks' | 'register' | 'marksView' | 'addStudent'
 
 async function renderClassPortalEntry() {
   document.getElementById('loading').classList.add('hidden');
@@ -5682,6 +5688,7 @@ function renderClassPortalMenu() {
     <button class="btn-primary" style="width:100%;margin-bottom:10px;" onclick="renderClassPortalAttendance()">${esc(t.classPortalMenuAttendance)}</button>
     <button class="btn-primary" style="width:100%;margin-bottom:10px;" onclick="renderClassPortalRegister()">${esc(t.classPortalMenuRegister)}</button>
     <button class="btn-primary" style="width:100%;margin-bottom:10px;" onclick="renderClassPortalMarks()">${esc(t.classPortalMenuMarks)}</button>
+    <button class="btn-primary" style="width:100%;margin-bottom:10px;" onclick="renderClassPortalMarksView()">${esc(t.classPortalMenuMarksView)}</button>
     <button class="btn-ghost" style="width:100%;" onclick="renderClassPortalAddStudent()">${esc(t.classPortalMenuAddStudent)}</button>
     ${queue.length ? `<p style="font-size:11px;opacity:.6;margin-top:14px;">${esc(t.classPortalOffline)} (${queue.length})</p>` : ''}
   `;
@@ -5739,6 +5746,152 @@ async function renderClassPortalRegisterBody() {
       </table>
     </div>
     <p style="font-size:10.5px;opacity:.55;margin-top:8px;">${esc(t.morning)} / ${esc(t.afternoon)} — ${esc(t.registerLegend)}</p>`;
+}
+
+// ---- Marks Sheet (read-only view of a saved exam — student x subject grid —
+// with buttons to download it as an Excel file or share that file straight
+// into WhatsApp via the device's native share sheet.) ----
+let classPortalExams = [];
+let classPortalSelectedExam = '';
+
+async function renderClassPortalMarksView() {
+  CLASS_PORTAL_SCREEN = 'marksView';
+  const session = getClassSession();
+  const body = document.getElementById('class-portal-body');
+  if (!session || !body) return;
+  body.innerHTML = `
+    <button class="btn-ghost" style="padding:9px 14px;margin-bottom:10px;" onclick="renderClassPortalMenu()">‹ ${esc(t.classPortalBackToMenu)}</button>
+    <h2 style="margin-top:0;">${esc(t.classPortalMenuMarksView)}</h2>
+    <div id="cp-marksview-body">…</div>
+  `;
+  await renderClassPortalMarksViewBody();
+}
+
+async function renderClassPortalMarksViewBody() {
+  const session = getClassSession();
+  const body = document.getElementById('cp-marksview-body');
+  if (!session || !body) return;
+  if (!navigator.onLine) { body.innerHTML = `<div class="err">${esc(t.classPortalOfflineNoList)}</div>`; return; }
+  body.innerHTML = '…';
+  const { data, error } = await sb.rpc('class_exam_marks_list', {
+    p_school_code: session.schoolCode, p_login_id: session.loginId, p_password: session.password
+  });
+  if (error) { body.innerHTML = `<div class="err">${esc(t.classPortalInvalid)}</div>`; return; }
+  classPortalExams = data || [];
+  if (!classPortalExams.length) { body.innerHTML = `<div class="empty">${esc(t.classPortalNoExams)}</div>`; return; }
+  if (!classPortalSelectedExam || !classPortalExams.some(e => e.exam_name === classPortalSelectedExam)) {
+    classPortalSelectedExam = classPortalExams[0].exam_name;
+  }
+  body.innerHTML = `
+    <label><span>${esc(t.classPortalSelectExam)}</span>
+      <select onchange="classPortalSelectedExam=this.value; renderClassPortalMarksViewGrid();">
+        ${classPortalExams.map(e => `<option value="${esc(e.exam_name)}" ${e.exam_name === classPortalSelectedExam ? 'selected' : ''}>${esc(e.exam_name)}</option>`).join('')}
+      </select>
+    </label>
+    <div id="cp-marksview-grid"></div>
+  `;
+  renderClassPortalMarksViewGrid();
+}
+
+function renderClassPortalMarksViewGrid() {
+  const session = getClassSession();
+  const grid = document.getElementById('cp-marksview-grid');
+  if (!grid || !session) return;
+  const exam = classPortalExams.find(e => e.exam_name === classPortalSelectedExam);
+  if (!exam) { grid.innerHTML = ''; return; }
+  const subjects = exam.subjects || [];
+  const marks = exam.marks || {};
+  const students = session.students.slice().sort((a,b)=>Number(a.roll_no||0)-Number(b.roll_no||0));
+  const grandTotal = subjects.reduce((sum,s)=>sum+Number(s.total||0),0);
+  const rows = students.map(st => {
+    const row = marks[st.id] || {};
+    let total = 0;
+    const cells = subjects.map(s => {
+      const v = row[s.name];
+      if (v !== undefined && v !== null) total += Number(v) || 0;
+      return `<td style="text-align:center;">${v === undefined || v === null ? '—' : esc(v)}</td>`;
+    }).join('');
+    return `<tr><td class="mo">${st.roll_no?'#'+esc(st.roll_no)+' ':''}${esc(st.name)}</td>${cells}<td style="text-align:center;font-weight:600;">${total}/${grandTotal}</td></tr>`;
+  }).join('');
+  grid.innerHTML = `
+    <div class="card-table-wrap" style="margin-top:8px;">
+      <table class="card-table">
+        <thead><tr><th style="text-align:left;">${esc(t.studentName)}</th>${subjects.map(s=>`<th>${esc(s.name)} /${esc(s.total)}</th>`).join('')}<th>${esc(t.classPortalTotal)}</th></tr></thead>
+        <tbody>${rows || `<tr><td colspan="${subjects.length + 2}">${esc(t.classPortalNoStudents)}</td></tr>`}</tbody>
+      </table>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:12px;">
+      <button class="btn-ghost" style="flex:1;" onclick="exportClassMarksExcel()">📊 ${esc(t.classPortalDownloadExcel)}</button>
+      <button class="btn-primary" style="flex:1;" onclick="shareClassMarksWhatsapp()">💬 ${esc(t.classPortalSendWhatsapp)}</button>
+    </div>
+  `;
+}
+
+function buildClassMarksWorkbook() {
+  const session = getClassSession();
+  const exam = classPortalExams.find(e => e.exam_name === classPortalSelectedExam);
+  if (!exam || !session) return null;
+  const subjects = exam.subjects || [];
+  const marks = exam.marks || {};
+  const students = session.students.slice().sort((a,b)=>Number(a.roll_no||0)-Number(b.roll_no||0));
+  const grandTotal = subjects.reduce((sum,s)=>sum+Number(s.total||0),0);
+  const rows = students.map(st => {
+    const row = marks[st.id] || {};
+    const out = { [t.studentName]: st.name };
+    let total = 0;
+    subjects.forEach(s => {
+      const v = row[s.name];
+      out[`${s.name} /${s.total}`] = (v === undefined || v === null) ? '' : Number(v);
+      total += Number(v) || 0;
+    });
+    out[`${t.classPortalTotal} /${grandTotal}`] = total;
+    return out;
+  });
+  const ws = XLSX.utils.json_to_sheet(rows);
+  const range = XLSX.utils.decode_range(ws['!ref']);
+  for (let c = range.s.c; c <= range.e.c; c++) {
+    const addr = XLSX.utils.encode_cell({ r: 0, c });
+    if (ws[addr]) ws[addr].s = { font: { bold: true } };
+  }
+  ws['!cols'] = [{ wch: 24 }, ...subjects.map(() => ({ wch: 12 })), { wch: 12 }];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, (exam.exam_name || 'Marks Sheet').slice(0, 31));
+  return wb;
+}
+
+function classMarksFileName() {
+  const session = getClassSession();
+  const classPart = (session?.className || 'Class').replace(/[^a-zA-Z0-9]/g, '_');
+  const examPart = (classPortalSelectedExam || 'Marks').replace(/[^a-zA-Z0-9]/g, '_');
+  return `${classPart}_${examPart}_${fmtDate(todayISO())}.xlsx`;
+}
+
+function exportClassMarksExcel() {
+  const wb = buildClassMarksWorkbook();
+  if (!wb) return;
+  XLSX.writeFile(wb, classMarksFileName(), { cellStyles: true });
+}
+
+// Tries the device's native share sheet so the Excel file lands directly
+// inside a WhatsApp chat (works on Android/iOS Chrome & Safari, and on
+// WhatsApp desktop if the OS share sheet supports it). If the browser
+// doesn't support sharing files, it falls back to just downloading the
+// file and opening WhatsApp so the teacher can attach it manually.
+async function shareClassMarksWhatsapp() {
+  const wb = buildClassMarksWorkbook();
+  if (!wb) return;
+  const fileName = classMarksFileName();
+  try {
+    const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array', cellStyles: true });
+    const blob = new Blob([wbout], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const file = new File([blob], fileName, { type: blob.type });
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      await navigator.share({ files: [file], title: fileName });
+      return;
+    }
+  } catch (e) { /* user cancelled, or share isn't supported — fall through */ }
+  XLSX.writeFile(wb, fileName, { cellStyles: true });
+  window.open(`https://wa.me/?text=${encodeURIComponent(t.classPortalWhatsappFallbackMsg)}`, '_blank');
 }
 
 // ---- Add Student (teacher can add a new student to their own class) ----
