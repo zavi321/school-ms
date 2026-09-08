@@ -655,8 +655,9 @@ const T = {
     classPortalAddSubject:'Add Subject', classPortalSubjectName:'Subject', classPortalSubjectTotal:'Total Marks',
     classPortalNoSubjects:'Add at least one subject first.', classPortalSaveMarks:'Save Marks', classPortalMarksSaved:'Marks saved.',
     classPortalNoStudents:'No students found for this class yet.', classPortalMarksExceed:'Marks cannot exceed the subject total.',
-    classPortalMenuAddStudent:'Add Student', classPortalAddStudentTitle:'Add Student', classPortalAddStudentDesc:"Enter the student's name to add them to this class.",
+    classPortalMenuAddStudent:'Add Student', classPortalAddStudentTitle:'Add Student', classPortalAddStudentDesc:"Enter the student's name and father's name to add them to this class.",
     classPortalStudentNamePlaceholder:'Student Name', classPortalAddStudentSaved:'Student added.', classPortalAddStudentOffline:'You are offline — connect to the internet to add a student.',
+    classPortalFatherNameRequired:"Father's name is required.",
     classPortalLoadExam:'Load a saved exam to edit', classPortalNewExam:'— New Exam —',
     classPortalMenuMarksView:'View Marks Sheet', classPortalSelectExam:'Select Exam', classPortalNoExams:'No exam marks saved yet.',
     classPortalTotal:'Total', classPortalDownloadExcel:'Download Excel', classPortalSendWhatsapp:'Send via WhatsApp',
@@ -811,8 +812,9 @@ const T = {
     classPortalAddSubject:'مضمون شامل کریں', classPortalSubjectName:'مضمون', classPortalSubjectTotal:'کل نمبر',
     classPortalNoSubjects:'پہلے کم از کم ایک مضمون شامل کریں۔', classPortalSaveMarks:'نمبرات محفوظ کریں', classPortalMarksSaved:'نمبرات محفوظ ہو گئے۔',
     classPortalNoStudents:'اس کلاس کے لیے ابھی کوئی طالب علم نہیں ملا۔', classPortalMarksExceed:'نمبر مضمون کے کل نمبروں سے زیادہ نہیں ہو سکتے۔',
-    classPortalMenuAddStudent:'طالب علم شامل کریں', classPortalAddStudentTitle:'طالب علم شامل کریں', classPortalAddStudentDesc:'طالب علم کا نام درج کریں تاکہ اسے اس کلاس میں شامل کیا جا سکے۔',
+    classPortalMenuAddStudent:'طالب علم شامل کریں', classPortalAddStudentTitle:'طالب علم شامل کریں', classPortalAddStudentDesc:'طالب علم کا نام اور والد کا نام درج کریں تاکہ اسے اس کلاس میں شامل کیا جا سکے۔',
     classPortalStudentNamePlaceholder:'طالب علم کا نام', classPortalAddStudentSaved:'طالب علم شامل ہو گیا۔', classPortalAddStudentOffline:'آپ آف لائن ہیں — طالب علم شامل کرنے کے لیے انٹرنیٹ سے جڑیں۔',
+    classPortalFatherNameRequired:'والد کا نام درج کرنا ضروری ہے۔',
     classPortalLoadExam:'محفوظ امتحان میں ترمیم کے لیے منتخب کریں', classPortalNewExam:'— نیا امتحان —',
     classPortalMenuMarksView:'مارکس شیٹ دیکھیں', classPortalSelectExam:'امتحان منتخب کریں', classPortalNoExams:'ابھی تک کوئی امتحانی نمبرات محفوظ نہیں۔',
     classPortalTotal:'ٹوٹل', classPortalDownloadExcel:'ایکسل ڈاؤن لوڈ کریں', classPortalSendWhatsapp:'واٹس ایپ پر بھیجیں',
@@ -5956,6 +5958,7 @@ function renderClassPortalAddStudent() {
     <h2 style="margin-top:0;">${esc(t.classPortalAddStudentTitle)}</h2>
     <p class="desc">${esc(t.classPortalAddStudentDesc)}</p>
     <label><span>${esc(t.classPortalStudentNamePlaceholder)}</span><input id="cp-add-name" placeholder="${esc(t.classPortalStudentNamePlaceholder)}"></label>
+    <label><span>${esc(t.fatherName)}</span><input id="cp-add-father" placeholder="${esc(t.fatherName)}"></label>
     <div id="cp-add-msg" style="font-size:12px;margin:8px 0;"></div>
     <button class="btn-primary" style="width:100%;" onclick="submitClassPortalAddStudent()">${esc(t.classPortalMenuAddStudent)}</button>
   `;
@@ -5965,20 +5968,24 @@ async function submitClassPortalAddStudent() {
   const session = getClassSession();
   const msg = document.getElementById('cp-add-msg');
   const nameInput = document.getElementById('cp-add-name');
+  const fatherInput = document.getElementById('cp-add-father');
   const name = nameInput ? nameInput.value.trim() : '';
+  const fatherName = fatherInput ? fatherInput.value.trim() : '';
   if (!session || !name) return;
+  if (!fatherName) { msg.innerHTML = `<div class="err">${esc(t.classPortalFatherNameRequired)}</div>`; return; }
   if (!navigator.onLine) { msg.innerHTML = `<div class="err">${esc(t.classPortalAddStudentOffline)}</div>`; return; }
   msg.textContent = '…';
   try {
     const { data, error } = await sb.rpc('class_add_student', {
-      p_school_code: session.schoolCode, p_login_id: session.loginId, p_password: session.password, p_name: name
+      p_school_code: session.schoolCode, p_login_id: session.loginId, p_password: session.password, p_name: name, p_father_name: fatherName
     });
     if (error || !data || !data.length) { msg.innerHTML = `<div class="err">${esc(t.classPortalInvalid)}</div>`; return; }
     session.students = session.students || [];
-    session.students.push({ id: data[0].id, name: data[0].name });
+    session.students.push({ id: data[0].id, name: data[0].name, father_name: data[0].father_name || fatherName });
     setClassSession(session);
     msg.innerHTML = `<span class="ok">✓ ${esc(t.classPortalAddStudentSaved)}</span>`;
     if (nameInput) nameInput.value = '';
+    if (fatherInput) fatherInput.value = '';
   } catch(e) {
     msg.innerHTML = `<div class="err">DEBUG: ${esc(e.message || String(e))}</div>`;
   }
