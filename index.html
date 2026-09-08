@@ -519,6 +519,7 @@ const T = {
     feeLedger:'Fee Ledger', markPaid:'Mark Month Paid', month:'Month', amount:'Amount (Rs)',
     save:'Save', cancel:'Cancel', delete:'Delete', paid:'Paid', due:'Due',
     addTeacher:'Add Teacher', teacherName:'Teacher Name', subject:'Subject / Role', monthlySalary:'Monthly Salary (Rs)',
+    qualification:'Qualification',
     joinDate:'Join Date', searchTeachers:'Search teachers...', noTeachers:'No teachers yet. Add your first teacher to get started.',
     markAttendance:'Mark Attendance', attendanceDate:'Date', present:'Present', absent:'Absent', leave:'Leave',
     suggestedSalary:'Suggested Salary (from attendance)', noAttendanceMarked:'No attendance marked for this month — full salary shown.',
@@ -680,6 +681,7 @@ const T = {
     feeLedger:'فیس کھاتہ', markPaid:'مہینہ ادا شدہ نشان زد کریں', month:'مہینہ', amount:'رقم (روپے)',
     save:'محفوظ کریں', cancel:'منسوخ کریں', delete:'حذف کریں', paid:'ادا شدہ', due:'واجب الادا',
     addTeacher:'استاد شامل کریں', teacherName:'استاد کا نام', subject:'مضمون / عہدہ', monthlySalary:'ماہانہ تنخواہ (روپے)',
+    qualification:'تعلیمی قابلیت',
     joinDate:'شمولیت کی تاریخ', searchTeachers:'اساتذہ تلاش کریں...', noTeachers:'ابھی کوئی استاد شامل نہیں۔',
     markAttendance:'حاضری لگائیں', attendanceDate:'تاریخ', present:'حاضر', absent:'غیر حاضر', leave:'رخصت',
     suggestedSalary:'تجویز کردہ تنخواہ (حاضری کی بنیاد پر)', noAttendanceMarked:'اس مہینے کے لیے حاضری درج نہیں — پوری تنخواہ دکھائی جا رہی ہے۔',
@@ -2919,6 +2921,7 @@ function openAddTeacher() {
   showModal(t.addTeacher, `
     <label><span>${esc(t.teacherName)}</span><input id="f-name"></label>
     <label><span>${esc(t.subject)}</span><input id="f-subject"></label>
+    <label><span>${esc(t.qualification)}</span><input id="f-qualification"></label>
     <label><span>${esc(t.monthlySalary)}</span><input id="f-salary" type="number"></label>
     <label><span>${esc(t.joinDate)}</span><input id="f-join" type="date" value="${todayISO()}"></label>
     <label><span>${esc(t.contact)}</span><input id="f-contact" type="tel" placeholder="03XXXXXXXXX"></label>
@@ -2931,11 +2934,13 @@ function openAddTeacher() {
 
 async function submitAddTeacher() {
   const name = document.getElementById('f-name').value.trim();
+  const qualification = document.getElementById('f-qualification').value.trim();
   const salary = document.getElementById('f-salary').value;
-  if (!name || salary==='') return;
+  if (!name || !qualification || salary==='') return;
   const { error } = await sb.from('teachers').insert({
     owner_id: CURRENT_USER.id,
     name, subject: document.getElementById('f-subject').value,
+    qualification,
     monthly_salary: Number(salary), join_date: dateVal('f-join'),
     contact: document.getElementById('f-contact').value
   });
@@ -3508,6 +3513,7 @@ function openTeacherDetail(id) {
   showModal(tc.name, `
     <div style="font-size:12px;opacity:.7;margin-bottom:12px;display:flex;flex-wrap:wrap;gap:12px;">
       <span>${esc(t.subject)}: ${esc(tc.subject||'')}</span>
+      <span>${esc(t.qualification)}: ${esc(tc.qualification||'')}</span>
       <span>${esc(t.monthlySalary)}: ₨${fmt(tc.monthly_salary)}</span>
     </div>
     <div class="greenbox"><div class="lbl">${esc(t.totalSalariesAllTime)}</div><div class="val">₨${fmt(totalPaid)}</div></div>
