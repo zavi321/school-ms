@@ -3296,13 +3296,12 @@ async function openClassAttendanceView(className) {
   await renderClassAttendanceView(className);
 }
 
-// Counts attendance as day-equivalents: a present Morning or Afternoon
-// session each count as half a day, so a full day present (both sessions)
-// counts as 1 — this keeps the three summary columns consistent with the
-// AM/PM split already shown in each date cell.
+// Counts attendance as hazirian (individual session marks): a present
+// Morning session counts as 1, a present Afternoon session counts as 1,
+// so a full day present (both sessions) counts as 2 hazirian.
 function attendanceDaysCount(records) {
   return records.reduce((sum, r) =>
-    sum + (r.status_am === 'present' ? 0.5 : 0) + (r.status_pm === 'present' ? 0.5 : 0), 0);
+    sum + (r.status_am === 'present' ? 1 : 0) + (r.status_pm === 'present' ? 1 : 0), 0);
 }
 function fmtAttendanceDays(n) {
   return n % 1 === 0 ? String(n) : n.toFixed(1);
@@ -5783,12 +5782,18 @@ async function renderClassPortalRegisterBody() {
         <div style="font-size:10px;color:${registerCellColor(rec.status_pm)};">${esc(cellCode(rec.status_pm))}</div>
       </td>`;
     }).join('');
-    return `<tr><td class="date-col" style="text-align:left;white-space:nowrap;">${esc(s.name)}</td>${cells}</tr>`;
+    // This-month hazirian total (AM + PM present each count as 1, so a
+    // full day present counts as 2) — same counting rule as the owner's
+    // Class Attendance View.
+    const thisMonthDays = attendanceDaysCount((data || []).filter(r => r.student_id === s.id));
+    return `<tr><td class="date-col" style="text-align:left;white-space:nowrap;">${esc(s.name)}</td>${cells}
+      <td style="font-weight:700;">${fmtAttendanceDays(thisMonthDays)}</td>
+    </tr>`;
   }).join('');
   body.innerHTML = `
     <div class="card-table-wrap">
       <table class="reg-physical">
-        <thead><tr><th style="text-align:left;">${esc(t.studentName)}</th>${dateHead}</tr></thead>
+        <thead><tr><th style="text-align:left;">${esc(t.studentName)}</th>${dateHead}<th>${esc(t.attRegTotal)}</th></tr></thead>
         <tbody>${rows}</tbody>
       </table>
     </div>
