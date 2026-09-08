@@ -643,6 +643,7 @@ const T = {
     classLoginsDesc:'Create a login for each class so a teacher can mark attendance and enter exam marks from a shared class device — no separate account needed.',
     addClassLogin:'Add Class Login', editClassLogin:'Edit Class Login', noClassLogins:'No class logins yet. Add one for each class.',
     loginId:'Login ID', classLoginPassword:'Password', loginIdTaken:'This Login ID is already in use — please choose another.',
+    classTeacherName:'Class Teacher Name',
     viewAttendance:'Attendance', viewMarks:'Exam Marks', classLoginSavedHint:'Share this Login ID & Password with the class teacher.',
     selectDate:'Date', noAttendanceRecords:'No attendance recorded for this date.', noExamsYet:'No exams saved yet.',
     examMarksTitle:'Exam Marks', backToClassLogins:'Back to Class Logins', shareLoginLink:'Portal Link',
@@ -801,6 +802,7 @@ const T = {
     classLoginsDesc:'ہر کلاس کے لیے ایک لاگ اِن بنائیں تاکہ استاد مشترکہ کلاس ڈیوائس سے حاضری اور امتحانی نمبرات درج کر سکیں — الگ اکاؤنٹ کی ضرورت نہیں۔',
     addClassLogin:'کلاس لاگ اِن شامل کریں', editClassLogin:'کلاس لاگ اِن میں ترمیم', noClassLogins:'ابھی کوئی کلاس لاگ اِن نہیں۔ ہر کلاس کے لیے ایک شامل کریں۔',
     loginId:'لاگ اِن آئی ڈی', classLoginPassword:'پاس ورڈ', loginIdTaken:'یہ لاگ اِن آئی ڈی پہلے سے استعمال میں ہے — دوسری منتخب کریں۔',
+    classTeacherName:'کلاس ٹیچر کا نام',
     viewAttendance:'حاضری', viewMarks:'امتحانی نمبرات', classLoginSavedHint:'یہ لاگ اِن آئی ڈی اور پاس ورڈ کلاس ٹیچر کو دیں۔',
     selectDate:'تاریخ', noAttendanceRecords:'اس تاریخ کے لیے کوئی حاضری درج نہیں۔', noExamsYet:'ابھی کوئی امتحان محفوظ نہیں۔',
     examMarksTitle:'امتحانی نمبرات', backToClassLogins:'کلاس لاگ اِنز پر واپس', shareLoginLink:'پورٹل لنک',
@@ -3240,7 +3242,7 @@ function tplClassLogins() {
         rows.map(cl => `
           <div class="card-btn" style="cursor:default;flex-direction:column;align-items:stretch;">
             <div style="display:flex;justify-content:space-between;align-items:center;">
-              <div><div class="nm">${esc(cl.class_name)}</div><div class="sub">${esc(t.loginId)}: ${esc(cl.login_id)}</div></div>
+              <div><div class="nm">${esc(cl.class_name)}</div><div class="sub">${cl.teacher_name ? esc(cl.teacher_name) + ' · ' : ''}${esc(t.loginId)}: ${esc(cl.login_id)}</div></div>
               <div style="display:flex;gap:6px;">
                 <button title="${esc(t.editClassLogin)}" style="background:none;border:none;font-size:15px;padding:4px;" onclick="openAddClassLogin('${cl.id}')">✎</button>
                 <button title="${esc(t.delete)}" style="background:none;border:none;color:var(--rust);font-size:15px;padding:4px;" onclick="confirmDelete('classLogin','${cl.id}')">🗑️</button>
@@ -3260,6 +3262,7 @@ function openAddClassLogin(id) {
     <label><span>${esc(t.className)}</span>
       <select id="cl-class">${CLASS_OPTIONS.map(c => `<option ${existing && existing.class_name===c?'selected':''}>${esc(c)}</option>`).join('')}</select>
     </label>
+    <label><span>${esc(t.classTeacherName)}</span><input id="cl-teacher" value="${existing?esc(existing.teacher_name||''):''}"></label>
     <label><span>${esc(t.loginId)}</span><input id="cl-login" value="${existing?esc(existing.login_id):''}" autocapitalize="none"></label>
     <label><span>${esc(t.classLoginPassword)}</span><input id="cl-pw" value="${existing?esc(existing.password):''}"></label>
     <p style="font-size:11px;opacity:.6;margin:-6px 0 12px;">${esc(t.classLoginSavedHint)}</p>
@@ -3274,10 +3277,11 @@ function openAddClassLogin(id) {
 async function submitClassLogin(id) {
   const msg = document.getElementById('cl-msg');
   const className = document.getElementById('cl-class').value;
+  const teacherName = document.getElementById('cl-teacher').value.trim();
   const loginId = document.getElementById('cl-login').value.trim();
   const password = document.getElementById('cl-pw').value;
   if (!loginId || !password) return;
-  const payload = { owner_id: CURRENT_USER.id, class_name: className, login_id: loginId, password };
+  const payload = { owner_id: CURRENT_USER.id, class_name: className, teacher_name: teacherName, login_id: loginId, password };
   const { error } = id
     ? await sb.from('class_logins').update(payload).eq('id', id)
     : await sb.from('class_logins').insert(payload);
@@ -5714,7 +5718,7 @@ async function submitClassPortalLogin() {
     if (!data || !data.length) { msg.innerHTML = `<div class="err">${esc(t.classPortalInvalid)} (DEBUG: RPC returned 0 rows)</div>`; return; }
     setClassSession({
       schoolCode, loginId, password,
-      ownerId: data[0].owner_id, className: data[0].class_name, students: data[0].students || []
+      ownerId: data[0].owner_id, className: data[0].class_name, teacherName: data[0].teacher_name || '', students: data[0].students || []
     });
     CLASS_PORTAL_SCREEN = 'menu';
     renderClassPortalMenu();
@@ -5738,6 +5742,7 @@ function renderClassPortalMenu() {
       <h2 style="margin:0;">${esc(session.className)}</h2>
       <button class="btn-ghost" style="flex:none;padding:7px 12px;font-size:12px;" onclick="classPortalLogout()">${esc(t.classPortalLogout)}</button>
     </div>
+    ${session.teacherName ? `<p class="desc" style="margin-top:0;">${esc(t.classTeacherName)}: ${esc(session.teacherName)}</p>` : ''}
     <p class="desc">${session.students.length} ${esc(t.studentsCount)}</p>
     <button class="btn-primary" style="width:100%;margin-bottom:10px;" onclick="renderClassPortalAttendance()">${esc(t.classPortalMenuAttendance)}</button>
     <button class="btn-primary" style="width:100%;margin-bottom:10px;" onclick="renderClassPortalRegister()">${esc(t.classPortalMenuRegister)}</button>
