@@ -5863,13 +5863,13 @@ function renderClassPortalMarksViewGrid() {
       if (v !== undefined && v !== null) total += Number(v) || 0;
       return `<td style="text-align:center;">${v === undefined || v === null ? '—' : esc(v)}</td>`;
     }).join('');
-    return `<tr><td class="mo">${st.roll_no?'#'+esc(st.roll_no)+' ':''}${esc(st.name)}</td>${cells}<td style="text-align:center;font-weight:600;">${total}/${grandTotal}</td></tr>`;
+    return `<tr><td class="mo">${st.roll_no?'#'+esc(st.roll_no)+' ':''}${esc(st.name)}</td><td>${esc(st.father_name||'')}</td>${cells}<td style="text-align:center;font-weight:600;">${total}/${grandTotal}</td></tr>`;
   }).join('');
   grid.innerHTML = `
     <div class="card-table-wrap" style="margin-top:8px;">
       <table class="card-table">
-        <thead><tr><th style="text-align:left;">${esc(t.studentName)}</th>${subjects.map(s=>`<th>${esc(s.name)} /${esc(s.total)}</th>`).join('')}<th>${esc(t.classPortalTotal)}</th></tr></thead>
-        <tbody>${rows || `<tr><td colspan="${subjects.length + 2}">${esc(t.classPortalNoStudents)}</td></tr>`}</tbody>
+        <thead><tr><th style="text-align:left;">${esc(t.studentName)}</th><th style="text-align:left;">${esc(t.fatherName)}</th>${subjects.map(s=>`<th>${esc(s.name)} /${esc(s.total)}</th>`).join('')}<th>${esc(t.classPortalTotal)}</th></tr></thead>
+        <tbody>${rows || `<tr><td colspan="${subjects.length + 3}">${esc(t.classPortalNoStudents)}</td></tr>`}</tbody>
       </table>
     </div>
     <div style="display:flex;gap:8px;margin-top:12px;">
@@ -5889,7 +5889,7 @@ function buildClassMarksWorkbook() {
   const grandTotal = subjects.reduce((sum,s)=>sum+Number(s.total||0),0);
   const rows = students.map(st => {
     const row = marks[st.id] || {};
-    const out = { [t.studentName]: st.name };
+    const out = { [t.studentName]: st.name, [t.fatherName]: st.father_name || '' };
     let total = 0;
     subjects.forEach(s => {
       const v = row[s.name];
@@ -5905,7 +5905,7 @@ function buildClassMarksWorkbook() {
     const addr = XLSX.utils.encode_cell({ r: 0, c });
     if (ws[addr]) ws[addr].s = { font: { bold: true } };
   }
-  ws['!cols'] = [{ wch: 24 }, ...subjects.map(() => ({ wch: 12 })), { wch: 12 }];
+  ws['!cols'] = [{ wch: 24 }, { wch: 20 }, ...subjects.map(() => ({ wch: 12 })), { wch: 12 }];
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, (exam.exam_name || 'Marks Sheet').slice(0, 31));
   return wb;
