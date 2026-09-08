@@ -4061,17 +4061,25 @@ function handleDMCExcelUpload(file) {
       
       // Extract marks from other columns
       const nonMarkCols = ['Student Name','Name','Student','Class','جماعت','Father Name',"Father's Name",'Father','S/O','Walid','Roll No','Roll No.','Roll Number','Roll','Section','سیکشن','Date of Issue','Issue Date'];
-      // Normalize a column/subject name for matching: trim, lowercase,
-      // collapse spaces, and drop a trailing "marks" word — so an Excel
-      // header like "Math Marks" or " math " still matches a configured
-      // subject named "Math" instead of silently becoming a new key and
-      // showing 0 obtained marks on the DMC.
-      const normalizeName = (s) => String(s || '').trim().toLowerCase().replace(/\s+/g, ' ').replace(/\s*marks?$/, '');
+      // Normalize a column/subject name for matching: lowercase, strip all
+      // punctuation, drop trailing numeric tokens (so "Urdu /100" or
+      // "Maths (100)" both reduce to "urdu"/"maths") and a trailing "marks"
+      // word — so real-world headers like "Urdu /100" still match a
+      // configured subject named "Urdu" instead of becoming a separate key
+      // and showing 0 obtained marks on the DMC.
+      const normalizeName = (s) => {
+        let tokens = String(s || '').toLowerCase().replace(/[^a-z0-9\u0600-\u06FF]+/g, ' ').trim().split(' ').filter(Boolean);
+        while (tokens.length && (/^\d+$/.test(tokens[tokens.length - 1]) || tokens[tokens.length - 1] === 'marks' || tokens[tokens.length - 1] === 'mark')) {
+          tokens.pop();
+        }
+        return tokens.join(' ');
+      };
       dmcResults.forEach((r, idx) => {
         const row = rows[idx];
         Object.keys(row).forEach(col => {
           if (nonMarkCols.includes(col)) return;
           const normCol = normalizeName(col);
+          if (!normCol) return; // blank/empty header column — nothing to attach marks to
           // Prefer the canonical subject name from dmcSubjects config if it
           // matches (even loosely) so totals/percentage calculations
           // (which look up marks by s.name) always find the value.
