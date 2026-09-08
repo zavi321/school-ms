@@ -528,6 +528,7 @@ const T = {
     registerLegend:'P = Present · L = Leave · A = Absent · — = not yet due',
     registerTapHint:'Tap a mark to change it (Morning and Afternoon are set independently).',
     registerSaved:'Updated.',
+    attRegPrevMonths:'Previous Months', attRegThisMonth:'This Month', attRegTotal:'Total Attendance',
     time1:'1st Time', time2:'2nd Time', srNo:'Sr.',
     holiday:'Holiday', tapToUnmark:'tap to un-mark', holidayHint:'Sundays are always a holiday. Tap any other date to mark/unmark it as a holiday.',
     qrCheckin:'QR Check-in', checkinTitle:'Teacher Check-in', checkinSelectPrompt:'Select your name to mark yourself present today.',
@@ -687,6 +688,7 @@ const T = {
     registerLegend:'P = حاضر · L = رخصت · A = غیر حاضر · — = ابھی وقت نہیں ہوا',
     registerTapHint:'نشان تبدیل کرنے کے لیے اس پر ٹیپ کریں (صبح اور دوپہر الگ الگ لگتے ہیں)۔',
     registerSaved:'اپڈیٹ ہو گیا۔',
+    attRegPrevMonths:'پچھلے مہینے', attRegThisMonth:'اس مہینے', attRegTotal:'کل حاضری',
     time1:'پہلا وقت', time2:'دوسرا وقت', srNo:'نمبر',
     holiday:'چھٹی', tapToUnmark:'ہٹانے کے لیے ٹیپ کریں', holidayHint:'اتوار ہمیشہ چھٹی ہوتی ہے۔ کسی بھی دوسری تاریخ کو چھٹی کے طور پر لگانے/ہٹانے کے لیے اس پر ٹیپ کریں۔',
     qrCheckin:'QR چیک اِن', checkinTitle:'اساتذہ حاضری', checkinSelectPrompt:'آج اپنی حاضری لگانے کے لیے اپنا نام منتخب کریں۔',
@@ -3294,6 +3296,18 @@ async function openClassAttendanceView(className) {
   await renderClassAttendanceView(className);
 }
 
+// Counts attendance as day-equivalents: a present Morning or Afternoon
+// session each count as half a day, so a full day present (both sessions)
+// counts as 1 — this keeps the three summary columns consistent with the
+// AM/PM split already shown in each date cell.
+function attendanceDaysCount(records) {
+  return records.reduce((sum, r) =>
+    sum + (r.status_am === 'present' ? 0.5 : 0) + (r.status_pm === 'present' ? 0.5 : 0), 0);
+}
+function fmtAttendanceDays(n) {
+  return n % 1 === 0 ? String(n) : n.toFixed(1);
+}
+
 async function renderClassAttendanceView(className) {
   const body = document.getElementById('cav-body');
   if (!body) return;
@@ -3303,6 +3317,11 @@ async function renderClassAttendanceView(className) {
     .eq('class_name', className)
     .gte('date', dates[0]).lte('date', dates[dates.length-1]);
   if (error) { body.innerHTML = `<div class="err">${esc(error.message)}</div>`; return; }
+  // All attendance recorded before this month, for the "Previous Months" total column.
+  const { data: prevData, error: prevError } = await sb.from('student_attendance').select('*')
+    .eq('class_name', className)
+    .lt('date', dates[0]);
+  if (prevError) { body.innerHTML = `<div class="err">${esc(prevError.message)}</div>`; return; }
   const students = DATA.students.filter(s => s.class_name === className && s.status === 'active');
   if (!students.length) { body.innerHTML = `<div class="empty">${esc(t.noAttendanceRecords)}</div>`; return; }
   const recFor = (studentId, date) => (data || []).find(r => r.student_id === studentId && r.date === date) || {};
@@ -3321,13 +3340,22 @@ async function renderClassAttendanceView(className) {
         <div style="font-size:10px;color:${registerCellColor(rec.status_pm)};">${esc(cellCode(rec.status_pm))}</div>
       </td>`;
     }).join('');
-    return `<tr><td class="date-col" style="text-align:left;white-space:nowrap;">${esc(s.name)}</td>${cells}</tr>`;
+    const prevDays = attendanceDaysCount((prevData || []).filter(r => r.student_id === s.id));
+    const thisMonthDays = attendanceDaysCount((data || []).filter(r => r.student_id === s.id));
+    const totalDays = prevDays + thisMonthDays;
+    return `<tr><td class="date-col" style="text-align:left;white-space:nowrap;">${esc(s.name)}</td>${cells}
+      <td style="font-weight:700;">${fmtAttendanceDays(prevDays)}</td>
+      <td style="font-weight:700;">${fmtAttendanceDays(thisMonthDays)}</td>
+      <td style="font-weight:700;">${fmtAttendanceDays(totalDays)}</td>
+    </tr>`;
   }).join('');
   body.innerHTML = `
     <div class="card-table-wrap">
       <table class="reg-physical">
         <thead>
-          <tr><th style="text-align:left;">${esc(t.studentName)}</th>${dateHead}</tr>
+          <tr><th style="text-align:left;">${esc(t.studentName)}</th>${dateHead}
+            <th>${esc(t.attRegPrevMonths)}</th><th>${esc(t.attRegThisMonth)}</th><th>${esc(t.attRegTotal)}</th>
+          </tr>
         </thead>
         <tbody>${rows}</tbody>
       </table>
