@@ -3297,31 +3297,32 @@ async function renderClassAttendanceView(className) {
   if (!students.length) { body.innerHTML = `<div class="empty">${esc(t.noAttendanceRecords)}</div>`; return; }
   const recFor = (studentId, date) => (data || []).find(r => r.student_id === studentId && r.date === date) || {};
   const cellCode = (status) => status === 'present' ? 'P' : status === 'leave' ? 'L' : status === 'absent' ? 'A' : '—';
-  const head1 = students.map(s => `<th colspan="2">${esc(s.name)}</th>`).join('');
-  const head2 = students.map(() => `<th>${esc(t.morning)}</th><th>${esc(t.afternoon)}</th>`).join('');
-  const rows = dates.map(date => {
+  const dateHead = dates.map(date => {
     const d = new Date(date + 'T00:00:00');
-    const wk = d.toLocaleDateString(LANG==='ur'?'ur-PK':'en-PK', { weekday:'short' });
     const holiday = isHoliday(date);
-    const dateCell = `<td class="date-col">${d.getDate()} <span style="font-weight:400;opacity:.6;font-size:9.5px;">${esc(wk)}</span></td>`;
-    if (holiday) return `<tr class="hol-row">${dateCell}<td colspan="${students.length*2}" style="font-style:italic;opacity:.65;font-weight:600;">${esc(t.holiday)}</td></tr>`;
-    const cells = students.map(s => {
+    return `<th style="${holiday?'opacity:.5;':''}">${d.getDate()}</th>`;
+  }).join('');
+  const rows = students.map(s => {
+    const cells = dates.map(date => {
+      if (isHoliday(date)) return `<td style="opacity:.35;">—</td>`;
       const rec = recFor(s.id, date);
-      return `<td style="color:${registerCellColor(rec.status_am)};">${esc(cellCode(rec.status_am))}</td><td style="color:${registerCellColor(rec.status_pm)};">${esc(cellCode(rec.status_pm))}</td>`;
+      return `<td style="padding:3px 2px;line-height:1.25;">
+        <div style="font-size:10px;color:${registerCellColor(rec.status_am)};">${esc(cellCode(rec.status_am))}</div>
+        <div style="font-size:10px;color:${registerCellColor(rec.status_pm)};">${esc(cellCode(rec.status_pm))}</div>
+      </td>`;
     }).join('');
-    return `<tr>${dateCell}${cells}</tr>`;
+    return `<tr><td class="date-col" style="text-align:left;white-space:nowrap;">${esc(s.name)}</td>${cells}</tr>`;
   }).join('');
   body.innerHTML = `
     <div class="card-table-wrap">
       <table class="reg-physical">
         <thead>
-          <tr><th rowspan="2" style="text-align:left;">${esc(t.dateCol)}</th>${head1}</tr>
-          <tr class="sub-head">${head2}</tr>
+          <tr><th style="text-align:left;">${esc(t.studentName)}</th>${dateHead}</tr>
         </thead>
         <tbody>${rows}</tbody>
       </table>
     </div>
-    <p style="font-size:10.5px;opacity:.55;margin-top:8px;">${esc(t.registerLegend)}</p>`;
+    <p style="font-size:10.5px;opacity:.55;margin-top:8px;">${esc(t.morning)} / ${esc(t.afternoon)} — ${esc(t.registerLegend)}</p>`;
 }
 
 async function openClassMarksView(className) {
@@ -5645,7 +5646,8 @@ async function submitClassPortalLogin() {
   if (!navigator.onLine) { msg.innerHTML = `<div class="err">${esc(t.classPortalOfflineNoList)}</div>`; return; }
   try {
     const { data, error } = await sb.rpc('class_login_verify', { p_school_code: schoolCode, p_login_id: loginId, p_password: password });
-    if (error || !data || !data.length) { msg.innerHTML = `<div class="err">${esc(t.classPortalInvalid)}</div>`; return; }
+    if (error) { msg.innerHTML = `<div class="err">DEBUG: ${esc(error.message || JSON.stringify(error))}</div>`; return; }
+    if (!data || !data.length) { msg.innerHTML = `<div class="err">${esc(t.classPortalInvalid)} (DEBUG: RPC returned 0 rows)</div>`; return; }
     setClassSession({
       schoolCode, loginId, password,
       ownerId: data[0].owner_id, className: data[0].class_name, students: data[0].students || []
@@ -5653,7 +5655,7 @@ async function submitClassPortalLogin() {
     CLASS_PORTAL_SCREEN = 'menu';
     renderClassPortalMenu();
   } catch(e) {
-    msg.innerHTML = `<div class="err">${esc(t.classPortalInvalid)}</div>`;
+    msg.innerHTML = `<div class="err">DEBUG catch: ${esc(e.message || String(e))}</div>`;
   }
 }
 
@@ -5713,26 +5715,25 @@ async function renderClassPortalRegisterBody() {
   const dates = datesInMonth(classPortalRegMonth);
   const recFor = (studentId, date) => (data || []).find(r => r.student_id === studentId && r.date === date) || {};
   const cellCode = (status) => status === 'present' ? 'P' : status === 'leave' ? 'L' : status === 'absent' ? 'A' : '—';
-  const head1 = students.map(s => `<th colspan="2">${esc(s.name)}</th>`).join('');
-  const head2 = students.map(() => `<th>${esc(t.morning)}</th><th>${esc(t.afternoon)}</th>`).join('');
-  const rows = dates.map(date => {
-    const d = new Date(date + 'T00:00:00');
-    const wk = d.toLocaleDateString(LANG==='ur'?'ur-PK':'en-PK', { weekday:'short' });
-    const dateCell = `<td class="date-col">${d.getDate()} <span style="font-weight:400;opacity:.6;font-size:9.5px;">${esc(wk)}</span></td>`;
-    const cells = students.map(s => {
+  const dateHead = dates.map(date => `<th>${new Date(date + 'T00:00:00').getDate()}</th>`).join('');
+  const rows = students.map(s => {
+    const cells = dates.map(date => {
       const rec = recFor(s.id, date);
-      return `<td style="color:${registerCellColor(rec.status_am)};">${esc(cellCode(rec.status_am))}</td><td style="color:${registerCellColor(rec.status_pm)};">${esc(cellCode(rec.status_pm))}</td>`;
+      return `<td style="padding:3px 2px;line-height:1.25;">
+        <div style="font-size:10px;color:${registerCellColor(rec.status_am)};">${esc(cellCode(rec.status_am))}</div>
+        <div style="font-size:10px;color:${registerCellColor(rec.status_pm)};">${esc(cellCode(rec.status_pm))}</div>
+      </td>`;
     }).join('');
-    return `<tr>${dateCell}${cells}</tr>`;
+    return `<tr><td class="date-col" style="text-align:left;white-space:nowrap;">${esc(s.name)}</td>${cells}</tr>`;
   }).join('');
   body.innerHTML = `
     <div class="card-table-wrap">
       <table class="reg-physical">
-        <thead><tr><th rowspan="2" style="text-align:left;">${esc(t.dateCol)}</th>${head1}</tr><tr class="sub-head">${head2}</tr></thead>
+        <thead><tr><th style="text-align:left;">${esc(t.studentName)}</th>${dateHead}</tr></thead>
         <tbody>${rows}</tbody>
       </table>
     </div>
-    <p style="font-size:10.5px;opacity:.55;margin-top:8px;">${esc(t.registerLegend)}</p>`;
+    <p style="font-size:10.5px;opacity:.55;margin-top:8px;">${esc(t.morning)} / ${esc(t.afternoon)} — ${esc(t.registerLegend)}</p>`;
 }
 
 // ---- Attendance (today only, same Present/Leave/Absent x AM/PM pattern as the Teachers tab) ----
