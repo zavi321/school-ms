@@ -4260,27 +4260,20 @@ function renderDMCCertificate(result) {
     const subjGrade = dmcGradeFor(subjPct);
     return `
       <tr style="border-bottom:1px solid #E7E0CE;">
-        <td style="padding:6px 12px;text-align:center;font-size:13px;font-weight:800;color:#1C2530;text-shadow:${shadow3Dsm};">${i+1}</td>
-        <td style="padding:6px 12px;text-align:left;font-size:14px;font-weight:900;color:#1C2530;text-shadow:${shadow3Dsm};">${esc(s.name)}</td>
-        <td style="padding:6px 12px;text-align:center;font-size:14px;font-weight:800;color:#333;text-shadow:${shadow3Dsm};">${s.total}</td>
-        <td style="padding:6px 12px;text-align:center;font-size:14px;font-weight:900;color:#0F2740;text-shadow:${shadow3Dsm};">${marks}</td>
-        <td style="padding:6px 12px;text-align:center;font-size:13px;font-weight:900;color:#0F2740;text-shadow:${shadow3Dsm};">${subjGrade}</td>
+        <td style="padding:6px 12px;text-align:center;font-size:13px;font-weight:800;color:#1C2530;">${i+1}</td>
+        <td style="padding:6px 12px;text-align:left;font-size:14px;font-weight:900;color:#1C2530;">${esc(s.name)}</td>
+        <td style="padding:6px 12px;text-align:center;font-size:14px;font-weight:800;color:#333;">${s.total}</td>
+        <td style="padding:6px 12px;text-align:center;font-size:14px;font-weight:900;color:#0F2740;">${marks}</td>
+        <td style="padding:6px 12px;text-align:center;font-size:13px;font-weight:900;color:#0F2740;">${subjGrade}</td>
       </tr>`;
   }).join('');
 
   const infoField = (icon, label, value) => `
-    <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
-      <span style="flex-shrink:0;width:18px;text-align:center;">${icon}</span>
-      <span style="flex-shrink:0;width:96px;font-size:12px;font-weight:900;color:#0F2740;text-shadow:${shadow3Dsm};">${esc(label)}</span>
-      <span style="font-size:12px;font-weight:900;color:#1C2530;text-shadow:${shadow3Dsm};">:</span>
-      <span style="flex:1;font-size:13px;font-weight:900;color:#1C2530;border-bottom:1px solid #C9C2A6;padding-bottom:2px;text-shadow:${shadow3Dsm};">${esc(value || '\u2014')}</span>
-    </div>`;
-
-  const summaryBlock = (icon, label, value, valueColor) => `
-    <div style="text-align:center;">
-      <div style="font-size:17px;margin-bottom:4px;">${icon}</div>
-      <div style="font-size:9px;color:#0F2740;font-weight:900;letter-spacing:.04em;text-transform:uppercase;text-shadow:${shadow3Dsm};">${label}</div>
-      <div style="font-size:16px;font-weight:900;color:${valueColor || '#0F2740'};margin-top:3px;text-shadow:${shadow3D};">${value}</div>
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
+      <span style="flex-shrink:0;width:20px;text-align:center;">${icon}</span>
+      <span style="flex-shrink:0;width:108px;font-size:14px;font-weight:900;color:#0F2740;">${esc(label)}</span>
+      <span style="font-size:14px;font-weight:900;color:#1C2530;">:</span>
+      <span style="flex:1;font-size:15px;font-weight:900;color:#1C2530;border-bottom:1px solid #C9C2A6;padding-bottom:2px;">${esc(value || '\u2014')}</span>
     </div>`;
 
 
@@ -4322,13 +4315,13 @@ function renderDMCCertificate(result) {
 
           <!-- Title banner -->
           <div style="text-align:center;">
-            <div style="display:inline-block;background:${pc};color:${bg};padding:9px 26px;border-radius:6px;font-weight:900;font-size:14px;letter-spacing:.06em;text-shadow:${shadow3D};">${esc((dmcDesign.certTitle || 'DETAIL MARKS CERTIFICATE').toUpperCase())}</div>
-            ${dmcAcademicSession ? `<div style="margin-top:10px;"><span style="display:inline-block;border:1px solid ${ac};color:${pc};padding:4px 18px;border-radius:999px;font-size:11px;font-weight:900;letter-spacing:.03em;text-shadow:${shadow3Dsm};">ACADEMIC SESSION: ${esc(dmcAcademicSession)}</span></div>` : ''}
+            <div style="display:inline-block;background:${pc};color:${bg};padding:9px 26px;border-radius:6px;font-weight:900;font-size:14px;letter-spacing:.06em;">${esc((dmcDesign.certTitle || 'DETAIL MARKS CERTIFICATE').toUpperCase())}</div>
+            ${dmcAcademicSession ? `<div style="margin-top:10px;"><span style="display:inline-block;border:1px solid ${ac};color:${pc};padding:4px 18px;border-radius:999px;font-size:11px;font-weight:900;letter-spacing:.03em;">ACADEMIC SESSION: ${esc(dmcAcademicSession)}</span></div>` : ''}
           </div>
 
           <!-- Student Information section -->
           <div style="margin:14px 0 0;">
-            <div style="display:inline-block;background:${pc};color:${acLight};padding:6px 16px;font-size:11px;font-weight:900;letter-spacing:.05em;border-radius:4px 10px 4px 4px;text-shadow:${shadow3Dsm};">STUDENT INFORMATION</div>
+            <div style="display:inline-block;background:${pc};color:${acLight};padding:7px 18px;font-size:13px;font-weight:900;letter-spacing:.05em;border-radius:4px 10px 4px 4px;">STUDENT INFORMATION</div>
           </div>
           <div style="border:1px solid ${ac};border-radius:10px;padding:12px 18px 2px;margin-top:8px;">
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 20px;">
@@ -4349,51 +4342,63 @@ function renderDMCCertificate(result) {
           <table style="width:100%;border-collapse:collapse;margin:8px 0;">
             <thead>
               <tr style="background:${pc};color:${acLight};">
-                <th style="padding:8px 12px;text-align:center;font-weight:900;font-size:11px;letter-spacing:.04em;width:44px;text-shadow:${shadow3Dsm};">S.NO</th>
-                <th style="padding:8px 12px;text-align:left;font-weight:900;font-size:11px;letter-spacing:.04em;text-shadow:${shadow3Dsm};">SUBJECT</th>
-                <th style="padding:8px 12px;text-align:center;font-weight:900;font-size:11px;letter-spacing:.04em;text-shadow:${shadow3Dsm};">TOTAL MARKS</th>
-                <th style="padding:8px 12px;text-align:center;font-weight:900;font-size:11px;letter-spacing:.04em;text-shadow:${shadow3Dsm};">OBTAINED MARKS</th>
-                <th style="padding:8px 12px;text-align:center;font-weight:900;font-size:11px;letter-spacing:.04em;text-shadow:${shadow3Dsm};">GRADE</th>
+                <th style="padding:8px 12px;text-align:center;font-weight:900;font-size:11px;letter-spacing:.04em;width:44px;">S.NO</th>
+                <th style="padding:8px 12px;text-align:left;font-weight:900;font-size:11px;letter-spacing:.04em;">SUBJECT</th>
+                <th style="padding:8px 12px;text-align:center;font-weight:900;font-size:11px;letter-spacing:.04em;">TOTAL MARKS</th>
+                <th style="padding:8px 12px;text-align:center;font-weight:900;font-size:11px;letter-spacing:.04em;">OBTAINED MARKS</th>
+                <th style="padding:8px 12px;text-align:center;font-weight:900;font-size:11px;letter-spacing:.04em;">GRADE</th>
               </tr>
             </thead>
             <tbody>
               ${subjectsHtml}
               <tr style="background:${acLight};font-weight:900;">
-                <td colspan="2" style="padding:8px 12px;text-align:left;color:${pc};text-shadow:${shadow3Dsm};">TOTAL</td>
-                <td style="padding:8px 12px;text-align:center;color:${pc};font-size:15px;text-shadow:${shadow3D};">${totalPossible}</td>
-                <td style="padding:8px 12px;text-align:center;color:${pc};font-size:15px;text-shadow:${shadow3D};">${totalObtained}</td>
-                <td style="padding:8px 12px;text-align:center;color:${dmcGradeColor(grade)};font-size:14px;text-shadow:${shadow3D};">${grade}</td>
+                <td colspan="2" style="padding:8px 12px;text-align:left;color:${pc};">TOTAL</td>
+                <td style="padding:8px 12px;text-align:center;color:${pc};font-size:15px;">${totalPossible}</td>
+                <td style="padding:8px 12px;text-align:center;color:${pc};font-size:15px;">${totalObtained}</td>
+                <td style="padding:8px 12px;text-align:center;color:${dmcGradeColor(grade)};font-size:14px;">${grade}</td>
+              </tr>
+              <!-- Result summary row: kept column-aligned directly under the TOTAL
+                   row above it — Percentage sits under TOTAL MARKS, Position sits
+                   under OBTAINED MARKS, Grade sits under GRADE (same last column). -->
+              <tr style="border-top:2px solid ${pc};font-weight:900;">
+                <td colspan="2" style="padding:8px 12px;text-align:left;color:${pc};font-size:11px;letter-spacing:.04em;text-shadow:${shadow3Dsm};">RESULT</td>
+                <td style="padding:8px 12px;text-align:center;color:${pc};">
+                  <div style="font-size:9px;letter-spacing:.04em;opacity:.75;text-shadow:${shadow3Dsm};">%AGE</div>
+                  <div style="font-size:16px;line-height:1;margin-top:2px;">&#128200;</div>
+                  <div style="font-size:34px;line-height:1;text-shadow:${shadow3D};">${percentage}%</div>
+                </td>
+                <td style="padding:8px 12px;text-align:center;color:${pc};">
+                  <div style="font-size:9px;letter-spacing:.04em;opacity:.75;text-shadow:${shadow3Dsm};">POSITION</div>
+                  <div style="font-size:16px;line-height:1;margin-top:2px;">&#129351;</div>
+                  <div style="font-size:62px;font-weight:900;line-height:1;-webkit-text-stroke:0.4px ${pc};text-shadow:${shadow3D};">${dmcDesign.showPosition ? ordinal(position) : '\u2014'}</div>
+                </td>
+                <td style="padding:8px 12px;text-align:center;color:${dmcGradeColor(grade)};">
+                  <div style="font-size:9px;letter-spacing:.04em;opacity:.75;text-shadow:${shadow3Dsm};">GRADE</div>
+                  <div style="font-size:16px;line-height:1;margin-top:2px;">&#127895;</div>
+                  <div style="font-size:32px;line-height:1;text-shadow:${shadow3D};">${grade}</div>
+                </td>
               </tr>
             </tbody>
           </table>
 
-          <!-- Summary row -->
-          <div style="border:1px solid ${ac};border-radius:10px;padding:8px;">
-            <div style="display:grid;grid-template-columns:repeat(${dmcDesign.showPosition ? 3 : 2},1fr);gap:6px;">
-              ${summaryBlock('%','Percentage', percentage+'%')}
-              ${summaryBlock('&#127895;','Grade', grade, dmcGradeColor(grade))}
-              ${dmcDesign.showPosition ? summaryBlock('&#129351;','Position', ordinal(position)) : ''}
-            </div>
-          </div>
-
           <!-- Remarks -->
           <div style="display:flex;margin-top:10px;border:1px solid ${pc};border-radius:8px;overflow:hidden;">
-            <div style="background:${pc};color:${acLight};font-weight:900;font-size:13px;letter-spacing:.05em;padding:8px 22px;text-shadow:${shadow3Dsm};">REMARKS</div>
-            <div style="flex:1;display:flex;align-items:center;justify-content:center;gap:8px;font-weight:900;font-size:13px;letter-spacing:.05em;color:${dmcGradeColor(grade)};text-shadow:${shadow3D};">${dmcRemarkFor(grade)}</div>
+            <div style="background:${pc};color:${acLight};font-weight:900;font-size:13px;letter-spacing:.05em;padding:8px 22px;">REMARKS</div>
+            <div style="flex:1;display:flex;align-items:center;justify-content:center;gap:8px;font-weight:900;font-size:13px;letter-spacing:.05em;color:${dmcGradeColor(grade)};">${dmcRemarkFor(grade)}</div>
           </div>
 
           <!-- Footer: signatures -->
           <div style="display:flex;align-items:flex-end;justify-content:space-between;margin-top:10px;gap:12px;">
             <div style="text-align:center;flex:1;">
               <div style="border-bottom:1px solid ${pc};margin-bottom:6px;"></div>
-              <div style="font-size:10px;font-weight:900;color:${pc};letter-spacing:.03em;text-shadow:${shadow3Dsm};">${esc((dmcDesign.teacherLabel || 'CLASS TEACHER SIGNATURE').toUpperCase())}</div>
+              <div style="font-size:10px;font-weight:900;color:${pc};letter-spacing:.03em;">${esc((dmcDesign.teacherLabel || 'CLASS TEACHER SIGNATURE').toUpperCase())}</div>
             </div>
             ${dmcDesign.showStamp ? `<div style="text-align:center;flex-shrink:0;width:70px;">
-              <div style="width:56px;height:56px;border:1px dashed ${ac};border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:8px;font-weight:900;color:${pc};opacity:.6;margin:0 auto;text-shadow:${shadow3Dsm};">SCHOOL<br>STAMP</div>
+              <div style="width:56px;height:56px;border:1px dashed ${ac};border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:8px;font-weight:900;color:${pc};opacity:.6;margin:0 auto;">SCHOOL<br>STAMP</div>
             </div>` : ''}
             <div style="text-align:center;flex:1;">
               <div style="border-bottom:1px solid ${pc};margin-bottom:6px;"></div>
-              <div style="font-size:10px;font-weight:900;color:${pc};letter-spacing:.03em;text-shadow:${shadow3Dsm};">${esc((dmcDesign.principalLabel || 'PRINCIPAL SIGNATURE').toUpperCase())}</div>
+              <div style="font-size:10px;font-weight:900;color:${pc};letter-spacing:.03em;">${esc((dmcDesign.principalLabel || 'PRINCIPAL SIGNATURE').toUpperCase())}</div>
             </div>
           </div>
 
