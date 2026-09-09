@@ -4210,6 +4210,50 @@ function renderDMCCertificate(result) {
     return n + (s[(v - 20) % 10] || s[v] || s[0]);
   };
 
+  // Design values are per-school (dmcDesign), so the same rendering logic
+  // below produces a differently-styled certificate for every school.
+  const pc = dmcDesign.primaryColor || '#0F2740';   // primary (navy by default)
+  const ac = dmcDesign.accentColor  || '#C9A227';   // accent (gold by default)
+  const bg = dmcDesign.bgColor      || '#FAF6EC';   // background (cream by default)
+  const acLight = lightenColor(ac, 0.45);           // soft accent tint (was the fixed #E4C765)
+
+  // The uploaded certificate background image can be dark in some spots (e.g. a
+  // navy header/footer band) and light in others, but the same text sits on top
+  // everywhere. Rather than guessing per-pixel what's underneath, give dark text
+  // a thin white halo — invisible on light backgrounds, but it outlines the
+  // letters clearly if they land on a dark patch, so the writing never disappears.
+  const haloOnDark = '-1px -1px 0 #fff,1px -1px 0 #fff,-1px 1px 0 #fff,1px 1px 0 #fff,0 0 4px rgba(255,255,255,.9)';
+  // Same idea in reverse, for text that's white — a thin dark halo so it stays
+  // readable if it lands on a light patch of the background image.
+  const haloOnLight = '-1px -1px 0 rgba(15,39,64,.85),1px -1px 0 rgba(15,39,64,.85),-1px 1px 0 rgba(15,39,64,.85),1px 1px 0 rgba(15,39,64,.85),0 0 4px rgba(0,0,0,.7)';
+
+  // Full 3D / embossed look applied to every piece of text on the
+  // certificate (subject names, student info, marks, summary row, etc),
+  // not just the school name. Small variant for compact table/label text,
+  // large variant for bigger headings — both stack several offset dark
+  // layers plus a soft drop shadow to read as raised/extruded text.
+  // NOTE: these are declared before subjectsHtml below — subjectsHtml runs
+  // its .map() immediately (it's not a lazy function), so if these constants
+  // were declared after it, referencing them inside the map would throw a
+  // "Cannot access before initialization" error and silently break the
+  // entire certificate (nothing would render or print).
+  const shadow3D = '1px 1px 0 rgba(0,0,0,.4),2px 2px 0 rgba(0,0,0,.32),3px 3px 0 rgba(0,0,0,.25),4px 4px 4px rgba(0,0,0,.4)';
+  const shadow3Dsm = '0.5px 0.5px 0 rgba(0,0,0,.4),1px 1px 0 rgba(0,0,0,.32),1.5px 1.5px 0 rgba(0,0,0,.25),2px 2px 2px rgba(0,0,0,.4)';
+
+  // NOTE: mix-blend-mode was tried here for auto-contrast against any
+  // background, but Chromium's print/PDF pipeline frequently fails to
+  // render blend-mode text at all (it prints blank), so the certificate
+  // silently stopped printing. Using a plain, print-safe color choice
+  // instead: white+dark-halo when a custom background image is set
+  // (which is often dark/patterned), plain black+3D pop otherwise.
+  const nameColor = dmcBackground ? '#fff' : '#000';
+  const nameShadow = dmcBackground
+    ? '-1px -1px 0 rgba(15,39,64,.85),1px -1px 0 rgba(15,39,64,.85),-1px 1px 0 rgba(15,39,64,.85),1px 1px 0 rgba(15,39,64,.85),2px 2px 3px rgba(0,0,0,.5),3px 3px 5px rgba(0,0,0,.4)'
+    : '1px 1px 0 rgba(255,255,255,.6),2px 2px 3px rgba(0,0,0,.4),3px 3px 5px rgba(0,0,0,.3)';
+  const taglineShadow = dmcBackground
+    ? '-0.5px -0.5px 0 rgba(15,39,64,.85),0.5px -0.5px 0 rgba(15,39,64,.85),-0.5px 0.5px 0 rgba(15,39,64,.85),0.5px 0.5px 0 rgba(15,39,64,.85),1px 1px 2px rgba(0,0,0,.5),2px 2px 3px rgba(0,0,0,.4)'
+    : '0.5px 0.5px 0 rgba(255,255,255,.6),1px 1px 2px rgba(0,0,0,.4),2px 2px 3px rgba(0,0,0,.3)';
+
   const subjectsHtml = dmcSubjects.map((s, i) => {
     const marks = Number(result.marks[s.name]) || 0;
     const subjPct = s.total ? (marks / s.total) * 100 : 0;
@@ -4239,44 +4283,6 @@ function renderDMCCertificate(result) {
       <div style="font-size:16px;font-weight:900;color:${valueColor || '#0F2740'};margin-top:3px;text-shadow:${shadow3D};">${value}</div>
     </div>`;
 
-  // Design values are per-school (dmcDesign), so the same rendering logic
-  // above produces a differently-styled certificate for every school.
-  const pc = dmcDesign.primaryColor || '#0F2740';   // primary (navy by default)
-  const ac = dmcDesign.accentColor  || '#C9A227';   // accent (gold by default)
-  const bg = dmcDesign.bgColor      || '#FAF6EC';   // background (cream by default)
-  const acLight = lightenColor(ac, 0.45);           // soft accent tint (was the fixed #E4C765)
-
-  // The uploaded certificate background image can be dark in some spots (e.g. a
-  // navy header/footer band) and light in others, but the same text sits on top
-  // everywhere. Rather than guessing per-pixel what's underneath, give dark text
-  // a thin white halo — invisible on light backgrounds, but it outlines the
-  // letters clearly if they land on a dark patch, so the writing never disappears.
-  const haloOnDark = '-1px -1px 0 #fff,1px -1px 0 #fff,-1px 1px 0 #fff,1px 1px 0 #fff,0 0 4px rgba(255,255,255,.9)';
-  // Same idea in reverse, for text that's white — a thin dark halo so it stays
-  // readable if it lands on a light patch of the background image.
-  const haloOnLight = '-1px -1px 0 rgba(15,39,64,.85),1px -1px 0 rgba(15,39,64,.85),-1px 1px 0 rgba(15,39,64,.85),1px 1px 0 rgba(15,39,64,.85),0 0 4px rgba(0,0,0,.7)';
-
-  // Full 3D / embossed look applied to every piece of text on the
-  // certificate (subject names, student info, marks, summary row, etc),
-  // not just the school name. Small variant for compact table/label text,
-  // large variant for bigger headings — both stack several offset dark
-  // layers plus a soft drop shadow to read as raised/extruded text.
-  const shadow3D = '1px 1px 0 rgba(0,0,0,.4),2px 2px 0 rgba(0,0,0,.32),3px 3px 0 rgba(0,0,0,.25),4px 4px 4px rgba(0,0,0,.4)';
-  const shadow3Dsm = '0.5px 0.5px 0 rgba(0,0,0,.4),1px 1px 0 rgba(0,0,0,.32),1.5px 1.5px 0 rgba(0,0,0,.25),2px 2px 2px rgba(0,0,0,.4)';
-
-  // NOTE: mix-blend-mode was tried here for auto-contrast against any
-  // background, but Chromium's print/PDF pipeline frequently fails to
-  // render blend-mode text at all (it prints blank), so the certificate
-  // silently stopped printing. Using a plain, print-safe color choice
-  // instead: white+dark-halo when a custom background image is set
-  // (which is often dark/patterned), plain black+3D pop otherwise.
-  const nameColor = dmcBackground ? '#fff' : '#000';
-  const nameShadow = dmcBackground
-    ? '-1px -1px 0 rgba(15,39,64,.85),1px -1px 0 rgba(15,39,64,.85),-1px 1px 0 rgba(15,39,64,.85),1px 1px 0 rgba(15,39,64,.85),2px 2px 3px rgba(0,0,0,.5),3px 3px 5px rgba(0,0,0,.4)'
-    : '1px 1px 0 rgba(255,255,255,.6),2px 2px 3px rgba(0,0,0,.4),3px 3px 5px rgba(0,0,0,.3)';
-  const taglineShadow = dmcBackground
-    ? '-0.5px -0.5px 0 rgba(15,39,64,.85),0.5px -0.5px 0 rgba(15,39,64,.85),-0.5px 0.5px 0 rgba(15,39,64,.85),0.5px 0.5px 0 rgba(15,39,64,.85),1px 1px 2px rgba(0,0,0,.5),2px 2px 3px rgba(0,0,0,.4)'
-    : '0.5px 0.5px 0 rgba(255,255,255,.6),1px 1px 2px rgba(0,0,0,.4),2px 2px 3px rgba(0,0,0,.3)';
 
   // Long school names must never be clipped, so the header font size scales
   // down as the name gets longer instead of using a fixed size that overflows.
@@ -4363,9 +4369,7 @@ function renderDMCCertificate(result) {
 
           <!-- Summary row -->
           <div style="border:1px solid ${ac};border-radius:10px;padding:8px;">
-            <div style="display:grid;grid-template-columns:repeat(${dmcDesign.showPosition ? 5 : 4},1fr);gap:6px;">
-              ${summaryBlock('&#127942;','Total Marks', totalPossible)}
-              ${summaryBlock('&#128203;','Obtained Marks', totalObtained)}
+            <div style="display:grid;grid-template-columns:repeat(${dmcDesign.showPosition ? 3 : 2},1fr);gap:6px;">
               ${summaryBlock('%','Percentage', percentage+'%')}
               ${summaryBlock('&#127895;','Grade', grade, dmcGradeColor(grade))}
               ${dmcDesign.showPosition ? summaryBlock('&#129351;','Position', ordinal(position)) : ''}
