@@ -1,5 +1,5 @@
 const CACHE_NAME = 'school-ms-cache-v1';
-const APP_SHELL = ['./', './index.html', './manifest.json', './icons/icon-192.png', './icons/icon-512.png'];
+const APP_SHELL = ['./', './index.html', './manifest.json', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', (e) => {
   e.waitUntil(
@@ -60,8 +60,8 @@ self.addEventListener('push', (e) => {
   e.waitUntil(
     self.registration.showNotification(data.title, {
       body: data.body,
-      icon: './icons/icon-192.png',
-      badge: './icons/icon-192.png',
+      icon: './icon-192.png',
+      badge: './icon-192.png',
     })
   );
 });
