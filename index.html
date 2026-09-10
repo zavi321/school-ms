@@ -519,7 +519,7 @@ const T = {
     dashboard:'Dashboard', students:'Students', teachers:'Teachers', finance:'Finance', reports:'Reports', dmc:'Certificates', marksSheet:'Marks Sheet',
     thisMonth:'This Month',
     totalStudents:'Active Students', feesCollected:'Fees Collected (this month)', feesDue:'Fees Due (this month)',
-    salaryPaid:'Salaries Paid (this month)', netBalance:'Net Balance (all-time)', totalDuesAllTime:'Total Dues (all-time)', recentActivity:'Recent Activity',
+    salaryPaid:'Salaries Paid (this month)', expensesThisMonth:'Expenses (this month)', netBalance:'Net Balance (all-time)', totalDuesAllTime:'Total Dues (all-time)', recentActivity:'Recent Activity',
     totalIncome:'Total Income (all-time)', totalExpense:'Total Expenses (all-time)', teacherSalaries:'Teacher Salaries (all-time)',
     expenses:'Expenses', collectedFees:'Collected Fees', back:'Back', noRecords:'No records yet',
     addStudent:'Add Student', studentName:'Student Name', studentNameUr:'Student Name (Urdu)', fatherName:"Father's Name", fatherNameUr:"Father's Name (Urdu)", casteTribeUr:'Caste/Tribe (Urdu)', residenceUr:'Residence (Urdu)', className:'Class',
@@ -568,7 +568,7 @@ const T = {
     copyrightNotice:'© 2026 Zavi Software. All rights reserved. This software is licensed for use by your school only — it may not be resold, redistributed, or transferred to any other party.',
     enterAmount:'Enter amount',
     lastBalance:'Last Balance', schoolFeeCol:'School Fee', sportsFund:'Sports Fund', admissionFeeCol:'Admission Fee',
-    examFeeCol:'Annual Exam Fee', totalDuesCol:'Total Dues', totalPaidCol:'Total Paid', balanceCol:'Balance',
+    examFeeCol:'Annual Exam Fee', otherFeeCol:'Other (Hostel/Transport)', totalDuesCol:'Total Dues', totalPaidCol:'Total Paid', balanceCol:'Balance',
     receiptNo:'Receipt No', dateCol:'Date', addEntry:'Add Month Entry', optional:'optional',
     print:'Print', printCard:'Print Card', feeReceipt:'Fee Receipt', studentNameLbl:'Student Name', receivedFrom:'Received From',
     forMonth:'For Month', totalAmount:'Total Amount Paid', thankYou:'Thank you for your payment.',
@@ -682,7 +682,7 @@ const T = {
     dashboard:'ڈیش بورڈ', students:'طلبہ', teachers:'اساتذہ', finance:'مالیات', reports:'رپورٹس', dmc:'سرٹیفکیٹس', marksSheet:'نتائج کی فہرست',
     thisMonth:'اس ماہ',
     totalStudents:'فعال طلبہ', feesCollected:'وصول شدہ فیس (اس ماہ)', feesDue:'واجب الادا فیس (اس ماہ)',
-    salaryPaid:'ادا شدہ تنخواہ (اس ماہ)', netBalance:'کل بیلنس', totalDuesAllTime:'کل واجب الادا (تمام وقت)', recentActivity:'حالیہ سرگرمی',
+    salaryPaid:'ادا شدہ تنخواہ (اس ماہ)', expensesThisMonth:'اخراجات (اس ماہ)', netBalance:'کل بیلنس', totalDuesAllTime:'کل واجب الادا (تمام وقت)', recentActivity:'حالیہ سرگرمی',
     totalIncome:'کل آمدنی', totalExpense:'کل اخراجات', teacherSalaries:'اساتذہ کی تنخواہیں',
     expenses:'اخراجات', collectedFees:'وصول شدہ فیس', back:'واپس', noRecords:'ابھی کوئی ریکارڈ نہیں',
     addStudent:'طالب علم شامل کریں', studentName:'طالب علم کا نام', studentNameUr:'طالب علم کا نام (اردو)', fatherName:'والد کا نام', fatherNameUr:'والد کا نام (اردو)', casteTribeUr:'ذات/قبیلہ (اردو)', residenceUr:'رہائش (اردو)', className:'جماعت',
@@ -731,7 +731,7 @@ const T = {
     copyrightNotice:'© 2026 Zavi Software۔ جملہ حقوق محفوظ ہیں۔ یہ سافٹ ویئر صرف آپ کے اسکول کے استعمال کے لیے لائسنس یافتہ ہے — اسے دوبارہ فروخت، تقسیم، یا کسی اور کو منتقل نہیں کیا جا سکتا۔',
     enterAmount:'رقم درج کریں',
     lastBalance:'پچھلا بیلنس', schoolFeeCol:'اسکول فیس', sportsFund:'اسپورٹس فنڈ', admissionFeeCol:'داخلہ فیس',
-    examFeeCol:'سالانہ امتحان فیس', totalDuesCol:'کل واجب الادا', totalPaidCol:'کل ادا شدہ', balanceCol:'بیلنس',
+    examFeeCol:'سالانہ امتحان فیس', otherFeeCol:'دیگر (ہاسٹل/ٹرانسپورٹ)', totalDuesCol:'کل واجب الادا', totalPaidCol:'کل ادا شدہ', balanceCol:'بیلنس',
     receiptNo:'رسید نمبر', dateCol:'تاریخ', addEntry:'ماہانہ اندراج شامل کریں', optional:'اختیاری',
     print:'پرنٹ', printCard:'کارڈ پرنٹ کریں', feeReceipt:'فیس رسید', studentNameLbl:'طالب علم کا نام', receivedFrom:'وصول شدہ از',
     forMonth:'مہینہ', totalAmount:'کل ادا شدہ رقم', thankYou:'ادائیگی کا شکریہ۔',
@@ -1322,7 +1322,7 @@ function monthsOverdue(s) {
   const { rows } = buildAcademicYearLedger(s.id);
   return rows.filter(r => {
     if (r.blank) return false;
-    const monthDue = Number(r.e.school_fee||0) + Number(r.e.sports_fund||0) + Number(r.e.admission_fee||0) + Number(r.e.exam_fee||0) - Number(r.e.amount||0);
+    const monthDue = Number(r.e.school_fee||0) + Number(r.e.sports_fund||0) + Number(r.e.admission_fee||0) + Number(r.e.exam_fee||0) + Number(r.e.other_fee||0) - Number(r.e.amount||0);
     return monthDue > 0;
   }).length;
 }
@@ -1359,7 +1359,7 @@ function duesBreakdownLinesUrdu(studentId) {
     .filter(r => !r.blank)
     .map(r => {
       const e = r.e;
-      const monthDue = Number(e.school_fee||0) + Number(e.sports_fund||0) + Number(e.admission_fee||0) + Number(e.exam_fee||0) - Number(e.amount||0);
+      const monthDue = Number(e.school_fee||0) + Number(e.sports_fund||0) + Number(e.admission_fee||0) + Number(e.exam_fee||0) + Number(e.other_fee||0) - Number(e.amount||0);
       if (monthDue <= 0) return null;
       const monthNum = Number(r.mk.split('-')[1]);
       const parts = [];
@@ -1367,6 +1367,7 @@ function duesBreakdownLinesUrdu(studentId) {
       if (Number(e.sports_fund||0) > 0) parts.push(`${L.sportsFund}: روپے ${fmt(e.sports_fund)}`);
       if (Number(e.admission_fee||0) > 0) parts.push(`${L.admissionFeeCol}: روپے ${fmt(e.admission_fee)}`);
       if (Number(e.exam_fee||0) > 0) parts.push(`${L.examFeeCol}: روپے ${fmt(e.exam_fee)}`);
+      if (Number(e.other_fee||0) > 0) parts.push(`${L.otherFeeCol}: روپے ${fmt(e.other_fee)}`);
       parts.push(`${L.totalPaidCol}: روپے ${fmt(e.amount||0)}`);
       parts.push(`${L.balanceCol}: روپے ${fmt(monthDue)}`);
       return `${UR_MONTH_NAMES[monthNum-1]}:\n` + parts.map(p => `- ${p}`).join('\n');
@@ -1426,7 +1427,7 @@ function studentBalance(id) {
   const entries = studentPayments(id).slice().sort((a,b)=> (a.month>b.month?1:a.month<b.month?-1:0) || (new Date(a.pay_date)-new Date(b.pay_date)));
   let running = 0;
   entries.forEach(e => {
-    const totalDues = running + Number(e.school_fee||0) + Number(e.sports_fund||0) + Number(e.admission_fee||0) + Number(e.exam_fee||0);
+    const totalDues = running + Number(e.school_fee||0) + Number(e.sports_fund||0) + Number(e.admission_fee||0) + Number(e.exam_fee||0) + Number(e.other_fee||0);
     running = totalDues - Number(e.amount||0);
   });
   return running;
@@ -1449,7 +1450,7 @@ function computeStats() {
     // under a "this month" label, which could be badly misread by school staff.
     // Total all-time dues are shown separately under "Dues Outstanding" in Reports.
     if (isFeePaying(s)) {
-      const monthCharge = curEntries.reduce((a,e)=>a+Number(e.school_fee||0)+Number(e.sports_fund||0)+Number(e.admission_fee||0)+Number(e.exam_fee||0),0);
+      const monthCharge = curEntries.reduce((a,e)=>a+Number(e.school_fee||0)+Number(e.sports_fund||0)+Number(e.admission_fee||0)+Number(e.exam_fee||0)+Number(e.other_fee||0),0);
       feesDueThisMonth += Math.max(0, monthCharge - paid);
       payingCount++;
     }
@@ -1458,6 +1459,14 @@ function computeStats() {
   });
   let salaryPaidThisMonth=0;
   DATA.teachers.forEach(tc=>{ salaryPaidThisMonth += teacherPayments(tc.id).filter(p=>p.month===cur).reduce((a,b)=>a+Number(b.amount),0); });
+
+  // Other (non-salary) expenses recorded this calendar month, plus salaries
+  // paid this month — together the "Expenses (this month)" figure that
+  // mirrors the existing this-month Fees Collected / Fees Due cards.
+  const otherExpenseThisMonth = DATA.transactions
+    .filter(x => x.type === 'expense' && String(x.txn_date||'').slice(0,7) === cur)
+    .reduce((a,b)=>a+Number(b.amount),0);
+  const totalExpenseThisMonth = salaryPaidThisMonth + otherExpenseThisMonth;
 
   let totalCollectedAllTime=0;
   active.forEach(s=>{ totalCollectedAllTime += studentPayments(s.id).reduce((a,b)=>a+Number(b.amount),0); });
@@ -1474,7 +1483,7 @@ function computeStats() {
   let totalDuesAllTime = 0;
   active.forEach(s=>{ if (isFeePaying(s)) totalDuesAllTime += Math.max(0, studentBalance(s.id)); });
 
-  return { activeCount:active.length, feesCollectedThisMonth, feesDueThisMonth, salaryPaidThisMonth,
+  return { activeCount:active.length, feesCollectedThisMonth, feesDueThisMonth, salaryPaidThisMonth, totalExpenseThisMonth,
     totalCollectedAllTime, totalSalariesAllTime, totalOtherIncomeAllTime, totalOtherExpenseAllTime,
     totalIncomeAllTime, totalExpenseAllTime, netBalance, totalDuesAllTime, payingCount, freeCount, orphanCount };
 }
@@ -2051,18 +2060,18 @@ function exportBackup() {
         running = lastBalance;
         return {
           Month: monthLabel(mk), 'Last Balance': lastBalance, 'School Fee': '', 'Sports Fund': '',
-          'Admission Fee': '', 'Annual Exam Fee': '', 'Total Dues': lastBalance, 'Total Paid': '',
+          'Admission Fee': '', 'Annual Exam Fee': '', 'Other Fee': '', 'Total Dues': lastBalance, 'Total Paid': '',
           'Balance': lastBalance, 'Receipt No': '', Date: '', Signature: ''
         };
       }
-      const totalDues = lastBalance + Number(e.school_fee||0) + Number(e.sports_fund||0) + Number(e.admission_fee||0) + Number(e.exam_fee||0);
+      const totalDues = lastBalance + Number(e.school_fee||0) + Number(e.sports_fund||0) + Number(e.admission_fee||0) + Number(e.exam_fee||0) + Number(e.other_fee||0);
       const totalPaid = Number(e.amount||0);
       const balance = totalDues - totalPaid;
       running = balance;
       return {
         Month: monthLabel(mk), 'Last Balance': lastBalance, 'School Fee': Number(e.school_fee||0),
         'Sports Fund': Number(e.sports_fund||0), 'Admission Fee': Number(e.admission_fee||0), 'Annual Exam Fee': Number(e.exam_fee||0),
-        'Total Dues': totalDues, 'Total Paid': totalPaid, 'Balance': balance,
+        'Other Fee': Number(e.other_fee||0), 'Total Dues': totalDues, 'Total Paid': totalPaid, 'Balance': balance,
         'Receipt No': e.receipt_no||'', Date: fmtDate(e.pay_date)||'', Signature: ''
       };
     });
@@ -2155,7 +2164,7 @@ function tplDashboard() {
         <div class="stat-card"><div class="lbl">${esc(t.feesCollected)}</div><div class="val" style="font-size:18px;">₨${fmt(s.feesCollectedThisMonth)}</div></div>
         <div class="stat-card"><div class="lbl">${esc(t.feesDue)}</div><div class="val" style="font-size:18px;">₨${fmt(s.feesDueThisMonth)}</div></div>
         <div class="stat-card"><div class="lbl">${esc(t.salaryPaid)}</div><div class="val" style="font-size:18px;">₨${fmt(s.salaryPaidThisMonth)}</div></div>
-        <div class="stat-card"><div class="lbl">${esc(t.totalStudents)}</div><div class="val" style="font-size:18px;">${s.activeCount}</div></div>
+        <div class="stat-card"><div class="lbl">${esc(t.expensesThisMonth)}</div><div class="val" style="font-size:18px;color:var(--rust);">₨${fmt(s.totalExpenseThisMonth)}</div></div>
       </div>
 
       <div class="section-title">${esc(t.studentType)}</div>
@@ -2568,7 +2577,7 @@ function buildAcademicYearLedger(studentId, overrideStartYear) {
     }
     list.forEach((e, i) => {
       const lastBalance = running;
-      const totalDues = lastBalance + Number(e.school_fee||0) + Number(e.sports_fund||0) + Number(e.admission_fee||0) + Number(e.exam_fee||0);
+      const totalDues = lastBalance + Number(e.school_fee||0) + Number(e.sports_fund||0) + Number(e.admission_fee||0) + Number(e.exam_fee||0) + Number(e.other_fee||0);
       const totalPaid = Number(e.amount||0);
       const balance = totalDues - totalPaid;
       running = balance;
@@ -2660,7 +2669,10 @@ function openStudentDetail(id, viewYear) {
       <label style="margin-bottom:0;"><span>${esc(t.examFeeCol)}</span><input id="p-exam" type="number" value="0"></label>
     </div>
     <div class="row2" style="margin-top:8px;">
+      <label style="margin-bottom:0;"><span>${esc(t.otherFeeCol)}</span><input id="p-other" type="number" value="0"></label>
       <label style="margin-bottom:0;"><span>${esc(t.totalPaidCol)}</span><input id="p-amount" type="number" placeholder="${esc(t.enterAmount)}" value="${s.monthly_fee||''}"></label>
+    </div>
+    <div class="row2" style="margin-top:8px;">
       <label style="margin-bottom:0;"><span>${esc(t.dateCol)}</span><input id="p-date" type="date" value="${todayISO()}"></label>
     </div>
     <div style="margin-top:10px;"><button class="btn-primary" onclick="guardedSubmit(this, ()=>submitFeePayment('${id}'))">+ ${esc(t.save)}</button></div>
@@ -2676,7 +2688,7 @@ function openStudentDetail(id, viewYear) {
       <table class="card-table">
         <thead><tr>
           <th>${esc(t.month)}</th><th>${esc(t.lastBalance)}</th><th>${esc(t.schoolFeeCol)}</th>
-          <th>${esc(t.sportsFund)}</th><th>${esc(t.admissionFeeCol)}</th><th>${esc(t.examFeeCol)}</th>
+          <th>${esc(t.sportsFund)}</th><th>${esc(t.admissionFeeCol)}</th><th>${esc(t.examFeeCol)}</th><th>${esc(t.otherFeeCol)}</th>
           <th>${esc(t.totalDuesCol)}</th><th>${esc(t.totalPaidCol)}</th><th>${esc(t.balanceCol)}</th>
           <th>${esc(t.receiptNo)}</th><th>${esc(t.dateCol)}</th><th></th><th></th><th></th>
         </tr></thead>
@@ -2689,6 +2701,7 @@ function openStudentDetail(id, viewYear) {
               <td>${r.blank ? '—' : '₨'+fmt(r.e.sports_fund)}</td>
               <td>${r.blank ? '—' : '₨'+fmt(r.e.admission_fee)}</td>
               <td>${r.blank ? '—' : '₨'+fmt(r.e.exam_fee)}</td>
+              <td>${r.blank ? '—' : '₨'+fmt(r.e.other_fee)}</td>
               <td>${r.blank ? '—' : '₨'+fmt(r.totalDues)}</td>
               <td>${r.blank ? '—' : '₨'+fmt(r.totalPaid)}</td>
               <td class="${!r.blank && r.balance>0?'bal-neg':'bal-pos'}">${r.blank ? '—' : '₨'+fmt(r.balance)}</td>
@@ -2737,6 +2750,7 @@ async function submitFeePayment(studentId) {
   const sportsFund = document.getElementById('p-sports').value || 0;
   const admissionFee = document.getElementById('p-admission').value || 0;
   const examFee = document.getElementById('p-exam').value || 0;
+  const otherFee = document.getElementById('p-other').value || 0;
   const amount = document.getElementById('p-amount').value;
   const receiptNo = document.getElementById('p-receipt').value;
   const date = dateVal('p-date');
@@ -2750,7 +2764,7 @@ async function submitFeePayment(studentId) {
   const payload = {
     owner_id: CURRENT_USER.id, student_id: studentId, month,
     school_fee: Number(schoolFee), sports_fund: Number(sportsFund),
-    admission_fee: Number(admissionFee), exam_fee: Number(examFee),
+    admission_fee: Number(admissionFee), exam_fee: Number(examFee), other_fee: Number(otherFee),
     amount: Number(amount), receipt_no: receiptNo || null, pay_date: date
   };
   // Root-level duplicate prevention: an atomic upsert keyed on the
@@ -2780,7 +2794,7 @@ function printReceipt(studentId, entryId) {
   let running = 0, target = null;
   entries.forEach(e => {
     const lastBalance = running;
-    const totalDues = lastBalance + Number(e.school_fee||0) + Number(e.sports_fund||0) + Number(e.admission_fee||0) + Number(e.exam_fee||0);
+    const totalDues = lastBalance + Number(e.school_fee||0) + Number(e.sports_fund||0) + Number(e.admission_fee||0) + Number(e.exam_fee||0) + Number(e.other_fee||0);
     const balance = totalDues - Number(e.amount||0);
     running = balance;
     if (e.id === entryId) target = { e, lastBalance, totalDues, balance };
@@ -2794,6 +2808,7 @@ function printReceipt(studentId, entryId) {
     [t.sportsFund, e.sports_fund],
     [t.admissionFeeCol, e.admission_fee],
     [t.examFeeCol, e.exam_fee],
+    [t.otherFeeCol, e.other_fee],
     [t.totalDuesCol, totalDues],
   ].map(([lbl,val]) => `<tr><td class="lbl">${esc(lbl)}</td><td style="text-align:right;">₨${fmt(val)}</td></tr>`).join('');
 
@@ -2834,6 +2849,7 @@ function printFeeCard(studentId, viewYear) {
       <td class="fc-zero">${r.blank ? '—' : '₨'+fmt(r.e.sports_fund)}</td>
       <td class="fc-zero">${r.blank ? '—' : '₨'+fmt(r.e.admission_fee)}</td>
       <td class="fc-zero">${r.blank ? '—' : '₨'+fmt(r.e.exam_fee)}</td>
+      <td class="fc-zero">${r.blank ? '—' : '₨'+fmt(r.e.other_fee)}</td>
       <td>${r.blank ? '—' : '₨'+fmt(r.totalDues)}</td>
       <td class="fc-paid">${r.blank ? '—' : '₨'+fmt(r.totalPaid)}</td>
       <td class="${!r.blank && r.balance > 0 ? 'fc-due' : 'fc-paid'}">${r.blank ? '—' : '₨'+fmt(r.balance)}</td>
@@ -2861,6 +2877,7 @@ function printFeeCard(studentId, viewYear) {
           <th>${esc(t.sportsFund)}</th>
           <th>${esc(t.admissionFeeCol)}</th>
           <th>${esc(t.examFeeCol)}</th>
+          <th>${esc(t.otherFeeCol)}</th>
           <th>${esc(t.totalDuesCol)}</th>
           <th>${esc(t.totalPaidCol)}</th>
           <th>${esc(t.balanceCol)}</th>
@@ -3767,27 +3784,26 @@ function printTxnVoucher(id) {
   const voucherNo = 'V-' + String(x.id).replace(/-/g, '').slice(0, 8).toUpperCase();
   const items = parseItemizedTxnDesc(x.description);
   const itemRows = items
-    ? items.map(it => `<div class="tr-row"><span>${esc(it.name)}</span><span>₨${fmt(it.price)}</span></div>`).join('')
-    : `<div class="tr-row"><span>${esc(partyLabel)}</span><span>${esc(x.description||'—')}</span></div>`;
+    ? items.map(it => `<tr><td class="lbl">${esc(it.name)}</td><td style="text-align:right;">₨${fmt(it.price)}</td></tr>`).join('')
+    : `<tr><td class="lbl">${esc(partyLabel)}</td><td style="text-align:right;">${esc(x.description||'—')}</td></tr>`;
 
   document.getElementById('print-area').innerHTML = `
-    <div class="thermal-receipt">
-      <div class="tr-center tr-bold tr-big">${esc(CURRENT_PROFILE.school_name || 'School')}</div>
-      <div class="tr-center tr-sm">${esc(title)}</div>
-      <div class="tr-dash"></div>
-      <div class="tr-row tr-sm"><span>${esc(t.voucherNo || (LANG==='ur'?'واؤچر نمبر':'Voucher No'))}</span><span>${esc(voucherNo)}</span></div>
-      <div class="tr-dash"></div>
-      ${itemRows}
-      <div class="tr-dash"></div>
-      <div class="tr-row tr-sm"><span>${esc(t.category)}</span><span>${esc(x.category||'—')}</span></div>
-      <div class="tr-row tr-sm"><span>${esc(t.dateCol)}</span><span>${esc(fmtDate(x.txn_date)||'')}</span></div>
-      <div class="tr-dash"></div>
-      <div class="tr-row tr-bold tr-big"><span>${esc(t.totalAmount)}</span><span>₨${fmt(x.amount)}</span></div>
-      <div class="tr-dash"></div>
-      <div class="tr-center tr-sm" style="margin-top:10px;">${esc(LANG==='ur'?'تیار کردہ دستخط':'Prepared By')}: __________</div>
-      <div class="tr-center tr-sm" style="margin-top:6px;">${esc(LANG==='ur'?'منظور شدہ دستخط':'Approved By')}: __________</div>
+    <div class="receipt-box">
+      <h2>${esc(CURRENT_PROFILE.school_name || 'School')}</h2>
+      <div class="sub">${esc(title)}</div>
+      <table>
+        <tr><td class="lbl">${esc(t.voucherNo || (LANG==='ur'?'واؤچر نمبر':'Voucher No'))}</td><td style="text-align:right;">${esc(voucherNo)}</td></tr>
+        ${itemRows}
+        <tr><td class="lbl">${esc(t.category)}</td><td style="text-align:right;">${esc(x.category||'—')}</td></tr>
+        <tr><td class="lbl">${esc(t.dateCol)}</td><td style="text-align:right;">${esc(fmtDate(x.txn_date)||'')}</td></tr>
+        <tr class="total-row"><td>${esc(t.totalAmount)}</td><td style="text-align:right;">₨${fmt(x.amount)}</td></tr>
+      </table>
+      <div class="foot" style="display:flex;justify-content:space-between;margin-top:40px;">
+        <span>${esc(LANG==='ur'?'تیار کردہ دستخط':'Prepared By')} ____________</span>
+        <span>${esc(LANG==='ur'?'منظور شدہ دستخط':'Approved By')} ____________</span>
+      </div>
     </div>`;
-  printAsThermal();
+  window.print();
 }
 
 // ---------------- Reports ----------------
