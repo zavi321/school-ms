@@ -46,6 +46,10 @@
   input:focus,select:focus{border-color:var(--gold);}
   label{display:block;margin-bottom:12px;}
   label span{display:block;font-size:12px;font-weight:500;opacity:.7;margin-bottom:4px;}
+  .field-box{background:#fff;border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:12px;}
+  .field-box label{margin-bottom:0;}
+  .field-box input,.field-box select{border:none;padding:6px 0 0;}
+  .field-box input:focus,.field-box select:focus{border:none;}
 
   .auth-wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px;background:var(--navy);}
   .auth-box{width:100%;max-width:380px;}
@@ -239,6 +243,14 @@
     .receipt-box .lbl{color:#555;}
     .receipt-box .total-row td{font-weight:700;font-size:16px;border-top:2px solid #0F2740;border-bottom:none;}
     .receipt-box .foot{margin-top:24px;font-size:12px;color:#777;text-align:center;}
+
+    .thermal-receipt{width:72mm;margin:0 auto;font-family:'Courier New',monospace;font-size:11px;color:#000;padding:4mm 3mm;}
+    .thermal-receipt .tr-center{text-align:center;}
+    .thermal-receipt .tr-bold{font-weight:700;}
+    .thermal-receipt .tr-big{font-size:13px;}
+    .thermal-receipt .tr-sm{font-size:9px;opacity:.8;}
+    .thermal-receipt .tr-row{display:flex;justify-content:space-between;gap:6px;padding:2px 0;}
+    .thermal-receipt .tr-dash{border-top:1px dashed #000;margin:5px 0;}
 
     /* ---- Fee Card (khoobsurat design) ---- */
     .fc-wrap{font-family:Inter,sans-serif;border-radius:14px;overflow:hidden;border:1px solid #E7E0CE;box-shadow:0 2px 10px rgba(15,39,64,.08);}
@@ -3546,6 +3558,7 @@ function openTeacherDetail(id) {
             <div style="font-size:12px;">${esc(monthLabel(p.month))} <span style="opacity:.5;">· ${esc(fmtDate(p.pay_date))}</span>${breakdown}</div>
             <div style="display:flex;align-items:center;gap:8px;">
               <span class="amt-neg">₨${fmt(p.amount)}</span>
+              <button class="print-btn" title="${esc(t.print)}" onclick="printSalaryVoucher('${p.id}','${id}')">🖨️</button>
               <button class="del-btn" onclick="deleteSalaryPayment('${p.id}','${id}')">✕</button>
             </div>
           </div>`;}).join('')}
@@ -3595,6 +3608,37 @@ async function deleteSalaryPayment(paymentId, teacherId) {
   await loadAllData(); openTeacherDetail(teacherId);
 }
 
+function printSalaryVoucher(paymentId, teacherId) {
+  const tc = DATA.teachers.find(x => x.id === teacherId);
+  const p = teacherPayments(teacherId).find(x => x.id === paymentId);
+  if (!tc || !p) return;
+  const bonus = Number(p.attendance_bonus || 0), extra = Number(p.extra_class_fee || 0);
+  const base = Number(p.amount || 0) - bonus - extra;
+  const voucherNo = 'SV-' + String(p.id).replace(/-/g, '').slice(0, 8).toUpperCase();
+  const title = LANG === 'ur' ? 'تنخواہ ادائیگی واؤچر' : 'Salary Payment Voucher';
+
+  document.getElementById('print-area').innerHTML = `
+    <div class="receipt-box">
+      <h2>${esc(CURRENT_PROFILE.school_name || 'School')}</h2>
+      <div class="sub">${esc(title)} — ${esc(monthLabel(p.month))}</div>
+      <table>
+        <tr><td class="lbl">${esc(t.voucherNo || (LANG==='ur'?'واؤچر نمبر':'Voucher No'))}</td><td style="text-align:right;">${esc(voucherNo)}</td></tr>
+        <tr><td class="lbl">${esc(LANG==='ur'?'ادا شدہ بنام':'Paid To')}</td><td style="text-align:right;">${esc(tc.name)}</td></tr>
+        <tr><td class="lbl">${esc(t.subject)}</td><td style="text-align:right;">${esc(tc.subject||'—')}</td></tr>
+        <tr><td class="lbl">${esc(t.baseSalary)}</td><td style="text-align:right;">₨${fmt(base)}</td></tr>
+        ${bonus ? `<tr><td class="lbl">${esc(t.attendanceBonus)}</td><td style="text-align:right;">₨${fmt(bonus)}</td></tr>` : ''}
+        ${extra ? `<tr><td class="lbl">${esc(t.extraClass)}</td><td style="text-align:right;">₨${fmt(extra)}</td></tr>` : ''}
+        <tr><td class="lbl">${esc(t.dateCol)}</td><td style="text-align:right;">${esc(fmtDate(p.pay_date)||'')}</td></tr>
+        <tr class="total-row"><td>${esc(t.totalAmount)}</td><td style="text-align:right;">₨${fmt(p.amount)}</td></tr>
+      </table>
+      <div class="foot" style="display:flex;justify-content:space-between;margin-top:40px;">
+        <span>${esc(LANG==='ur'?'تیار کردہ دستخط':'Prepared By')} ____________</span>
+        <span>${esc(LANG==='ur'?'وصول کنندہ دستخط':'Received By')} ____________</span>
+      </div>
+    </div>`;
+  window.print();
+}
+
 // ---------------- Finance ----------------
 function tplFinance() {
   return `
@@ -3608,6 +3652,7 @@ function tplFinance() {
             <div><div class="nm">${esc(x.description||'')}</div><div class="sub">${esc(x.category||'')} · ${esc(fmtDate(x.txn_date)||'')}</div></div>
             <div style="display:flex;align-items:center;gap:8px;">
               <span class="${x.type==='income'?'amt-pos':'amt-neg'}">${x.type==='income'?'+':'−'}₨${fmt(x.amount)}</span>
+              <button class="print-btn" title="${esc(t.print)}" onclick="printTxnVoucher('${x.id}')">🖨️</button>
               <button class="del-btn" onclick="deleteTxn('${x.id}')">✕</button>
             </div>
           </div>`).join('') + `</div>`}
@@ -3615,23 +3660,25 @@ function tplFinance() {
 }
 
 let txnType = 'expense';
+let txnItems = [];
 function openAddTxn() {
   txnType = 'expense';
+  txnItems = [{ name: '', price: '' }];
   showModal(t.addTransaction, `
     <div class="type-toggle">
       <button id="btn-income" onclick="setTxnType('income')">${esc(t.income)}</button>
       <button id="btn-expense" class="on-expense" onclick="setTxnType('expense')">${esc(t.expense)}</button>
     </div>
-    <label><span>${esc(t.category)}</span><select id="f-cat"></select></label>
-    <label><span>${esc(t.description)}</span><input id="f-desc"></label>
-    <label><span>${esc(t.amount)}</span><input id="f-amt" type="number"></label>
-    <label><span>${esc(t.date)}</span><input id="f-date" type="date" value="${todayISO()}"></label>
+    <div id="txn-items"></div>
+    <div class="field-box"><label><span>${esc(t.category)}</span><select id="f-cat"></select></label></div>
+    <div class="field-box"><label><span>${esc(t.date)}</span><input id="f-date" type="date" value="${todayISO()}"></label></div>
     <div class="flexgap">
       <button class="btn-ghost" onclick="closeModal()">${esc(t.cancel)}</button>
       <button class="btn-primary" style="flex:1" onclick="guardedSubmit(this, submitAddTxn)">${esc(t.save)}</button>
     </div>
   `);
   fillCatOptions();
+  renderTxnItems();
 }
 function setTxnType(type) {
   txnType = type;
@@ -3643,14 +3690,49 @@ function fillCatOptions() {
   const cats = txnType==='income' ? INCOME_CATS : EXPENSE_CATS;
   document.getElementById('f-cat').innerHTML = cats.map(c=>`<option>${c}</option>`).join('');
 }
+function txnItemsTotal() {
+  return txnItems.reduce((a,b)=>a+Number(b.price||0),0);
+}
+function renderTxnItems() {
+  const el = document.getElementById('txn-items');
+  if (!el) return;
+  const itemLabel = LANG==='ur' ? 'چیز کا نام' : 'Item';
+  const priceLabel = LANG==='ur' ? 'قیمت' : 'Price';
+  el.innerHTML = txnItems.map((it, i) => `
+    <div class="field-box" style="display:flex;gap:8px;align-items:flex-end;">
+      <label style="flex:2;margin-bottom:0;"><span>${esc(itemLabel)}</span><input value="${esc(it.name)}" oninput="updateTxnItem(${i},'name',this.value)"></label>
+      <label style="flex:1;margin-bottom:0;"><span>${esc(priceLabel)}</span><input type="number" value="${esc(it.price)}" oninput="updateTxnItem(${i},'price',this.value)"></label>
+      ${txnItems.length>1 ? `<button class="del-btn" style="margin-bottom:10px;" onclick="removeTxnItem(${i})">✕</button>` : ''}
+    </div>`).join('') +
+    `<div id="txn-total-display" style="font-size:12px;opacity:.7;text-align:right;margin:-4px 4px 12px;">${esc(t.totalAmount)}: ₨${fmt(txnItemsTotal())}</div>`;
+}
+function updateTxnItem(i, field, val) {
+  txnItems[i][field] = val;
+  const isLast = i === txnItems.length - 1;
+  if (field === 'price' && isLast && val !== '' && Number(val) > 0) {
+    // A price was just entered on the last row — open a fresh row for the
+    // next item automatically, per the requested "add another box" flow.
+    txnItems.push({ name: '', price: '' });
+    renderTxnItems();
+  } else {
+    const totalEl = document.getElementById('txn-total-display');
+    if (totalEl) totalEl.textContent = `${t.totalAmount}: ₨${fmt(txnItemsTotal())}`;
+  }
+}
+function removeTxnItem(i) {
+  txnItems.splice(i, 1);
+  if (txnItems.length === 0) txnItems.push({ name: '', price: '' });
+  renderTxnItems();
+}
 async function submitAddTxn() {
-  const desc = document.getElementById('f-desc').value.trim();
-  const amt = document.getElementById('f-amt').value;
-  if (!desc || amt==='') return;
+  const validItems = txnItems.filter(it => it.name.trim() !== '' && it.price !== '' && Number(it.price) > 0);
+  if (validItems.length === 0) return;
+  const desc = validItems.map(it => `${it.name.trim()} (₨${fmt(Number(it.price))})`).join('; ');
+  const amt = validItems.reduce((a,b)=>a+Number(b.price),0);
   const { error } = await sb.from('transactions').insert({
     owner_id: CURRENT_USER.id,
     type: txnType, category: document.getElementById('f-cat').value, description: desc,
-    amount: Number(amt), txn_date: dateVal('f-date')
+    amount: amt, txn_date: dateVal('f-date')
   });
   if (reportSaveError(error)) return;
   closeModal(); await loadAllData(); renderTab();
@@ -3658,6 +3740,54 @@ async function submitAddTxn() {
 async function deleteTxn(id) {
   await sb.from('transactions').delete().eq('id', id);
   await loadAllData(); renderTab();
+}
+
+function parseItemizedTxnDesc(desc) {
+  if (!desc) return null;
+  const parts = desc.split('; ');
+  const items = [];
+  for (const p of parts) {
+    const m = p.match(/^(.*) \(₨([\d,]+)\)$/);
+    if (!m) return null;
+    items.push({ name: m[1], price: Number(m[2].replace(/,/g, '')) });
+  }
+  return items.length ? items : null;
+}
+
+function printTxnVoucher(id) {
+  const x = DATA.transactions.find(r => r.id === id);
+  if (!x) return;
+  const isIncome = x.type === 'income';
+  const title = isIncome
+    ? (LANG === 'ur' ? 'رسید واؤچر' : 'Receipt Voucher')
+    : (LANG === 'ur' ? 'ادائیگی واؤچر' : 'Payment Voucher');
+  const partyLabel = isIncome
+    ? (LANG === 'ur' ? 'موصول شدہ از' : 'Received From')
+    : (LANG === 'ur' ? 'ادا شدہ بنام' : 'Paid To');
+  const voucherNo = 'V-' + String(x.id).replace(/-/g, '').slice(0, 8).toUpperCase();
+  const items = parseItemizedTxnDesc(x.description);
+  const itemRows = items
+    ? items.map(it => `<div class="tr-row"><span>${esc(it.name)}</span><span>₨${fmt(it.price)}</span></div>`).join('')
+    : `<div class="tr-row"><span>${esc(partyLabel)}</span><span>${esc(x.description||'—')}</span></div>`;
+
+  document.getElementById('print-area').innerHTML = `
+    <div class="thermal-receipt">
+      <div class="tr-center tr-bold tr-big">${esc(CURRENT_PROFILE.school_name || 'School')}</div>
+      <div class="tr-center tr-sm">${esc(title)}</div>
+      <div class="tr-dash"></div>
+      <div class="tr-row tr-sm"><span>${esc(t.voucherNo || (LANG==='ur'?'واؤچر نمبر':'Voucher No'))}</span><span>${esc(voucherNo)}</span></div>
+      <div class="tr-dash"></div>
+      ${itemRows}
+      <div class="tr-dash"></div>
+      <div class="tr-row tr-sm"><span>${esc(t.category)}</span><span>${esc(x.category||'—')}</span></div>
+      <div class="tr-row tr-sm"><span>${esc(t.dateCol)}</span><span>${esc(fmtDate(x.txn_date)||'')}</span></div>
+      <div class="tr-dash"></div>
+      <div class="tr-row tr-bold tr-big"><span>${esc(t.totalAmount)}</span><span>₨${fmt(x.amount)}</span></div>
+      <div class="tr-dash"></div>
+      <div class="tr-center tr-sm" style="margin-top:10px;">${esc(LANG==='ur'?'تیار کردہ دستخط':'Prepared By')}: __________</div>
+      <div class="tr-center tr-sm" style="margin-top:6px;">${esc(LANG==='ur'?'منظور شدہ دستخط':'Approved By')}: __________</div>
+    </div>`;
+  printAsThermal();
 }
 
 // ---------------- Reports ----------------
@@ -5148,6 +5278,20 @@ function printAsA4(marginMm) {
   const styleEl = document.createElement('style');
   styleEl.id = 'print-pagesize-override';
   styleEl.textContent = `@media print { @page{ size:A4 portrait; margin:${marginMm || 10}mm; } }`;
+  document.head.appendChild(styleEl);
+  const cleanup = () => { styleEl.remove(); window.removeEventListener('afterprint', cleanup); };
+  window.addEventListener('afterprint', cleanup);
+  window.print();
+  setTimeout(cleanup, 3000);
+}
+
+// Forces a narrow, receipt-roll page size (default 80mm wide, height auto)
+// for a single print job — used for the thermal-style vouchers/receipts so
+// they print as a slim POS strip instead of a full A4 sheet.
+function printAsThermal(widthMm) {
+  const styleEl = document.createElement('style');
+  styleEl.id = 'print-thermal-override';
+  styleEl.textContent = `@media print { @page{ size:${widthMm || 80}mm auto; margin:2mm; } }`;
   document.head.appendChild(styleEl);
   const cleanup = () => { styleEl.remove(); window.removeEventListener('afterprint', cleanup); };
   window.addEventListener('afterprint', cleanup);
