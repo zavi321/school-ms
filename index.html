@@ -514,6 +514,16 @@ function whatsappUri(mobileRaw, message) {
 function openFatherWhatsapp(mobileRaw, message) {
   const uri = whatsappUri(mobileRaw, message);
   if (!uri) { alert('No valid contact number on file for this student.'); return; }
+  // wa.me is itself a web page that needs internet just to load and redirect
+  // into the WhatsApp app — with no signal it just shows the browser's own
+  // "No internet" error page instead of opening anything. Skip that and say
+  // so plainly instead.
+  if (!navigator.onLine) {
+    alert(LANG === 'ur'
+      ? 'واٹس ایپ کھولنے کے لیے انٹرنیٹ درکار ہے۔ انٹرنیٹ آنے پر یہ پیغام دوبارہ بھیجا جا سکتا ہے۔'
+      : 'WhatsApp needs an internet connection to open. You can send this message once you\'re back online.');
+    return;
+  }
   window.open(uri, '_blank');
 }
 // --------------------------------------
@@ -3105,10 +3115,12 @@ async function submitFeePayment(studentId) {
   // Only auto-fire the parent notification for a genuinely new entry dated today —
   // not when correcting/updating an existing month's entry (that would otherwise
   // re-notify the parent every time a typo is fixed), and not for backdated /
-  // historical entries (data import, past-month catch-up). Fired even while
-  // the fee entry itself is still queued offline — opening WhatsApp doesn't
-  // touch our own connection, and WhatsApp handles sending once it has one.
-  if (isNewEntry && student && date === todayISO()) {
+  // historical entries (data import, past-month catch-up). Skipped while queued
+  // offline — wa.me needs to actually reach the internet to open at all, so
+  // trying it with no connection just pops a jarring "No internet" browser
+  // page right after the save. Send the WhatsApp message manually (💬 button)
+  // once back online instead.
+  if (!queued && isNewEntry && student && date === todayISO()) {
     const msg = `Dear Parent, fee of Rs ${Number(amount).toLocaleString()} for ${student.name} (${month}) has been received. Thank you. - School`;
     openFatherWhatsapp(student.contact, msg); // opens WhatsApp (PC/laptop or phone), pre-filled, ready to send
   }
