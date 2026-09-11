@@ -1886,7 +1886,7 @@ function buildMarksheetSearchIndex() {
 // recently uploaded via Excel in the Certificates tab — they are not saved to the
 // database — so these are searchable only for the current session's upload.
 function buildDMCSearchIndex() {
-  return (dmcResults || []).map(r => ({ name: r.name, class_name: r.class, rollNo: r.rollNo }));
+  return (dmcResults || []).map(r => ({ name: r.studentName, class_name: r.class, rollNo: r.rollNo }));
 }
 
 function openGlobalSearch() {
@@ -2072,6 +2072,26 @@ function openFullRecord(studentId, registerId) {
   `);
 }
 
+// Used only by search-as-you-type inputs (student/teacher/register search): a
+// keystroke needs renderTab() to refresh the filtered list, but that rebuilds
+// the input too and would otherwise close the mobile keyboard mid-word. This
+// restores focus + cursor position on that ONE input only — unlike restoring
+// focus after every renderTab() call (tab switches, saves, modal closes),
+// which caused the keyboard to pop back open at the wrong times.
+function reFocusAfterRender(inputId) {
+  const el = document.getElementById(inputId);
+  const selStart = el ? el.selectionStart : null;
+  const selEnd = el ? el.selectionEnd : null;
+  renderTab();
+  const newEl = document.getElementById(inputId);
+  if (newEl) {
+    newEl.focus({ preventScroll: true });
+    if (selStart != null && newEl.setSelectionRange) {
+      try { newEl.setSelectionRange(selStart, selEnd); } catch (e) {}
+    }
+  }
+}
+
 function renderTab() {
   const main = document.getElementById('main');
   if (TAB==='dashboard') main.innerHTML = tplDashboard();
@@ -2083,22 +2103,18 @@ function renderTab() {
     main.innerHTML = tplDMC();
     renderDMCEditTable();
     loadDMCConfig().then(() => {
-      if (TAB !== 'dmc') return;
-      // The class dropdown, upload message, and results table are all backed by
-      // globals now (dmcSelectedClass / dmcLastUploadMsg / dmcResults), so this
-      // re-render — which only needs to happen to pick up the school's logo/name/
-      // subjects once they arrive from Supabase — no longer wipes out a class the
-      // user already selected or an Excel file they already uploaded while this
-      // was loading over the network.
-      // BUT: if the user is actively focused on (typing/selecting into) a field in
-      // this tab right when the network response lands, a full innerHTML replace
-      // would yank focus away and discard whatever they'd typed but not yet blurred
-      // (School Name/Tagline/etc. only commit on "onchange"). So skip the rebuild
-      // entirely in that case — it'll just pick up the fresh config next time the
-      // tab is opened.
-      const active = document.activeElement;
-      if (active && main.contains(active) && (active.tagName === 'INPUT' || active.tagName === 'SELECT' || active.tagName === 'TEXTAREA')) return;
-      main.innerHTML = tplDMC();
+      if (TAB !== 'dmc' || !document.getElementById('dmc-school-name')) return;
+      // Previously this replaced the *entire* tab (main.innerHTML = tplDMC())
+      // once the network response landed, guarded only by a single check of
+      // document.activeElement at that instant. That check closes the obvious
+      // case (user already mid-typing) but not a fast tap that lands right
+      // around when the response arrives: focus can end up on an element that
+      // this rebuild is about to tear down and replace, which yanks the
+      // keyboard closed right after it opens. Patching only the specific
+      // fields that the config actually changes — and skipping any field the
+      // user is currently focused on — never tears down input elements at
+      // all, so there's no window where a tap can race a rebuild.
+      applyDMCConfigToFields();
       renderDMCSubjects();
       renderDMCEditTable();
     });
@@ -2108,8 +2124,8 @@ function renderTab() {
   else if (TAB==='teacherRegister') main.innerHTML = tplTeacherRegister();
   else if (TAB==='classLogins') main.innerHTML = tplClassLogins();
   else if (TAB==='admin') { main.innerHTML = tplAdmin(); loadAdminLists(); return; }
-  main.innerHTML += `<div class="notice">${esc(t.sharedNotice)}</div>`;
-  main.innerHTML += `<div class="notice" style="margin-top:8px;font-size:10px;">${esc(t.copyrightNotice)}</div>`;
+  main.insertAdjacentHTML('beforeend', `<div class="notice">${esc(t.sharedNotice)}</div>`);
+  main.insertAdjacentHTML('beforeend', `<div class="notice" style="margin-top:8px;font-size:10px;">${esc(t.copyrightNotice)}</div>`);
 }
 
 // ---------------- Admin Panel (owner only) ----------------
@@ -2732,7 +2748,7 @@ function tplStudents() {
         ${duesFilter!=='all' ? duesBuckets.map(b => `<button class="${duesFilter===String(b)?'on':''}" onclick="setDuesFilter('${b}')">₨${fmt(b)}+</button>`).join('') : ''}
       </div>
       <div class="searchbar">
-        <input placeholder="${esc(t.search)}" value="${esc(studentSearch)}" oninput="studentSearch=this.value; classPage={}; renderTab();">
+        <input id="student-search-input" placeholder="${esc(t.search)}" value="${esc(studentSearch)}" oninput="studentSearch=this.value; classPage={}; reFocusAfterRender('student-search-input');">
         <button class="icon-btn" onclick="openAddStudent()">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#E4C765" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg>
         </button>
@@ -3342,7 +3358,7 @@ function printFeeCard(studentId, viewYear) {
 let teacherSearch = '';
 let teacherPage = 1;
 const TEACHERS_PAGE_SIZE = 30;
-function setTeacherSearch(v) { teacherSearch = v; teacherPage = 1; renderTab(); }
+function setTeacherSearch(v) { teacherSearch = v; teacherPage = 1; reFocusAfterRender('teacher-search-input'); }
 function setTeacherPage(p) { teacherPage = p; renderTab(); }
 
 function tplTeachers() {
@@ -3361,7 +3377,7 @@ function tplTeachers() {
   return `
     <div style="padding-top:16px;">
       <div class="searchbar">
-        <input placeholder="${esc(t.searchTeachers)}" value="${esc(teacherSearch)}" oninput="setTeacherSearch(this.value)">
+        <input id="teacher-search-input" placeholder="${esc(t.searchTeachers)}" value="${esc(teacherSearch)}" oninput="setTeacherSearch(this.value)">
         <button class="icon-btn" title="${esc(t.markAttendance)}" onclick="openMarkAttendance()">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#E4C765" stroke-width="2.5"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
         </button>
@@ -4496,7 +4512,7 @@ let registerSearch = '';
 let registerPage = 1;
 let registerSubTab = 'dashboard'; // 'dashboard' | 'admitted' | 'slc'
 const REGISTER_PAGE_SIZE = 20;
-function setRegisterSearch(v) { registerSearch = v; registerPage = 1; renderTab(); }
+function setRegisterSearch(v) { registerSearch = v; registerPage = 1; reFocusAfterRender('register-search-input'); }
 function setRegisterPage(p) { registerPage = p; renderTab(); }
 function setRegisterSubTab(k) { registerSubTab = k; registerSearch = ''; registerPage = 1; renderTab(); }
 
@@ -4582,16 +4598,13 @@ function tplDMC() {
         <span>School Logo (Upload Image)</span>
         <input type="file" id="dmc-logo-input" accept="image/*" onchange="handleDMCLogoUpload(this.files[0])">
       </label>
-      ${dmcLogo ? `<div style="margin-bottom:12px;"><img src="${dmcLogo}" style="max-height:80px;max-width:150px;border-radius:4px;"></div>` : ''}
+      <div id="dmc-logo-preview">${dmcLogoPreviewHtml()}</div>
 
       <label>
         <span>Certificate Background / Design (optional, Upload Image)</span>
         <input type="file" id="dmc-background-input" accept="image/*" onchange="handleDMCBackgroundUpload(this.files[0])">
       </label>
-      ${dmcBackground ? `<div style="margin-bottom:12px;position:relative;display:inline-block;">
-        <img src="${dmcBackground}" style="max-height:80px;max-width:150px;border-radius:4px;border:1px solid var(--line);">
-        <button class="btn-ghost danger" style="position:absolute;top:-6px;right:-6px;padding:2px 6px;font-size:10px;border-radius:999px;" onclick="removeDMCBackground()">✕</button>
-      </div>` : ''}
+      <div id="dmc-background-preview">${dmcBackgroundPreviewHtml()}</div>
       <p style="font-size:11px;opacity:.6;margin-top:-4px;">If uploaded, this design fully replaces the app's default certificate background (shown in full, not cropped) — student data is printed directly on top of it.</p>
 
       <label>
@@ -4688,6 +4701,38 @@ function onDMCClassChange() {
 
 let dmcSubjects = []; // {name: 'Urdu', total: 100}
 let dmcConfigLoaded = false;
+
+function dmcLogoPreviewHtml() {
+  return dmcLogo ? `<div style="margin-bottom:12px;"><img src="${dmcLogo}" style="max-height:80px;max-width:150px;border-radius:4px;"></div>` : '';
+}
+function dmcBackgroundPreviewHtml() {
+  return dmcBackground ? `<div style="margin-bottom:12px;position:relative;display:inline-block;">
+    <img src="${dmcBackground}" style="max-height:80px;max-width:150px;border-radius:4px;border:1px solid var(--line);">
+    <button class="btn-ghost danger" style="position:absolute;top:-6px;right:-6px;padding:2px 6px;font-size:10px;border-radius:999px;" onclick="removeDMCBackground()">✕</button>
+  </div>` : '';
+}
+
+// Pushes the current dmcSchoolName/dmcTagline/etc. globals into the already-
+// rendered DMC tab's DOM, field by field, instead of tearing the whole tab
+// down and rebuilding it. Used once loadDMCConfig() resolves, so a config
+// arriving late over the network can never race a tap-to-focus on one of
+// these fields (which a full main.innerHTML rebuild used to do — see the
+// comment at the call site in renderTab()). Any field the user is currently
+// typing into is left alone so their in-progress edit is never overwritten.
+function applyDMCConfigToFields() {
+  const setIfNotFocused = (id, val) => {
+    const el = document.getElementById(id);
+    if (el && document.activeElement !== el) el.value = val;
+  };
+  setIfNotFocused('dmc-school-name', dmcSchoolName);
+  setIfNotFocused('dmc-tagline', dmcTagline);
+  setIfNotFocused('dmc-session', dmcAcademicSession);
+  setIfNotFocused('dmc-quote', dmcQuote);
+  const logoBox = document.getElementById('dmc-logo-preview');
+  if (logoBox) logoBox.innerHTML = dmcLogoPreviewHtml();
+  const bgBox = document.getElementById('dmc-background-preview');
+  if (bgBox) bgBox.innerHTML = dmcBackgroundPreviewHtml();
+}
 
 // Applies a loaded DMC config object (from Supabase or the offline cache)
 // onto the in-memory settings used by the certificate generator.
