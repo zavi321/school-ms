@@ -115,6 +115,10 @@
   .dues-card::after{content:'';position:absolute;right:-20px;bottom:-20px;width:90px;height:90px;border-radius:999px;background:#fff;opacity:.08;}
   .dues-card .lbl{color:#fff;opacity:.85;font-size:12px;}
   .dues-card .val{color:#fff;font-size:30px;font-weight:600;font-family:Fraunces,serif;margin-top:4px;}
+  .other-fee-card{background:var(--navy-deep);border-radius:14px;padding:14px;margin-top:14px;box-shadow:var(--shadow-md);position:relative;overflow:hidden;}
+  .other-fee-card::after{content:'';position:absolute;right:-20px;bottom:-20px;width:90px;height:90px;border-radius:999px;background:var(--gold);opacity:.1;}
+  .other-fee-card .lbl{color:var(--gold-soft);opacity:.85;font-size:11px;font-weight:700;line-height:1.4;position:relative;}
+  .other-fee-card .val{color:#fff;font-size:22px;font-weight:900;margin-top:6px;position:relative;}
 
   .section-title{font-size:14px;font-weight:600;color:var(--navy);margin:20px 0 8px;padding-left:9px;border-left:3px solid var(--rust);}
   body.ur .section-title{padding-left:0;padding-right:9px;border-left:none;border-right:3px solid var(--rust);}
@@ -455,6 +459,7 @@
 <!-- ==================================================================================== -->
 
 <div id="loading" class="loading">Loading…</div>
+<div id="offline-banner" style="display:none;position:fixed;top:0;left:0;right:0;z-index:9999;background:var(--navy-deep);color:#fff;font-size:12px;font-weight:600;text-align:center;padding:6px 10px;"></div>
 <div id="auth-root"></div>
 <div id="app" class="hidden"></div>
 <div id="print-area"></div>
@@ -519,7 +524,7 @@ const T = {
     dashboard:'Dashboard', students:'Students', teachers:'Teachers', finance:'Finance', reports:'Reports', dmc:'Certificates', marksSheet:'Marks Sheet',
     thisMonth:'This Month',
     totalStudents:'Active Students', feesCollected:'Fees Collected (this month)', feesDue:'Fees Due (this month)',
-    salaryPaid:'Salaries Paid (this month)', expensesThisMonth:'Expenses (this month)', netBalance:'Net Balance (all-time)', totalDuesAllTime:'Total Dues (all-time)', recentActivity:'Recent Activity',
+    salaryPaid:'Salaries Paid (this month)', expensesThisMonth:'Expenses (this month)', otherFeeStandalone:'Other Fees (Hostel/Transport) — held separately, not part of school totals', netBalance:'Net Balance (all-time)', totalDuesAllTime:'Total Dues (all-time)', recentActivity:'Recent Activity',
     totalIncome:'Total Income (all-time)', totalExpense:'Total Expenses (all-time)', teacherSalaries:'Teacher Salaries (all-time)',
     expenses:'Expenses', collectedFees:'Collected Fees', back:'Back', noRecords:'No records yet',
     addStudent:'Add Student', studentName:'Student Name', studentNameUr:'Student Name (Urdu)', fatherName:"Father's Name", fatherNameUr:"Father's Name (Urdu)", casteTribeUr:'Caste/Tribe (Urdu)', residenceUr:'Residence (Urdu)', className:'Class',
@@ -682,7 +687,7 @@ const T = {
     dashboard:'ڈیش بورڈ', students:'طلبہ', teachers:'اساتذہ', finance:'مالیات', reports:'رپورٹس', dmc:'سرٹیفکیٹس', marksSheet:'نتائج کی فہرست',
     thisMonth:'اس ماہ',
     totalStudents:'فعال طلبہ', feesCollected:'وصول شدہ فیس (اس ماہ)', feesDue:'واجب الادا فیس (اس ماہ)',
-    salaryPaid:'ادا شدہ تنخواہ (اس ماہ)', expensesThisMonth:'اخراجات (اس ماہ)', netBalance:'کل بیلنس', totalDuesAllTime:'کل واجب الادا (تمام وقت)', recentActivity:'حالیہ سرگرمی',
+    salaryPaid:'ادا شدہ تنخواہ (اس ماہ)', expensesThisMonth:'اخراجات (اس ماہ)', otherFeeStandalone:'دیگر فیس (ہاسٹل/ٹرانسپورٹ) — الگ رکھی گئی، اسکول کی کل رقم میں شامل نہیں', netBalance:'کل بیلنس', totalDuesAllTime:'کل واجب الادا (تمام وقت)', recentActivity:'حالیہ سرگرمی',
     totalIncome:'کل آمدنی', totalExpense:'کل اخراجات', teacherSalaries:'اساتذہ کی تنخواہیں',
     expenses:'اخراجات', collectedFees:'وصول شدہ فیس', back:'واپس', noRecords:'ابھی کوئی ریکارڈ نہیں',
     addStudent:'طالب علم شامل کریں', studentName:'طالب علم کا نام', studentNameUr:'طالب علم کا نام (اردو)', fatherName:'والد کا نام', fatherNameUr:'والد کا نام (اردو)', casteTribeUr:'ذات/قبیلہ (اردو)', residenceUr:'رہائش (اردو)', className:'جماعت',
@@ -925,6 +930,196 @@ let DATA = { students:[], feePayments:[], teachers:[], salaryPayments:[], transa
 let TAB = 'dashboard';
 let CURRENT_USER = null;   // { id, email }
 let CURRENT_PROFILE = null; // { school_name }
+
+// ---------------- Offline Support (IndexedDB cache + sync queue) ----------------
+// Phase 1 covers fee_payments — the day-to-day action most likely to happen
+// with no signal. To extend to another table later: add its name to
+// OFFLINE_TABLES, mirror it in offlineCacheStore/offlineCacheRestore, and
+// route its writes through offlineWrite() the same way submitFeePayment and
+// deleteFeePayment do below.
+//
+// How it works: every successful online loadAllData() mirrors these tables
+// into IndexedDB. While offline, writes are applied immediately to DATA (so
+// the UI updates instantly) and queued in IndexedDB. As soon as the browser
+// comes back online, the queue is replayed against Supabase automatically —
+// UNLESS the same row was changed on another device in the meantime, in
+// which case that item is held and the user is asked which version to keep
+// (see renderSyncConflictModal), never overwritten silently.
+const OFFLINE_TABLES = ['fee_payments'];
+// Everything here is mirrored to IndexedDB purely for read access while
+// fully offline (e.g. opening the app with no signal at all) — only the
+// tables in OFFLINE_TABLES above also support making new changes offline.
+const READ_CACHE_TABLES = ['students', 'fee_payments', 'teachers', 'salary_payments', 'transactions', 'teacher_attendance', 'holidays'];
+const IDB_NAME = 'sms_offline_v1';
+let _idbPromise = null;
+function idbOpen() {
+  if (_idbPromise) return _idbPromise;
+  _idbPromise = new Promise((resolve, reject) => {
+    const req = indexedDB.open(IDB_NAME, 1);
+    req.onupgradeneeded = () => {
+      const db = req.result;
+      READ_CACHE_TABLES.forEach(tbl => { if (!db.objectStoreNames.contains(tbl)) db.createObjectStore(tbl, { keyPath: 'id' }); });
+      if (!db.objectStoreNames.contains('sync_queue')) db.createObjectStore('sync_queue', { keyPath: 'qid', autoIncrement: true });
+    };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+  return _idbPromise;
+}
+async function idbGetAll(store) {
+  try {
+    const db = await idbOpen();
+    return await new Promise((res, rej) => {
+      const r = db.transaction(store, 'readonly').objectStore(store).getAll();
+      r.onsuccess = () => res(r.result || []); r.onerror = () => rej(r.error);
+    });
+  } catch { return []; }
+}
+async function idbReplaceAll(store, rows) {
+  try {
+    const db = await idbOpen();
+    const os = db.transaction(store, 'readwrite').objectStore(store);
+    os.clear();
+    rows.forEach(row => os.put(row));
+  } catch (e) { console.error('idbReplaceAll failed', store, e); }
+}
+async function idbPutRow(store, row) {
+  try { const db = await idbOpen(); db.transaction(store, 'readwrite').objectStore(store).put(row); }
+  catch (e) { console.error('idbPutRow failed', store, e); }
+}
+async function idbDeleteRow(store, id) {
+  try { const db = await idbOpen(); db.transaction(store, 'readwrite').objectStore(store).delete(id); }
+  catch (e) { console.error('idbDeleteRow failed', store, e); }
+}
+async function idbQueueAdd(entry) {
+  try { const db = await idbOpen(); db.transaction('sync_queue', 'readwrite').objectStore('sync_queue').add(entry); }
+  catch (e) { console.error('idbQueueAdd failed', e); }
+}
+async function idbQueueRemove(qid) {
+  try { const db = await idbOpen(); db.transaction('sync_queue', 'readwrite').objectStore('sync_queue').delete(qid); }
+  catch (e) { console.error('idbQueueRemove failed', e); }
+}
+
+// Mirrors every READ_CACHE_TABLES table into IndexedDB after a successful
+// online loadAllData(), so the app has something to show if it's later
+// opened with no signal at all.
+async function offlineCacheStore() {
+  await Promise.all([
+    idbReplaceAll('students', DATA.students),
+    idbReplaceAll('fee_payments', DATA.feePayments),
+    idbReplaceAll('teachers', DATA.teachers),
+    idbReplaceAll('salary_payments', DATA.salaryPayments),
+    idbReplaceAll('transactions', DATA.transactions),
+    idbReplaceAll('teacher_attendance', DATA.teacherAttendance),
+    idbReplaceAll('holidays', DATA.holidays),
+  ]);
+}
+// Restores the last-synced snapshot from IndexedDB when loadAllData() can't
+// reach the server at all (opening the app with no signal, or losing signal
+// mid-request). Registers, class logins, etc. aren't cached (Phase 2) — they
+// simply show empty until back online.
+async function offlineCacheRestore() {
+  const [st, fp, tc, sp, tx, ta, hd] = await Promise.all(
+    READ_CACHE_TABLES.map(tbl => idbGetAll(tbl))
+  );
+  DATA.students = st; DATA.feePayments = fp; DATA.teachers = tc;
+  DATA.salaryPayments = sp; DATA.transactions = tx; DATA.teacherAttendance = ta; DATA.holidays = hd;
+}
+
+let SYNCING = false;
+let PENDING_CONFLICTS = [];
+// Generic offline-aware write. `run` performs the real Supabase call when
+// online; `optimisticApply` updates DATA immediately so the UI reflects the
+// change with no network round-trip; `baseRow` is the last-known-synced copy
+// of the row (for conflict detection when the queue is later replayed).
+async function offlineWrite({ table, action, payload, id, onConflict, baseRow, run, optimisticApply }) {
+  optimisticApply();
+  if (navigator.onLine) {
+    try {
+      const result = await run();
+      // A real response from the server (even an error one, e.g. permission
+      // denied) is NOT a connectivity problem — report it as-is, don't queue it.
+      if (result && result.error) return { queued: false, error: result.error };
+      return { queued: false };
+    } catch (e) { /* the request itself never reached the server — queue it */ }
+  }
+  await idbQueueAdd({ table, action, payload, id, onConflict, baseRow, ts: Date.now() });
+  renderOfflineBanner();
+  return { queued: true };
+}
+
+async function flushSyncQueue() {
+  if (SYNCING || !navigator.onLine) return;
+  SYNCING = true;
+  const queue = await idbGetAll('sync_queue');
+  const conflicts = [];
+  for (const item of queue) {
+    try {
+      let serverRow = null;
+      if (item.id) { const { data } = await sb.from(item.table).select('*').eq('id', item.id).maybeSingle(); serverRow = data; }
+      const changed = item.baseRow && serverRow && JSON.stringify(serverRow) !== JSON.stringify(item.baseRow);
+      if (changed) { conflicts.push({ ...item, serverRow }); continue; } // held for the user, not overwritten
+      if (item.action === 'upsert') await sb.from(item.table).upsert(item.payload, { onConflict: item.onConflict });
+      else if (item.action === 'delete') await sb.from(item.table).delete().eq('id', item.id);
+      else if (item.action === 'insert') await sb.from(item.table).insert(item.payload);
+      await idbQueueRemove(item.qid);
+    } catch (e) { console.error('sync failed for item', item, e); }
+  }
+  SYNCING = false;
+  renderOfflineBanner();
+  if (conflicts.length) { PENDING_CONFLICTS = conflicts; renderSyncConflictModal(); }
+  else { await loadAllData(); if (TAB) renderTab(); }
+}
+
+function renderSyncConflictModal() {
+  if (!PENDING_CONFLICTS.length) return;
+  const c = PENDING_CONFLICTS[0];
+  const rows = (obj) => Object.keys(obj||{}).filter(k=>!['id','owner_id','created_at'].includes(k))
+    .map(k=>`<div class="list-row"><span style="opacity:.65;font-size:12px;">${esc(k)}</span><span style="font-size:12px;">${esc(String(obj[k]))}</span></div>`).join('');
+  showModal(LANG==='ur' ? 'ٹکراؤ — کون سا ورژن رکھیں؟' : 'Sync Conflict — Which version should win?', `
+    <div style="font-size:12px;opacity:.75;margin-bottom:10px;">${esc(LANG==='ur'
+      ? 'یہ ریکارڈ کسی اور ڈیوائس نے آپ کے آفلائن ہونے کے دوران بدل دیا ہے۔'
+      : 'This record was changed on another device while this one was offline.')}</div>
+    <div style="font-weight:700;margin-top:8px;">${esc(LANG==='ur'?'آپ کا (آفلائن) ورژن':'Your (offline) version')}</div>
+    ${rows(c.payload)}
+    <div style="font-weight:700;margin-top:12px;">${esc(LANG==='ur'?'سرور کا ورژن':'Server version')}</div>
+    ${rows(c.serverRow)}
+    <div style="display:flex;gap:10px;margin-top:16px;">
+      <button class="btn-primary" style="flex:1;" onclick="resolveConflict('mine')">${esc(LANG==='ur'?'میرا رکھیں':'Keep Mine')}</button>
+      <button class="btn-ghost" style="flex:1;" onclick="resolveConflict('server')">${esc(LANG==='ur'?'سرور کا رکھیں':'Keep Server')}</button>
+    </div>
+  `);
+}
+async function resolveConflict(choice) {
+  const c = PENDING_CONFLICTS.shift();
+  if (!c) return;
+  if (choice === 'mine') {
+    if (c.action === 'upsert') await sb.from(c.table).upsert(c.payload, { onConflict: c.onConflict });
+    else if (c.action === 'delete') await sb.from(c.table).delete().eq('id', c.id);
+    else if (c.action === 'insert') await sb.from(c.table).insert(c.payload);
+  }
+  await idbQueueRemove(c.qid);
+  closeModal();
+  if (PENDING_CONFLICTS.length) renderSyncConflictModal();
+  else { await loadAllData(); if (TAB) renderTab(); }
+}
+
+async function renderOfflineBanner() {
+  const el = document.getElementById('offline-banner');
+  if (!el) return;
+  const q = await idbGetAll('sync_queue');
+  if (!navigator.onLine) {
+    el.style.display = 'block';
+    el.textContent = LANG==='ur' ? '📴 آف لائن — تبدیلیاں محفوظ ہیں، انٹرنیٹ آتے ہی sync ہو جائیں گی' : "📴 Offline — changes are saved and will sync once you're back online";
+  } else if (q.length) {
+    el.style.display = 'block';
+    el.textContent = LANG==='ur' ? `⏳ Sync ہو رہا ہے (${q.length})...` : `⏳ Syncing (${q.length})...`;
+  } else {
+    el.style.display = 'none';
+  }
+}
+window.addEventListener('online', () => { renderOfflineBanner(); flushSyncQueue(); });
+window.addEventListener('offline', () => renderOfflineBanner());
 
 // ---------------- Boot / session ----------------
 function renderForgotPassword() {
@@ -1282,22 +1477,31 @@ async function logOut() {
 
 // ---------------- Data loading (RLS auto-scopes everything to this school) ----------------
 async function loadAllData() {
-  const [s, fp, tc, sp, tx, ar, ta, hd, cl] = await Promise.all([
-    sb.from('students').select('*').order('created_at'),
-    sb.from('fee_payments').select('*'),
-    sb.from('teachers').select('*').order('created_at'),
-    sb.from('salary_payments').select('*'),
-    sb.from('transactions').select('*').order('txn_date',{ascending:false}),
-    // Admission & Withdrawal Register: a standalone record, unrelated to the
-    // students/fee-finance tables above — it is never joined or cross-referenced.
-    sb.from('admission_register').select('*').order('serial_no'),
-    sb.from('teacher_attendance').select('*'),
-    sb.from('holidays').select('*'),
-    // Class Logins: one login per class, used by teachers on a shared class
-    // device (no real Supabase Auth session — see class_login_verify etc.).
-    // The owner reads this table directly; only the RPCs can write to it.
-    sb.from('class_logins').select('*').order('created_at'),
-  ]);
+  // No signal at all — skip the network round-trip and use the last-synced
+  // snapshot straight away instead of waiting for every request to time out.
+  if (!navigator.onLine) { await offlineCacheRestore(); renderOfflineBanner(); return; }
+  let s, fp, tc, sp, tx, ar, ta, hd, cl;
+  try {
+    [s, fp, tc, sp, tx, ar, ta, hd, cl] = await Promise.all([
+      sb.from('students').select('*').order('created_at'),
+      sb.from('fee_payments').select('*'),
+      sb.from('teachers').select('*').order('created_at'),
+      sb.from('salary_payments').select('*'),
+      sb.from('transactions').select('*').order('txn_date',{ascending:false}),
+      // Admission & Withdrawal Register: a standalone record, unrelated to the
+      // students/fee-finance tables above — it is never joined or cross-referenced.
+      sb.from('admission_register').select('*').order('serial_no'),
+      sb.from('teacher_attendance').select('*'),
+      sb.from('holidays').select('*'),
+      // Class Logins: one login per class, used by teachers on a shared class
+      // device (no real Supabase Auth session — see class_login_verify etc.).
+      // The owner reads this table directly; only the RPCs can write to it.
+      sb.from('class_logins').select('*').order('created_at'),
+    ]);
+  } catch (e) {
+    // Request(s) failed mid-flight (signal dropped just now) — same fallback.
+    await offlineCacheRestore(); renderOfflineBanner(); return;
+  }
   DATA.students = s.data || [];
   DATA.feePayments = fp.data || [];
   DATA.teachers = tc.data || [];
@@ -1307,6 +1511,9 @@ async function loadAllData() {
   DATA.teacherAttendance = ta.data || [];
   DATA.holidays = hd.data || [];
   DATA.classLogins = cl.data || [];
+  await offlineCacheStore();
+  renderOfflineBanner();
+  flushSyncQueue();
 }
 
 // How many distinct months a student has unpaid dues for, counted directly
@@ -1437,12 +1644,19 @@ function studentBalance(id) {
 function computeStats() {
   const cur = monthKey();
   const active = DATA.students.filter(s=>s.status!=='inactive');
-  let feesCollectedThisMonth=0, feesDueThisMonth=0;
+  let feesCollectedThisMonth=0, feesDueThisMonth=0, otherFeeThisMonth=0;
   let payingCount=0, freeCount=0, orphanCount=0;
   active.forEach(s=>{
     const curEntries = studentPayments(s.id).filter(p=>p.month===cur);
     const paid = curEntries.reduce((a,b)=>a+Number(b.amount),0);
     feesCollectedThisMonth += paid;
+    // Other (hostel/transport) fee IS counted in the fee card's own Total
+    // Dues/Balance (studentBalance, the printed card, receipts, WhatsApp dues
+    // breakdown) — but it deliberately stays OUT of this Dashboard's
+    // this-month figures (feesCollectedThisMonth/feesDueThisMonth below),
+    // since those are meant to reflect the school's own this-month cash
+    // flow, not third-party (hostel/transport) money passing through.
+    otherFeeThisMonth += curEntries.reduce((a,e)=>a+Number(e.other_fee||0),0);
     // "Due (this month)" must reflect ONLY this calendar month's own charges that
     // remain unpaid — NOT studentBalance(), which is the all-time running balance
     // including every earlier carried-forward month. Using studentBalance() here
@@ -1450,7 +1664,7 @@ function computeStats() {
     // under a "this month" label, which could be badly misread by school staff.
     // Total all-time dues are shown separately under "Dues Outstanding" in Reports.
     if (isFeePaying(s)) {
-      const monthCharge = curEntries.reduce((a,e)=>a+Number(e.school_fee||0)+Number(e.sports_fund||0)+Number(e.admission_fee||0)+Number(e.exam_fee||0)+Number(e.other_fee||0),0);
+      const monthCharge = curEntries.reduce((a,e)=>a+Number(e.school_fee||0)+Number(e.sports_fund||0)+Number(e.admission_fee||0)+Number(e.exam_fee||0),0);
       feesDueThisMonth += Math.max(0, monthCharge - paid);
       payingCount++;
     }
@@ -1483,7 +1697,7 @@ function computeStats() {
   let totalDuesAllTime = 0;
   active.forEach(s=>{ if (isFeePaying(s)) totalDuesAllTime += Math.max(0, studentBalance(s.id)); });
 
-  return { activeCount:active.length, feesCollectedThisMonth, feesDueThisMonth, salaryPaidThisMonth, totalExpenseThisMonth,
+  return { activeCount:active.length, feesCollectedThisMonth, feesDueThisMonth, salaryPaidThisMonth, totalExpenseThisMonth, otherFeeThisMonth,
     totalCollectedAllTime, totalSalariesAllTime, totalOtherIncomeAllTime, totalOtherExpenseAllTime,
     totalIncomeAllTime, totalExpenseAllTime, netBalance, totalDuesAllTime, payingCount, freeCount, orphanCount };
 }
@@ -2155,6 +2369,12 @@ function tplDashboard() {
       </div>
       <div class="balance-card"><div class="lbl">${esc(t.netBalance)}</div><div class="val">₨${fmt(s.netBalance)}</div></div>
       <div class="dues-card"><div class="lbl">${esc(t.totalDuesAllTime)}</div><div class="val">₨${fmt(s.totalDuesAllTime)}</div></div>
+
+      <div class="other-fee-card">
+        <div class="lbl">${esc(t.otherFeeStandalone)}</div>
+        <div class="val">₨${fmt(s.otherFeeThisMonth)}</div>
+      </div>
+
       <div id="admin-notify-row" style="margin-top:10px;">
         <button class="btn-ghost" style="width:100%;" onclick="subscribeAdminToPush(document.getElementById('admin-notify-row'))">${esc(t.enableNotifications)}</button>
       </div>
@@ -2756,12 +2976,14 @@ async function submitFeePayment(studentId) {
   const date = dateVal('p-date');
   if (!month || amount === '') return;
 
-  // This is purely for the parent-notification decision below (new entry vs.
-  // correcting an existing one) — it is NOT what prevents duplicates anymore.
-  const { data: existingRows } = await sb.from('fee_payments').select('id').eq('student_id', studentId).eq('month', month);
-  const isNewEntry = !(existingRows && existingRows.length > 0);
+  // Looked up from the local cache (works offline too) — this is purely for
+  // the parent-notification decision below (new entry vs. correcting an
+  // existing one), and doubles as the "before" snapshot for conflict checks.
+  const existingRow = DATA.feePayments.find(x => x.student_id === studentId && x.month === month) || null;
+  const isNewEntry = !existingRow;
 
   const payload = {
+    id: existingRow ? existingRow.id : (crypto.randomUUID ? crypto.randomUUID() : `local-${Date.now()}`),
     owner_id: CURRENT_USER.id, student_id: studentId, month,
     school_fee: Number(schoolFee), sports_fund: Number(sportsFund),
     admission_fee: Number(admissionFee), exam_fee: Number(examFee), other_fee: Number(otherFee),
@@ -2774,18 +2996,35 @@ async function submitFeePayment(studentId) {
   // saves fire at the exact same instant (a double-tap that slips past the
   // button's disabled state, two tabs/devices saving together, etc.) — because
   // the database itself, not just this client's JS, enforces the rule.
-  const { error } = await sb.from('fee_payments').upsert(payload, { onConflict: 'student_id,month' });
-  if (reportSaveError(error)) return;
+  //
+  // Offline-aware: with no signal this is applied to the local copy right
+  // away and queued — it syncs automatically once the connection is back
+  // (see offlineWrite/flushSyncQueue), with a manual conflict prompt if
+  // another device changed this same month's entry in the meantime.
+  const { queued, error } = await offlineWrite({
+    table: 'fee_payments', action: 'upsert', payload, id: payload.id, onConflict: 'student_id,month',
+    baseRow: existingRow,
+    run: () => sb.from('fee_payments').upsert(payload, { onConflict: 'student_id,month' }),
+    optimisticApply: () => {
+      const idx = DATA.feePayments.findIndex(x => x.id === payload.id);
+      if (idx >= 0) DATA.feePayments[idx] = { ...DATA.feePayments[idx], ...payload };
+      else DATA.feePayments.push(payload);
+      idbPutRow('fee_payments', payload);
+    }
+  });
+  if (!queued && reportSaveError(error)) return;
   const student = DATA.students.find(x => x.id === studentId);
   // Only auto-fire the parent notification for a genuinely new entry dated today —
   // not when correcting/updating an existing month's entry (that would otherwise
   // re-notify the parent every time a typo is fixed), and not for backdated /
-  // historical entries (data import, past-month catch-up).
-  if (isNewEntry && student && date === todayISO()) {
+  // historical entries (data import, past-month catch-up). Skipped entirely
+  // while queued offline, since WhatsApp needs a connection anyway.
+  if (!queued && isNewEntry && student && date === todayISO()) {
     const msg = `Dear Parent, fee of Rs ${Number(amount).toLocaleString()} for ${student.name} (${month}) has been received. Thank you. - School`;
     openFatherWhatsapp(student.contact, msg); // opens WhatsApp (PC/laptop or phone), pre-filled, ready to send
   }
-  await loadAllData(); openStudentDetail(studentId);
+  if (!queued) await loadAllData();
+  openStudentDetail(studentId);
 }
 
 function printReceipt(studentId, entryId) {
@@ -2831,8 +3070,14 @@ function printReceipt(studentId, entryId) {
   window.print();
 }
 async function deleteFeePayment(paymentId, studentId) {
-  await sb.from('fee_payments').delete().eq('id', paymentId);
-  await loadAllData(); openStudentDetail(studentId);
+  const baseRow = DATA.feePayments.find(x => x.id === paymentId) || null;
+  const { queued } = await offlineWrite({
+    table: 'fee_payments', action: 'delete', payload: null, id: paymentId, baseRow,
+    run: () => sb.from('fee_payments').delete().eq('id', paymentId),
+    optimisticApply: () => { DATA.feePayments = DATA.feePayments.filter(x => x.id !== paymentId); idbDeleteRow('fee_payments', paymentId); }
+  });
+  if (!queued) await loadAllData();
+  openStudentDetail(studentId);
 }
 
 // Print the full 12-month fee card (Feb–Jan), matching the school's printed physical card layout
@@ -3960,6 +4205,7 @@ function openActivityHistory(kind, refId) {
   showModal(x.description||'—', `
     <div class="list-row"><span style="font-size:13px;opacity:.65;">${esc(t.dateCol)}</span><span style="font-size:13px;">${esc(fmtDate(x.txn_date)||'')}</span></div>
     <div class="list-row"><span style="font-size:13px;opacity:.65;">${esc(t.amount)}</span><span class="${x.type==='income'?'amt-pos':'amt-neg'}">${x.type==='income'?'+':'−'}₨${fmt(x.amount)}</span></div>
+    <button class="btn-ghost" style="width:100%;margin-top:14px;" onclick="printTxnVoucher('${x.id}')">🖨️ ${esc(t.print)}</button>
   `);
 }
 
