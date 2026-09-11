@@ -2075,7 +2075,30 @@ function renderTab() {
   else if (TAB==='teachers') main.innerHTML = tplTeachers();
   else if (TAB==='finance') main.innerHTML = tplFinance();
   else if (TAB==='reports') main.innerHTML = tplReports();
-  else if (TAB==='dmc') { main.innerHTML = tplDMC(); loadDMCConfig().then(() => { if (TAB==='dmc') { main.innerHTML = tplDMC(); renderDMCSubjects(); } }); }
+  else if (TAB==='dmc') {
+    main.innerHTML = tplDMC();
+    renderDMCEditTable();
+    loadDMCConfig().then(() => {
+      if (TAB !== 'dmc') return;
+      // The class dropdown, upload message, and results table are all backed by
+      // globals now (dmcSelectedClass / dmcLastUploadMsg / dmcResults), so this
+      // re-render — which only needs to happen to pick up the school's logo/name/
+      // subjects once they arrive from Supabase — no longer wipes out a class the
+      // user already selected or an Excel file they already uploaded while this
+      // was loading over the network.
+      // BUT: if the user is actively focused on (typing/selecting into) a field in
+      // this tab right when the network response lands, a full innerHTML replace
+      // would yank focus away and discard whatever they'd typed but not yet blurred
+      // (School Name/Tagline/etc. only commit on "onchange"). So skip the rebuild
+      // entirely in that case — it'll just pick up the fresh config next time the
+      // tab is opened.
+      const active = document.activeElement;
+      if (active && main.contains(active) && (active.tagName === 'INPUT' || active.tagName === 'SELECT' || active.tagName === 'TEXTAREA')) return;
+      main.innerHTML = tplDMC();
+      renderDMCSubjects();
+      renderDMCEditTable();
+    });
+  }
   else if (TAB==='marksSheet') main.innerHTML = tplMarksSheet();
   else if (TAB==='admissionRegister') main.innerHTML = tplAdmissionRegister();
   else if (TAB==='teacherRegister') main.innerHTML = tplTeacherRegister();
@@ -4514,6 +4537,10 @@ let dmcAcademicSession = ''; // optional e.g. "2025-2026"
 let dmcQuote = ''; // optional footer quote — falls back to a language-appropriate default at print time if left blank
 let dmcBatchSection = ''; // shared section for this batch, applied to all certificates
 let dmcBatchDateOfIssue = todayISO(); // shared date of issue for this batch, applied to all certificates
+let dmcSelectedClass = ''; // persisted copy of the "Select Class" dropdown value, so a background
+                            // re-render (e.g. once loadDMCConfig() resolves) doesn't reset it to blank
+let dmcLastUploadMsg = ''; // persisted copy of the "Loaded N students" / error message shown after
+                            // an Excel upload, so a background re-render doesn't make it disappear
 
 // Editable certificate colors (the layout itself is fixed — only the colors
 // are customizable per school).
@@ -4587,8 +4614,8 @@ function tplDMC() {
       <label style="margin-bottom:0;">
         <span>Select Class</span>
         <select id="dmc-class" onchange="onDMCClassChange()">
-          <option value="">— Select Class —</option>
-          ${CLASS_OPTIONS.map(c => `<option value="${esc(c)}">${esc(c)}</option>`).join('')}
+          <option value="" ${!dmcSelectedClass ? 'selected' : ''}>— Select Class —</option>
+          ${CLASS_OPTIONS.map(c => `<option value="${esc(c)}" ${c===dmcSelectedClass ? 'selected' : ''}>${esc(c)}</option>`).join('')}
         </select>
       </label>
     </div>
@@ -4600,7 +4627,7 @@ function tplDMC() {
         <span>Select Excel File</span>
         <input type="file" id="dmc-file-input" accept=".xlsx,.xls,.csv" onchange="handleDMCExcelUpload(this.files[0])">
       </label>
-      <div id="dmc-upload-msg" style="margin-top:8px;font-size:12px;"></div>
+      <div id="dmc-upload-msg" style="margin-top:8px;font-size:12px;">${dmcLastUploadMsg}</div>
     </div>
 
     <div class="card">
@@ -4617,8 +4644,8 @@ function tplDMC() {
     </div>
 
     <div class="card">
-      <h3 style="margin-top:0;">Review & Edit Roll No.</h3>
-      <p style="font-size:12px;opacity:.7;">Fill in or fix each student's Roll No. before printing — useful if it wasn't in your Excel file.</p>
+      <h3 style="margin-top:0;">Review & Edit Students</h3>
+      <p style="font-size:12px;opacity:.7;">Fix each student's Name or Roll No. before printing — useful if something wasn't in your Excel file or came in wrong.</p>
       <div id="dmc-edit-table"></div>
     </div>
 
@@ -4651,6 +4678,7 @@ function onDMCClassChange() {
   // If results are already loaded and their rows have no per-row class of their own
   // (i.e. the Excel file didn't specify one), keep them in sync with the dropdown.
   const cls = document.getElementById('dmc-class').value;
+  dmcSelectedClass = cls;
   dmcResults.forEach(r => { if (!r.classFromExcel) r.class = cls; });
 }
 
@@ -4736,8 +4764,9 @@ function renderDMCEditTable() {
   if (dmcResults.length === 0) { container.innerHTML = `<p style="font-size:12px;opacity:.5;">Upload a result list above to edit roll numbers.</p>`; return; }
   container.innerHTML = dmcResults.map((r, i) => `
     <div style="display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--line);padding:8px 0;">
-      <div style="flex:1;font-size:13px;color:var(--ink);">${r.serialNo}. ${esc(r.studentName || '(No name)')}</div>
-      <input type="text" style="width:110px;" value="${esc(r.rollNo)}" placeholder="Roll No." oninput="dmcResults[${i}].rollNo=this.value">
+      <div style="width:22px;font-size:13px;color:var(--ink);flex-shrink:0;">${r.serialNo}.</div>
+      <input type="text" style="flex:1;" value="${esc(r.studentName)}" placeholder="Student Name" oninput="dmcResults[${i}].studentName=this.value">
+      <input type="text" style="width:110px;flex-shrink:0;" value="${esc(r.rollNo)}" placeholder="Roll No." oninput="dmcResults[${i}].rollNo=this.value">
     </div>
   `).join('');
 }
@@ -4760,6 +4789,7 @@ function clearDMCSubjects() {
 function handleDMCExcelUpload(file) {
   if (!file) return;
   const selectedClass = document.getElementById('dmc-class').value;
+  dmcSelectedClass = selectedClass;
   const reader = new FileReader();
   reader.onload = (e) => {
     try {
@@ -4812,12 +4842,14 @@ function handleDMCExcelUpload(file) {
       });
 
       const missingClass = !selectedClass && dmcResults.some(r => !r.class);
-      document.getElementById('dmc-upload-msg').innerHTML = missingClass
+      dmcLastUploadMsg = missingClass
         ? `⚠️ Loaded ${dmcResults.length} students, but no class is set — select a class above (or add a "Class" column to your Excel) before printing.`
         : `✓ Loaded ${dmcResults.length} students`;
+      document.getElementById('dmc-upload-msg').innerHTML = dmcLastUploadMsg;
       renderDMCEditTable();
     } catch (err) {
-      document.getElementById('dmc-upload-msg').innerHTML = `✗ Error: ${err.message}`;
+      dmcLastUploadMsg = `✗ Error: ${err.message}`;
+      document.getElementById('dmc-upload-msg').innerHTML = dmcLastUploadMsg;
     }
   };
   reader.readAsArrayBuffer(file);
