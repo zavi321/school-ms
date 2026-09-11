@@ -955,7 +955,7 @@ let CURRENT_PROFILE = null; // { school_name }
 // UNLESS the same row was changed on another device in the meantime, in
 // which case that item is held and the user is asked which version to keep
 // (see renderSyncConflictModal), never overwritten silently.
-const OFFLINE_TABLES = ['fee_payments', 'students', 'teachers', 'salary_payments'];
+const OFFLINE_TABLES = ['fee_payments', 'students', 'teachers', 'salary_payments', 'teacher_attendance'];
 // Everything here is mirrored to IndexedDB purely for read access while
 // fully offline (e.g. opening the app with no signal at all) — only the
 // tables in OFFLINE_TABLES above also support making new changes offline.
@@ -3411,16 +3411,42 @@ async function submitAttendance(date) {
     .filter(id => attendanceDraft[id].am || attendanceDraft[id].pm)
     .map(id => {
       const rec = attendanceDraft[id];
+      // Looked up from the local cache (works offline too) — doubles as the
+      // "before" snapshot for conflict checks when the queue is later replayed.
+      const existingRow = DATA.teacherAttendance.find(x => x.teacher_id === id && x.date === date) || null;
       return {
-        owner_id: CURRENT_USER.id, teacher_id: id, date,
-        status_am: rec.am || null, status_pm: rec.pm || null,
-        status: deriveDayStatus(rec.am, rec.pm)
+        existingRow,
+        payload: {
+          id: existingRow ? existingRow.id : (crypto.randomUUID ? crypto.randomUUID() : `local-${Date.now()}-${id}`),
+          owner_id: CURRENT_USER.id, teacher_id: id, date,
+          status_am: rec.am || null, status_pm: rec.pm || null,
+          status: deriveDayStatus(rec.am, rec.pm)
+        }
       };
     });
   if (!rows.length) { closeModal(); return; }
-  const { error } = await sb.from('teacher_attendance').upsert(rows, { onConflict: 'teacher_id,date' });
-  if (reportSaveError(error)) return;
-  closeModal(); await loadAllData(); renderTab();
+  // Offline-aware: each teacher's row is upserted individually, keyed on the
+  // (teacher_id, date) UNIQUE constraint (same duplicate-prevention approach
+  // as fee/salary payments), so it queues and syncs the same way — with a
+  // conflict prompt if another device marked this same teacher+date meanwhile.
+  let anyError = null, anyQueued = false;
+  for (const { existingRow, payload } of rows) {
+    const { queued, error } = await offlineWrite({
+      table: 'teacher_attendance', action: 'upsert', payload, id: payload.id, onConflict: 'teacher_id,date',
+      baseRow: existingRow,
+      run: () => sb.from('teacher_attendance').upsert(payload, { onConflict: 'teacher_id,date' }),
+      optimisticApply: () => {
+        const idx = DATA.teacherAttendance.findIndex(x => x.id === payload.id);
+        if (idx >= 0) DATA.teacherAttendance[idx] = { ...DATA.teacherAttendance[idx], ...payload };
+        else DATA.teacherAttendance.push(payload);
+        idbPutRow('teacher_attendance', payload);
+      }
+    });
+    if (queued) anyQueued = true;
+    if (!queued && error) anyError = error;
+  }
+  if (anyError && reportSaveError(anyError)) return;
+  closeModal(); if (!anyQueued) await loadAllData(); renderTab();
 }
 
 // Attendance-based salary: full monthly salary minus a per-day deduction.
