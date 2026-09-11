@@ -945,7 +945,7 @@ let CURRENT_PROFILE = null; // { school_name }
 // UNLESS the same row was changed on another device in the meantime, in
 // which case that item is held and the user is asked which version to keep
 // (see renderSyncConflictModal), never overwritten silently.
-const OFFLINE_TABLES = ['fee_payments'];
+const OFFLINE_TABLES = ['fee_payments', 'students'];
 // Everything here is mirrored to IndexedDB purely for read access while
 // fully offline (e.g. opening the app with no signal at all) — only the
 // tables in OFFLINE_TABLES above also support making new changes offline.
@@ -1032,15 +1032,41 @@ let PENDING_CONFLICTS = [];
 // online; `optimisticApply` updates DATA immediately so the UI reflects the
 // change with no network round-trip; `baseRow` is the last-known-synced copy
 // of the row (for conflict detection when the queue is later replayed).
+// Supabase-js does not throw when the request never reaches the server —
+// it catches the underlying fetch() failure itself and hands it back as a
+// normal { error } result, with error.message literally being something
+// like "TypeError: Failed to fetch". That has to be told apart from a real,
+// server-answered error (wrong data, permission denied, etc.), which should
+// still be reported to the user immediately rather than silently queued.
+function isNetworkError(error) {
+  if (!error) return false;
+  const msg = String(error.message || error).toLowerCase();
+  return msg.includes('failed to fetch') || msg.includes('networkerror') || msg.includes('load failed') || msg.includes('network request failed') || msg.includes('timeout');
+}
+// navigator.onLine only means "this device has a network interface active"
+// (e.g. connected to a router) — NOT that the connection actually reaches
+// the internet. On a weak/fake signal a request can just hang instead of
+// failing, so every network call made during boot/loading races against this
+// timeout and is treated as a network failure the moment it's hit, instead
+// of leaving the loading screen stuck for however long the browser's own
+// (often very long) fetch timeout is.
+function withTimeout(promise, ms = 6000) {
+  return Promise.race([
+    promise,
+    new Promise((resolve) => setTimeout(() => resolve({ data: null, error: { message: 'TypeError: Failed to fetch (timed out)' } }), ms))
+  ]);
+}
 async function offlineWrite({ table, action, payload, id, onConflict, baseRow, run, optimisticApply }) {
   optimisticApply();
   if (navigator.onLine) {
     try {
       const result = await run();
-      // A real response from the server (even an error one, e.g. permission
-      // denied) is NOT a connectivity problem — report it as-is, don't queue it.
-      if (result && result.error) return { queued: false, error: result.error };
-      return { queued: false };
+      if (result && result.error) {
+        if (isNetworkError(result.error)) { /* connectivity problem, not a real rejection — fall through to queueing */ }
+        else return { queued: false, error: result.error }; // a genuine server-answered error — report it, don't queue it
+      } else {
+        return { queued: false };
+      }
     } catch (e) { /* the request itself never reached the server — queue it */ }
   }
   await idbQueueAdd({ table, action, payload, id, onConflict, baseRow, ts: Date.now() });
@@ -1060,6 +1086,8 @@ async function flushSyncQueue() {
       const changed = item.baseRow && serverRow && JSON.stringify(serverRow) !== JSON.stringify(item.baseRow);
       if (changed) { conflicts.push({ ...item, serverRow }); continue; } // held for the user, not overwritten
       if (item.action === 'upsert') await sb.from(item.table).upsert(item.payload, { onConflict: item.onConflict });
+      else if (item.action === 'update') await sb.from(item.table).update(item.payload).eq('id', item.id);
+      else if (item.action === 'bulk_update') await sb.from(item.table).update(item.payload).in('id', item.ids);
       else if (item.action === 'delete') await sb.from(item.table).delete().eq('id', item.id);
       else if (item.action === 'insert') await sb.from(item.table).insert(item.payload);
       await idbQueueRemove(item.qid);
@@ -1095,6 +1123,7 @@ async function resolveConflict(choice) {
   if (!c) return;
   if (choice === 'mine') {
     if (c.action === 'upsert') await sb.from(c.table).upsert(c.payload, { onConflict: c.onConflict });
+    else if (c.action === 'update') await sb.from(c.table).update(c.payload).eq('id', c.id);
     else if (c.action === 'delete') await sb.from(c.table).delete().eq('id', c.id);
     else if (c.action === 'insert') await sb.from(c.table).insert(c.payload);
   }
@@ -1230,20 +1259,32 @@ async function boot() {
 }
 
 async function afterLogin() {
-  const { data: prof } = await sb.from('profiles').select('*').eq('id', CURRENT_USER.id).maybeSingle();
-  CURRENT_PROFILE = prof || { school_name: 'My School' };
+  const PROFILE_CACHE_KEY = 'sms_cached_profile_' + CURRENT_USER.id;
+  const { data: prof, error: profErr } = await withTimeout(sb.from('profiles').select('*').eq('id', CURRENT_USER.id).maybeSingle());
+  if (prof) {
+    CURRENT_PROFILE = prof;
+    try { localStorage.setItem(PROFILE_CACHE_KEY, JSON.stringify(prof)); } catch (e) {}
+  } else {
+    // Fetch failed or timed out (weak/fake-online connection) — fall back to
+    // whatever profile was cached from the last successful login instead of
+    // hanging here or showing a placeholder school name.
+    let cached = null;
+    try { cached = JSON.parse(localStorage.getItem(PROFILE_CACHE_KEY) || 'null'); } catch (e) {}
+    CURRENT_PROFILE = cached || { school_name: 'My School' };
+  }
   // If this account signed up with a phone number but it hasn't landed on the
   // profile row yet (e.g. they had to verify via OTP before their first login), sync it now.
   const metaPhone = CURRENT_USER.user_metadata && CURRENT_USER.user_metadata.phone;
-  if (metaPhone && !CURRENT_PROFILE.phone) {
+  if (metaPhone && !CURRENT_PROFILE.phone && navigator.onLine) {
     await sb.from('profiles').update({ phone: metaPhone }).eq('id', CURRENT_USER.id);
     CURRENT_PROFILE.phone = metaPhone;
   }
 
   // Monthly-plan schools get locked out 3 days after their paid_until date until
   // a payment is confirmed (see SUBSCRIPTION LOCK block below). Admin/owner
-  // account and lifetime-plan schools are never locked.
-  const locked = await checkSubscriptionLock();
+  // account and lifetime-plan schools are never locked. Skipped entirely with
+  // no signal — fails open, same as a network error during the check itself.
+  const locked = navigator.onLine ? await checkSubscriptionLock() : false;
   if (locked) {
     document.getElementById('loading').classList.add('hidden');
     renderRenewalLock();
@@ -1271,7 +1312,7 @@ let SUBSCRIPTION_INFO = null;
 
 async function checkSubscriptionLock() {
   if (CURRENT_PROFILE.is_admin) return false;
-  const { data: sub, error } = await sb.from('subscriptions').select('*').eq('school_id', CURRENT_USER.id).maybeSingle();
+  const { data: sub, error } = await withTimeout(sb.from('subscriptions').select('*').eq('school_id', CURRENT_USER.id).maybeSingle());
   if (error) { console.error('Subscription check failed:', error.message); return false; } // fail open, never lock out on a network/query error
   SUBSCRIPTION_INFO = sub;
   if (!sub || sub.plan_type === 'lifetime') return false;
@@ -1481,23 +1522,33 @@ async function loadAllData() {
   // snapshot straight away instead of waiting for every request to time out.
   if (!navigator.onLine) { await offlineCacheRestore(); renderOfflineBanner(); return; }
   let s, fp, tc, sp, tx, ar, ta, hd, cl;
+  const TIMED_OUT = Symbol('timed-out');
   try {
-    [s, fp, tc, sp, tx, ar, ta, hd, cl] = await Promise.all([
-      sb.from('students').select('*').order('created_at'),
-      sb.from('fee_payments').select('*'),
-      sb.from('teachers').select('*').order('created_at'),
-      sb.from('salary_payments').select('*'),
-      sb.from('transactions').select('*').order('txn_date',{ascending:false}),
-      // Admission & Withdrawal Register: a standalone record, unrelated to the
-      // students/fee-finance tables above — it is never joined or cross-referenced.
-      sb.from('admission_register').select('*').order('serial_no'),
-      sb.from('teacher_attendance').select('*'),
-      sb.from('holidays').select('*'),
-      // Class Logins: one login per class, used by teachers on a shared class
-      // device (no real Supabase Auth session — see class_login_verify etc.).
-      // The owner reads this table directly; only the RPCs can write to it.
-      sb.from('class_logins').select('*').order('created_at'),
+    const result = await Promise.race([
+      Promise.all([
+        sb.from('students').select('*').order('created_at'),
+        sb.from('fee_payments').select('*'),
+        sb.from('teachers').select('*').order('created_at'),
+        sb.from('salary_payments').select('*'),
+        sb.from('transactions').select('*').order('txn_date',{ascending:false}),
+        // Admission & Withdrawal Register: a standalone record, unrelated to the
+        // students/fee-finance tables above — it is never joined or cross-referenced.
+        sb.from('admission_register').select('*').order('serial_no'),
+        sb.from('teacher_attendance').select('*'),
+        sb.from('holidays').select('*'),
+        // Class Logins: one login per class, used by teachers on a shared class
+        // device (no real Supabase Auth session — see class_login_verify etc.).
+        // The owner reads this table directly; only the RPCs can write to it.
+        sb.from('class_logins').select('*').order('created_at'),
+      ]),
+      // navigator.onLine can be true on a signal that's actually too weak to
+      // reach the server — without this, that case hangs on "Loading your
+      // data…" for as long as the browser's own (often very long) request
+      // timeout, instead of falling back to the cache in a few seconds.
+      new Promise((resolve) => setTimeout(() => resolve(TIMED_OUT), 8000)),
     ]);
+    if (result === TIMED_OUT) { await offlineCacheRestore(); renderOfflineBanner(); return; }
+    [s, fp, tc, sp, tx, ar, ta, hd, cl] = result;
   } catch (e) {
     // Request(s) failed mid-flight (signal dropped just now) — same fallback.
     await offlineCacheRestore(); renderOfflineBanner(); return;
@@ -2671,10 +2722,25 @@ async function runPromoteAllStudents() {
     const cls = CLASS_OPTIONS[i], next = CLASS_OPTIONS[i + 1];
     const ids = byClass[cls];
     if (!ids || !ids.length) continue;
-    const { error } = await sb.from('students').update({ class_name: next }).in('id', ids);
-    if (error) console.error(`Promote ${cls} → ${next} failed:`, error.message);
+    // Offline-aware: applied to the local cache immediately either way; if
+    // there's no signal right now it's queued and replayed once reconnected.
+    // (No per-row conflict check here, unlike single-record edits — this is
+    // a rare, once-a-term bulk action rather than a routine daily one.)
+    ids.forEach(id => {
+      const idx = DATA.students.findIndex(x => x.id === id);
+      if (idx >= 0) { DATA.students[idx] = { ...DATA.students[idx], class_name: next }; idbPutRow('students', DATA.students[idx]); }
+    });
+    if (navigator.onLine) {
+      try {
+        const { error } = await sb.from('students').update({ class_name: next }).in('id', ids);
+        if (!error) continue;
+        if (!isNetworkError(error)) { console.error(`Promote ${cls} → ${next} failed:`, error.message); continue; }
+      } catch (e) { /* fall through to queueing */ }
+    }
+    await idbQueueAdd({ table: 'students', action: 'bulk_update', payload: { class_name: next }, ids, baseRow: null, ts: Date.now() });
   }
 
+  renderOfflineBanner();
   closeModal();
   await loadAllData();
   renderTab();
@@ -2728,16 +2794,24 @@ async function submitAddStudent() {
   const fee = document.getElementById('f-fee').value;
   const type = document.getElementById('f-type').value;
   if (!name || fee==='') return;
-  const { error } = await sb.from('students').insert({
+  const payload = {
+    id: crypto.randomUUID ? crypto.randomUUID() : `local-${Date.now()}`,
     owner_id: CURRENT_USER.id,
     name, name_ur: document.getElementById('f-name-ur').value.trim() || null, father_name: document.getElementById('f-father').value,
     class_name: document.getElementById('f-class').value,
     student_type: type,
     admission_date: dateVal('f-admission'),
     monthly_fee: type==='paying' ? Number(fee) : 0, contact: document.getElementById('f-contact').value, status:'active'
+  };
+  // Offline-aware: a brand-new student, so there's nothing on the server yet
+  // to conflict with — safe to just insert once the connection is back.
+  const { queued, error } = await offlineWrite({
+    table: 'students', action: 'insert', payload, id: payload.id, baseRow: null,
+    run: () => sb.from('students').insert(payload),
+    optimisticApply: () => { DATA.students.push(payload); idbPutRow('students', payload); }
   });
-  if (reportSaveError(error)) return;
-  closeModal(); await loadAllData(); renderTab();
+  if (!queued && reportSaveError(error)) return;
+  closeModal(); if (!queued) await loadAllData(); renderTab();
 }
 
 // Builds the same 12-month (Feb-Jan academic year) ledger rows used on the physical
@@ -2941,27 +3015,41 @@ function openStudentDetail(id, viewYear) {
   `);
 }
 
+// Shared offline-aware single-student update — used by the name/class/type
+// edit functions below. `patch` is just the changed column(s).
+async function offlineUpdateStudent(studentId, patch) {
+  const baseRow = DATA.students.find(x => x.id === studentId) || null;
+  return offlineWrite({
+    table: 'students', action: 'update', payload: patch, id: studentId, baseRow,
+    run: () => sb.from('students').update(patch).eq('id', studentId),
+    optimisticApply: () => {
+      const idx = DATA.students.findIndex(x => x.id === studentId);
+      if (idx >= 0) { DATA.students[idx] = { ...DATA.students[idx], ...patch }; idbPutRow('students', DATA.students[idx]); }
+    }
+  });
+}
+
 async function updateStudentType(studentId) {
   const type = document.getElementById('d-type').value;
   const update = { student_type: type };
   if (type !== 'paying') update.monthly_fee = 0;
-  const { error } = await sb.from('students').update(update).eq('id', studentId);
-  if (reportSaveError(error)) return;
-  await loadAllData(); openStudentDetail(studentId);
+  const { queued, error } = await offlineUpdateStudent(studentId, update);
+  if (!queued && reportSaveError(error)) return;
+  if (!queued) await loadAllData(); openStudentDetail(studentId);
 }
 
 async function updateStudentNameUr(studentId) {
   const nameUr = document.getElementById('d-name-ur').value.trim();
-  const { error } = await sb.from('students').update({ name_ur: nameUr || null }).eq('id', studentId);
-  if (reportSaveError(error)) return;
-  await loadAllData(); openStudentDetail(studentId);
+  const { queued, error } = await offlineUpdateStudent(studentId, { name_ur: nameUr || null });
+  if (!queued && reportSaveError(error)) return;
+  if (!queued) await loadAllData(); openStudentDetail(studentId);
 }
 
 async function updateStudentClass(studentId) {
   const cls = document.getElementById('d-class').value;
-  const { error } = await sb.from('students').update({ class_name: cls }).eq('id', studentId);
-  if (reportSaveError(error)) return;
-  await loadAllData(); openStudentDetail(studentId);
+  const { queued, error } = await offlineUpdateStudent(studentId, { class_name: cls });
+  if (!queued && reportSaveError(error)) return;
+  if (!queued) await loadAllData(); openStudentDetail(studentId);
 }
 
 async function submitFeePayment(studentId) {
@@ -3017,9 +3105,10 @@ async function submitFeePayment(studentId) {
   // Only auto-fire the parent notification for a genuinely new entry dated today —
   // not when correcting/updating an existing month's entry (that would otherwise
   // re-notify the parent every time a typo is fixed), and not for backdated /
-  // historical entries (data import, past-month catch-up). Skipped entirely
-  // while queued offline, since WhatsApp needs a connection anyway.
-  if (!queued && isNewEntry && student && date === todayISO()) {
+  // historical entries (data import, past-month catch-up). Fired even while
+  // the fee entry itself is still queued offline — opening WhatsApp doesn't
+  // touch our own connection, and WhatsApp handles sending once it has one.
+  if (isNewEntry && student && date === todayISO()) {
     const msg = `Dear Parent, fee of Rs ${Number(amount).toLocaleString()} for ${student.name} (${month}) has been received. Thank you. - School`;
     openFatherWhatsapp(student.contact, msg); // opens WhatsApp (PC/laptop or phone), pre-filled, ready to send
   }
@@ -5951,10 +6040,24 @@ async function doDelete(kind, id) {
   // database can't silently block the delete or leave orphaned payment records.
   let err = null;
   if (kind==='student') {
-    const r1 = await sb.from('fee_payments').delete().eq('student_id', id);
-    if (r1.error) err = r1.error;
-    const r2 = await sb.from('students').delete().eq('id', id);
-    if (r2.error) err = r2.error;
+    // Offline-aware: queues the student's fee_payments deletes and the
+    // student delete itself; all applied to the local cache immediately.
+    const relatedPayments = DATA.feePayments.filter(x => x.student_id === id);
+    for (const fp of relatedPayments) {
+      const r1 = await offlineWrite({
+        table: 'fee_payments', action: 'delete', payload: null, id: fp.id, baseRow: fp,
+        run: () => sb.from('fee_payments').delete().eq('id', fp.id),
+        optimisticApply: () => { DATA.feePayments = DATA.feePayments.filter(x => x.id !== fp.id); idbDeleteRow('fee_payments', fp.id); }
+      });
+      if (!r1.queued && r1.error) err = r1.error;
+    }
+    const baseStudent = DATA.students.find(x => x.id === id) || null;
+    const r2 = await offlineWrite({
+      table: 'students', action: 'delete', payload: null, id, baseRow: baseStudent,
+      run: () => sb.from('students').delete().eq('id', id),
+      optimisticApply: () => { DATA.students = DATA.students.filter(x => x.id !== id); idbDeleteRow('students', id); }
+    });
+    if (!r2.queued && r2.error) err = r2.error;
   }
   if (kind==='teacher') {
     const r1 = await sb.from('salary_payments').delete().eq('teacher_id', id);
