@@ -2070,7 +2070,7 @@ function renderTab() {
   else if (TAB==='admissionRegister') main.innerHTML = tplAdmissionRegister();
   else if (TAB==='teacherRegister') main.innerHTML = tplTeacherRegister();
   else if (TAB==='classLogins') main.innerHTML = tplClassLogins();
-  else if (TAB==='admin') { main.innerHTML = tplAdmin(); loadWhitelist(); loadSubscriptionsAdmin(); return; }
+  else if (TAB==='admin') { main.innerHTML = tplAdmin(); loadAdminLists(); return; }
   main.innerHTML += `<div class="notice">${esc(t.sharedNotice)}</div>`;
   main.innerHTML += `<div class="notice" style="margin-top:8px;font-size:10px;">${esc(t.copyrightNotice)}</div>`;
 }
@@ -2095,21 +2095,40 @@ function tplAdmin() {
       <p class="desc" style="margin-top:0;">${esc(t.confirmOtpDesc)}</p>
     </div>
 
-    <div class="card" style="margin-bottom:16px;">
-      <h3 style="margin-top:0;">${esc(t.whitelistedSchools)}</h3>
-      <div id="wl-list">…</div>
-    </div>
+    <div id="admin-lists-loading" class="notice" style="margin-bottom:16px;">${esc(t.loadingData || 'Loading…')}</div>
 
-    <div class="card" style="margin-bottom:16px;">
-      <h3 style="margin-top:0;">${esc(t.pendingPayments)}</h3>
-      <div id="pending-list">…</div>
-    </div>
+    <div id="admin-lists" class="hidden">
+      <div class="card" style="margin-bottom:16px;">
+        <h3 style="margin-top:0;">${esc(t.whitelistedSchools)}</h3>
+        <div id="wl-list"></div>
+      </div>
 
-    <div class="card">
-      <h3 style="margin-top:0;">${esc(t.subscriptionsTitle)}</h3>
-      <div id="sub-list">…</div>
+      <div class="card" style="margin-bottom:16px;">
+        <h3 style="margin-top:0;">${esc(t.pendingPayments)}</h3>
+        <div id="pending-list"></div>
+      </div>
+
+      <div class="card">
+        <h3 style="margin-top:0;">${esc(t.subscriptionsTitle)}</h3>
+        <div id="sub-list"></div>
+      </div>
     </div>
   `;
+}
+
+// The three admin lists load independently over the network (and can take
+// several seconds on a slow connection). Filling them in one by one as each
+// finishes made the page keep growing/shrinking under the admin's thumb
+// while they scrolled — it read as the whole panel "wobbling". Instead we
+// keep them in a hidden container and reveal all three together, once,
+// after every load has settled — a single layout change instead of several
+// staggered ones.
+async function loadAdminLists() {
+  await Promise.allSettled([loadWhitelist(), loadSubscriptionsAdmin()]);
+  const loading = document.getElementById('admin-lists-loading');
+  const lists = document.getElementById('admin-lists');
+  if (loading) loading.classList.add('hidden');
+  if (lists) lists.classList.remove('hidden');
 }
 
 // Loads every school's subscription row (creating a sensible default in the
@@ -2125,38 +2144,55 @@ async function loadSubscriptionsAdmin() {
     sb.from('subscriptions').select('*'),
     sb.from('payment_submissions').select('*').eq('status', 'pending').order('submitted_at', { ascending: false })
   ]);
-  if (e1 || e2 || e3) { if (el) el.innerHTML = `<div class="err">${esc((e1||e2||e3).message)}</div>`; return; }
+  // Profiles feed both cards (names + the school list), so if that query
+  // itself fails, neither card can render — show the error in both.
+  if (e1) {
+    if (el) el.innerHTML = `<div class="err">${esc(e1.message)}</div>`;
+    if (pendEl) pendEl.innerHTML = `<div class="err">${esc(e1.message)}</div>`;
+    return;
+  }
 
-  const subMap = {};
-  (subs || []).forEach(s => { subMap[s.school_id] = s; });
   const nameOf = id => { const p = (profs||[]).find(x => x.id === id); return p ? (p.school_name || p.school_code || id) : id; };
 
+  // Subscriptions and pending-payments are otherwise independent queries —
+  // one failing (e.g. a missing/renamed table) must not leave the other
+  // card stuck on its loading placeholder forever.
   if (el) {
-    el.innerHTML = !profs || !profs.length ? `<div class="empty">${esc(t.noWhitelistYet)}</div>` : profs.map(p => {
-      const s = subMap[p.id] || { plan_type: 'monthly', monthly_price: 0, paid_until: '' };
-      return `
-      <div class="card" style="margin-bottom:10px;">
-        <div class="nm">${esc(p.school_name || '—')} <span style="opacity:.5;font-size:11px;">(${esc(p.school_code || '—')})</span></div>
-        <label><span>${esc(t.planType)}</span>
-          <select id="plan-${p.id}">
-            <option value="monthly" ${s.plan_type === 'monthly' ? 'selected' : ''}>${esc(t.monthlyPlan)}</option>
-            <option value="lifetime" ${s.plan_type === 'lifetime' ? 'selected' : ''}>${esc(t.lifetimePlan)}</option>
-          </select>
-        </label>
-        <label><span>${esc(t.monthlyPrice)}</span><input id="price-${p.id}" type="number" value="${s.monthly_price || 0}"></label>
-        <label><span>${esc(t.paidUntil)}</span><input id="paiduntil-${p.id}" type="date" value="${s.paid_until || ''}"></label>
-        <button class="btn-primary" style="width:100%;" onclick="guardedSubmit(this, () => saveSubscription('${p.id}'))">${esc(t.save)}</button>
-      </div>`;
-    }).join('');
+    if (e2) {
+      el.innerHTML = `<div class="err">${esc(e2.message)}</div>`;
+    } else {
+      const subMap = {};
+      (subs || []).forEach(s => { subMap[s.school_id] = s; });
+      el.innerHTML = !profs || !profs.length ? `<div class="empty">${esc(t.noWhitelistYet)}</div>` : profs.map(p => {
+        const s = subMap[p.id] || { plan_type: 'monthly', monthly_price: 0, paid_until: '' };
+        return `
+        <div class="card" style="margin-bottom:10px;">
+          <div class="nm">${esc(p.school_name || '—')} <span style="opacity:.5;font-size:11px;">(${esc(p.school_code || '—')})</span></div>
+          <label><span>${esc(t.planType)}</span>
+            <select id="plan-${p.id}">
+              <option value="monthly" ${s.plan_type === 'monthly' ? 'selected' : ''}>${esc(t.monthlyPlan)}</option>
+              <option value="lifetime" ${s.plan_type === 'lifetime' ? 'selected' : ''}>${esc(t.lifetimePlan)}</option>
+            </select>
+          </label>
+          <label><span>${esc(t.monthlyPrice)}</span><input id="price-${p.id}" type="number" value="${s.monthly_price || 0}"></label>
+          <label><span>${esc(t.paidUntil)}</span><input id="paiduntil-${p.id}" type="date" value="${s.paid_until || ''}"></label>
+          <button class="btn-primary" style="width:100%;" onclick="guardedSubmit(this, () => saveSubscription('${p.id}'))">${esc(t.save)}</button>
+        </div>`;
+      }).join('');
+    }
   }
 
   if (pendEl) {
-    pendEl.innerHTML = !pending || !pending.length ? `<div class="notice">${esc(t.noPendingPayments)}</div>` :
-      pending.map(row => `
-      <div class="list-row">
-        <div><div class="nm">${esc(nameOf(row.school_id))}</div><div class="sub">${esc(t.trxIdLabel)}: ${esc(row.trx_id)} · ${esc(t.submittedOn)} ${esc(fmtDate(row.submitted_at))}</div></div>
-        <button class="btn-primary" style="width:auto;padding:6px 10px;white-space:nowrap;" onclick="guardedSubmit(this, () => approvePending('${row.id}','${row.school_id}'))">${esc(t.approve)}</button>
-      </div>`).join('');
+    if (e3) {
+      pendEl.innerHTML = `<div class="err">${esc(e3.message)}</div>`;
+    } else {
+      pendEl.innerHTML = !pending || !pending.length ? `<div class="notice">${esc(t.noPendingPayments)}</div>` :
+        pending.map(row => `
+        <div class="list-row">
+          <div><div class="nm">${esc(nameOf(row.school_id))}</div><div class="sub">${esc(t.trxIdLabel)}: ${esc(row.trx_id)} · ${esc(t.submittedOn)} ${esc(fmtDate(row.submitted_at))}</div></div>
+          <button class="btn-primary" style="width:auto;padding:6px 10px;white-space:nowrap;" onclick="guardedSubmit(this, () => approvePending('${row.id}','${row.school_id}'))">${esc(t.approve)}</button>
+        </div>`).join('');
+    }
   }
 }
 
