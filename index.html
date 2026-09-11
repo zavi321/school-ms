@@ -972,7 +972,7 @@ let _idbPromise = null;
 function idbOpen() {
   if (_idbPromise) return _idbPromise;
   _idbPromise = new Promise((resolve, reject) => {
-    const req = indexedDB.open(IDB_NAME, 2);
+    const req = indexedDB.open(IDB_NAME, 3);
     req.onupgradeneeded = () => {
       const db = req.result;
       READ_CACHE_TABLES.forEach(tbl => { if (!db.objectStoreNames.contains(tbl)) db.createObjectStore(tbl, { keyPath: 'id' }); });
@@ -980,6 +980,10 @@ function idbOpen() {
       // DMC certificate config (logo, school name, subjects, design) — cached
       // locally so certificates can be generated/printed with zero internet.
       if (!db.objectStoreNames.contains('dmc_config')) db.createObjectStore('dmc_config', { keyPath: 'id' });
+      // Marks Sheet data — one row per academic year (keyed by the year
+      // itself), cached locally so the sheet can be viewed, edited, and
+      // printed/exported with zero internet.
+      if (!db.objectStoreNames.contains('marks_sheet_data')) db.createObjectStore('marks_sheet_data', { keyPath: 'id' });
     };
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);
@@ -4592,19 +4596,19 @@ function tplDMC() {
 
       <label>
         <span>School Name (for DMC)</span>
-        <input type="text" id="dmc-school-name" value="${esc(dmcSchoolName)}" placeholder="e.g., ISLAMIA SCHOOL & COLLEGE MARTUNG" onchange="dmcSchoolName=this.value; saveDMCConfig();">
+        <input type="text" id="dmc-school-name" autocomplete="off" value="${esc(dmcSchoolName)}" placeholder="e.g., ISLAMIA SCHOOL & COLLEGE MARTUNG" onchange="dmcSchoolName=this.value; saveDMCConfig();">
       </label>
       <label>
         <span>Tagline (optional)</span>
-        <input type="text" id="dmc-tagline" value="${esc(dmcTagline)}" placeholder="e.g., Nurturing Knowledge, Building Character" onchange="dmcTagline=this.value; saveDMCConfig();">
+        <input type="text" id="dmc-tagline" autocomplete="off" value="${esc(dmcTagline)}" placeholder="e.g., Nurturing Knowledge, Building Character" onchange="dmcTagline=this.value; saveDMCConfig();">
       </label>
       <label>
         <span>Academic Session (optional)</span>
-        <input type="text" id="dmc-session" value="${esc(dmcAcademicSession)}" placeholder="e.g., 2025-2026" onchange="dmcAcademicSession=this.value; saveDMCConfig();">
+        <input type="text" id="dmc-session" autocomplete="off" value="${esc(dmcAcademicSession)}" placeholder="e.g., 2025-2026" onchange="dmcAcademicSession=this.value; saveDMCConfig();">
       </label>
       <label style="margin-bottom:0;">
         <span>Footer Quote (optional)</span>
-        <input type="text" id="dmc-quote" value="${esc(dmcQuote)}" placeholder="e.g., Education is the key to a bright future." onchange="dmcQuote=this.value; saveDMCConfig();">
+        <input type="text" id="dmc-quote" autocomplete="off" value="${esc(dmcQuote)}" placeholder="e.g., Education is the key to a bright future." onchange="dmcQuote=this.value; saveDMCConfig();">
       </label>
     </div>
 
@@ -4635,7 +4639,7 @@ function tplDMC() {
       <p style="font-size:12px;opacity:.7;">These apply to every certificate in this batch.</p>
       <label>
         <span>Section</span>
-        <input type="text" id="dmc-batch-section" value="${esc(dmcBatchSection)}" placeholder="e.g., A" onchange="dmcBatchSection=this.value;">
+        <input type="text" id="dmc-batch-section" autocomplete="off" value="${esc(dmcBatchSection)}" placeholder="e.g., A" onchange="dmcBatchSection=this.value;">
       </label>
       <label style="margin-bottom:0;">
         <span>Date of Issue</span>
@@ -4654,8 +4658,8 @@ function tplDMC() {
       <p style="font-size:12px;opacity:.7;">Define subjects and total marks (e.g., Urdu-100, English-100, Math-100)</p>
       <div id="dmc-subject-config" style="margin-bottom:8px;">
         <div style="display:flex;gap:6px;margin-bottom:8px;">
-          <input type="text" id="dmc-subj-name" placeholder="Subject Name" style="flex:1;">
-          <input type="number" id="dmc-subj-total" placeholder="Total Marks" style="flex:1;" value="100">
+          <input type="text" id="dmc-subj-name" autocomplete="off" placeholder="Subject Name" style="flex:1;">
+          <input type="number" id="dmc-subj-total" autocomplete="off" placeholder="Total Marks" style="flex:1;" value="100">
           <button class="btn-ghost" onclick="addDMCSubject()">Add</button>
         </div>
         <div id="dmc-subjects-list" style="display:flex;flex-wrap:wrap;gap:6px;"></div>
@@ -4765,8 +4769,8 @@ function renderDMCEditTable() {
   container.innerHTML = dmcResults.map((r, i) => `
     <div style="display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--line);padding:8px 0;">
       <div style="width:22px;font-size:13px;color:var(--ink);flex-shrink:0;">${r.serialNo}.</div>
-      <input type="text" style="flex:1;" value="${esc(r.studentName)}" placeholder="Student Name" oninput="dmcResults[${i}].studentName=this.value">
-      <input type="text" style="width:110px;flex-shrink:0;" value="${esc(r.rollNo)}" placeholder="Roll No." oninput="dmcResults[${i}].rollNo=this.value">
+      <input type="text" autocomplete="off" style="flex:1;" value="${esc(r.studentName)}" placeholder="Student Name" oninput="dmcResults[${i}].studentName=this.value">
+      <input type="text" autocomplete="off" style="width:110px;flex-shrink:0;" value="${esc(r.rollNo)}" placeholder="Roll No." oninput="dmcResults[${i}].rollNo=this.value">
     </div>
   `).join('');
 }
@@ -5273,8 +5277,23 @@ let msLoadedYear = null; // the year msStudents/msMarksData currently reflect
 let msYearsList = [];    // years this school has previously saved, for the dropdown
 
 async function loadMarksSheetYearsList() {
-  const { data } = await sb.from('marks_sheet_data').select('academic_year')
-    .eq('owner_id', CURRENT_USER.id).order('academic_year', { ascending: false });
+  if (!navigator.onLine) {
+    // No signal at all — build the years dropdown from whatever's cached locally.
+    const cached = await idbGetAll('marks_sheet_data');
+    msYearsList = cached.map(r => r.academic_year).filter(Boolean).sort().reverse();
+    return;
+  }
+  const { data, error } = await withTimeout(
+    sb.from('marks_sheet_data').select('academic_year')
+      .eq('owner_id', CURRENT_USER.id).order('academic_year', { ascending: false })
+  );
+  if (error) {
+    // Network hiccup — fall back to the local cache instead of leaving the
+    // dropdown empty.
+    const cached = await idbGetAll('marks_sheet_data');
+    msYearsList = cached.map(r => r.academic_year).filter(Boolean).sort().reverse();
+    return;
+  }
   msYearsList = (data || []).map(r => r.academic_year).filter(Boolean);
 }
 
@@ -5283,17 +5302,46 @@ async function loadMarksSheetData() {
   msLoaded = true;
   await loadMarksSheetYearsList();
   if (!msAcademicYear) msAcademicYear = msYearsList[0] || dmcAcademicSession || '';
+  const yearKey = msAcademicYear || 'Unspecified';
+  // No signal at all — skip straight to the local cache so the Marks Sheet
+  // tab still comes up with this year's data, and marks can be entered,
+  // printed, and exported with zero internet.
+  if (!navigator.onLine) {
+    const cached = await idbGetAll('marks_sheet_data');
+    applyMarksSheetData(cached.find(r => r.id === yearKey));
+    // msLoadedYear stays unset (not msAcademicYear) so a proper fetch is
+    // retried once back online, but msLoaded stays true so the sheet renders
+    // with the cached data now instead of getting stuck on the loading spinner.
+    return;
+  }
   msLoadedYear = msAcademicYear;
-  const { data } = await sb.from('marks_sheet_data').select('*')
-    .eq('owner_id', CURRENT_USER.id).eq('academic_year', msAcademicYear).maybeSingle();
-  if (data) {
-    msClasses = data.classes && data.classes.length ? data.classes : msClasses;
-    msSubjects = data.subjects || [];
-    msStudents = data.students || {};
-    msMarksData = data.marks || {};
+  const { data, error } = await withTimeout(
+    sb.from('marks_sheet_data').select('*')
+      .eq('owner_id', CURRENT_USER.id).eq('academic_year', msAcademicYear).maybeSingle()
+  );
+  if (error) {
+    // Network hiccup — fall back to whatever was cached from the last
+    // successful load instead of showing a blank sheet.
+    const cached = await idbGetAll('marks_sheet_data');
+    applyMarksSheetData(cached.find(r => r.id === yearKey));
+    msLoadedYear = null;
+    return;
+  }
+  applyMarksSheetData(data);
+  await idbPutRow('marks_sheet_data', { id: yearKey, ...(data || { owner_id: CURRENT_USER.id, academic_year: yearKey, classes: msClasses, subjects: [], students: {}, marks: {} }) });
+}
+
+// Applies a loaded marks-sheet row (from Supabase or the local cache) to the
+// working globals. `row` is undefined/null when nothing has been saved yet
+// for this year, in which case the sheet starts blank rather than showing
+// whatever a previously-loaded year left in memory.
+function applyMarksSheetData(row) {
+  if (row) {
+    msClasses = row.classes && row.classes.length ? row.classes : msClasses;
+    msSubjects = row.subjects || [];
+    msStudents = row.students || {};
+    msMarksData = row.marks || {};
   } else {
-    // No saved sheet yet for this year — start blank rather than showing
-    // whatever a previously-loaded year left in memory.
     msSubjects = []; msStudents = {}; msMarksData = {};
   }
 }
@@ -5306,18 +5354,45 @@ function changeMarksSheetYear(year) {
   loadMarksSheetData().then(renderTab);
 }
 
-// Debounced save so rapid marks entry (many onchange events) doesn't spam the database.
+// Local cache write happens IMMEDIATELY (not debounced) — so an edit is never
+// lost even if the tab/app is backgrounded (app switched, notification panel
+// pulled down, screen locked, etc.) a moment after typing. Only the network
+// call to Supabase is debounced, to avoid spamming the server on every keystroke.
+let msFlushPending = null;
 function saveMarksSheetData() {
+  const yearKey = msAcademicYear || 'Unspecified';
+  const payload = {
+    owner_id: CURRENT_USER.id, academic_year: yearKey, classes: msClasses, subjects: msSubjects,
+    students: msStudents, marks: msMarksData, updated_at: new Date().toISOString()
+  };
+  // Cache locally right away — so the sheet reflects the latest edits even
+  // if the device goes offline, or the tab gets backgrounded, before the
+  // debounced network save below has a chance to run.
+  idbPutRow('marks_sheet_data', { id: yearKey, ...payload });
+
   clearTimeout(msSaveTimer);
-  msSaveTimer = setTimeout(async () => {
-    const { error } = await sb.from('marks_sheet_data').upsert({
-      owner_id: CURRENT_USER.id, academic_year: msAcademicYear || 'Unspecified', classes: msClasses, subjects: msSubjects,
-      students: msStudents, marks: msMarksData, updated_at: new Date().toISOString()
-    }, { onConflict: 'owner_id,academic_year' });
-    if (error) console.error('Marks sheet save failed:', error.message);
+  msFlushPending = async () => {
+    msFlushPending = null;
+    if (!navigator.onLine) { if (!msYearsList.includes(msAcademicYear)) msYearsList = [msAcademicYear, ...msYearsList]; return; }
+    const { error } = await sb.from('marks_sheet_data').upsert(payload, { onConflict: 'owner_id,academic_year' });
+    if (error) { if (!isNetworkError(error)) console.error('Marks sheet save failed:', error.message); }
     else if (!msYearsList.includes(msAcademicYear)) loadMarksSheetYearsList();
-  }, 500);
+  };
+  msSaveTimer = setTimeout(() => { if (msFlushPending) msFlushPending(); }, 500);
 }
+// If the app gets backgrounded (screen locked, app switched, notification
+// panel pulled down, tab hidden) before the 500ms debounce above fires, push
+// the pending save immediately — mobile browsers routinely pause/kill timers
+// in background tabs, so waiting for the timer there can lose the edit.
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden' && msFlushPending) {
+    clearTimeout(msSaveTimer);
+    msFlushPending();
+  }
+});
+window.addEventListener('pagehide', () => {
+  if (msFlushPending) { clearTimeout(msSaveTimer); msFlushPending(); }
+});
 
 function tplMarksSheet() {
   if (!msLoaded) { loadMarksSheetData().then(renderTab); return `<div style="padding:20px;text-align:center;opacity:.6;">${esc(t.loading||'Loading...')}</div>`; }
@@ -5346,10 +5421,10 @@ function tplMarksSheet() {
       
       tableHtml += `<tr style="border-bottom:1px solid #ddd;">
         <td style="padding:8px;text-align:left;font-weight:500;">${esc(student.name)}</td>
-        <td style="padding:4px;"><input type="text" value="${esc(student.fatherName||'')}" placeholder="Father Name" style="width:100%;padding:4px;border:1px solid #ccc;" onchange="msStudents['${msSelectedClass}'][${idx}].fatherName=this.value;saveMarksSheetData();"></td>
+        <td style="padding:4px;"><input type="text" autocomplete="off" value="${esc(student.fatherName||'')}" placeholder="Father Name" style="width:100%;padding:4px;border:1px solid #ccc;" onchange="msStudents['${msSelectedClass}'][${idx}].fatherName=this.value;saveMarksSheetData();"></td>
         ${msSubjects.map(subj => {
           const val = msMarksData[msSelectedClass][student.id][subj] || '';
-          return `<td style="padding:4px;"><input type="number" value="${val}" placeholder="—" style="width:100%;text-align:center;padding:4px;border:1px solid #ccc;" onchange="msMarksData['${msSelectedClass}']['${student.id}']['${subj}']=this.value;saveMarksSheetData();"></td>`;
+          return `<td style="padding:4px;"><input type="number" autocomplete="off" value="${val}" placeholder="—" style="width:100%;text-align:center;padding:4px;border:1px solid #ccc;" onchange="msMarksData['${msSelectedClass}']['${student.id}']['${subj}']=this.value;saveMarksSheetData();"></td>`;
         }).join('')}
         <td style="padding:4px;text-align:center;"><button class="btn-ghost" style="padding:0;font-size:11px;" onclick="removeMarksSheetStudent('${msSelectedClass}', ${idx})">✕</button></td>
       </tr>`;
@@ -5375,7 +5450,7 @@ function tplMarksSheet() {
       <h3 style="margin-top:0;">Classes</h3>
       <p style="font-size:11px;opacity:.6;">Add or remove classes</p>
       <div style="display:flex;gap:6px;margin-bottom:8px;">
-        <input type="text" id="ms-new-class" placeholder="Class Name (e.g., 1st, 2nd)" style="flex:1;">
+        <input type="text" id="ms-new-class" autocomplete="off" placeholder="Class Name (e.g., 1st, 2nd)" style="flex:1;">
         <button class="btn-ghost" onclick="addMarksSheetClass()">+ Add</button>
       </div>
       <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px;">
@@ -5392,7 +5467,7 @@ function tplMarksSheet() {
       <h3 style="margin-top:0;">Subjects</h3>
       <p style="font-size:11px;opacity:.6;">Add or remove subjects for this marks sheet</p>
       <div style="display:flex;gap:6px;margin-bottom:8px;">
-        <input type="text" id="ms-new-subject" placeholder="Subject Name (e.g., Urdu, Math)" style="flex:1;">
+        <input type="text" id="ms-new-subject" autocomplete="off" placeholder="Subject Name (e.g., Urdu, Math)" style="flex:1;">
         <button class="btn-ghost" onclick="addMarksSheetSubject()">+ Add</button>
       </div>
       <div style="display:flex;flex-wrap:wrap;gap:6px;">
@@ -5411,8 +5486,8 @@ function tplMarksSheet() {
       <p style="font-size:11px;opacity:.6;">Add students and enter marks</p>
       
       <div style="display:flex;gap:6px;margin-bottom:12px;">
-        <input type="text" id="ms-student-input" placeholder="Student Name" style="flex:1;">
-        <input type="text" id="ms-father-input" placeholder="Father Name" style="flex:1;">
+        <input type="text" id="ms-student-input" autocomplete="off" placeholder="Student Name" style="flex:1;">
+        <input type="text" id="ms-father-input" autocomplete="off" placeholder="Father Name" style="flex:1;">
         <button class="btn-ghost" onclick="addMarksSheetStudent()">+ Add Student</button>
       </div>
       
