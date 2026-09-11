@@ -955,7 +955,7 @@ let CURRENT_PROFILE = null; // { school_name }
 // UNLESS the same row was changed on another device in the meantime, in
 // which case that item is held and the user is asked which version to keep
 // (see renderSyncConflictModal), never overwritten silently.
-const OFFLINE_TABLES = ['fee_payments', 'students', 'teachers', 'salary_payments', 'teacher_attendance'];
+const OFFLINE_TABLES = ['fee_payments', 'students', 'teachers', 'salary_payments', 'teacher_attendance', 'transactions'];
 // Everything here is mirrored to IndexedDB purely for read access while
 // fully offline (e.g. opening the app with no signal at all) — only the
 // tables in OFFLINE_TABLES above also support making new changes offline.
@@ -4157,17 +4157,30 @@ async function submitAddTxn() {
   if (validItems.length === 0) return;
   const desc = validItems.map(it => `${it.name.trim()} (₨${fmt(Number(it.price))})`).join('; ');
   const amt = validItems.reduce((a,b)=>a+Number(b.price),0);
-  const { error } = await sb.from('transactions').insert({
+  const payload = {
+    id: crypto.randomUUID ? crypto.randomUUID() : `local-${Date.now()}`,
     owner_id: CURRENT_USER.id,
     type: txnType, category: document.getElementById('f-cat').value, description: desc,
     amount: amt, txn_date: dateVal('f-date')
+  };
+  // Offline-aware: a brand-new transaction, so there's nothing on the server
+  // yet to conflict with — safe to just insert once the connection is back.
+  const { queued, error } = await offlineWrite({
+    table: 'transactions', action: 'insert', payload, id: payload.id, baseRow: null,
+    run: () => sb.from('transactions').insert(payload),
+    optimisticApply: () => { DATA.transactions.push(payload); idbPutRow('transactions', payload); }
   });
-  if (reportSaveError(error)) return;
-  closeModal(); await loadAllData(); renderTab();
+  if (!queued && reportSaveError(error)) return;
+  closeModal(); if (!queued) await loadAllData(); renderTab();
 }
 async function deleteTxn(id) {
-  await sb.from('transactions').delete().eq('id', id);
-  await loadAllData(); renderTab();
+  const baseRow = DATA.transactions.find(x => x.id === id) || null;
+  const { queued } = await offlineWrite({
+    table: 'transactions', action: 'delete', payload: null, id, baseRow,
+    run: () => sb.from('transactions').delete().eq('id', id),
+    optimisticApply: () => { DATA.transactions = DATA.transactions.filter(x => x.id !== id); idbDeleteRow('transactions', id); }
+  });
+  if (!queued) await loadAllData(); renderTab();
 }
 
 function parseItemizedTxnDesc(desc) {
