@@ -942,11 +942,11 @@ let CURRENT_USER = null;   // { id, email }
 let CURRENT_PROFILE = null; // { school_name }
 
 // ---------------- Offline Support (IndexedDB cache + sync queue) ----------------
-// Phase 1 covers fee_payments — the day-to-day action most likely to happen
-// with no signal. To extend to another table later: add its name to
-// OFFLINE_TABLES, mirror it in offlineCacheStore/offlineCacheRestore, and
-// route its writes through offlineWrite() the same way submitFeePayment and
-// deleteFeePayment do below.
+// Covers fee_payments, students, and teachers — the day-to-day actions most
+// likely to happen with no signal. To extend to another table later: add its
+// name to OFFLINE_TABLES, mirror it in offlineCacheStore/offlineCacheRestore,
+// and route its writes through offlineWrite() the same way submitFeePayment,
+// submitAddStudent, and submitAddTeacher do below.
 //
 // How it works: every successful online loadAllData() mirrors these tables
 // into IndexedDB. While offline, writes are applied immediately to DATA (so
@@ -955,7 +955,7 @@ let CURRENT_PROFILE = null; // { school_name }
 // UNLESS the same row was changed on another device in the meantime, in
 // which case that item is held and the user is asked which version to keep
 // (see renderSyncConflictModal), never overwritten silently.
-const OFFLINE_TABLES = ['fee_payments', 'students'];
+const OFFLINE_TABLES = ['fee_payments', 'students', 'teachers', 'salary_payments'];
 // Everything here is mirrored to IndexedDB purely for read access while
 // fully offline (e.g. opening the app with no signal at all) — only the
 // tables in OFFLINE_TABLES above also support making new changes offline.
@@ -3314,15 +3314,23 @@ async function submitAddTeacher() {
   const qualification = document.getElementById('f-qualification').value.trim();
   const salary = document.getElementById('f-salary').value;
   if (!name || !qualification || salary==='') return;
-  const { error } = await sb.from('teachers').insert({
+  const payload = {
+    id: crypto.randomUUID ? crypto.randomUUID() : `local-${Date.now()}`,
     owner_id: CURRENT_USER.id,
     name, subject: document.getElementById('f-subject').value,
     qualification,
     monthly_salary: Number(salary), join_date: dateVal('f-join'),
     contact: document.getElementById('f-contact').value
+  };
+  // Offline-aware: a brand-new teacher, so there's nothing on the server yet
+  // to conflict with — safe to just insert once the connection is back.
+  const { queued, error } = await offlineWrite({
+    table: 'teachers', action: 'insert', payload, id: payload.id, baseRow: null,
+    run: () => sb.from('teachers').insert(payload),
+    optimisticApply: () => { DATA.teachers.push(payload); idbPutRow('teachers', payload); }
   });
-  if (reportSaveError(error)) return;
-  closeModal(); await loadAllData(); renderTab();
+  if (!queued && reportSaveError(error)) return;
+  closeModal(); if (!queued) await loadAllData(); renderTab();
 }
 
 let attendanceDraft = {}; // { teacherId: { am:'present'|'absent'|'leave'|undefined, pm: same } } — working state for the currently open Mark Attendance modal
@@ -3946,29 +3954,60 @@ async function submitSalaryPayment(teacherId) {
   const amount = base + bonus + extra;
   if (!amount) return;
 
+  // Looked up from the local cache (works offline too) — doubles as the
+  // "before" snapshot for conflict checks when the queue is later replayed.
+  const existingRow = DATA.salaryPayments.find(x => x.teacher_id === teacherId && x.month === month) || null;
+
+  const payload = {
+    id: existingRow ? existingRow.id : (crypto.randomUUID ? crypto.randomUUID() : `local-${Date.now()}`),
+    owner_id: CURRENT_USER.id, teacher_id: teacherId, month,
+    amount, attendance_bonus: bonus, extra_class_fee: extra, pay_date: date
+  };
   // Root-level duplicate prevention: an atomic upsert keyed on the
   // (teacher_id, month) UNIQUE constraint in the database (same fix, and same
   // one-time SQL migration, as fee_payments above) — makes a duplicate salary
   // entry for the same teacher+month impossible, even under a race condition.
-  const { error } = await sb.from('salary_payments').upsert({
-    owner_id: CURRENT_USER.id, teacher_id: teacherId, month,
-    amount, attendance_bonus: bonus, extra_class_fee: extra, pay_date: date
-  }, { onConflict: 'teacher_id,month' });
-  if (reportSaveError(error)) return;
-  await loadAllData();
+  //
+  // Offline-aware: with no signal this is applied to the local copy right
+  // away and queued — it syncs automatically once the connection is back
+  // (see offlineWrite/flushSyncQueue), with a manual conflict prompt if
+  // another device changed this same month's entry in the meantime.
+  const { queued, error } = await offlineWrite({
+    table: 'salary_payments', action: 'upsert', payload, id: payload.id, onConflict: 'teacher_id,month',
+    baseRow: existingRow,
+    run: () => sb.from('salary_payments').upsert(payload, { onConflict: 'teacher_id,month' }),
+    optimisticApply: () => {
+      const idx = DATA.salaryPayments.findIndex(x => x.id === payload.id);
+      if (idx >= 0) DATA.salaryPayments[idx] = { ...DATA.salaryPayments[idx], ...payload };
+      else DATA.salaryPayments.push(payload);
+      idbPutRow('salary_payments', payload);
+    }
+  });
+  if (!queued && reportSaveError(error)) return;
   const tc = DATA.teachers.find(x=>x.id===teacherId);
-  if (tc && tc.contact) {
+  // Skipped while queued offline — wa.me needs to actually reach the internet
+  // to open at all, so trying it with no connection just pops a jarring
+  // "No internet" browser page right after the save. Send it manually (once
+  // back online) instead.
+  if (!queued && tc && tc.contact) {
     const msg = LANG==='ur'
       ? `السلام علیکم ${tc.name}، آپ کی تنخواہ ماہ ${monthLabel(month)} کے لیے روپے ${fmt(amount)} ادا کر دی گئی ہے۔ شکریہ۔`
       : `Assalam-o-Alaikum ${tc.name}, your salary of Rs${fmt(amount)} for ${monthLabel(month)} has been paid. Thank you.`;
     const link = teacherWaLink(tc.contact, msg);
     if (link) window.open(link, '_blank');
   }
+  if (!queued) await loadAllData();
   openTeacherDetail(teacherId);
 }
 async function deleteSalaryPayment(paymentId, teacherId) {
-  await sb.from('salary_payments').delete().eq('id', paymentId);
-  await loadAllData(); openTeacherDetail(teacherId);
+  const baseRow = DATA.salaryPayments.find(x => x.id === paymentId) || null;
+  const { queued } = await offlineWrite({
+    table: 'salary_payments', action: 'delete', payload: null, id: paymentId, baseRow,
+    run: () => sb.from('salary_payments').delete().eq('id', paymentId),
+    optimisticApply: () => { DATA.salaryPayments = DATA.salaryPayments.filter(x => x.id !== paymentId); idbDeleteRow('salary_payments', paymentId); }
+  });
+  if (!queued) await loadAllData();
+  openTeacherDetail(teacherId);
 }
 
 function printSalaryVoucher(paymentId, teacherId) {
@@ -6072,12 +6111,34 @@ async function doDelete(kind, id) {
     if (!r2.queued && r2.error) err = r2.error;
   }
   if (kind==='teacher') {
-    const r1 = await sb.from('salary_payments').delete().eq('teacher_id', id);
-    if (r1.error) err = r1.error;
-    const r1b = await sb.from('teacher_attendance').delete().eq('teacher_id', id);
-    if (r1b.error) err = r1b.error;
-    const r2 = await sb.from('teachers').delete().eq('id', id);
-    if (r2.error) err = r2.error;
+    // Offline-aware: queues the teacher's salary_payments + attendance deletes
+    // and the teacher delete itself; all applied to the local cache immediately
+    // (mirrors the student/fee_payments cascade above).
+    const relatedSalary = DATA.salaryPayments.filter(x => x.teacher_id === id);
+    for (const sp of relatedSalary) {
+      const r1 = await offlineWrite({
+        table: 'salary_payments', action: 'delete', payload: null, id: sp.id, baseRow: sp,
+        run: () => sb.from('salary_payments').delete().eq('id', sp.id),
+        optimisticApply: () => { DATA.salaryPayments = DATA.salaryPayments.filter(x => x.id !== sp.id); idbDeleteRow('salary_payments', sp.id); }
+      });
+      if (!r1.queued && r1.error) err = r1.error;
+    }
+    const relatedAttendance = DATA.teacherAttendance.filter(x => x.teacher_id === id);
+    for (const ta of relatedAttendance) {
+      const r1b = await offlineWrite({
+        table: 'teacher_attendance', action: 'delete', payload: null, id: ta.id, baseRow: ta,
+        run: () => sb.from('teacher_attendance').delete().eq('id', ta.id),
+        optimisticApply: () => { DATA.teacherAttendance = DATA.teacherAttendance.filter(x => x.id !== ta.id); idbDeleteRow('teacher_attendance', ta.id); }
+      });
+      if (!r1b.queued && r1b.error) err = r1b.error;
+    }
+    const baseTeacher = DATA.teachers.find(x => x.id === id) || null;
+    const r2 = await offlineWrite({
+      table: 'teachers', action: 'delete', payload: null, id, baseRow: baseTeacher,
+      run: () => sb.from('teachers').delete().eq('id', id),
+      optimisticApply: () => { DATA.teachers = DATA.teachers.filter(x => x.id !== id); idbDeleteRow('teachers', id); }
+    });
+    if (!r2.queued && r2.error) err = r2.error;
   }
   if (kind==='admissionEntry') {
     const r1 = await sb.from('admission_register').delete().eq('id', id);
