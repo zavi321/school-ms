@@ -4755,13 +4755,10 @@ function tplDMC() {
     <div class="card">
       <h3 style="margin-top:0;">Class</h3>
       <p style="font-size:12px;opacity:.7;">Select which class this batch of certificates is for. This is used for every certificate in this upload — unless the Excel file itself has its own "Class" column, in which case that overrides it per row.</p>
-      <label style="margin-bottom:0;">
-        <span>Select Class</span>
-        <select id="dmc-class" onchange="onDMCClassChange()">
-          <option value="" ${!dmcSelectedClass ? 'selected' : ''}>— Select Class —</option>
-          ${CLASS_OPTIONS.map(c => `<option value="${esc(c)}" ${c===dmcSelectedClass ? 'selected' : ''}>${esc(c)}</option>`).join('')}
-        </select>
-      </label>
+      <div style="margin-bottom:0;">
+        <label for="dmc-class" style="display:block;font-size:12px;font-weight:500;opacity:.7;margin-bottom:4px;">Class</label>
+        <input type="text" id="dmc-class" autocomplete="off" value="${esc(dmcSelectedClass)}" placeholder="e.g., 5th" oninput="selectDMCClass(this.value)">
+      </div>
     </div>
 
     <div class="card">
@@ -4818,11 +4815,10 @@ function tplDMC() {
   `;
 }
 
-function onDMCClassChange() {
-  // If results are already loaded and their rows have no per-row class of their own
-  // (i.e. the Excel file didn't specify one), keep them in sync with the dropdown.
-  const cls = document.getElementById('dmc-class').value;
+function selectDMCClass(cls) {
   dmcSelectedClass = cls;
+  // If results are already loaded and their rows have no per-row class of
+  // their own (i.e. the Excel file didn't specify one), keep them in sync.
   dmcResults.forEach(r => { if (!r.classFromExcel) r.class = cls; });
 }
 
@@ -4971,8 +4967,7 @@ function clearDMCSubjects() {
 
 function handleDMCExcelUpload(file) {
   if (!file) return;
-  const selectedClass = document.getElementById('dmc-class').value;
-  dmcSelectedClass = selectedClass;
+  const selectedClass = dmcSelectedClass;
   const reader = new FileReader();
   reader.onload = (e) => {
     try {
@@ -5201,13 +5196,13 @@ function renderDMCCertificate(result) {
 
           <!-- Title banner -->
           <div style="text-align:center;">
-            <div style="display:inline-block;background:${pc};color:${bg};padding:9px 26px;border-radius:6px;font-weight:900;font-size:14px;letter-spacing:.06em;">${esc((dmcDesign.certTitle || 'DETAIL MARKS CERTIFICATE').toUpperCase())}</div>
+            <div style="display:inline-block;background:${pc};color:#fff;padding:9px 26px;border-radius:6px;font-weight:900;font-size:14px;letter-spacing:.06em;">${esc((dmcDesign.certTitle || 'DETAIL MARKS CERTIFICATE').toUpperCase())}</div>
             ${dmcAcademicSession ? `<div style="margin-top:10px;"><span style="display:inline-block;border:1px solid ${ac};color:${pc};padding:4px 18px;border-radius:999px;font-size:11px;font-weight:900;letter-spacing:.03em;">ACADEMIC SESSION: ${esc(dmcAcademicSession)}</span></div>` : ''}
           </div>
 
           <!-- Student Information section -->
           <div style="margin:14px 0 0;">
-            <div style="display:inline-block;background:${pc};color:${acLight};padding:7px 18px;font-size:13px;font-weight:900;letter-spacing:.05em;border-radius:4px 10px 4px 4px;">STUDENT INFORMATION</div>
+            <div style="display:inline-block;background:${pc};color:#fff;padding:7px 18px;font-size:13px;font-weight:900;letter-spacing:.05em;border-radius:4px 10px 4px 4px;">STUDENT INFORMATION</div>
           </div>
           <div style="border:1px solid ${ac};border-radius:10px;padding:12px 18px 2px;margin-top:8px;">
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 20px;">
@@ -5227,7 +5222,7 @@ function renderDMCCertificate(result) {
           <!-- Marks Table -->
           <table style="width:100%;border-collapse:collapse;margin:8px 0;">
             <thead>
-              <tr style="background:${pc};color:${acLight};">
+              <tr style="background:${pc};color:#fff;">
                 <th style="padding:8px 12px;text-align:center;font-weight:900;font-size:11px;letter-spacing:.04em;width:44px;">S.NO</th>
                 <th style="padding:8px 12px;text-align:left;font-weight:900;font-size:11px;letter-spacing:.04em;">SUBJECT</th>
                 <th style="padding:8px 12px;text-align:center;font-weight:900;font-size:11px;letter-spacing:.04em;">TOTAL MARKS</th>
@@ -5238,9 +5233,9 @@ function renderDMCCertificate(result) {
             <tbody>
               ${subjectsHtml}
               <tr style="background:${acLight};font-weight:900;">
-                <td colspan="2" style="padding:8px 12px;text-align:left;color:${pc};">TOTAL</td>
-                <td style="padding:8px 12px;text-align:center;color:${pc};font-size:15px;">${totalPossible}</td>
-                <td style="padding:8px 12px;text-align:center;color:${pc};font-size:15px;">${totalObtained}</td>
+                <td colspan="2" style="padding:8px 12px;text-align:left;color:#fff;">TOTAL</td>
+                <td style="padding:8px 12px;text-align:center;color:#fff;font-size:15px;">${totalPossible}</td>
+                <td style="padding:8px 12px;text-align:center;color:#fff;font-size:15px;">${totalObtained}</td>
                 <td style="padding:8px 12px;text-align:center;color:${dmcGradeColor(grade)};font-size:14px;">${grade}</td>
               </tr>
               <!-- Result summary row: kept column-aligned directly under the TOTAL
@@ -5269,7 +5264,7 @@ function renderDMCCertificate(result) {
 
           <!-- Remarks -->
           <div style="display:flex;margin-top:10px;border:1px solid ${pc};border-radius:8px;overflow:hidden;">
-            <div style="background:${pc};color:${acLight};font-weight:900;font-size:13px;letter-spacing:.05em;padding:8px 22px;">REMARKS</div>
+            <div style="background:${pc};color:#fff;font-weight:900;font-size:13px;letter-spacing:.05em;padding:8px 22px;">REMARKS</div>
             <div style="flex:1;display:flex;align-items:center;justify-content:center;gap:8px;font-weight:900;font-size:13px;letter-spacing:.05em;color:${dmcGradeColor(grade)};">${dmcRemarkFor(grade)}</div>
           </div>
 
