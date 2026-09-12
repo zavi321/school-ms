@@ -1113,6 +1113,38 @@ async function offlineWrite({ table, action, payload, id, onConflict, baseRow, r
   return { queued: true };
 }
 
+// On a weak/flaky connection the browser's 'online' event can fire the
+// instant a signal blip reconnects — and can keep firing repeatedly as the
+// connection flickers — completely independent of whatever the user happens
+// to be doing at that moment. flushSyncQueue() below runs on every 'online'
+// event and, once done, used to call renderTab() unconditionally: that tears
+// down and rebuilds the ENTIRE current tab, including any input the user is
+// mid-keystroke in, on ANY screen — which is exactly the "keyboard closes as
+// soon as I type" bug, happening at effectively random moments tied to
+// connection flakiness rather than to any particular field or tab. That's
+// also why it started once the offline/sync feature was added, and why it
+// showed up everywhere at once rather than in one place.
+// safeRenderTab() defers that redraw if the user is currently typing in a
+// field inside #main, and fires it once they leave that field instead — the
+// data has already synced either way, this only delays the *visual* refresh.
+let pendingRenderOnBlur = false;
+function safeRenderTab() {
+  const ae = document.activeElement;
+  const main = document.getElementById('main');
+  if (ae && main && main.contains(ae) && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA')) {
+    pendingRenderOnBlur = true;
+    return;
+  }
+  renderTab();
+}
+document.addEventListener('focusout', (e) => {
+  if (!pendingRenderOnBlur) return;
+  if (!e.target || (e.target.tagName !== 'INPUT' && e.target.tagName !== 'TEXTAREA')) return;
+  pendingRenderOnBlur = false;
+  // Let the blur/value-commit finish first, then redraw with fresh data.
+  setTimeout(() => { if (TAB) renderTab(); }, 0);
+});
+
 async function flushSyncQueue() {
   if (SYNCING || !navigator.onLine) return;
   SYNCING = true;
@@ -1135,7 +1167,7 @@ async function flushSyncQueue() {
   SYNCING = false;
   renderOfflineBanner();
   if (conflicts.length) { PENDING_CONFLICTS = conflicts; renderSyncConflictModal(); }
-  else { await loadAllData(); if (TAB) renderTab(); }
+  else { await loadAllData(); if (TAB) safeRenderTab(); }
 }
 
 function renderSyncConflictModal() {
@@ -1169,7 +1201,7 @@ async function resolveConflict(choice) {
   await idbQueueRemove(c.qid);
   closeModal();
   if (PENDING_CONFLICTS.length) renderSyncConflictModal();
-  else { await loadAllData(); if (TAB) renderTab(); }
+  else { await loadAllData(); if (TAB) safeRenderTab(); }
 }
 
 async function renderOfflineBanner() {
@@ -2317,7 +2349,12 @@ function smoothSwapHtml(el, newHtml) {
 async function loadWhitelist() {
   const el = document.getElementById('wl-list');
   if (!el) return;
-  const { data, error } = await sb.from('whitelist_emails').select('*').order('created_at', { ascending: false });
+  // withTimeout is required here — on a weak/unstable connection a plain
+  // await never resolves, so the skeleton shimmer (see .skel-line) is left
+  // running forever instead of ever being swapped for real content or an
+  // error. That reads as the panel "wobbling" nonstop with nothing ever
+  // loading, saving, or deleting.
+  const { data, error } = await withTimeout(sb.from('whitelist_emails').select('*').order('created_at', { ascending: false }));
   if (error) { smoothSwapHtml(el, `<div class="err">${esc(error.message)}</div>`); return; }
   if (!data || !data.length) { smoothSwapHtml(el, `<div class="notice">${esc(t.noWhitelistYet)}</div>`); return; }
   const statusLabel = s => s==='verified' ? t.statusVerified : s==='signup_attempted' ? t.statusAttempted : t.statusWhitelisted;
@@ -2334,7 +2371,7 @@ async function loadWhitelist() {
 }
 
 async function markWhitelistVerified(email) {
-  const { data, error } = await sb.from('whitelist_emails').update({ status: 'verified', verified_at: new Date().toISOString() }).eq('email', email).select();
+  const { data, error } = await withTimeout(sb.from('whitelist_emails').update({ status: 'verified', verified_at: new Date().toISOString() }).eq('email', email).select());
   if (reportSaveError(error)) return;
   if (!data || !data.length) { reportSaveError({ message: LANG === 'ur' ? 'اجازت نہیں ملی — تصدیق محفوظ نہیں ہوئی۔' : 'No row was updated — likely blocked by a database permission (RLS) rule.' }); return; }
   loadWhitelist();
@@ -2345,7 +2382,7 @@ async function submitAddWhitelist() {
   const msg = document.getElementById('wl-add-msg');
   msg.innerHTML = '';
   if (!email) return;
-  const { data, error } = await sb.from('whitelist_emails').insert({ email, added_by: CURRENT_USER.id }).select();
+  const { data, error } = await withTimeout(sb.from('whitelist_emails').insert({ email, added_by: CURRENT_USER.id }).select());
   if (error) { msg.innerHTML = `<div class="err">${esc(error.message)}</div>`; return; }
   if (!data || !data.length) { msg.innerHTML = `<div class="err">${esc(LANG === 'ur' ? 'اجازت نہیں ملی — ای میل محفوظ نہیں ہوا۔' : 'No row was saved — likely blocked by a database permission (RLS) rule.')}</div>`; return; }
   msg.innerHTML = `<div class="ok">${esc(t.emailAdded)}</div>`;
@@ -4293,8 +4330,8 @@ function renderTxnItems() {
   const priceLabel = LANG==='ur' ? 'قیمت' : 'Price';
   el.innerHTML = txnItems.map((it, i) => `
     <div class="field-box" style="display:flex;gap:8px;align-items:flex-end;">
-      <label style="flex:2;margin-bottom:0;"><span>${esc(itemLabel)}</span><input value="${esc(it.name)}" oninput="updateTxnItem(${i},'name',this.value)"></label>
-      <label style="flex:1;margin-bottom:0;"><span>${esc(priceLabel)}</span><input type="number" value="${esc(it.price)}" oninput="updateTxnItem(${i},'price',this.value)"></label>
+      <label style="flex:2;margin-bottom:0;"><span>${esc(itemLabel)}</span><input id="txn-item-name-${i}" value="${esc(it.name)}" oninput="updateTxnItem(${i},'name',this.value)"></label>
+      <label style="flex:1;margin-bottom:0;"><span>${esc(priceLabel)}</span><input id="txn-item-price-${i}" type="number" value="${esc(it.price)}" oninput="updateTxnItem(${i},'price',this.value)"></label>
       ${txnItems.length>1 ? `<button class="del-btn" style="margin-bottom:10px;" onclick="removeTxnItem(${i})">✕</button>` : ''}
     </div>`).join('') +
     `<div id="txn-total-display" style="font-size:12px;opacity:.7;text-align:right;margin:-4px 4px 12px;">${esc(t.totalAmount)}: ₨${fmt(txnItemsTotal())}</div>`;
@@ -4305,8 +4342,25 @@ function updateTxnItem(i, field, val) {
   if (field === 'price' && isLast && val !== '' && Number(val) > 0) {
     // A price was just entered on the last row — open a fresh row for the
     // next item automatically, per the requested "add another box" flow.
+    // This rebuilds #txn-items (every input's DOM node gets torn down and
+    // recreated), which on mobile yanks focus off the field the user is
+    // still typing in and closes the keyboard. Capture the caret position
+    // on the field that triggered this and restore focus + caret to that
+    // SAME field id after the rebuild so the keyboard stays open.
+    const activeId = document.activeElement ? document.activeElement.id : null;
+    const selStart = document.activeElement ? document.activeElement.selectionStart : null;
+    const selEnd = document.activeElement ? document.activeElement.selectionEnd : null;
     txnItems.push({ name: '', price: '' });
     renderTxnItems();
+    if (activeId) {
+      const newEl = document.getElementById(activeId);
+      if (newEl) {
+        newEl.focus({ preventScroll: true });
+        if (selStart != null && newEl.setSelectionRange) {
+          try { newEl.setSelectionRange(selStart, selEnd); } catch (e) {}
+        }
+      }
+    }
   } else {
     const totalEl = document.getElementById('txn-total-display');
     if (totalEl) totalEl.textContent = `${t.totalAmount}: ₨${fmt(txnItemsTotal())}`;
