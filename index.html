@@ -943,6 +943,21 @@ function reportSaveError(error) {
   return true;
 }
 
+// A raw "TypeError: Failed to fetch" (the browser's generic network-failure
+// message) is meaningless to a non-technical user — it just means the
+// request never reached the server (no signal, airplane mode, DNS hiccup,
+// etc). Used by spots that show error.message inline (Account Settings)
+// rather than through the reportSaveError() alert above.
+function friendlyErrorMsg(error) {
+  const msg = (error && error.message) || '';
+  if (/failed to fetch/i.test(msg) || /networkerror/i.test(msg) || /load failed/i.test(msg)) {
+    return LANG === 'ur'
+      ? 'انٹرنیٹ کنکشن نہیں مل رہا۔ براہ کرم سگنل چیک کر کے دوبارہ کوشش کریں۔'
+      : 'No internet connection. Please check your signal and try again.';
+  }
+  return msg;
+}
+
 let DATA = { students:[], feePayments:[], teachers:[], salaryPayments:[], transactions:[], admissionRegister:[], teacherAttendance:[], holidays:[], classLogins:[] };
 let TAB = 'dashboard';
 let CURRENT_USER = null;   // { id, email }
@@ -2149,49 +2164,40 @@ function tplAdmin() {
       <p class="desc" style="margin-top:0;">${esc(t.confirmOtpDesc)}</p>
     </div>
 
-    <div id="admin-lists-loading">
-      <div class="skel-card"><div class="skel-line" style="width:50%;"></div><div class="skel-line"></div><div class="skel-line" style="width:80%;"></div></div>
-      <div class="skel-card"><div class="skel-line" style="width:40%;"></div><div class="skel-line" style="width:70%;"></div></div>
-      <div class="skel-card"><div class="skel-line" style="width:45%;"></div><div class="skel-line"></div><div class="skel-line" style="width:60%;"></div></div>
-    </div>
-
-    <div id="admin-lists" class="hidden">
+    <div id="admin-lists">
       <div class="card" style="margin-bottom:16px;">
         <h3 style="margin-top:0;">${esc(t.whitelistedSchools)}</h3>
-        <div id="wl-list"></div>
+        <div id="wl-list"><div class="skel-line" style="width:60%;"></div><div class="skel-line" style="width:40%;"></div></div>
       </div>
 
       <div class="card" style="margin-bottom:16px;">
         <h3 style="margin-top:0;">${esc(t.pendingPayments)}</h3>
-        <div id="pending-list"></div>
+        <div id="pending-list"><div class="skel-line" style="width:50%;"></div></div>
       </div>
 
       <div class="card">
         <h3 style="margin-top:0;">${esc(t.subscriptionsTitle)}</h3>
-        <div id="sub-list"></div>
+        <div id="sub-list"><div class="skel-line" style="width:55%;"></div><div class="skel-line" style="width:35%;"></div></div>
       </div>
     </div>
   `;
 }
 
 // The three admin lists load independently over the network (and can take
-// several seconds on a slow connection). Filling them in one by one as each
-// finishes made the page keep growing/shrinking under the admin's thumb
-// while they scrolled — it read as the whole panel "wobbling". Keeping them
-// in a hidden container and revealing all three together (once, after every
-// load has settled) turned that into a single layout change instead of
-// several staggered ones — but on a slow connection that one change can
-// still be a big, sudden jump in page height, which itself reads as a
-// "wobble" of the page around it. The skeleton placeholders above (shown
-// while loading) approximate the real cards' height, so that final swap is
-// much smaller and less jarring; fading the real lists in (instead of
-// snapping them from hidden to visible) softens what jump remains.
+// several seconds on a slow connection). This used to fill a separate
+// skeleton block, then hide it and reveal all three *real* cards together
+// once every load had settled — which meant the page's height jumped from
+// "three generic skeleton cards" to "however tall the real lists actually
+// are" in one sudden step, felt as the whole panel "wobbling" whenever a
+// school directory (or pending-payments queue) was longer than the guessed
+// skeleton height. Rendering the real card *structure* immediately (headers,
+// borders, spacing all present from the first paint) and only ever swapping
+// the small shimmer inside each individual list div for that list's own
+// content — never the other two — keeps each update contained to the one
+// card that actually finished loading, instead of one big reveal of all
+// three at once.
 async function loadAdminLists() {
   await Promise.allSettled([loadWhitelist(), loadSubscriptionsAdmin()]);
-  const loading = document.getElementById('admin-lists-loading');
-  const lists = document.getElementById('admin-lists');
-  if (loading) loading.remove();
-  if (lists) { lists.classList.remove('hidden'); lists.classList.add('tab-fade'); }
 }
 
 // Loads every school's subscription row (creating a sensible default in the
@@ -2380,7 +2386,7 @@ async function saveSchoolCode() {
   if (!code) { codeMsg.innerHTML = `<div class="err">${esc(t.parentSchoolCodeRequired)}</div>`; return; }
   const { error } = await sb.from('profiles').update({ school_code: code }).eq('id', CURRENT_USER.id);
   if (error) {
-    codeMsg.innerHTML = `<div class="err">${error.code === '23505' ? esc(t.parentSchoolCodeTaken) : esc(error.message)}</div>`;
+    codeMsg.innerHTML = `<div class="err">${error.code === '23505' ? esc(t.parentSchoolCodeTaken) : esc(friendlyErrorMsg(error))}</div>`;
     return;
   }
   CURRENT_PROFILE.school_code = code;
@@ -2502,17 +2508,17 @@ async function submitSettings() {
 
   if (schoolName && schoolName !== CURRENT_PROFILE.school_name) {
     const { error } = await sb.from('profiles').update({ school_name: schoolName }).eq('id', CURRENT_USER.id);
-    if (error) { msg.innerHTML = `<div class="err">${esc(error.message)}</div>`; return; }
+    if (error) { msg.innerHTML = `<div class="err">${esc(friendlyErrorMsg(error))}</div>`; return; }
     CURRENT_PROFILE.school_name = schoolName;
   }
   if (schoolNameUr !== (CURRENT_PROFILE.school_name_ur || '')) {
     const { error } = await sb.from('profiles').update({ school_name_ur: schoolNameUr || null }).eq('id', CURRENT_USER.id);
-    if (error) { msg.innerHTML = `<div class="err">${esc(error.message)}</div>`; return; }
+    if (error) { msg.innerHTML = `<div class="err">${esc(friendlyErrorMsg(error))}</div>`; return; }
     CURRENT_PROFILE.school_name_ur = schoolNameUr;
   }
   if (newPw) {
     const { error } = await sb.auth.updateUser({ password: newPw });
-    if (error) { msg.innerHTML = `<div class="err">${esc(error.message)}</div>`; return; }
+    if (error) { msg.innerHTML = `<div class="err">${esc(friendlyErrorMsg(error))}</div>`; return; }
   }
   msg.innerHTML = `<div class="ok">${esc(t.settingsSaved)}</div>`;
   document.querySelector('header .eyebrow').textContent = CURRENT_PROFILE.school_name;
@@ -4811,6 +4817,13 @@ function addDMCSubject() {
 function renderDMCEditTable() {
   const container = document.getElementById('dmc-edit-table');
   if (!container) return;
+  // Same protection as applyDMCConfigToFields(): never blow away a row the
+  // user is actively typing into (Student Name / Roll No.) — this container
+  // gets rebuilt from a few different places (Excel upload, config load),
+  // and any of them landing mid-keystroke used to be able to reproduce the
+  // exact same "keyboard closes on tap" symptom for these two fields.
+  const active = document.activeElement;
+  if (active && container.contains(active) && (active.tagName === 'INPUT' || active.tagName === 'SELECT' || active.tagName === 'TEXTAREA')) return;
   if (dmcResults.length === 0) { container.innerHTML = `<p style="font-size:12px;opacity:.5;">Upload a result list above to edit roll numbers.</p>`; return; }
   container.innerHTML = dmcResults.map((r, i) => `
     <div style="display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--line);padding:8px 0;">
