@@ -5081,10 +5081,11 @@ function renderDMCCertificate(result) {
   const grade = dmcGradeFor(percentage);
   const resultStatus = percentage >= 40 ? 'PASS' : 'FAIL';
 
-  // Position in class
+  // Position in class — dense ranking: a 3-way tie at 1st is followed by
+  // 2nd next (not 4th), so ties never skip position numbers.
   const classResults = dmcResults.filter(r => r.class === result.class);
   const classTotals = classResults.map(r => dmcSubjects.reduce((a, s) => a + (Number(r.marks[s.name]) || 0), 0));
-  const sortedTotals = [...classTotals].sort((a, b) => b - a);
+  const sortedTotals = [...new Set(classTotals)].sort((a, b) => b - a);
   const position = sortedTotals.indexOf(totalObtained) + 1;
   const ordinal = n => {
     const s = ['th','st','nd','rd'], v = n % 100;
@@ -5344,7 +5345,7 @@ async function saveDMCRecords(results) {
     const percentage = totalPossible ? +(totalObtained / totalPossible * 100).toFixed(1) : 0;
     const classTotals = results.filter(x => x.class === r.class)
       .map(x => dmcSubjects.reduce((a, s) => a + (Number(x.marks[s.name]) || 0), 0));
-    const position = [...classTotals].sort((a, b) => b - a).indexOf(totalObtained) + 1;
+    const position = [...new Set(classTotals)].sort((a, b) => b - a).indexOf(totalObtained) + 1;
     return {
       owner_id: CURRENT_USER.id, academic_year: year, class_name: r.class || '',
       roll_no: r.rollNo || '', student_name: r.studentName || '', father_name: r.fatherName || '',
