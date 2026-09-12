@@ -14,7 +14,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https:; connect-src 'self' https://*.supabase.co wss://*.supabase.co; frame-ancestors 'none'; base-uri 'self'; form-action 'self';">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https:; connect-src 'self' https://*.supabase.co wss://*.supabase.co; manifest-src 'self' blob:; frame-ancestors 'none'; base-uri 'self'; form-action 'self';">
 <meta name="referrer" content="strict-origin-when-cross-origin">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, interactive-widget=resizes-visual">
 <title>School Finance & Records</title>
@@ -6568,6 +6568,40 @@ function getCheckinQueue() {
 }
 function setCheckinQueue(q) { localStorage.setItem(CHECKIN_QUEUE_KEY, JSON.stringify(q)); }
 
+// Swaps the page's manifest to one whose start_url is THIS check-in link
+// (with the token baked in), so a teacher who taps "Add to Home Screen" /
+// "Install app" gets an icon that reopens straight to their check-in screen
+// every day — not the main owner login. Only ever called from the check-in
+// entry flow below; the normal app keeps using the static manifest.json.
+function setupCheckinManifest(token, schoolName) {
+  try {
+    const manifest = {
+      name: (schoolName ? schoolName + ' — ' : '') + t.checkinTitle,
+      short_name: t.checkinTitle,
+      start_url: './?checkin=' + encodeURIComponent(token),
+      scope: './',
+      display: 'standalone',
+      orientation: 'portrait',
+      background_color: '#FAF6EC',
+      theme_color: '#0F2740',
+      icons: [
+        { src: 'icon-180.png', sizes: '180x180', type: 'image/png' },
+        { src: 'icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
+        { src: 'icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' }
+      ]
+    };
+    const blobUrl = URL.createObjectURL(new Blob([JSON.stringify(manifest)], { type: 'application/manifest+json' }));
+    const link = document.querySelector('link[rel="manifest"]');
+    if (link) link.setAttribute('href', blobUrl);
+    // iOS ignores the manifest for Add to Home Screen but does read this meta
+    // tag for the label, and always launches to whatever URL was on screen
+    // when the shortcut was added — so this alone is enough to cover iOS.
+    const appleTitle = document.querySelector('meta[name="apple-mobile-web-app-title"]');
+    if (appleTitle) appleTitle.setAttribute('content', schoolName || t.checkinTitle);
+    document.title = (schoolName ? schoolName + ' — ' : '') + t.checkinTitle;
+  } catch (e) { /* Add to Home Screen just falls back to the main app's manifest — not fatal. */ }
+}
+
 async function renderCheckinEntry(token) {
   document.getElementById('loading').classList.add('hidden');
   renderAuthShell(`<div id="checkin-body"><div style="text-align:center;padding:20px 0;opacity:.6;">…</div></div>`);
@@ -6588,6 +6622,7 @@ async function loadCheckinTeachers(token) {
         teachers = data.map(r => ({ id: r.id, name: r.name }));
         schoolName = data[0].school_name || '';
         localStorage.setItem(checkinTeacherListCacheKey(token), JSON.stringify({ teachers, schoolName }));
+        setupCheckinManifest(token, schoolName);
       } else if (!error && data && data.length === 0) {
         // Valid RPC call, zero rows: either an invalid token or a school with no teachers yet.
         teachers = [];
@@ -6597,7 +6632,7 @@ async function loadCheckinTeachers(token) {
   if (teachers === null) {
     try {
       const cached = JSON.parse(localStorage.getItem(checkinTeacherListCacheKey(token)) || 'null');
-      if (cached) { teachers = cached.teachers; schoolName = cached.schoolName; }
+      if (cached) { teachers = cached.teachers; schoolName = cached.schoolName; setupCheckinManifest(token, schoolName); }
     } catch(e) {}
   }
   if (teachers === null) {
@@ -6757,11 +6792,43 @@ function setClassQueue(q) { localStorage.setItem(CLASS_QUEUE_KEY, JSON.stringify
 
 let CLASS_PORTAL_SCREEN = 'menu'; // 'menu' | 'attendance' | 'marks' | 'register' | 'marksView' | 'addStudent'
 
+// Same idea as setupCheckinManifest() above, but for the class attendance
+// portal (?class=1). No token needs to be baked into the URL here — the
+// class login persists in localStorage (CLASS_SESSION_KEY) — so every class's
+// icon shares the same start_url and just relogs in automatically from that
+// saved session. Only the displayed name/title changes per class.
+function setupClassPortalManifest(className) {
+  try {
+    const manifest = {
+      name: (className ? className + ' — ' : '') + t.classPortalTitle,
+      short_name: className || t.classPortalTitle,
+      start_url: './?class=1',
+      scope: './',
+      display: 'standalone',
+      orientation: 'portrait',
+      background_color: '#FAF6EC',
+      theme_color: '#0F2740',
+      icons: [
+        { src: 'icon-180.png', sizes: '180x180', type: 'image/png' },
+        { src: 'icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
+        { src: 'icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' }
+      ]
+    };
+    const blobUrl = URL.createObjectURL(new Blob([JSON.stringify(manifest)], { type: 'application/manifest+json' }));
+    const link = document.querySelector('link[rel="manifest"]');
+    if (link) link.setAttribute('href', blobUrl);
+    const appleTitle = document.querySelector('meta[name="apple-mobile-web-app-title"]');
+    if (appleTitle) appleTitle.setAttribute('content', className || t.classPortalTitle);
+    document.title = (className ? className + ' — ' : '') + t.classPortalTitle;
+  } catch (e) { /* Add to Home Screen just falls back to the main app's manifest — not fatal. */ }
+}
+
 async function renderClassPortalEntry() {
   document.getElementById('loading').classList.add('hidden');
   renderAuthShell(`<div id="class-portal-body"><div style="text-align:center;padding:20px 0;opacity:.6;">…</div></div>`);
   await flushClassQueue(); // clear any older offline writes first
   const session = getClassSession();
+  setupClassPortalManifest(session && session.className);
   if (session) {
     CLASS_PORTAL_SCREEN = 'menu';
     // Silently try to refresh the roster if online; the cached one still works if this fails.
@@ -6812,6 +6879,7 @@ async function submitClassPortalLogin() {
       schoolCode, loginId, password,
       ownerId: data[0].owner_id, className: data[0].class_name, teacherName: data[0].teacher_name || '', students: data[0].students || []
     });
+    setupClassPortalManifest(data[0].class_name);
     CLASS_PORTAL_SCREEN = 'menu';
     renderClassPortalMenu();
   } catch(e) {
