@@ -2165,39 +2165,22 @@ function tplAdmin() {
     </div>
 
     <div id="admin-lists">
-      <div class="card" style="margin-bottom:16px;">
+      <div class="card">
         <h3 style="margin-top:0;">${esc(t.whitelistedSchools)}</h3>
         <div id="wl-list"><div class="skel-line" style="width:60%;"></div><div class="skel-line" style="width:40%;"></div></div>
-      </div>
-
-      <div class="card" style="margin-bottom:16px;">
-        <h3 style="margin-top:0;">${esc(t.pendingPayments)}</h3>
-        <div id="pending-list"><div class="skel-line" style="width:50%;"></div></div>
-      </div>
-
-      <div class="card">
-        <h3 style="margin-top:0;">${esc(t.subscriptionsTitle)}</h3>
-        <div id="sub-list"><div class="skel-line" style="width:55%;"></div><div class="skel-line" style="width:35%;"></div></div>
       </div>
     </div>
   `;
 }
 
-// The three admin lists load independently over the network (and can take
-// several seconds on a slow connection). This used to fill a separate
-// skeleton block, then hide it and reveal all three *real* cards together
-// once every load had settled — which meant the page's height jumped from
-// "three generic skeleton cards" to "however tall the real lists actually
-// are" in one sudden step, felt as the whole panel "wobbling" whenever a
-// school directory (or pending-payments queue) was longer than the guessed
-// skeleton height. Rendering the real card *structure* immediately (headers,
-// borders, spacing all present from the first paint) and only ever swapping
-// the small shimmer inside each individual list div for that list's own
-// content — never the other two — keeps each update contained to the one
-// card that actually finished loading, instead of one big reveal of all
-// three at once.
+// The admin lists load over the network (and can take a few seconds on a
+// slow connection). Rendering the real card structure immediately (header,
+// border, spacing all present from the first paint) and only ever swapping
+// the small shimmer inside the list div for its real content — rather than
+// hiding a whole block and revealing it later — keeps this from causing a
+// sudden page-height jump ("wobble") once the school directory loads in.
 async function loadAdminLists() {
-  await Promise.allSettled([loadWhitelist(), loadSubscriptionsAdmin()]);
+  await loadWhitelist();
 }
 
 // Loads every school's subscription row (creating a sensible default in the
@@ -2306,15 +2289,40 @@ async function approvePending(submissionId, schoolId) {
   loadSubscriptionsAdmin();
 }
 
+// Smoothly grows/shrinks a container from whatever height it's currently
+// showing (e.g. the 2-line loading shimmer) to whatever height the real
+// content actually needs, instead of snapping to it instantly. An instant
+// snap is exactly what reads as the page "wobbling" — a skeleton guessing
+// 2 lines and the real list turning out to have 15 rows (or vice versa)
+// is a sudden, jarring jump either way; animating it makes it read as
+// content settling in rather than the page jerking around.
+function smoothSwapHtml(el, newHtml) {
+  const startHeight = el.offsetHeight;
+  el.innerHTML = newHtml;
+  const endHeight = el.scrollHeight;
+  el.style.overflow = 'hidden';
+  el.style.maxHeight = startHeight + 'px';
+  // Force the browser to register the starting height before changing it,
+  // or the transition below has nothing to animate from.
+  void el.offsetHeight;
+  el.style.transition = 'max-height .25s ease';
+  el.style.maxHeight = endHeight + 'px';
+  setTimeout(() => {
+    el.style.maxHeight = '';
+    el.style.overflow = '';
+    el.style.transition = '';
+  }, 260);
+}
+
 async function loadWhitelist() {
   const el = document.getElementById('wl-list');
   if (!el) return;
   const { data, error } = await sb.from('whitelist_emails').select('*').order('created_at', { ascending: false });
-  if (error) { el.innerHTML = `<div class="err">${esc(error.message)}</div>`; return; }
-  if (!data || !data.length) { el.innerHTML = `<div class="notice">${esc(t.noWhitelistYet)}</div>`; return; }
+  if (error) { smoothSwapHtml(el, `<div class="err">${esc(error.message)}</div>`); return; }
+  if (!data || !data.length) { smoothSwapHtml(el, `<div class="notice">${esc(t.noWhitelistYet)}</div>`); return; }
   const statusLabel = s => s==='verified' ? t.statusVerified : s==='signup_attempted' ? t.statusAttempted : t.statusWhitelisted;
   const statusColor = s => s==='verified' ? '#1a7f37' : s==='signup_attempted' ? '#b8860b' : '#666';
-  el.innerHTML = data.map(row => `
+  smoothSwapHtml(el, data.map(row => `
     <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:10px 0;border-bottom:1px solid var(--line);">
       <span style="word-break:break-all;flex:1;">${esc(row.email)}</span>
       ${row.status === 'signup_attempted'
@@ -2322,7 +2330,7 @@ async function loadWhitelist() {
         : `<span style="font-size:11px;font-weight:600;color:${statusColor(row.status)};white-space:nowrap;">${esc(statusLabel(row.status))}</span>`
       }
       <button title="${esc(t.delete)}" style="flex-shrink:0;background:none;border:none;color:var(--rust);font-size:16px;cursor:pointer;padding:4px;" onclick="confirmDelete('whitelistEmail','${esc(row.email).replace(/'/g,"\\'")}')">🗑️</button>
-    </div>`).join('');
+    </div>`).join(''));
 }
 
 async function markWhitelistVerified(email) {
@@ -2689,12 +2697,47 @@ function toggleClassSection(cls) {
   renderTab();
 }
 function tplStudents() {
+  return `
+    <div style="padding-top:16px;">
+      <div class="type-filter">
+        <button class="${studentTypeFilter==='all'?'on':''}" onclick="setStudentTypeFilter('all')">${esc(t.all)}</button>
+        <button class="${studentTypeFilter==='paying'?'on':''}" onclick="setStudentTypeFilter('paying')">${esc(t.feePaying)}</button>
+        <button class="${studentTypeFilter==='free'?'on':''}" onclick="setStudentTypeFilter('free')">${esc(t.free)}</button>
+        <button class="${duesFilter!=='all'?'on':''}" onclick="setDuesFilter('due')">${esc(t.due)}</button>
+        ${duesFilter!=='all' ? studentDuesBuckets().map(b => `<button class="${duesFilter===String(b)?'on':''}" onclick="setDuesFilter('${b}')">₨${fmt(b)}+</button>`).join('') : ''}
+      </div>
+      <div class="searchbar">
+        <input id="student-search-input" placeholder="${esc(t.search)}" value="${esc(studentSearch)}" oninput="studentSearch=this.value; classPage={}; updateStudentsResults();">
+        <button class="icon-btn" onclick="openAddStudent()">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#E4C765" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg>
+        </button>
+      </div>
+      <div id="students-results">${tplStudentsResults()}</div>
+    </div>`;
+}
+
+// Split out from tplStudents() so that typing in the search box only ever
+// rewrites THIS container (#students-results) instead of the whole tab —
+// the search input, filter buttons, and add-student button are never torn
+// down while the user is mid-keystroke, so the mobile keyboard can't get
+// yanked closed by its own DOM node disappearing underneath it.
+function studentDuesBuckets() {
   // Dues category thresholds: fixed low tiers, then extend by ₨10,000 steps to
   // cover whatever the highest current due is, computed across ALL students
   // (not just the filtered list) so the buttons stay stable as filters change.
   const duesBuckets = [1000, 5000, 10000, 20000];
   const maxBalanceAll = Math.max(0, ...DATA.students.map(s => studentBalance(s.id)));
   for (let next = 30000; next <= maxBalanceAll; next += 10000) duesBuckets.push(next);
+  return duesBuckets;
+}
+
+function updateStudentsResults() {
+  const el = document.getElementById('students-results');
+  if (el) el.innerHTML = tplStudentsResults();
+}
+
+function tplStudentsResults() {
+  const duesBuckets = studentDuesBuckets();
   // Each category covers its range up to the next threshold; the highest
   // category has no upper limit.
   const duesRangeMatch = (balance, lower) => {
@@ -2746,20 +2789,6 @@ function tplStudents() {
   };
 
   return `
-    <div style="padding-top:16px;">
-      <div class="type-filter">
-        <button class="${studentTypeFilter==='all'?'on':''}" onclick="setStudentTypeFilter('all')">${esc(t.all)}</button>
-        <button class="${studentTypeFilter==='paying'?'on':''}" onclick="setStudentTypeFilter('paying')">${esc(t.feePaying)}</button>
-        <button class="${studentTypeFilter==='free'?'on':''}" onclick="setStudentTypeFilter('free')">${esc(t.free)}</button>
-        <button class="${duesFilter!=='all'?'on':''}" onclick="setDuesFilter('due')">${esc(t.due)}</button>
-        ${duesFilter!=='all' ? duesBuckets.map(b => `<button class="${duesFilter===String(b)?'on':''}" onclick="setDuesFilter('${b}')">₨${fmt(b)}+</button>`).join('') : ''}
-      </div>
-      <div class="searchbar">
-        <input id="student-search-input" placeholder="${esc(t.search)}" value="${esc(studentSearch)}" oninput="studentSearch=this.value; classPage={}; reFocusAfterRender('student-search-input');">
-        <button class="icon-btn" onclick="openAddStudent()">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#E4C765" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg>
-        </button>
-      </div>
       ${(() => {
         const overdueCount = DATA.students.filter(s => s.status!=='inactive' && monthsOverdue(s) >= 2).length;
         return `
@@ -2802,7 +2831,7 @@ function tplStudents() {
           ${collapsed ? '' : pageItems.map(studentCard).join('') + classPager}
         `;
         }).join('')}
-    </div>`;
+    `;
 }
 
 // ---------------- Promote All Students (bulk class advancement for a new academic year) ----------------
@@ -3365,22 +3394,19 @@ function printFeeCard(studentId, viewYear) {
 let teacherSearch = '';
 let teacherPage = 1;
 const TEACHERS_PAGE_SIZE = 30;
-function setTeacherSearch(v) { teacherSearch = v; teacherPage = 1; reFocusAfterRender('teacher-search-input'); }
-function setTeacherPage(p) { teacherPage = p; renderTab(); }
+function setTeacherSearch(v) { teacherSearch = v; teacherPage = 1; updateTeachersResults(); }
+function setTeacherPage(p) { teacherPage = p; updateTeachersResults(); }
+
+// Like tplStudents/tplStudentsResults: the search box and action buttons live
+// in the shell (tplTeachers) and are rendered exactly once when the tab
+// opens. Typing only rewrites #teachers-results, so the input's own DOM node
+// is never destroyed mid-keystroke and the mobile keyboard stays open.
+function updateTeachersResults() {
+  const el = document.getElementById('teachers-results');
+  if (el) el.innerHTML = tplTeachersResults();
+}
 
 function tplTeachers() {
-  const full = DATA.teachers.filter(tc => (tc.name+(tc.subject||'')).toLowerCase().includes(teacherSearch.toLowerCase()));
-  const totalPages = Math.max(1, Math.ceil(full.length / TEACHERS_PAGE_SIZE));
-  if (teacherPage > totalPages) teacherPage = totalPages;
-  const start = (teacherPage - 1) * TEACHERS_PAGE_SIZE;
-  const list = full.slice(start, start + TEACHERS_PAGE_SIZE);
-  const cur = monthKey();
-  const pager = full.length <= TEACHERS_PAGE_SIZE ? '' : `
-    <div class="flexgap" style="align-items:center;margin-top:12px;">
-      <button class="btn-ghost" ${teacherPage<=1?'disabled':''} onclick="setTeacherPage(${teacherPage-1})">‹ ${esc(t.previous)}</button>
-      <span style="font-size:12px;opacity:.65;white-space:nowrap;">${teacherPage} / ${totalPages}</span>
-      <button class="btn-ghost" ${teacherPage>=totalPages?'disabled':''} onclick="setTeacherPage(${teacherPage+1})">${esc(t.next)} ›</button>
-    </div>`;
   return `
     <div style="padding-top:16px;">
       <div class="searchbar">
@@ -3401,6 +3427,24 @@ function tplTeachers() {
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#E4C765" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg>
         </button>
       </div>
+      <div id="teachers-results">${tplTeachersResults()}</div>
+    </div>`;
+}
+
+function tplTeachersResults() {
+  const full = DATA.teachers.filter(tc => (tc.name+(tc.subject||'')).toLowerCase().includes(teacherSearch.toLowerCase()));
+  const totalPages = Math.max(1, Math.ceil(full.length / TEACHERS_PAGE_SIZE));
+  if (teacherPage > totalPages) teacherPage = totalPages;
+  const start = (teacherPage - 1) * TEACHERS_PAGE_SIZE;
+  const list = full.slice(start, start + TEACHERS_PAGE_SIZE);
+  const cur = monthKey();
+  const pager = full.length <= TEACHERS_PAGE_SIZE ? '' : `
+    <div class="flexgap" style="align-items:center;margin-top:12px;">
+      <button class="btn-ghost" ${teacherPage<=1?'disabled':''} onclick="setTeacherPage(${teacherPage-1})">‹ ${esc(t.previous)}</button>
+      <span style="font-size:12px;opacity:.65;white-space:nowrap;">${teacherPage} / ${totalPages}</span>
+      <button class="btn-ghost" ${teacherPage>=totalPages?'disabled':''} onclick="setTeacherPage(${teacherPage+1})">${esc(t.next)} ›</button>
+    </div>`;
+  return `
       ${list.length===0 ? `<div class="empty">${esc(t.noTeachers)}</div>` :
         list.map(tc=>{
           const paid = teacherPayments(tc.id).filter(p=>p.month===cur).reduce((a,b)=>a+Number(b.amount),0);
@@ -3412,7 +3456,7 @@ function tplTeachers() {
           </button>`;
         }).join('')}
       ${pager}
-    </div>`;
+    `;
 }
 
 function openAddTeacher() {
