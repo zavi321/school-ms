@@ -472,7 +472,28 @@
 <div id="print-area"></div>
 
 <script>
-const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+// Every Supabase call (auth, table queries, RPCs) goes through fetch under
+// the hood. On a weak/flaky mobile connection a request can just hang
+// instead of failing — the browser never gives up on its own for a long
+// time — which is what was leaving loading skeletons shimmering forever
+// with nothing loading, saving, or deleting. Rather than remembering to
+// wrap every individual call site (there are 70+ across this file, and any
+// new one added later would silently be unprotected again), this forces an
+// 8-second hard cutoff at the network layer itself: ONE fix that covers
+// every call, present and future. An aborted request comes back as a normal
+// {data:null, error} result (same shape the rest of the code already
+// expects), not a hang and not an uncaught exception.
+function timeoutFetch(timeoutMs = 8000) {
+  return (url, options = {}) => {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(timer));
+  };
+}
+
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+  global: { fetch: timeoutFetch() }
+});
 
 // A second, isolated Supabase client used ONLY when the admin confirms a
 // school's OTP code. auth.verifyOtp() would otherwise replace the current
@@ -480,7 +501,8 @@ const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 // keeps the admin logged in as themselves throughout.
 function makeOtpVerifyClient() {
   return supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-    auth: { persistSession: false, autoRefreshToken: false }
+    auth: { persistSession: false, autoRefreshToken: false },
+    global: { fetch: timeoutFetch() }
   });
 }
 
