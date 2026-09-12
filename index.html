@@ -984,6 +984,12 @@ let DATA = { students:[], feePayments:[], teachers:[], salaryPayments:[], transa
 let TAB = 'dashboard';
 let CURRENT_USER = null;   // { id, email }
 let CURRENT_PROFILE = null; // { school_name }
+// Remembers the id of the last account that successfully logged in on this
+// device. Used only as a fallback at boot when the device is offline (or on
+// too weak a signal) to confirm a live Supabase session — see boot() below —
+// so a school that logged in once with internet can still reopen the app
+// offline later instead of being stuck on a login screen they can't use.
+const LAST_UID_KEY = 'sms_last_uid';
 
 // ---------------- Offline Support (IndexedDB cache + sync queue) ----------------
 // Covers fee_payments, students, and teachers — the day-to-day actions most
@@ -1337,7 +1343,14 @@ async function boot() {
     }
   });
 
-  const { data:{ session } } = await sb.auth.getSession();
+  // Racing this against a timeout (like every other network call in this
+  // file) matters here specifically because the access token can be expired
+  // by the time the app is reopened: getSession() then tries to refresh it
+  // over the network, which simply hangs/fails when offline or on a weak
+  // signal, instead of falling back to the still-valid cached data below.
+  const sessionResult = await withTimeout(sb.auth.getSession(), 6000);
+  const session = sessionResult && sessionResult.data && sessionResult.data.session;
+  const sessionCheckFailed = !session && !!(sessionResult && sessionResult.error);
   // Give the PASSWORD_RECOVERY listener a tick to fire first if this load came from a reset-link click.
   await new Promise(r => setTimeout(r, 50));
   if (handledAsRecovery) { document.getElementById('loading').classList.add('hidden'); return; }
@@ -1345,6 +1358,22 @@ async function boot() {
   if (session && session.user) {
     CURRENT_USER = session.user;
     await afterLogin(); // hides #loading itself once data has actually arrived
+  } else if (!navigator.onLine || sessionCheckFailed) {
+    // Couldn't get a definitive session from the server (offline, or the
+    // check itself timed out/errored) — fall back to whichever account last
+    // logged in successfully on this device, if any, and let afterLogin()'s
+    // existing cached-profile/cached-data fallbacks take it from there. A
+    // clean "no session" answer from a reachable server (not this branch)
+    // still goes to the normal login screen below.
+    let lastUid = null;
+    try { lastUid = localStorage.getItem(LAST_UID_KEY); } catch (e) {}
+    if (lastUid) {
+      CURRENT_USER = { id: lastUid };
+      await afterLogin();
+    } else {
+      document.getElementById('loading').classList.add('hidden');
+      renderLogIn();
+    }
   } else {
     document.getElementById('loading').classList.add('hidden');
     renderLogIn();
@@ -1352,6 +1381,7 @@ async function boot() {
 }
 
 async function afterLogin() {
+  try { localStorage.setItem(LAST_UID_KEY, CURRENT_USER.id); } catch (e) {}
   const PROFILE_CACHE_KEY = 'sms_cached_profile_' + CURRENT_USER.id;
   const { data: prof, error: profErr } = await withTimeout(sb.from('profiles').select('*').eq('id', CURRENT_USER.id).maybeSingle());
   if (prof) {
@@ -1604,6 +1634,7 @@ async function submitLogIn() {
 
 async function logOut() {
   await sb.auth.signOut();
+  try { localStorage.removeItem(LAST_UID_KEY); } catch (e) {}
   CURRENT_USER = null; CURRENT_PROFILE = null;
   DATA = { students:[], feePayments:[], teachers:[], salaryPayments:[], transactions:[], admissionRegister:[], teacherAttendance:[], holidays:[] };
   document.getElementById('app').classList.add('hidden');
