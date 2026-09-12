@@ -1,4 +1,4 @@
-const CACHE_NAME = 'school-ms-cache-v1';
+const CACHE_NAME = 'school-ms-cache-v2';
 const APP_SHELL = ['./', './index.html', './manifest.json', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', (e) => {
@@ -37,8 +37,24 @@ self.addEventListener('fetch', (e) => {
     return;
   }
 
-  // App shell (index.html, css, etc.): network-first, so code updates always
-  // apply on the next visit — falls back to cache only when offline.
+  // Only manage this app's own same-origin GET requests (the shell: index.html,
+  // manifest, icons). Everything else — and in particular every Supabase call,
+  // which is cross-origin and mostly POST/PATCH/RPC — is left completely alone.
+  //
+  // Previously this branch caught ALL requests regardless of method or origin:
+  // it tried cache.put() on every Supabase response too, which throws for
+  // non-GET requests (the Cache API only accepts GET), and it forced every
+  // single database save/load through this extra network-first wrapper. On a
+  // slow or unstable mobile connection that adds real latency and retry
+  // overhead to every interaction in the app — typing, saving, opening a tab —
+  // which is exactly when this started going wrong.
+  let sameOriginGet = false;
+  try {
+    sameOriginGet = e.request.method === 'GET' && new URL(url).origin === self.location.origin;
+  } catch (err) { /* leave sameOriginGet false — treat as "not ours", pass through */ }
+
+  if (!sameOriginGet) return; // let the browser handle it normally, no interception
+
   e.respondWith(
     fetch(e.request)
       .then((response) => {
