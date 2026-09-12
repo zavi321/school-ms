@@ -5396,7 +5396,13 @@ function applyMarksSheetData(row) {
 function changeMarksSheetYear(year) {
   msAcademicYear = year || '';
   msLoadedYear = null; // force loadMarksSheetData() to actually refetch
-  loadMarksSheetData().then(renderTab);
+  loadMarksSheetData().then(() => {
+    if (TAB !== 'marksSheet') return;
+    const main = document.getElementById('main');
+    const active = document.activeElement;
+    if (active && main && main.contains(active) && (active.tagName === 'INPUT' || active.tagName === 'SELECT' || active.tagName === 'TEXTAREA')) return;
+    renderTab();
+  });
 }
 
 // Local cache write happens IMMEDIATELY (not debounced) — so an edit is never
@@ -5440,7 +5446,27 @@ window.addEventListener('pagehide', () => {
 });
 
 function tplMarksSheet() {
-  if (!msLoaded) { loadMarksSheetData().then(renderTab); return `<div style="padding:20px;text-align:center;opacity:.6;">${esc(t.loading||'Loading...')}</div>`; }
+  if (!msLoaded) {
+    // Previously this returned a bare "Loading..." placeholder (no inputs at
+    // all) and swapped in the *entire* real form via renderTab() once the
+    // network call finished — typically well under a second later. A tap
+    // landing right in that window races the swap: the finger goes down on
+    // the placeholder, but by the time the tap resolves, the real form
+    // (with real inputs) has replaced it underneath, which can open then
+    // immediately close the keyboard. Rendering the real form immediately
+    // (with whatever's currently in memory — empty defaults, the first
+    // time) means the inputs a user might tap are on the page from the very
+    // first paint, so there's nothing for a fast tap to race against; the
+    // fetch below just fills them in a moment later.
+    msLoaded = true;
+    loadMarksSheetData().then(() => {
+      if (TAB !== 'marksSheet') return;
+      const main = document.getElementById('main');
+      const active = document.activeElement;
+      if (active && main && main.contains(active) && (active.tagName === 'INPUT' || active.tagName === 'SELECT' || active.tagName === 'TEXTAREA')) return;
+      renderTab();
+    });
+  }
   if (!msSelectedClass && msClasses.length) msSelectedClass = msClasses[0];
   
   const classStudents = msStudents[msSelectedClass] || [];
