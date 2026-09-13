@@ -1011,7 +1011,7 @@ const LAST_UID_KEY = 'sms_last_uid';
 // UNLESS the same row was changed on another device in the meantime, in
 // which case that item is held and the user is asked which version to keep
 // (see renderSyncConflictModal), never overwritten silently.
-const OFFLINE_TABLES = ['fee_payments', 'students', 'teachers', 'salary_payments', 'teacher_attendance', 'transactions', 'holidays', 'class_logins'];
+const OFFLINE_TABLES = ['fee_payments', 'students', 'teachers', 'salary_payments', 'teacher_attendance', 'transactions', 'holidays', 'class_logins', 'admission_register'];
 // Everything here is mirrored to IndexedDB purely for read access while
 // fully offline (e.g. opening the app with no signal at all) — only the
 // tables in OFFLINE_TABLES above also support making new changes offline.
@@ -6013,40 +6013,70 @@ function registerLedgerTableHtml(rows) {
     </div>`;
 }
 
-// Manual pointer-drag scroll fallback for the ledger-book table. Native
-// overflow-x:auto + touch scrolling on this element was not engaging on
-// some devices/WebViews, so this drives scrollLeft directly from pointer
-// movement (touch-action:pan-y in CSS above cedes horizontal panning to
-// this instead of letting the browser's own — apparently non-working —
-// touch scroll fight it). Purely additive: mouse-wheel/shift-scroll and
-// any working native touch scroll keep working exactly as before.
+// Manual drag-scroll fallback for the ledger-book table(s) — both the
+// read-only list view and the wide input-form table inside the Add/Edit
+// modal use the same .regbook-screen-wrap class. Native overflow-x:auto +
+// touch scrolling on this element was not engaging on some devices/WebViews
+// (Pointer Events alone did not fix it either), so this drives scrollLeft
+// directly from raw touch/mouse movement instead of relying on the
+// browser's own touch-scroll handling for this element. Direction is
+// detected on the first few pixels of movement: a mostly-vertical drag is
+// left alone so the page still scrolls normally; only a mostly-horizontal
+// drag is taken over and animated via scrollLeft. Purely additive — mouse
+// wheel/shift-scroll and any already-working native scroll are untouched.
+let _regBookMouseBound = false;
+let _regBookDrag = { active: false, wrap: null, startX: 0, startScroll: 0, moved: false };
 function initRegBookScroll() {
+  if (!_regBookMouseBound) {
+    _regBookMouseBound = true;
+    window.addEventListener('mousemove', (e) => {
+      const d = _regBookDrag;
+      if (!d.active) return;
+      const dx = e.clientX - d.startX;
+      if (Math.abs(dx) > 3) d.moved = true;
+      d.wrap.scrollLeft = d.startScroll - dx;
+    });
+    window.addEventListener('mouseup', () => {
+      const d = _regBookDrag;
+      if (!d.active) return;
+      d.active = false;
+      d.wrap.classList.remove('rb-dragging');
+      if (d.moved) d.wrap.addEventListener('click', (ev) => ev.stopPropagation(), { once: true, capture: true });
+    });
+  }
   document.querySelectorAll('.regbook-screen-wrap').forEach(wrap => {
     if (wrap._dragScrollBound) return; // don't double-bind on re-render
     wrap._dragScrollBound = true;
-    let down = false, startX = 0, startScroll = 0, moved = false;
-    wrap.addEventListener('pointerdown', (e) => {
-      down = true; moved = false; startX = e.clientX; startScroll = wrap.scrollLeft;
-      try { wrap.setPointerCapture(e.pointerId); } catch (err) {}
+
+    wrap.addEventListener('mousedown', (e) => {
+      _regBookDrag = { active: true, wrap, startX: e.clientX, startScroll: wrap.scrollLeft, moved: false };
       wrap.classList.add('rb-dragging');
     });
-    wrap.addEventListener('pointermove', (e) => {
-      if (!down) return;
-      const dx = e.clientX - startX;
-      if (Math.abs(dx) > 3) moved = true;
-      wrap.scrollLeft = startScroll - dx;
+
+    let tStartX = 0, tStartY = 0, tStartScroll = 0, tMode = null, tMoved = false;
+    const THRESH = 6;
+    wrap.addEventListener('touchstart', (e) => {
+      const tt = e.touches[0];
+      tStartX = tt.clientX; tStartY = tt.clientY; tStartScroll = wrap.scrollLeft; tMode = null; tMoved = false;
+    }, { passive: true });
+    wrap.addEventListener('touchmove', (e) => {
+      const tt = e.touches[0];
+      const dx = tt.clientX - tStartX, dy = tt.clientY - tStartY;
+      if (tMode === null) {
+        if (Math.abs(dx) < THRESH && Math.abs(dy) < THRESH) return;
+        tMode = Math.abs(dx) > Math.abs(dy) ? 'h' : 'v';
+      }
+      if (tMode === 'h') {
+        e.preventDefault(); // take this gesture over from the page — it's a horizontal drag on the ledger
+        tMoved = true;
+        wrap.scrollLeft = tStartScroll - dx;
+      }
+      // tMode === 'v': leave it alone, let the page scroll vertically as normal
+    }, { passive: false });
+    wrap.addEventListener('touchend', () => {
+      if (tMode === 'h' && tMoved) wrap.addEventListener('click', (ev) => ev.stopPropagation(), { once: true, capture: true });
+      tMode = null;
     });
-    const endDrag = () => {
-      if (!down) return;
-      down = false;
-      wrap.classList.remove('rb-dragging');
-      // A drag that actually moved the table is a scroll gesture, not a tap
-      // — swallow the click so it doesn't also open the row's edit modal.
-      if (moved) wrap.addEventListener('click', (ev) => ev.stopPropagation(), { once: true, capture: true });
-    };
-    wrap.addEventListener('pointerup', endDrag);
-    wrap.addEventListener('pointerleave', endDrag);
-    wrap.addEventListener('pointercancel', endDrag);
   });
 }
 
@@ -6299,9 +6329,16 @@ async function submitAddAdmissionEntry() {
   const entry = readAdmissionForm();
   if (!entry.student_name) return;
   entry.parent_pin = String(Math.floor(100000 + Math.random() * 900000));
-  const { error } = await sb.from('admission_register').insert({ owner_id: CURRENT_USER.id, ...entry });
-  if (reportSaveError(error)) return;
-  closeModal(); await loadAllData(); renderTab();
+  const payload = { id: crypto.randomUUID ? crypto.randomUUID() : `local-${Date.now()}`, owner_id: CURRENT_USER.id, ...entry };
+  // Offline-aware: a brand-new register entry, so there's nothing on the
+  // server yet to conflict with — safe to just insert once back online.
+  const { queued, error } = await offlineWrite({
+    table: 'admission_register', action: 'insert', payload, id: payload.id, baseRow: null,
+    run: () => sb.from('admission_register').insert(payload),
+    optimisticApply: () => { DATA.admissionRegister.push(payload); idbPutRow('admission_register', payload); }
+  });
+  if (!queued && reportSaveError(error)) return;
+  closeModal(); if (!queued) await loadAllData(); renderTab();
 }
 
 function openEditAdmissionEntry(id) {
@@ -6574,9 +6611,20 @@ async function printCharacterCertificate(id) {
 async function submitEditAdmissionEntry(id) {
   const entry = readAdmissionForm();
   if (!entry.student_name) return;
-  const { error } = await sb.from('admission_register').update(entry).eq('id', id);
-  if (reportSaveError(error)) return;
-  closeModal(); await loadAllData(); renderTab();
+  const baseRow = DATA.admissionRegister.find(x => x.id === id) || null;
+  // Offline-aware: applied to the local cache immediately and queued —
+  // syncs automatically once back online (with a conflict prompt if another
+  // device changed this same entry meanwhile).
+  const { queued, error } = await offlineWrite({
+    table: 'admission_register', action: 'update', payload: entry, id, baseRow,
+    run: () => sb.from('admission_register').update(entry).eq('id', id),
+    optimisticApply: () => {
+      const idx = DATA.admissionRegister.findIndex(x => x.id === id);
+      if (idx >= 0) { DATA.admissionRegister[idx] = { ...DATA.admissionRegister[idx], ...entry }; idbPutRow('admission_register', DATA.admissionRegister[idx]); }
+    }
+  });
+  if (!queued && reportSaveError(error)) return;
+  closeModal(); if (!queued) await loadAllData(); renderTab();
 }
 
 
@@ -6588,6 +6636,9 @@ function showModal(title, bodyHtml) {
         ${bodyHtml}
       </div>
     </div>`;
+  // No-op unless this modal happens to contain a .regbook-screen-wrap (e.g.
+  // the Admission Register's Add/Edit form) — see initRegBookScroll().
+  initRegBookScroll();
 }
 function closeModal() { clearInterval(qrCheckinPollTimer); document.getElementById('modal-root').innerHTML = ''; }
 
@@ -6655,8 +6706,14 @@ async function doDelete(kind, id) {
     if (!r2.queued && r2.error) err = r2.error;
   }
   if (kind==='admissionEntry') {
-    const r1 = await sb.from('admission_register').delete().eq('id', id);
-    if (r1.error) err = r1.error;
+    // Offline-aware, same as the student/teacher deletes above.
+    const baseRow = DATA.admissionRegister.find(x => x.id === id) || null;
+    const r1 = await offlineWrite({
+      table: 'admission_register', action: 'delete', payload: null, id, baseRow,
+      run: () => sb.from('admission_register').delete().eq('id', id),
+      optimisticApply: () => { DATA.admissionRegister = DATA.admissionRegister.filter(x => x.id !== id); idbDeleteRow('admission_register', id); }
+    });
+    if (!r1.queued && r1.error) err = r1.error;
   }
   if (kind==='whitelistEmail') {
     const r1 = await sb.from('whitelist_emails').delete().eq('email', id);
