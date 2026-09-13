@@ -4858,6 +4858,9 @@ function tplDMC() {
         <span>Select Excel File</span>
         <input type="file" id="dmc-file-input" accept=".xlsx,.xls,.csv" onchange="handleDMCExcelUpload(this.files[0])">
       </label>
+      <div style="text-align:center;font-size:11px;opacity:.5;margin:10px 0;">— OR —</div>
+      <p style="font-size:12px;opacity:.7;">Load students and their marks directly from the Marks Sheet tab (uses the same Class name as above). Total marks are read from the subject name itself — e.g. write subjects in the Marks Sheet tab as "Urdu/75", "Math/100", etc.</p>
+      <button class="btn-ghost" style="width:100%;" onclick="loadDMCFromMarksSheet()">📥 Load from Marks Sheet</button>
       <div id="dmc-upload-msg" style="margin-top:8px;font-size:12px;">${dmcLastUploadMsg}</div>
     </div>
 
@@ -5121,6 +5124,44 @@ function handleDMCExcelUpload(file) {
     }
   };
   reader.readAsArrayBuffer(file);
+}
+
+// Pulls students + their marks straight from the Marks Sheet tab for the
+// currently selected Class — no Excel upload, no manual subject/marks entry.
+// Marks Sheet subject names already carry their total marks inline (e.g.
+// "Urdu/75"), so that's parsed here instead of asking for a separate Total
+// Marks box; dmcSubjects is fully replaced with the parsed list each time
+// this runs, matching whatever subjects are currently in the Marks Sheet.
+function parseMarksSheetSubject(raw) {
+  const m = String(raw || '').match(/^(.*?)\s*\/\s*(\d+)\s*$/);
+  return m ? { name: m[1].trim(), total: Number(m[2]) } : { name: String(raw || '').trim(), total: 100 };
+}
+function loadDMCFromMarksSheet() {
+  const cls = dmcSelectedClass;
+  if (!cls) { alert('Please select a Class above first.'); return; }
+  const students = msStudents[cls];
+  if (!students || !students.length) {
+    alert(`No Marks Sheet data found for class "${cls}". Enter students and marks in the Marks Sheet tab first (using the same class name).`);
+    return;
+  }
+  const parsedSubjects = msSubjects.map(parseMarksSheetSubject);
+  dmcSubjects = parsedSubjects;
+  saveDMCConfig();
+  renderDMCSubjects();
+
+  const classMarks = msMarksData[cls] || {};
+  dmcResults = students.map((st, idx) => {
+    const marks = {};
+    const studentMarks = classMarks[st.id] || {};
+    msSubjects.forEach((rawSubj, i) => { marks[parsedSubjects[i].name] = Number(studentMarks[rawSubj]) || 0; });
+    return {
+      serialNo: idx + 1, studentName: st.name || '', fatherName: st.fatherName || '',
+      rollNo: '', class: cls, classFromExcel: true, marks
+    };
+  });
+  dmcLastUploadMsg = `✓ Loaded ${dmcResults.length} students from Marks Sheet ("${esc(cls)}")`;
+  document.getElementById('dmc-upload-msg').innerHTML = dmcLastUploadMsg;
+  renderDMCEditTable();
 }
 
 function generateDMCPreview() {
@@ -7312,20 +7353,22 @@ function renderClassPortalAddStudent() {
     <p class="desc">${esc(t.classPortalAddStudentDesc)}</p>
     <label><span>${esc(t.classPortalStudentNamePlaceholder)}</span><input id="cp-add-name" placeholder="${esc(t.classPortalStudentNamePlaceholder)}"></label>
     <label><span>${esc(t.fatherName)}</span><input id="cp-add-father" placeholder="${esc(t.fatherName)}"></label>
+    <label><span>${esc(t.contact)}</span><input id="cp-add-phone" type="tel" placeholder="03XXXXXXXXX"></label>
     <div id="cp-add-msg" style="font-size:12px;margin:8px 0;"></div>
     <button class="btn-primary" style="width:100%;" onclick="submitClassPortalAddStudent()">${esc(t.classPortalMenuAddStudent)}</button>
   `;
 }
 
-function queueOfflineAddStudent(session, name, fatherName, msg, nameInput, fatherInput) {
+function queueOfflineAddStudent(session, name, fatherName, phone, msg, nameInput, fatherInput, phoneInput) {
   const tempId = 'local-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8);
   session.students = session.students || [];
-  session.students.push({ id: tempId, name, father_name: fatherName });
+  session.students.push({ id: tempId, name, father_name: fatherName, contact: phone });
   setClassSession(session);
-  queueClassWrite({ type: 'addStudent', tempId, schoolCode: session.schoolCode, loginId: session.loginId, password: session.password, name, fatherName });
+  queueClassWrite({ type: 'addStudent', tempId, schoolCode: session.schoolCode, loginId: session.loginId, password: session.password, name, fatherName, phone });
   msg.innerHTML = `<span class="ok">${esc(t.classPortalOffline)}</span>`;
   if (nameInput) nameInput.value = '';
   if (fatherInput) fatherInput.value = '';
+  if (phoneInput) phoneInput.value = '';
 }
 
 async function submitClassPortalAddStudent() {
@@ -7333,28 +7376,31 @@ async function submitClassPortalAddStudent() {
   const msg = document.getElementById('cp-add-msg');
   const nameInput = document.getElementById('cp-add-name');
   const fatherInput = document.getElementById('cp-add-father');
+  const phoneInput = document.getElementById('cp-add-phone');
   const name = nameInput ? nameInput.value.trim() : '';
   const fatherName = fatherInput ? fatherInput.value.trim() : '';
+  const phone = phoneInput ? phoneInput.value.trim() : '';
   if (!session || !name) return;
   if (!fatherName) { msg.innerHTML = `<div class="err">${esc(t.classPortalFatherNameRequired)}</div>`; return; }
   msg.textContent = '…';
-  if (!navigator.onLine) { queueOfflineAddStudent(session, name, fatherName, msg, nameInput, fatherInput); return; }
+  if (!navigator.onLine) { queueOfflineAddStudent(session, name, fatherName, phone, msg, nameInput, fatherInput, phoneInput); return; }
   try {
     const { data, error } = await sb.rpc('class_add_student', {
-      p_school_code: session.schoolCode, p_login_id: session.loginId, p_password: session.password, p_name: name, p_father_name: fatherName
+      p_school_code: session.schoolCode, p_login_id: session.loginId, p_password: session.password, p_name: name, p_father_name: fatherName, p_phone: phone
     });
     if (error || !data || !data.length) { msg.innerHTML = `<div class="err">${esc(t.classPortalInvalid)}</div>`; return; }
     session.students = session.students || [];
-    session.students.push({ id: data[0].id, name: data[0].name, father_name: data[0].father_name || fatherName });
+    session.students.push({ id: data[0].id, name: data[0].name, father_name: data[0].father_name || fatherName, contact: data[0].contact || phone });
     setClassSession(session);
     msg.innerHTML = `<span class="ok">✓ ${esc(t.classPortalAddStudentSaved)}</span>`;
     if (nameInput) nameInput.value = '';
     if (fatherInput) fatherInput.value = '';
+    if (phoneInput) phoneInput.value = '';
   } catch(e) {
     // navigator.onLine said we were online but the request itself failed
     // mid-flight (weak signal) — queue it the same way instead of losing
     // what was typed.
-    queueOfflineAddStudent(session, name, fatherName, msg, nameInput, fatherInput);
+    queueOfflineAddStudent(session, name, fatherName, phone, msg, nameInput, fatherInput, phoneInput);
   }
 }
 
@@ -7389,7 +7435,9 @@ function classPortalRosterHtml(session) {
     const cur = (classAttendanceDraft[id] || {})[session_];
     return `<button type="button" onclick="setClassAttendanceMark('${id}','${session_}','${val}')" style="flex:1;padding:6px 3px;border-radius:8px;font-size:10.5px;font-weight:600;border:1.5px solid ${cur===val?color:'var(--line)'};background:${cur===val?color:'#fff'};color:${cur===val?'#fff':'var(--ink)'};">${esc(label)}</button>`;
   };
-  return session.students.slice().sort((a,b)=>Number(a.roll_no||0)-Number(b.roll_no||0)).map(st => `
+  return session.students.slice().sort((a,b)=>Number(a.roll_no||0)-Number(b.roll_no||0)).map(st => {
+    const isAbsent = (classAttendanceDraft[st.id] || {}).am === 'absent' || (classAttendanceDraft[st.id] || {}).pm === 'absent';
+    return `
     <div style="border-bottom:1px solid var(--line);padding:8px 0;">
       <div style="font-size:13px;font-weight:600;margin-bottom:6px;">${st.roll_no ? '#'+esc(st.roll_no)+' — ' : ''}${esc(st.name)}</div>
       <div style="display:flex;align-items:center;gap:6px;margin-bottom:5px;">
@@ -7400,7 +7448,25 @@ function classPortalRosterHtml(session) {
         <div style="width:56px;font-size:10.5px;opacity:.65;">${esc(t.afternoon)}</div>
         <div style="display:flex;gap:5px;flex:1;">${opt(st.id,'pm','present',t.present,'var(--sage)')}${opt(st.id,'pm','leave',t.leave,'var(--gold)')}${opt(st.id,'pm','absent',t.absent,'var(--rust)')}</div>
       </div>
-    </div>`).join('');
+      ${isAbsent ? `<button type="button" onclick="sendAbsentSms('${st.id}')" style="margin-top:6px;width:100%;padding:6px;border-radius:8px;font-size:11px;font-weight:600;border:1.5px solid var(--rust);background:#fff;color:var(--rust);">📩 ${esc(LANG==='ur'?'والدین کو SMS بھیجیں':"Send SMS to Parent")}</button>` : ''}
+    </div>`;
+  }).join('');
+}
+
+// Opens the phone's own Messages app (no internet needed) with the absence
+// message pre-filled for this student's parent, using the number captured
+// when the student was added in the Class Portal. The teacher still has to
+// tap Send themselves — one message at a time, same as the fee-reminder SMS
+// elsewhere in the app; there is no automatic/background SMS sending here.
+function sendAbsentSms(studentId) {
+  const session = getClassSession();
+  const st = session && session.students && session.students.find(s => s.id === studentId);
+  if (!st) return;
+  if (!st.contact) { alert(LANG==='ur' ? 'اس طالب علم کا موبائل نمبر موجود نہیں۔' : 'No mobile number on file for this student.'); return; }
+  const msg = LANG==='ur'
+    ? `محترم سرپرست،\nآپ کا بچہ ${st.name} آج (${fmtDate(todayISO())}) اسکول میں غیر حاضر ہے۔ شکریہ`
+    : `Dear Parent, your child ${st.name} is absent from school today (${fmtDate(todayISO())}). - School`;
+  openFatherWhatsapp(st.contact, msg);
 }
 
 function setClassAttendanceMark(studentId, session_, status) {
@@ -7597,14 +7663,14 @@ async function flushClassQueue() {
     try {
       const { data, error } = await sb.rpc('class_add_student', {
         p_school_code: item.schoolCode, p_login_id: item.loginId, p_password: item.password,
-        p_name: item.name, p_father_name: item.fatherName
+        p_name: item.name, p_father_name: item.fatherName, p_phone: item.phone
       });
       if (error || !data || !data.length) { remaining.push(item); continue; }
       const realId = data[0].id;
       const session = getClassSession();
       if (session && session.students) {
         session.students = session.students.map(s => s.id === item.tempId
-          ? { id: realId, name: data[0].name, father_name: data[0].father_name || item.fatherName }
+          ? { id: realId, name: data[0].name, father_name: data[0].father_name || item.fatherName, contact: data[0].contact || item.phone }
           : s);
         setClassSession(session);
       }
