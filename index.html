@@ -7644,6 +7644,20 @@ if ('serviceWorker' in navigator) {
       reg.update();
     }).catch(() => {});
   });
+  // A new service worker can finish installing and take over (clients.claim())
+  // while this tab is still sitting open with the OLD page already loaded in
+  // memory — clients.claim() only changes who answers future network
+  // requests, it doesn't refresh what's already on screen. Left alone, that
+  // stale in-memory copy is exactly what a phone reopens from if it's ever
+  // relaunched while offline. Reloading once, right when control switches
+  // over, means an already-open tab picks up the new version immediately
+  // instead of waiting for someone to fully close and reopen the app.
+  // sessionStorage guards against a reload loop if this ever fires twice.
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (sessionStorage.getItem('sms_sw_reloaded')) return;
+    sessionStorage.setItem('sms_sw_reloaded', '1');
+    window.location.reload();
+  });
 }
 
 // ---------------- Parent Portal (public, no-login lookup page) ----------------
