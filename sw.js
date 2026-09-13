@@ -1,9 +1,19 @@
-const CACHE_NAME = 'school-ms-cache-v2';
+const CACHE_NAME = 'school-ms-cache-v3';
 const APP_SHELL = ['./', './index.html', './manifest.json', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', (e) => {
   e.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(APP_SHELL))
+    // { cache: 'reload' } forces this initial caching to bypass the browser's
+    // own HTTP cache and fetch the truly current files from the server —
+    // caches.addAll() alone does not do this, and would otherwise be able to
+    // seed the app-shell cache with an already-stale copy of index.html.
+    caches.open(CACHE_NAME).then((cache) =>
+      Promise.all(APP_SHELL.map((url) =>
+        fetch(url, { cache: 'reload' }).then((response) => {
+          if (response && response.ok) return cache.put(url, response);
+        }).catch(() => {})
+      ))
+    )
   );
   self.skipWaiting();
 });
@@ -56,7 +66,11 @@ self.addEventListener('fetch', (e) => {
   if (!sameOriginGet) return; // let the browser handle it normally, no interception
 
   e.respondWith(
-    fetch(e.request)
+    // { cache: 'no-store' } is the actual fix for "I uploaded a new file but
+    // the app still shows the old one": without it, this fetch() could still
+    // be silently answered by the browser's own HTTP cache instead of truly
+    // going to the server, no matter how "network-first" this code looks.
+    fetch(e.request, { cache: 'no-store' })
       .then((response) => {
         if (response && response.ok) {
           caches.open(CACHE_NAME).then((cache) => cache.put(e.request, response.clone()));
