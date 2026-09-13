@@ -1051,9 +1051,23 @@ async function idbGetAll(store) {
 async function idbReplaceAll(store, rows) {
   try {
     const db = await idbOpen();
-    const os = db.transaction(store, 'readwrite').objectStore(store);
-    os.clear();
-    rows.forEach(row => os.put(row));
+    // Waits for the transaction to actually finish committing to disk before
+    // resolving — previously this returned right after queuing the writes,
+    // so if the tab was reloaded (or fully closed) in the same instant —
+    // e.g. saving data, then immediately turning off mobile data and hitting
+    // refresh to test offline mode — the writes could still be in flight and
+    // never actually land, leaving the offline cache empty (dashboard showing
+    // all-zero on the next offline load) even though nothing was ever lost
+    // on the server side.
+    await new Promise((resolve, reject) => {
+      const tx = db.transaction(store, 'readwrite');
+      const os = tx.objectStore(store);
+      os.clear();
+      rows.forEach(row => os.put(row));
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+      tx.onabort = () => reject(tx.error);
+    });
   } catch (e) { console.error('idbReplaceAll failed', store, e); }
 }
 async function idbPutRow(store, row) {
@@ -1245,9 +1259,16 @@ async function resolveConflict(choice) {
 async function renderOfflineBanner() {
   const el = document.getElementById('offline-banner');
   if (!el) return;
-  // Banner intentionally disabled per request — offline saving/syncing
-  // itself is unaffected, this just stops it from showing on screen.
-  el.style.display = 'none';
+  // The "Offline — changes are saved..." message is intentionally removed
+  // per request. The "Syncing..." message (once back online, queued
+  // changes are being pushed) is kept — that one wasn't asked to go.
+  const q = await idbGetAll('sync_queue');
+  if (navigator.onLine && q.length) {
+    el.style.display = 'block';
+    el.textContent = LANG==='ur' ? `⏳ Sync ہو رہا ہے (${q.length})...` : `⏳ Syncing (${q.length})...`;
+  } else {
+    el.style.display = 'none';
+  }
 }
 window.addEventListener('online', () => { renderOfflineBanner(); flushSyncQueue(); });
 window.addEventListener('offline', () => renderOfflineBanner());
