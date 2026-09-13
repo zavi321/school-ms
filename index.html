@@ -2245,7 +2245,6 @@ function renderTab() {
       // user is currently focused on — never tears down input elements at
       // all, so there's no window where a tap can race a rebuild.
       applyDMCConfigToFields();
-      renderDMCSubjects();
       renderDMCEditTable();
     });
   }
@@ -4858,9 +4857,6 @@ function tplDMC() {
         <span>Select Excel File</span>
         <input type="file" id="dmc-file-input" accept=".xlsx,.xls,.csv" onchange="handleDMCExcelUpload(this.files[0])">
       </label>
-      <div style="text-align:center;font-size:11px;opacity:.5;margin:10px 0;">— OR —</div>
-      <p style="font-size:12px;opacity:.7;">Load students and their marks directly from the Marks Sheet tab (uses the same Class name as above). Total marks are read from the subject name itself — e.g. write subjects in the Marks Sheet tab as "Urdu/75", "Math/100", etc.</p>
-      <button class="btn-ghost" style="width:100%;" onclick="loadDMCFromMarksSheet()">📥 Load from Marks Sheet</button>
       <div id="dmc-upload-msg" style="margin-top:8px;font-size:12px;">${dmcLastUploadMsg}</div>
     </div>
 
@@ -4881,20 +4877,6 @@ function tplDMC() {
       <h3 style="margin-top:0;">Review & Edit Students</h3>
       <p style="font-size:12px;opacity:.7;">Fix each student's Name or Roll No. before printing — useful if something wasn't in your Excel file or came in wrong.</p>
       <div id="dmc-edit-table"></div>
-    </div>
-
-    <div class="card">
-      <h3 style="margin-top:0;">Subject Configuration</h3>
-      <p style="font-size:12px;opacity:.7;">Define subjects and total marks (e.g., Urdu-100, English-100, Math-100)</p>
-      <div id="dmc-subject-config" style="margin-bottom:8px;">
-        <div style="display:flex;gap:6px;margin-bottom:8px;">
-          <input type="text" id="dmc-subj-name" autocomplete="off" placeholder="Subject Name" style="flex:1;">
-          <input type="number" id="dmc-subj-total" autocomplete="off" placeholder="Total Marks" style="flex:1;" value="100">
-          <button class="btn-ghost" onclick="addDMCSubject()">Add</button>
-        </div>
-        <div id="dmc-subjects-list" style="display:flex;flex-wrap:wrap;gap:6px;"></div>
-      </div>
-      <button class="btn-ghost" onclick="clearDMCSubjects()">Clear All Subjects</button>
     </div>
 
     <div class="card">
@@ -5013,16 +4995,6 @@ function renderDMCPreviewIfOpen() {
   if (dmcResults.length > 0 && document.getElementById('dmc-preview')) generateDMCPreview();
 }
 
-function addDMCSubject() {
-  const name = document.getElementById('dmc-subj-name').value.trim();
-  const total = Number(document.getElementById('dmc-subj-total').value) || 100;
-  if (!name) return;
-  dmcSubjects.push({name, total});
-  document.getElementById('dmc-subj-name').value = '';
-  saveDMCConfig();
-  renderDMCSubjects();
-}
-
 function renderDMCEditTable() {
   const container = document.getElementById('dmc-edit-table');
   if (!container) return;
@@ -5041,21 +5013,6 @@ function renderDMCEditTable() {
       <input type="text" autocomplete="off" style="width:110px;flex-shrink:0;" value="${esc(r.rollNo)}" placeholder="Roll No." oninput="dmcResults[${i}].rollNo=this.value">
     </div>
   `).join('');
-}
-
-function renderDMCSubjects() {
-  document.getElementById('dmc-subjects-list').innerHTML = dmcSubjects.map((s, i) => `
-    <div style="background:#F0EBDA;padding:6px 10px;border-radius:6px;font-size:12px;display:flex;align-items:center;gap:6px;">
-      ${esc(s.name)} (${s.total})
-      <button class="btn-ghost" style="padding:0;font-size:10px;opacity:.6;" onclick="dmcSubjects.splice(${i},1);saveDMCConfig();renderDMCSubjects();">✕</button>
-    </div>
-  `).join('');
-}
-
-function clearDMCSubjects() {
-  dmcSubjects = [];
-  saveDMCConfig();
-  renderDMCSubjects();
 }
 
 function handleDMCExcelUpload(file) {
@@ -5081,34 +5038,31 @@ function handleDMCExcelUpload(file) {
           marks: {} // will be filled from other columns
         };
       });
-      
-      // Extract marks from other columns
+
+      // Every remaining column is a subject; its total marks are read
+      // straight from the column header itself (e.g. "Urdu/75", "Math/100")
+      // instead of a separate manual Subject Configuration step — dmcSubjects
+      // is fully rebuilt from the Excel headers on every upload.
       const nonMarkCols = ['Student Name','Name','Student','Class','جماعت','Father Name',"Father's Name",'Father','S/O','Walid','Roll No','Roll No.','Roll Number','Roll','Section','سیکشن','Date of Issue','Issue Date'];
-      // Normalize a column/subject name for matching: lowercase, strip all
-      // punctuation, drop trailing numeric tokens (so "Urdu /100" or
-      // "Maths (100)" both reduce to "urdu"/"maths") and a trailing "marks"
-      // word — so real-world headers like "Urdu /100" still match a
-      // configured subject named "Urdu" instead of becoming a separate key
-      // and showing 0 obtained marks on the DMC.
-      const normalizeName = (s) => {
-        let tokens = String(s || '').toLowerCase().replace(/[^a-z0-9\u0600-\u06FF]+/g, ' ').trim().split(' ').filter(Boolean);
-        while (tokens.length && (/^\d+$/.test(tokens[tokens.length - 1]) || tokens[tokens.length - 1] === 'marks' || tokens[tokens.length - 1] === 'mark')) {
-          tokens.pop();
-        }
-        return tokens.join(' ');
+      const parseSubjectHeader = (raw) => {
+        const m = String(raw || '').match(/^(.+?)[\s\/]+(\d+)\s*$/);
+        return m ? { name: m[1].trim(), total: Number(m[2]) } : { name: String(raw || '').trim(), total: 100 };
       };
+      const subjectMap = new Map(); // original column header -> {name, total}
+      if (rows.length) {
+        Object.keys(rows[0]).forEach(col => {
+          if (nonMarkCols.includes(col)) return;
+          subjectMap.set(col, parseSubjectHeader(col));
+        });
+      }
+      dmcSubjects = Array.from(subjectMap.values());
+      saveDMCConfig();
+
       dmcResults.forEach((r, idx) => {
         const row = rows[idx];
-        Object.keys(row).forEach(col => {
-          if (nonMarkCols.includes(col)) return;
-          const normCol = normalizeName(col);
-          if (!normCol) return; // blank/empty header column — nothing to attach marks to
-          // Prefer the canonical subject name from dmcSubjects config if it
-          // matches (even loosely) so totals/percentage calculations
-          // (which look up marks by s.name) always find the value.
-          const matchedSubject = dmcSubjects.find(s => normalizeName(s.name) === normCol);
-          const key = matchedSubject ? matchedSubject.name : col;
-          r.marks[key] = Number(row[col]) || 0;
+        subjectMap.forEach((subj, col) => {
+          if (row[col] === undefined) return;
+          r.marks[subj.name] = Number(row[col]) || 0;
         });
       });
 
@@ -5124,44 +5078,6 @@ function handleDMCExcelUpload(file) {
     }
   };
   reader.readAsArrayBuffer(file);
-}
-
-// Pulls students + their marks straight from the Marks Sheet tab for the
-// currently selected Class — no Excel upload, no manual subject/marks entry.
-// Marks Sheet subject names already carry their total marks inline (e.g.
-// "Urdu/75"), so that's parsed here instead of asking for a separate Total
-// Marks box; dmcSubjects is fully replaced with the parsed list each time
-// this runs, matching whatever subjects are currently in the Marks Sheet.
-function parseMarksSheetSubject(raw) {
-  const m = String(raw || '').match(/^(.*?)\s*\/\s*(\d+)\s*$/);
-  return m ? { name: m[1].trim(), total: Number(m[2]) } : { name: String(raw || '').trim(), total: 100 };
-}
-function loadDMCFromMarksSheet() {
-  const cls = dmcSelectedClass;
-  if (!cls) { alert('Please select a Class above first.'); return; }
-  const students = msStudents[cls];
-  if (!students || !students.length) {
-    alert(`No Marks Sheet data found for class "${cls}". Enter students and marks in the Marks Sheet tab first (using the same class name).`);
-    return;
-  }
-  const parsedSubjects = msSubjects.map(parseMarksSheetSubject);
-  dmcSubjects = parsedSubjects;
-  saveDMCConfig();
-  renderDMCSubjects();
-
-  const classMarks = msMarksData[cls] || {};
-  dmcResults = students.map((st, idx) => {
-    const marks = {};
-    const studentMarks = classMarks[st.id] || {};
-    msSubjects.forEach((rawSubj, i) => { marks[parsedSubjects[i].name] = Number(studentMarks[rawSubj]) || 0; });
-    return {
-      serialNo: idx + 1, studentName: st.name || '', fatherName: st.fatherName || '',
-      rollNo: '', class: cls, classFromExcel: true, marks
-    };
-  });
-  dmcLastUploadMsg = `✓ Loaded ${dmcResults.length} students from Marks Sheet ("${esc(cls)}")`;
-  document.getElementById('dmc-upload-msg').innerHTML = dmcLastUploadMsg;
-  renderDMCEditTable();
 }
 
 function generateDMCPreview() {
