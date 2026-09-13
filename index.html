@@ -1245,16 +1245,9 @@ async function resolveConflict(choice) {
 async function renderOfflineBanner() {
   const el = document.getElementById('offline-banner');
   if (!el) return;
-  const q = await idbGetAll('sync_queue');
-  if (!navigator.onLine) {
-    el.style.display = 'block';
-    el.textContent = LANG==='ur' ? '📴 آف لائن — تبدیلیاں محفوظ ہیں، انٹرنیٹ آتے ہی sync ہو جائیں گی' : "📴 Offline — changes are saved and will sync once you're back online";
-  } else if (q.length) {
-    el.style.display = 'block';
-    el.textContent = LANG==='ur' ? `⏳ Sync ہو رہا ہے (${q.length})...` : `⏳ Syncing (${q.length})...`;
-  } else {
-    el.style.display = 'none';
-  }
+  // Banner intentionally disabled per request — offline saving/syncing
+  // itself is unaffected, this just stops it from showing on screen.
+  el.style.display = 'none';
 }
 window.addEventListener('online', () => { renderOfflineBanner(); flushSyncQueue(); });
 window.addEventListener('offline', () => renderOfflineBanner());
