@@ -531,29 +531,29 @@ function normalizePkMobile(raw) {
   return d;
 }
 
-// ---------- WhatsApp helper ----------
-// Opens WhatsApp (desktop app / WhatsApp Web on PC & laptop, or the WhatsApp app on mobile)
-// with the father's number and message pre-filled via the wa.me click-to-chat link.
-// Browsers can't send messages silently — the user still taps "Send" inside WhatsApp.
+// ---------- SMS helper (parents) ----------
+// Opens the phone's own Messages app, pre-filled with the father's number and
+// the message, sent from the school's own SIM/number — via the "sms:" URI.
+// Same tap-to-send UX as before (the user still taps "Send" inside Messages),
+// but unlike wa.me this needs NO internet connection at all to open.
+// Function/param names kept as-is (whatsappUri/openFatherWhatsapp) everywhere
+// they're already called from, so only this implementation had to change.
+function smsUriFromDigits(digits, message) {
+  if (!digits) return null;
+  // Platforms disagree on the separator for the sms: URI's prefilled body:
+  // iOS wants "&body=", Android wants "?body=".
+  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+  return `sms:+${digits}${isIOS ? '&' : '?'}body=${encodeURIComponent(message)}`;
+}
 function whatsappUri(mobileRaw, message) {
   const mobile = normalizePkMobile(mobileRaw);
   if (!mobile) return null;
-  return `https://wa.me/${mobile}?text=${encodeURIComponent(message)}`;
+  return smsUriFromDigits(mobile, message);
 }
 function openFatherWhatsapp(mobileRaw, message) {
   const uri = whatsappUri(mobileRaw, message);
   if (!uri) { alert('No valid contact number on file for this student.'); return; }
-  // wa.me is itself a web page that needs internet just to load and redirect
-  // into the WhatsApp app — with no signal it just shows the browser's own
-  // "No internet" error page instead of opening anything. Skip that and say
-  // so plainly instead.
-  if (!navigator.onLine) {
-    alert(LANG === 'ur'
-      ? 'واٹس ایپ کھولنے کے لیے انٹرنیٹ درکار ہے۔ انٹرنیٹ آنے پر یہ پیغام دوبارہ بھیجا جا سکتا ہے۔'
-      : 'WhatsApp needs an internet connection to open. You can send this message once you\'re back online.');
-    return;
-  }
-  window.open(uri, '_blank');
+  location.href = uri;
 }
 // --------------------------------------
 
@@ -626,7 +626,7 @@ const T = {
     sendResetLink:'Send Reset Link', resetLinkSentTitle:'Reset link sent', resetLinkSentDesc:'Check your email (and spam folder) for a link to set a new password.',
     newPasswordTitle:'Set a new password', newPasswordDesc:'Enter and confirm your new password below.',
     setNewPassword:'Set New Password', passwordUpdatedTitle:'Password updated', passwordUpdatedDesc:'Your password has been changed. You can now log in.',
-    forgotEmailTitle:'Forgot your registered email?', forgotEmailDesc:'For security, we can\u2019t look up or reveal an account email here. Message your school administrator on WhatsApp with your school name and phone number, and they can confirm which email your account is registered under.',
+    forgotEmailTitle:'Forgot your registered email?', forgotEmailDesc:'For security, we can\u2019t look up or reveal an account email here. Message your school administrator via SMS with your school name and phone number, and they can confirm which email your account is registered under.',
     backToLogin:'Back to Log In',
     passwordTooShort:'Password must be at least 6 characters.', passwordMismatch:'Passwords do not match.',
     signUpSuccess:'Account created! You can now log in.',
@@ -635,15 +635,15 @@ const T = {
     exportBackup:'Download Backup (Excel)', exportHint:'Save a full copy of your records to your device.',
     // Whitelist / Admin onboarding
     notWhitelistedTitle:'This email is not registered with us yet.',
-    notWhitelistedDesc:'To register your school, please contact us on WhatsApp first.',
-    contactOnWhatsApp:'Contact us on WhatsApp',
-    sendSmsToFather:'WhatsApp Parents', overdueRemindersTitle:'Send overdue reminders',
-    overdueRemindersDesc:'These students are 2+ months behind on fees. Tap Send next to each to open WhatsApp with a month-by-month reminder pre-filled for their father.',
+    notWhitelistedDesc:'To register your school, please contact us via SMS first.',
+    contactOnWhatsApp:'Contact us via SMS',
+    sendSmsToFather:'SMS Parents', overdueRemindersTitle:'Send overdue reminders',
+    overdueRemindersDesc:'These students are 2+ months behind on fees. Tap Send next to each to open your Messages app with a month-by-month reminder pre-filled for their father.',
     noOverdueStudents:'No students are 2+ months overdue right now.', send:'Send',
-    sendFeeRequest:'Send fee request', feeRequestTitle:'Send fee request', feeRequestDesc:'These students currently have pending dues. Tap Send next to each to open WhatsApp with a month-by-month reminder pre-filled for their father.',
+    sendFeeRequest:'Send fee request', feeRequestTitle:'Send fee request', feeRequestDesc:'These students currently have pending dues. Tap Send next to each to open your Messages app with a month-by-month reminder pre-filled for their father.',
     noDueStudents:'No students currently have pending dues.',
     signUpPendingTitle:'Almost done!',
-    signUpPendingDesc:'A confirmation email has been sent to your inbox. Please forward that email (or the link inside it) to us on WhatsApp to activate your account.',
+    signUpPendingDesc:'A confirmation email has been sent to your inbox. Please forward that email (or the link inside it) to us via SMS to activate your account.',
     admin:'Admin', adminPanel:'Admin Panel',
     addSchoolEmail:'Add a school email', schoolEmailPlaceholder:'School owner\'s Gmail address',
     addToWhitelist:'Add & Allow Sign Up', emailAdded:'Email added — they can now sign up.',
@@ -788,7 +788,7 @@ const T = {
     sendResetLink:'ری سیٹ لنک بھیجیں', resetLinkSentTitle:'ری سیٹ لنک بھیج دیا گیا', resetLinkSentDesc:'نیا پاس ورڈ سیٹ کرنے کے لنک کے لیے اپنا ای میل (اور اسپیم فولڈر) چیک کریں۔',
     newPasswordTitle:'نیا پاس ورڈ سیٹ کریں', newPasswordDesc:'نیچے اپنا نیا پاس ورڈ درج اور تصدیق کریں۔',
     setNewPassword:'نیا پاس ورڈ سیٹ کریں', passwordUpdatedTitle:'پاس ورڈ اپڈیٹ ہو گیا', passwordUpdatedDesc:'آپ کا پاس ورڈ تبدیل ہو گیا ہے۔ اب آپ لاگ ان کر سکتے ہیں۔',
-    forgotEmailTitle:'رجسٹرڈ ای میل بھول گئے؟', forgotEmailDesc:'حفاظتی وجوہات کی بنا پر ہم یہاں اکاؤنٹ کی ای میل تلاش یا ظاہر نہیں کر سکتے۔ اپنے اسکول ایڈمنسٹریٹر کو واٹس ایپ پر اپنے اسکول کا نام اور فون نمبر بھیجیں، وہ تصدیق کر دیں گے کہ آپ کا اکاؤنٹ کس ای میل پر رجسٹرڈ ہے۔',
+    forgotEmailTitle:'رجسٹرڈ ای میل بھول گئے؟', forgotEmailDesc:'حفاظتی وجوہات کی بنا پر ہم یہاں اکاؤنٹ کی ای میل تلاش یا ظاہر نہیں کر سکتے۔ اپنے اسکول ایڈمنسٹریٹر کو SMS پر اپنے اسکول کا نام اور فون نمبر بھیجیں، وہ تصدیق کر دیں گے کہ آپ کا اکاؤنٹ کس ای میل پر رجسٹرڈ ہے۔',
     backToLogin:'لاگ ان پر واپس جائیں',
     passwordTooShort:'پاس ورڈ کم از کم 6 حروف کا ہونا چاہیے۔', passwordMismatch:'پاس ورڈ مماثل نہیں ہیں۔',
     signUpSuccess:'اکاؤنٹ بن گیا! اب آپ لاگ ان کر سکتے ہیں۔',
@@ -796,15 +796,15 @@ const T = {
     saveSettings:'تبدیلیاں محفوظ کریں', settingsSaved:'کامیابی سے محفوظ ہو گیا۔', logOut:'لاگ آؤٹ',
     exportBackup:'بیک اپ ڈاؤن لوڈ کریں (ایکسل)', exportHint:'اپنے تمام ریکارڈ کی مکمل کاپی اپنے ڈیوائس میں محفوظ کریں۔',
     notWhitelistedTitle:'یہ ای میل ابھی تک ہمارے ساتھ رجسٹرڈ نہیں ہے۔',
-    notWhitelistedDesc:'اپنا اسکول رجسٹر کروانے کے لیے پہلے ہم سے واٹس ایپ پر رابطہ کریں۔',
-    contactOnWhatsApp:'واٹس ایپ پر رابطہ کریں',
-    sendSmsToFather:'والدین کو واٹس ایپ', overdueRemindersTitle:'واجبات کی یاد دہانی بھیجیں',
-    overdueRemindersDesc:'یہ طلبہ 2 یا زائد مہینوں سے فیس کے واجب الادا ہیں۔ ہر ایک کے سامنے "بھیجیں" دبائیں تاکہ والد کے واٹس ایپ پر ہر مہینے کی تفصیل کے ساتھ پیغام کھل جائے۔',
+    notWhitelistedDesc:'اپنا اسکول رجسٹر کروانے کے لیے پہلے ہم سے SMS پر رابطہ کریں۔',
+    contactOnWhatsApp:'SMS پر رابطہ کریں',
+    sendSmsToFather:'والدین کو SMS', overdueRemindersTitle:'واجبات کی یاد دہانی بھیجیں',
+    overdueRemindersDesc:'یہ طلبہ 2 یا زائد مہینوں سے فیس کے واجب الادا ہیں۔ ہر ایک کے سامنے "بھیجیں" دبائیں تاکہ والد کے میسجز ایپ میں ہر مہینے کی تفصیل کے ساتھ پیغام کھل جائے۔',
     noOverdueStudents:'فی الحال کوئی طالب علم 2 مہینوں سے زائد واجب الادا نہیں ہے۔', send:'بھیجیں',
-    sendFeeRequest:'فیس کی درخواست بھیجیں', feeRequestTitle:'فیس کی درخواست بھیجیں', feeRequestDesc:'ان طلبہ کی فیس واجب الادا ہے۔ ہر ایک کے سامنے "بھیجیں" دبائیں تاکہ والد کے واٹس ایپ پر ہر مہینے کی تفصیل کے ساتھ پیغام کھل جائے۔',
+    sendFeeRequest:'فیس کی درخواست بھیجیں', feeRequestTitle:'فیس کی درخواست بھیجیں', feeRequestDesc:'ان طلبہ کی فیس واجب الادا ہے۔ ہر ایک کے سامنے "بھیجیں" دبائیں تاکہ والد کے میسجز ایپ میں ہر مہینے کی تفصیل کے ساتھ پیغام کھل جائے۔',
     noDueStudents:'فی الحال کسی طالب علم کی کوئی فیس واجب الادا نہیں ہے۔',
     signUpPendingTitle:'تقریباً مکمل!',
-    signUpPendingDesc:'آپ کے ای میل پر ایک تصدیقی ای میل بھیجی گئی ہے۔ اپنا اکاؤنٹ فعال کروانے کے لیے وہ ای میل (یا اس کے اندر موجود لنک) ہمیں واٹس ایپ پر بھیجیں۔',
+    signUpPendingDesc:'آپ کے ای میل پر ایک تصدیقی ای میل بھیجی گئی ہے۔ اپنا اکاؤنٹ فعال کروانے کے لیے وہ ای میل (یا اس کے اندر موجود لنک) ہمیں SMS پر بھیجیں۔',
     admin:'ایڈمن', adminPanel:'ایڈمن پینل',
     addSchoolEmail:'اسکول کی ای میل شامل کریں', schoolEmailPlaceholder:'اسکول مالک کا جی میل ایڈریس',
     addToWhitelist:'شامل کریں اور سائن اپ کی اجازت دیں', emailAdded:'ای میل شامل ہو گئی — وہ اب سائن اپ کر سکتے ہیں۔',
@@ -1308,7 +1308,7 @@ function renderForgotEmail() {
   renderAuthShell(`
     <h2>${esc(t.forgotEmailTitle)}</h2>
     <p class="desc">${esc(t.forgotEmailDesc)}</p>
-    <a class="btn-primary" style="display:block;text-align:center;text-decoration:none;margin-top:10px;" href="https://wa.me/${OWNER_WHATSAPP_NUMBER}?text=${encodeURIComponent('Hi, I forgot which email my school account is registered under. My school name is: ')}" target="_blank" rel="noopener">${esc(t.contactOnWhatsApp)}</a>
+    <a class="btn-primary" style="display:block;text-align:center;text-decoration:none;margin-top:10px;" href="${smsUriFromDigits(OWNER_WHATSAPP_NUMBER, 'Hi, I forgot which email my school account is registered under. My school name is: ')}" rel="noopener">${esc(t.contactOnWhatsApp)}</a>
     <div class="switch-line"><a onclick="renderLogIn()">${esc(t.backToLogin)}</a></div>
   `);
 }
@@ -1580,12 +1580,12 @@ async function submitSignUp() {
   if (wErr) { btn.disabled = false; msg.innerHTML = `<div class="err">${esc(wErr.message)}</div>`; return; }
   if (!allowed) {
     btn.disabled = false;
-    const waLink = `https://wa.me/${OWNER_WHATSAPP_NUMBER}?text=${encodeURIComponent('Hi, I want to register my school: ' + school)}`;
+    const smsLink = smsUriFromDigits(OWNER_WHATSAPP_NUMBER, 'Hi, I want to register my school: ' + school);
     msg.innerHTML = `
       <div class="err">
         <div style="margin-bottom:8px;">${esc(t.notWhitelistedTitle)}</div>
         <div style="margin-bottom:10px;">${esc(t.notWhitelistedDesc)}</div>
-        <a class="btn-primary" style="display:block;text-align:center;text-decoration:none;" href="${waLink}" target="_blank" rel="noopener">${esc(t.contactOnWhatsApp)}</a>
+        <a class="btn-primary" style="display:block;text-align:center;text-decoration:none;" href="${smsLink}" rel="noopener">${esc(t.contactOnWhatsApp)}</a>
       </div>`;
     return;
   }
@@ -1610,12 +1610,12 @@ async function submitSignUp() {
   // Normal path: Supabase sent a confirmation code to their email.
   // Mark the whitelist entry so the admin sees it's awaiting OTP.
   await sb.rpc('mark_signup_attempted', { check_email: email });
-  const waLink2 = `https://wa.me/${OWNER_WHATSAPP_NUMBER}?text=${encodeURIComponent('Hi, my school is ' + school + ' (' + email + '). My verification code is: ')}`;
+  const smsLink2 = smsUriFromDigits(OWNER_WHATSAPP_NUMBER, 'Hi, my school is ' + school + ' (' + email + '). My verification code is: ');
   msg.innerHTML = `
     <div class="ok">
       <div style="margin-bottom:8px;">${esc(t.signUpPendingTitle)}</div>
       <div style="margin-bottom:10px;">${esc(t.signUpPendingDesc)}</div>
-      <a class="btn-primary" style="display:block;text-align:center;text-decoration:none;" href="${waLink2}" target="_blank" rel="noopener">${esc(t.contactOnWhatsApp)}</a>
+      <a class="btn-primary" style="display:block;text-align:center;text-decoration:none;" href="${smsLink2}" rel="noopener">${esc(t.contactOnWhatsApp)}</a>
     </div>`;
 }
 
@@ -3253,7 +3253,7 @@ function openStudentDetail(id, viewYear) {
               <td>${r.blank ? '—' : esc(r.e.receipt_no||'—')}</td>
               <td>${r.blank ? '—' : esc(fmtDate(r.e.pay_date)||'')}</td>
               <td>${r.blank ? '' : `<button class="print-btn" title="${esc(t.print)}" onclick="printReceipt('${id}','${r.e.id}')">🖨️</button>`}</td>
-              <td>${r.blank ? '' : `<button class="print-btn" title="Send WhatsApp to father" onclick="openFatherWhatsapp('${esc(s.contact||'')}', 'Dear Parent, fee of Rs ${fmt(r.totalPaid)} for ${esc(s.name)} (${esc(monthLabel(r.mk))}) has been received. Thank you. - School')">💬</button>`}</td>
+              <td>${r.blank ? '' : `<button class="print-btn" title="Send SMS to father" onclick="openFatherWhatsapp('${esc(s.contact||'')}', 'Dear Parent, fee of Rs ${fmt(r.totalPaid)} for ${esc(s.name)} (${esc(monthLabel(r.mk))}) has been received. Thank you. - School')">💬</button>`}</td>
               <td>${r.blank ? '' : `<button class="del-x" onclick="deleteFeePayment('${r.e.id}','${id}')">✕</button>`}</td>
             </tr>`).join('')}
         </tbody>
@@ -3356,14 +3356,12 @@ async function submitFeePayment(studentId) {
   // Only auto-fire the parent notification for a genuinely new entry dated today —
   // not when correcting/updating an existing month's entry (that would otherwise
   // re-notify the parent every time a typo is fixed), and not for backdated /
-  // historical entries (data import, past-month catch-up). Skipped while queued
-  // offline — wa.me needs to actually reach the internet to open at all, so
-  // trying it with no connection just pops a jarring "No internet" browser
-  // page right after the save. Send the WhatsApp message manually (💬 button)
-  // once back online instead.
-  if (!queued && isNewEntry && student && date === todayISO()) {
+  // historical entries (data import, past-month catch-up). No longer skipped
+  // while queued offline — unlike the old wa.me link, the sms: link opens the
+  // phone's own Messages app with no internet needed at all.
+  if (isNewEntry && student && date === todayISO()) {
     const msg = `Dear Parent, fee of Rs ${Number(amount).toLocaleString()} for ${student.name} (${month}) has been received. Thank you. - School`;
-    openFatherWhatsapp(student.contact, msg); // opens WhatsApp (PC/laptop or phone), pre-filled, ready to send
+    openFatherWhatsapp(student.contact, msg); // opens the phone's Messages app, pre-filled, ready to send
   }
   if (!queued) await loadAllData();
   openStudentDetail(studentId);
@@ -4130,7 +4128,7 @@ function renderQrCheckinBody() {
       <img id="qr-img" src="${esc(qrImgUrl)}" alt="QR" width="220" height="220" style="border:1px solid var(--line);border-radius:8px;background:#fff;" onerror="document.getElementById('qr-fallback').style.display='block';this.style.display='none';">
     </div>
     <div id="qr-fallback" style="display:none;font-size:11px;background:#fff;border:1px solid var(--line);border-radius:8px;padding:8px;margin-bottom:10px;">
-      ${esc(LANG==='ur' ? 'QR تصویر لوڈ نہیں ہو سکی — یہ لنک براہ راست WhatsApp پر بھیج دیں:' : 'QR image could not load — share this link directly instead:')}
+      ${esc(LANG==='ur' ? 'QR تصویر لوڈ نہیں ہو سکی — یہ لنک براہ راست بھیج دیں:' : 'QR image could not load — share this link directly instead:')}
       <div style="word-break:break-all;font-weight:600;margin-top:4px;">${esc(url)}</div>
     </div>
     <button class="btn-ghost" style="width:100%;" onclick="regenerateCheckinToken()">${esc(t.regenerateCode)}</button>
@@ -4255,7 +4253,7 @@ function teacherWaLink(phone, message) {
   if (!digits) return null;
   if (digits.startsWith('0')) digits = '92' + digits.slice(1);
   else if (!digits.startsWith('92')) digits = '92' + digits;
-  return `https://wa.me/${digits}?text=${encodeURIComponent(message)}`;
+  return smsUriFromDigits(digits, message);
 }
 async function submitSalaryPayment(teacherId) {
   const month = document.getElementById('p-month').value;
@@ -4297,16 +4295,18 @@ async function submitSalaryPayment(teacherId) {
   });
   if (!queued && reportSaveError(error)) return;
   const tc = DATA.teachers.find(x=>x.id===teacherId);
-  // Skipped while queued offline — wa.me needs to actually reach the internet
-  // to open at all, so trying it with no connection just pops a jarring
-  // "No internet" browser page right after the save. Send it manually (once
-  // back online) instead.
-  if (!queued && tc && tc.contact) {
+  // No longer skipped while queued offline — the sms: link opens the phone's
+  // own Messages app with no internet needed at all (unlike the old wa.me link).
+  if (tc && tc.contact) {
+    const parts = [`${t.baseSalary}: ${LANG==='ur'?'روپے':'Rs'} ${fmt(base)}`];
+    if (bonus > 0) parts.push(`${t.attendanceBonus}: ${LANG==='ur'?'روپے':'Rs'} ${fmt(bonus)}`);
+    if (extra > 0) parts.push(`${t.extraClass}: ${LANG==='ur'?'روپے':'Rs'} ${fmt(extra)}`);
+    const breakdown = parts.map(p => `- ${p}`).join('\n');
     const msg = LANG==='ur'
-      ? `السلام علیکم ${tc.name}، آپ کی تنخواہ ماہ ${monthLabel(month)} کے لیے روپے ${fmt(amount)} ادا کر دی گئی ہے۔ شکریہ۔`
-      : `Assalam-o-Alaikum ${tc.name}, your salary of Rs${fmt(amount)} for ${monthLabel(month)} has been paid. Thank you.`;
+      ? `السلام علیکم ${tc.name}،\nآپ کی تنخواہ ماہ ${monthLabel(month)} کے لیے ادا کر دی گئی ہے:\n${breakdown}\nکل: روپے ${fmt(amount)}\nشکریہ۔`
+      : `Assalam-o-Alaikum ${tc.name},\nYour salary for ${monthLabel(month)} has been paid:\n${breakdown}\nTotal: Rs ${fmt(amount)}\nThank you.`;
     const link = teacherWaLink(tc.contact, msg);
-    if (link) window.open(link, '_blank');
+    if (link) location.href = link;
   }
   if (!queued) await loadAllData();
   openTeacherDetail(teacherId);
