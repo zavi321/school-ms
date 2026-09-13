@@ -5043,7 +5043,22 @@ function handleDMCExcelUpload(file) {
       // straight from the column header itself (e.g. "Urdu/75", "Math/100")
       // instead of a separate manual Subject Configuration step — dmcSubjects
       // is fully rebuilt from the Excel headers on every upload.
+      // Blank-header columns (XLSX names these "__EMPTY", "__EMPTY_1", etc.)
+      // and any pre-existing summary column already in the sheet (Total,
+      // Grand Total, Percentage, Result, Position, Grade, Remarks...) are
+      // skipped — those aren't per-subject marks, and the certificate
+      // computes its own total/percentage from the real subjects anyway, so
+      // including them would double it up.
       const nonMarkCols = ['Student Name','Name','Student','Class','جماعت','Father Name',"Father's Name",'Father','S/O','Walid','Roll No','Roll No.','Roll Number','Roll','Section','سیکشن','Date of Issue','Issue Date'];
+      const skipWords = ['total','total marks','total obtained','grand total','overall total','percentage','percent','result','position','rank','grade','remarks','status','division','signature'];
+      const isNonSubjectCol = (col) => {
+        if (nonMarkCols.includes(col)) return true;
+        const c = String(col || '').trim();
+        if (!c || /^__EMPTY/i.test(c)) return true; // blank header column
+        const norm = c.toLowerCase().replace(/[^a-z0-9\u0600-\u06FF]+/g, ' ').trim();
+        if (skipWords.includes(norm) || /^total\b/.test(norm)) return true;
+        return false;
+      };
       const parseSubjectHeader = (raw) => {
         const m = String(raw || '').match(/^(.+?)[\s\/]+(\d+)\s*$/);
         return m ? { name: m[1].trim(), total: Number(m[2]) } : { name: String(raw || '').trim(), total: 100 };
@@ -5051,8 +5066,10 @@ function handleDMCExcelUpload(file) {
       const subjectMap = new Map(); // original column header -> {name, total}
       if (rows.length) {
         Object.keys(rows[0]).forEach(col => {
-          if (nonMarkCols.includes(col)) return;
-          subjectMap.set(col, parseSubjectHeader(col));
+          if (isNonSubjectCol(col)) return;
+          const parsed = parseSubjectHeader(col);
+          if (!parsed.name) return; // no subject name could be read from this header — skip it entirely
+          subjectMap.set(col, parsed);
         });
       }
       dmcSubjects = Array.from(subjectMap.values());
