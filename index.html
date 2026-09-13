@@ -980,7 +980,7 @@ function friendlyErrorMsg(error) {
   return msg;
 }
 
-let DATA = { students:[], feePayments:[], teachers:[], salaryPayments:[], transactions:[], admissionRegister:[], teacherAttendance:[], holidays:[], classLogins:[] };
+let DATA = { students:[], feePayments:[], teachers:[], salaryPayments:[], transactions:[], admissionRegister:[], teacherAttendance:[], holidays:[], classLogins:[], studentAttendance:[] };
 let TAB = 'dashboard';
 let CURRENT_USER = null;   // { id, email }
 let CURRENT_PROFILE = null; // { school_name }
@@ -1009,7 +1009,7 @@ const OFFLINE_TABLES = ['fee_payments', 'students', 'teachers', 'salary_payments
 // Everything here is mirrored to IndexedDB purely for read access while
 // fully offline (e.g. opening the app with no signal at all) — only the
 // tables in OFFLINE_TABLES above also support making new changes offline.
-const READ_CACHE_TABLES = ['students', 'fee_payments', 'teachers', 'salary_payments', 'transactions', 'teacher_attendance', 'holidays', 'class_logins'];
+const READ_CACHE_TABLES = ['students', 'fee_payments', 'teachers', 'salary_payments', 'transactions', 'teacher_attendance', 'holidays', 'class_logins', 'student_attendance'];
 const IDB_NAME = 'sms_offline_v1';
 let _idbPromise = null;
 function idbOpen() {
@@ -1080,6 +1080,7 @@ async function offlineCacheStore() {
     idbReplaceAll('teacher_attendance', DATA.teacherAttendance),
     idbReplaceAll('holidays', DATA.holidays),
     idbReplaceAll('class_logins', DATA.classLogins),
+    idbReplaceAll('student_attendance', DATA.studentAttendance),
   ]);
 }
 // Restores the last-synced snapshot from IndexedDB when loadAllData() can't
@@ -1087,11 +1088,11 @@ async function offlineCacheStore() {
 // mid-request). The Admission Register isn't cached (Phase 2) — it simply
 // shows empty until back online.
 async function offlineCacheRestore() {
-  const [st, fp, tc, sp, tx, ta, hd, cl] = await Promise.all(
+  const [st, fp, tc, sp, tx, ta, hd, cl, sa] = await Promise.all(
     READ_CACHE_TABLES.map(tbl => idbGetAll(tbl))
   );
   DATA.students = st; DATA.feePayments = fp; DATA.teachers = tc;
-  DATA.salaryPayments = sp; DATA.transactions = tx; DATA.teacherAttendance = ta; DATA.holidays = hd; DATA.classLogins = cl;
+  DATA.salaryPayments = sp; DATA.transactions = tx; DATA.teacherAttendance = ta; DATA.holidays = hd; DATA.classLogins = cl; DATA.studentAttendance = sa;
 }
 
 let SYNCING = false;
@@ -1637,7 +1638,7 @@ async function logOut() {
   await sb.auth.signOut();
   try { localStorage.removeItem(LAST_UID_KEY); } catch (e) {}
   CURRENT_USER = null; CURRENT_PROFILE = null;
-  DATA = { students:[], feePayments:[], teachers:[], salaryPayments:[], transactions:[], admissionRegister:[], teacherAttendance:[], holidays:[] };
+  DATA = { students:[], feePayments:[], teachers:[], salaryPayments:[], transactions:[], admissionRegister:[], teacherAttendance:[], holidays:[], classLogins:[], studentAttendance:[] };
   document.getElementById('app').classList.add('hidden');
   renderLogIn();
 }
@@ -1647,7 +1648,7 @@ async function loadAllData() {
   // No signal at all — skip the network round-trip and use the last-synced
   // snapshot straight away instead of waiting for every request to time out.
   if (!navigator.onLine) { await offlineCacheRestore(); renderOfflineBanner(); return; }
-  let s, fp, tc, sp, tx, ar, ta, hd, cl;
+  let s, fp, tc, sp, tx, ar, ta, hd, cl, sa;
   const TIMED_OUT = Symbol('timed-out');
   try {
     const result = await Promise.race([
@@ -1666,6 +1667,10 @@ async function loadAllData() {
         // device (no real Supabase Auth session — see class_login_verify etc.).
         // The owner reads this table directly; only the RPCs can write to it.
         sb.from('class_logins').select('*').order('created_at'),
+        // Daily student attendance taken via the Class Portal — cached here
+        // purely for read access (e.g. the Admission Register's attendance
+        // calculator below), never written from the owner side.
+        sb.from('student_attendance').select('*'),
       ]),
       // navigator.onLine can be true on a signal that's actually too weak to
       // reach the server — without this, that case hangs on "Loading your
@@ -1674,7 +1679,7 @@ async function loadAllData() {
       new Promise((resolve) => setTimeout(() => resolve(TIMED_OUT), 8000)),
     ]);
     if (result === TIMED_OUT) { await offlineCacheRestore(); renderOfflineBanner(); return; }
-    [s, fp, tc, sp, tx, ar, ta, hd, cl] = result;
+    [s, fp, tc, sp, tx, ar, ta, hd, cl, sa] = result;
   } catch (e) {
     // Request(s) failed mid-flight (signal dropped just now) — same fallback.
     await offlineCacheRestore(); renderOfflineBanner(); return;
@@ -1688,6 +1693,7 @@ async function loadAllData() {
   DATA.teacherAttendance = ta.data || [];
   DATA.holidays = hd.data || [];
   DATA.classLogins = cl.data || [];
+  DATA.studentAttendance = sa.data || [];
   await offlineCacheStore();
   renderOfflineBanner();
   flushSyncQueue();
@@ -6135,6 +6141,34 @@ function printAsThermal(widthMm) {
   setTimeout(cleanup, 3000);
 }
 
+// Fills the Admission Register's attendance_possible/attendance_actual
+// fields from the actual daily attendance recorded via the Class Portal
+// (student_attendance table) for the student linked in this form, over the
+// date range from their admission date to their withdrawal date (or today
+// if still enrolled). Both counted in the same units as attendanceDaysCount()
+// (AM+PM each = 1, so a full day is 2) so the two numbers stay comparable.
+// Explicit button, not automatic on load, so it never silently overwrites a
+// value someone entered by hand.
+async function calcAdmissionAttendance() {
+  const studentId = document.getElementById('ar-student-link').value;
+  const msgEl = document.getElementById('ar-attendance-calc-msg');
+  if (!studentId) { if (msgEl) msgEl.textContent = LANG==='ur' ? 'پہلے طالب علم منتخب کریں' : 'Link a student first'; return; }
+  const start = dateVal('ar-admission-date') || todayISO();
+  const end = dateVal('ar-withdrawal-date', null) || todayISO();
+  // Reads from the last-synced cache (same data every other offline feature in
+  // this app uses) — works with no internet, but will only be as fresh as the
+  // last time this device successfully loaded data.
+  const records = DATA.studentAttendance.filter(r => r.student_id === studentId && r.date >= start && r.date <= end);
+  const actual = attendanceDaysCount(records);
+  let possible = 0;
+  for (let d = new Date(start + 'T00:00:00'); d <= new Date(end + 'T00:00:00'); d.setDate(d.getDate() + 1)) {
+    if (!isHoliday(d.toISOString().slice(0, 10))) possible += 2;
+  }
+  document.getElementById('ar-attendance-possible').value = possible;
+  document.getElementById('ar-attendance-actual').value = actual;
+  if (msgEl) msgEl.textContent = '✓';
+}
+
 function admissionEntryForm(r) {
   r = r || {};
   const cols = [
@@ -6161,6 +6195,7 @@ function admissionEntryForm(r) {
     [t.slcIssueDateField, `<input class="cell-input" id="ar-slc-issue-date" type="date" value="${esc(r.slc_issue_date||'')}">`],
     [t.attendancePossible, `<input class="cell-input" id="ar-attendance-possible" value="${esc(r.attendance_possible||'')}">`],
     [t.attendanceActual, `<input class="cell-input" id="ar-attendance-actual" value="${esc(r.attendance_actual||'')}">`],
+    ['', `<button type="button" class="btn-ghost" style="white-space:nowrap;" onclick="calcAdmissionAttendance()" title="${LANG==='ur'?'کلاس پورٹل کی حاضری سے حساب لگائیں':'Calculate from Class Portal attendance'}">🔄</button><div id="ar-attendance-calc-msg" style="font-size:10px;opacity:.7;"></div>`],
     [t.schoolFundReport, `<input class="cell-input" id="ar-school-fund" value="${esc(r.school_fund_report||'')}">`],
     [t.conduct, `<input class="cell-input" id="ar-conduct" value="${esc(r.conduct||'')}">`],
     [t.remarks, `<input class="cell-input" id="ar-remarks" value="${esc(r.remarks||'')}">`],
@@ -7166,6 +7201,17 @@ function renderClassPortalAddStudent() {
   `;
 }
 
+function queueOfflineAddStudent(session, name, fatherName, msg, nameInput, fatherInput) {
+  const tempId = 'local-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8);
+  session.students = session.students || [];
+  session.students.push({ id: tempId, name, father_name: fatherName });
+  setClassSession(session);
+  queueClassWrite({ type: 'addStudent', tempId, schoolCode: session.schoolCode, loginId: session.loginId, password: session.password, name, fatherName });
+  msg.innerHTML = `<span class="ok">${esc(t.classPortalOffline)}</span>`;
+  if (nameInput) nameInput.value = '';
+  if (fatherInput) fatherInput.value = '';
+}
+
 async function submitClassPortalAddStudent() {
   const session = getClassSession();
   const msg = document.getElementById('cp-add-msg');
@@ -7175,8 +7221,8 @@ async function submitClassPortalAddStudent() {
   const fatherName = fatherInput ? fatherInput.value.trim() : '';
   if (!session || !name) return;
   if (!fatherName) { msg.innerHTML = `<div class="err">${esc(t.classPortalFatherNameRequired)}</div>`; return; }
-  if (!navigator.onLine) { msg.innerHTML = `<div class="err">${esc(t.classPortalAddStudentOffline)}</div>`; return; }
   msg.textContent = '…';
+  if (!navigator.onLine) { queueOfflineAddStudent(session, name, fatherName, msg, nameInput, fatherInput); return; }
   try {
     const { data, error } = await sb.rpc('class_add_student', {
       p_school_code: session.schoolCode, p_login_id: session.loginId, p_password: session.password, p_name: name, p_father_name: fatherName
@@ -7189,7 +7235,10 @@ async function submitClassPortalAddStudent() {
     if (nameInput) nameInput.value = '';
     if (fatherInput) fatherInput.value = '';
   } catch(e) {
-    msg.innerHTML = `<div class="err">DEBUG: ${esc(e.message || String(e))}</div>`;
+    // navigator.onLine said we were online but the request itself failed
+    // mid-flight (weak signal) — queue it the same way instead of losing
+    // what was typed.
+    queueOfflineAddStudent(session, name, fatherName, msg, nameInput, fatherInput);
   }
 }
 
@@ -7401,12 +7450,52 @@ function queueClassWrite(item) {
   setClassQueue(q);
 }
 
+// If an attendance/marks entry was queued offline against a not-yet-synced
+// student's temporary local id, this swaps that temporary id for the real,
+// server-assigned one once the student itself has synced — so those entries
+// land on the right student instead of silently referencing an id the
+// server has never seen.
+function rewriteQueueStudentId(items, tempId, realId) {
+  return items.map(i => {
+    if (i.studentId === tempId) return { ...i, studentId: realId };
+    if (i.marks && Object.prototype.hasOwnProperty.call(i.marks, tempId)) {
+      const marks = { ...i.marks };
+      marks[realId] = marks[tempId];
+      delete marks[tempId];
+      return { ...i, marks };
+    }
+    return i;
+  });
+}
+
 async function flushClassQueue() {
   if (!navigator.onLine) return;
   let q = getClassQueue();
   if (!q.length) return;
+  // Students added offline are synced first, so any attendance/marks entries
+  // queued afterward for that same student (still offline, same session) can
+  // have their temporary id rewritten to the real one before being sent.
+  let rest = q.filter(i => i.type !== 'addStudent');
   const remaining = [];
-  for (const item of q) {
+  for (const item of q.filter(i => i.type === 'addStudent')) {
+    try {
+      const { data, error } = await sb.rpc('class_add_student', {
+        p_school_code: item.schoolCode, p_login_id: item.loginId, p_password: item.password,
+        p_name: item.name, p_father_name: item.fatherName
+      });
+      if (error || !data || !data.length) { remaining.push(item); continue; }
+      const realId = data[0].id;
+      const session = getClassSession();
+      if (session && session.students) {
+        session.students = session.students.map(s => s.id === item.tempId
+          ? { id: realId, name: data[0].name, father_name: data[0].father_name || item.fatherName }
+          : s);
+        setClassSession(session);
+      }
+      rest = rewriteQueueStudentId(rest, item.tempId, realId);
+    } catch(e) { remaining.push(item); }
+  }
+  for (const item of rest) {
     try {
       if (item.type === 'attendance') {
         const { error } = await sb.rpc('class_attendance_mark', {
