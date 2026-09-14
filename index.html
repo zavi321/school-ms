@@ -1079,7 +1079,13 @@ async function idbReplaceAll(store, rows) {
       const tx = db.transaction(store, 'readwrite');
       const os = tx.objectStore(store);
       os.clear();
-      rows.forEach(row => os.put(row));
+      // Each put() is wrapped individually so one malformed/keyless row can't
+      // throw mid-loop and abort the whole transaction — that would leave the
+      // store empty (it was already cleared above) even though every other
+      // row was perfectly fine, which is exactly the "all data disappears
+      // offline" symptom, just triggered by a single bad record instead of a
+      // timing issue.
+      rows.forEach(row => { try { os.put(row); } catch (e) { console.error('idbReplaceAll: skipped bad row in', store, e); } });
       tx.oncomplete = () => resolve();
       tx.onerror = () => reject(tx.error);
       tx.onabort = () => reject(tx.error);
@@ -1119,6 +1125,35 @@ async function offlineCacheStore() {
     idbReplaceAll('student_attendance', DATA.studentAttendance),
     idbReplaceAll('admission_register', DATA.admissionRegister),
   ]);
+  saveOfflineSnapshot();
+}
+// Second, independent copy of the same synced data, written to localStorage
+// instead of IndexedDB. Some in-app/WebView browsers (common on Android when
+// this kind of app is wrapped into an .apk) silently fail to persist
+// IndexedDB across app restarts even though every write above reports
+// success — localStorage is far more consistently reliable in exactly those
+// environments. This is purely a last-resort backup; IndexedDB stays the
+// primary cache.
+const OFFLINE_SNAPSHOT_KEY = 'sms_offline_snapshot';
+function saveOfflineSnapshot() {
+  try {
+    const snap = {
+      students: DATA.students, feePayments: DATA.feePayments, teachers: DATA.teachers,
+      salaryPayments: DATA.salaryPayments, transactions: DATA.transactions,
+      teacherAttendance: DATA.teacherAttendance, holidays: DATA.holidays,
+      classLogins: DATA.classLogins, studentAttendance: DATA.studentAttendance,
+      admissionRegister: DATA.admissionRegister, savedAt: Date.now(),
+    };
+    const key = OFFLINE_SNAPSHOT_KEY + '_' + (CURRENT_USER ? CURRENT_USER.id : 'anon');
+    localStorage.setItem(key, JSON.stringify(snap));
+  } catch (e) { console.error('saveOfflineSnapshot failed', e); }
+}
+function loadOfflineSnapshot() {
+  try {
+    const key = OFFLINE_SNAPSHOT_KEY + '_' + (CURRENT_USER ? CURRENT_USER.id : 'anon');
+    const raw = localStorage.getItem(key);
+    return raw ? JSON.parse(raw) : null;
+  } catch (e) { return null; }
 }
 // Restores the last-synced snapshot from IndexedDB when loadAllData() can't
 // reach the server at all (opening the app with no signal, or losing signal
@@ -1128,6 +1163,22 @@ async function offlineCacheRestore() {
   const [st, fp, tc, sp, tx, ta, hd, cl, sa, ar] = await Promise.all(
     READ_CACHE_TABLES.map(tbl => idbGetAll(tbl))
   );
+  const totalRows = st.length + fp.length + tc.length + sp.length + tx.length + ta.length + hd.length + cl.length + sa.length + ar.length;
+  if (totalRows === 0) {
+    // IndexedDB came back completely empty. Either this device has never
+    // synced yet (genuinely nothing to show), or IndexedDB failed to persist
+    // on this browser — the exact "all data becomes zero while offline" bug.
+    // Fall back to the localStorage snapshot before accepting an all-zero
+    // dashboard, so a real prior sync is never silently discarded.
+    const snap = loadOfflineSnapshot();
+    if (snap) {
+      DATA.students = snap.students || []; DATA.feePayments = snap.feePayments || []; DATA.teachers = snap.teachers || [];
+      DATA.salaryPayments = snap.salaryPayments || []; DATA.transactions = snap.transactions || []; DATA.teacherAttendance = snap.teacherAttendance || [];
+      DATA.holidays = snap.holidays || []; DATA.classLogins = snap.classLogins || []; DATA.studentAttendance = snap.studentAttendance || [];
+      DATA.admissionRegister = snap.admissionRegister || [];
+      return;
+    }
+  }
   DATA.students = st; DATA.feePayments = fp; DATA.teachers = tc;
   DATA.salaryPayments = sp; DATA.transactions = tx; DATA.teacherAttendance = ta; DATA.holidays = hd; DATA.classLogins = cl; DATA.studentAttendance = sa;
   DATA.admissionRegister = ar;
