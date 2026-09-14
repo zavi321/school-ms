@@ -726,6 +726,9 @@ const T = {
     classPortalMenuMarksView:'View Marks Sheet', classPortalSelectExam:'Select Exam', classPortalNoExams:'No exam marks saved yet.',
     classPortalTotal:'Total', classPortalDownloadExcel:'Download Excel', classPortalSendWhatsapp:'Send via WhatsApp',
     classPortalWhatsappFallbackMsg:'Marks sheet Excel file has been downloaded to your phone — please attach it here and send.',
+    suggestions:'Suggestions', suggestionsTitle:'Suggestions for Your School',
+    suggestionsDesc:'A few observations based on your current records to help improve the school.',
+    suggestionsAllGood:'Everything looks healthy right now — no urgent suggestions.',
   },
   ur: {
     appName:'مالیاتی و ریکارڈ سسٹم', tagline:'اسکول انتظامیہ کے لیے',
@@ -885,6 +888,9 @@ const T = {
     classPortalMenuMarksView:'مارکس شیٹ دیکھیں', classPortalSelectExam:'امتحان منتخب کریں', classPortalNoExams:'ابھی تک کوئی امتحانی نمبرات محفوظ نہیں۔',
     classPortalTotal:'ٹوٹل', classPortalDownloadExcel:'ایکسل ڈاؤن لوڈ کریں', classPortalSendWhatsapp:'واٹس ایپ پر بھیجیں',
     classPortalWhatsappFallbackMsg:'مارکس شیٹ کی ایکسل فائل آپ کے فون میں ڈاؤن لوڈ ہو گئی ہے — براہ کرم یہاں اٹیچ کر کے بھیج دیں۔',
+    suggestions:'تجاویز', suggestionsTitle:'آپ کے اسکول کے لیے تجاویز',
+    suggestionsDesc:'اسکول کی بہتری میں مدد کے لیے آپ کے موجودہ ریکارڈ کی بنیاد پر چند مشاہدات۔',
+    suggestionsAllGood:'اس وقت سب کچھ بہتر نظر آ رہا ہے — کوئی فوری تجویز نہیں۔',
   }
 };
 
@@ -898,6 +904,10 @@ const EXPENSE_CATS = ['Utilities','Maintenance','Supplies','Rent','Transport','E
 const INCOME_CATS = ['Donation','Grant','Sale','Fundraiser','Other'];
 
 const fmt = n => Number(n||0).toLocaleString('en-US');
+// Used on the dashboard to show "—" instead of a real-looking number/amount
+// when there is no cached data to show at all (see CACHE_UNAVAILABLE) — so
+// "we have nothing cached yet" never reads as "your balance is ₨0".
+const dv = (str) => CACHE_UNAVAILABLE ? '—' : str;
 const monthKey = (d=new Date()) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
 const monthLabel = mk => { const [y,m]=mk.split('-').map(Number); return new Date(y,m-1,1).toLocaleDateString(LANG==='ur'?'ur-PK':'en-US',{month:'short',year:'numeric'}); };
 const todayISO = () => new Date().toISOString().slice(0,10);
@@ -1021,7 +1031,7 @@ let _idbPromise = null;
 function idbOpen() {
   if (_idbPromise) return _idbPromise;
   _idbPromise = new Promise((resolve, reject) => {
-    const req = indexedDB.open(IDB_NAME, 4);
+    const req = indexedDB.open(IDB_NAME, 5);
     req.onupgradeneeded = () => {
       const db = req.result;
       READ_CACHE_TABLES.forEach(tbl => { if (!db.objectStoreNames.contains(tbl)) db.createObjectStore(tbl, { keyPath: 'id' }); });
@@ -1033,6 +1043,16 @@ function idbOpen() {
       // itself), cached locally so the sheet can be viewed, edited, and
       // printed/exported with zero internet.
       if (!db.objectStoreNames.contains('marks_sheet_data')) db.createObjectStore('marks_sheet_data', { keyPath: 'id' });
+      // Class Exam Marks (Class Marks View) — one row per class (keyed by
+      // class_name), cached locally so admin can still open a class's saved
+      // exam marks with zero internet, same as the other on-demand caches.
+      if (!db.objectStoreNames.contains('class_exam_marks')) db.createObjectStore('class_exam_marks', { keyPath: 'class_name' });
+      // The DMC Excel upload (dmcResults) previously lived only in memory —
+      // reloading the page (or opening the app offline after uploading while
+      // online) wiped it, even though dmc_config/subjects survived. Cached
+      // here as a single row so the last-uploaded batch survives a reload
+      // with zero internet.
+      if (!db.objectStoreNames.contains('dmc_upload')) db.createObjectStore('dmc_upload', { keyPath: 'id' });
     };
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);
@@ -1063,7 +1083,13 @@ async function idbReplaceAll(store, rows) {
       const tx = db.transaction(store, 'readwrite');
       const os = tx.objectStore(store);
       os.clear();
-      rows.forEach(row => os.put(row));
+      // Each put() is wrapped individually so one malformed/keyless row can't
+      // throw mid-loop and abort the whole transaction — that would leave the
+      // store empty (it was already cleared above) even though every other
+      // row was perfectly fine, which is exactly the "all data disappears
+      // offline" symptom, just triggered by a single bad record instead of a
+      // timing issue.
+      rows.forEach(row => { try { os.put(row); } catch (e) { console.error('idbReplaceAll: skipped bad row in', store, e); } });
       tx.oncomplete = () => resolve();
       tx.onerror = () => reject(tx.error);
       tx.onabort = () => reject(tx.error);
@@ -1103,15 +1129,89 @@ async function offlineCacheStore() {
     idbReplaceAll('student_attendance', DATA.studentAttendance),
     idbReplaceAll('admission_register', DATA.admissionRegister),
   ]);
+  saveOfflineSnapshot();
+}
+// Second, independent copy of the same synced data, written to localStorage
+// instead of IndexedDB. Some in-app/WebView browsers (common on Android when
+// this kind of app is wrapped into an .apk) silently fail to persist
+// IndexedDB across app restarts even though every write above reports
+// success — localStorage is far more consistently reliable in exactly those
+// environments. This is purely a last-resort backup; IndexedDB stays the
+// primary cache.
+const OFFLINE_SNAPSHOT_KEY = 'sms_offline_snapshot';
+function saveOfflineSnapshot() {
+  try {
+    const snap = {
+      students: DATA.students, feePayments: DATA.feePayments, teachers: DATA.teachers,
+      salaryPayments: DATA.salaryPayments, transactions: DATA.transactions,
+      teacherAttendance: DATA.teacherAttendance, holidays: DATA.holidays,
+      classLogins: DATA.classLogins, studentAttendance: DATA.studentAttendance,
+      admissionRegister: DATA.admissionRegister, savedAt: Date.now(),
+    };
+    const key = OFFLINE_SNAPSHOT_KEY + '_' + (CURRENT_USER ? CURRENT_USER.id : 'anon');
+    localStorage.setItem(key, JSON.stringify(snap));
+  } catch (e) { console.error('saveOfflineSnapshot failed', e); }
+}
+function loadOfflineSnapshot() {
+  try {
+    const key = OFFLINE_SNAPSHOT_KEY + '_' + (CURRENT_USER ? CURRENT_USER.id : 'anon');
+    const raw = localStorage.getItem(key);
+    return raw ? JSON.parse(raw) : null;
+  } catch (e) { return null; }
 }
 // Restores the last-synced snapshot from IndexedDB when loadAllData() can't
 // reach the server at all (opening the app with no signal, or losing signal
 // mid-request). The Admission Register is now cached too, so it stays
 // viewable (read-only, same as the other tables) while fully offline.
+// Human-readable trail of exactly what offlineCacheRestore() found (or
+// didn't) on this device, last time it ran. Shown in the CACHE_UNAVAILABLE
+// banner so a "why is this offline?" report comes with the actual numbers
+// instead of a screenshot of just the symptom — no PC/remote-debugging
+// needed to see whether IndexedDB, the localStorage snapshot, or both, came
+// back empty.
+let OFFLINE_DEBUG_INFO = '';
 async function offlineCacheRestore() {
   const [st, fp, tc, sp, tx, ta, hd, cl, sa, ar] = await Promise.all(
     READ_CACHE_TABLES.map(tbl => idbGetAll(tbl))
   );
+  const totalRows = st.length + fp.length + tc.length + sp.length + tx.length + ta.length + hd.length + cl.length + sa.length + ar.length;
+  if (totalRows === 0) {
+    // IndexedDB came back completely empty. Either this device has never
+    // synced yet (genuinely nothing to show), or IndexedDB failed to persist
+    // on this browser — the exact "all data becomes zero while offline" bug.
+    // Fall back to the localStorage snapshot before accepting an all-zero
+    // dashboard, so a real prior sync is never silently discarded.
+    const snap = loadOfflineSnapshot();
+    // A snapshot object existing is not the same as it holding real rows —
+    // an empty-but-present snapshot (e.g. saved before the first real sync
+    // ever completed) used to be accepted as "we have data" and silently
+    // rendered ₨0 everywhere with no warning banner. Only trust it once it
+    // actually contains at least one cached row.
+    const snapRows = snap ? (snap.students||[]).length + (snap.feePayments||[]).length + (snap.teachers||[]).length +
+      (snap.salaryPayments||[]).length + (snap.transactions||[]).length + (snap.teacherAttendance||[]).length +
+      (snap.holidays||[]).length + (snap.classLogins||[]).length + (snap.studentAttendance||[]).length +
+      (snap.admissionRegister||[]).length : 0;
+    if (snap && snapRows > 0) {
+      DATA.students = snap.students || []; DATA.feePayments = snap.feePayments || []; DATA.teachers = snap.teachers || [];
+      DATA.salaryPayments = snap.salaryPayments || []; DATA.transactions = snap.transactions || []; DATA.teacherAttendance = snap.teacherAttendance || [];
+      DATA.holidays = snap.holidays || []; DATA.classLogins = snap.classLogins || []; DATA.studentAttendance = snap.studentAttendance || [];
+      DATA.admissionRegister = snap.admissionRegister || [];
+      CACHE_UNAVAILABLE = false;
+      OFFLINE_DEBUG_INFO = `IndexedDB: 0 rows · localStorage snapshot: ${snapRows} rows (saved ${snap.savedAt ? new Date(snap.savedAt).toLocaleString() : 'unknown time'})`;
+      return;
+    }
+    // Genuinely nothing anywhere on this device — never synced yet, or the
+    // browser wiped both caches. Flag it so the dashboard shows "—" instead
+    // of "₨0" (see CACHE_UNAVAILABLE above) rather than looking like real
+    // financial data.
+    CACHE_UNAVAILABLE = true;
+    OFFLINE_DEBUG_INFO = snap
+      ? `IndexedDB: 0 rows · localStorage snapshot: found but empty (saved ${snap.savedAt ? new Date(snap.savedAt).toLocaleString() : 'unknown time'})`
+      : 'IndexedDB: 0 rows · localStorage snapshot: none found on this device';
+  } else {
+    CACHE_UNAVAILABLE = false;
+    OFFLINE_DEBUG_INFO = `IndexedDB: ${totalRows} rows (students ${st.length}, fee_payments ${fp.length}, teachers ${tc.length}, salary_payments ${sp.length}, transactions ${tx.length})`;
+  }
   DATA.students = st; DATA.feePayments = fp; DATA.teachers = tc;
   DATA.salaryPayments = sp; DATA.transactions = tx; DATA.teacherAttendance = ta; DATA.holidays = hd; DATA.classLogins = cl; DATA.studentAttendance = sa;
   DATA.admissionRegister = ar;
@@ -1119,6 +1219,15 @@ async function offlineCacheRestore() {
 
 let SYNCING = false;
 let PENDING_CONFLICTS = [];
+// True only when offlineCacheRestore() found literally nothing anywhere on
+// this device (no IndexedDB rows, no localStorage snapshot either) — i.e.
+// there is no cached data to show, as opposed to the school's real balances
+// genuinely being 0. tplDashboard() checks this to show "—" placeholders
+// instead of "₨0" figures, so a school never mistakes "we have no cached
+// copy yet" for "our money disappeared". Cleared the moment any real data
+// is found — from cache while offline, or freshly from the server once
+// back online.
+let CACHE_UNAVAILABLE = false;
 // Generic offline-aware write. `run` performs the real Supabase call when
 // online; `optimisticApply` updates DATA immediately so the UI reflects the
 // change with no network round-trip; `baseRow` is the last-known-synced copy
@@ -1270,8 +1379,39 @@ async function renderOfflineBanner() {
     el.style.display = 'none';
   }
 }
-window.addEventListener('online', () => { renderOfflineBanner(); flushSyncQueue(); });
+// Self-heal: the moment signal comes back, always pull fresh data from the
+// server and silently redraw — this is what fixes an already-affected
+// client (one whose local cache was empty/stale from before this fix
+// existed) without them having to do anything or ask "what happened".
+// flushSyncQueue() already does a loadAllData()+redraw at the end of a
+// clean run, but it skips entirely if SYNCING is already true or the queue
+// handling short-circuits — this direct call is the guaranteed fallback so
+// a refresh always happens on reconnect, queue or no queue, conflict or no
+// conflict.
+async function reconcileOnReconnect() {
+  if (!navigator.onLine) return;
+  ensurePersistentStorage(); // heuristics for granting this can change over a session — worth re-asking
+  await flushSyncQueue();
+  if (!SYNCING && CACHE_UNAVAILABLE) { await loadAllData(); }
+  renderOfflineBanner();
+  if (TAB) safeRenderTab();
+}
+window.addEventListener('online', () => { renderOfflineBanner(); reconcileOnReconnect(); });
 window.addEventListener('offline', () => renderOfflineBanner());
+// Mobile browsers can leave a backgrounded tab "frozen" without ever firing
+// online/offline while connectivity actually changes underneath it — the
+// tab can come back to the foreground still showing an old offline/zero
+// state even though the device has signal again. Re-checking on every
+// return to the foreground closes that gap. Throttled so rapid tab
+// switching doesn't spam the server.
+let _lastForegroundCheck = 0;
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState !== 'visible') return;
+  const now = Date.now();
+  if (now - _lastForegroundCheck < 15000) return;
+  _lastForegroundCheck = now;
+  reconcileOnReconnect();
+});
 
 // ---------------- Boot / session ----------------
 function renderForgotPassword() {
@@ -1336,7 +1476,30 @@ function renderForgotEmail() {
   `);
 }
 
+// Chrome (and most Android browsers) treat IndexedDB/localStorage for a
+// site like this as "best-effort" storage unless the origin is granted
+// persistent storage — meaning the OS can silently wipe it under storage
+// pressure (low disk space, the site not opened in a while, etc.) with zero
+// warning to the user. That wipe is indistinguishable from a real bug: the
+// exact same "shows data online, everything turns to 0 once offline"
+// symptom, except here the offline cache itself was erased by the browser,
+// not by anything in this app's own code. Requesting persistence here (every
+// boot, it's harmless to repeat) tells the browser this data matters and
+// should be protected the same way an installed app's storage is. It can
+// still be silently refused on some browsers/devices, so this reduces the
+// problem but cannot promise it will never happen again — encourage the
+// school to "Add to Home Screen" too, since installed PWAs get persistence
+// far more reliably than a plain browser tab.
+async function ensurePersistentStorage() {
+  try {
+    if (!(navigator.storage && navigator.storage.persist)) return;
+    const already = navigator.storage.persisted ? await navigator.storage.persisted() : false;
+    if (!already) await navigator.storage.persist();
+  } catch (e) { console.error('ensurePersistentStorage failed', e); }
+}
+
 async function boot() {
+  ensurePersistentStorage(); // fire-and-forget — never blocks boot on this
   document.body.className = LANG === 'ur' ? 'ur' : '';
 
   // A teacher scanning the Principal's QR code lands here with ?checkin=TOKEN —
@@ -1716,6 +1879,7 @@ async function loadAllData() {
   DATA.holidays = hd.data || [];
   DATA.classLogins = cl.data || [];
   DATA.studentAttendance = sa.data || [];
+  CACHE_UNAVAILABLE = false; // fresh data straight from the server — definitely real
   await offlineCacheStore();
   renderOfflineBanner();
   flushSyncQueue();
@@ -1953,10 +2117,11 @@ const NAV_ICONS = {
   marksSheet: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="18" rx="2"/><path d="M9 8h6M3 13h18M3 18h18"/></svg>`,
   admissionRegister: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 016.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"/><path d="M9 7h7M9 11h7"/></svg>`,
   admin: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l8 4v6c0 5-3.5 8.5-8 10-4.5-1.5-8-5-8-10V6l8-4z"/></svg>`,
+  suggestions: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18h6M10 22h4M12 2a6 6 0 00-4 10.5c.6.6 1 1.4 1 2.5h6c0-1.1.4-1.9 1-2.5A6 6 0 0012 2z"/></svg>`,
 };
 
 function renderNav() {
-  const tabs = ['dashboard','students','teachers','finance','reports','dmc','marksSheet','admissionRegister'];
+  const tabs = ['dashboard','students','teachers','finance','reports','dmc','marksSheet','admissionRegister','suggestions'];
   if (CURRENT_PROFILE && CURRENT_PROFILE.is_admin) tabs.push('admin');
   document.getElementById('navbar').innerHTML = tabs.map(k => `
     <button class="${TAB===k?'active':''}" onclick="setTab('${k}')">
@@ -2232,6 +2397,7 @@ function renderTab() {
   else if (TAB==='dmc') {
     main.innerHTML = tplDMC();
     renderDMCEditTable();
+    restoreDMCUploadIfEmpty();
     loadDMCConfig().then(() => {
       if (TAB !== 'dmc' || !document.getElementById('dmc-school-name')) return;
       // Previously this replaced the *entire* tab (main.innerHTML = tplDMC())
@@ -2245,7 +2411,6 @@ function renderTab() {
       // user is currently focused on — never tears down input elements at
       // all, so there's no window where a tap can race a rebuild.
       applyDMCConfigToFields();
-      renderDMCSubjects();
       renderDMCEditTable();
     });
   }
@@ -2254,8 +2419,93 @@ function renderTab() {
   else if (TAB==='teacherRegister') main.innerHTML = tplTeacherRegister();
   else if (TAB==='classLogins') main.innerHTML = tplClassLogins();
   else if (TAB==='admin') { main.innerHTML = tplAdmin(); loadAdminLists(); return; }
+  else if (TAB==='suggestions') main.innerHTML = tplSuggestions();
   main.insertAdjacentHTML('beforeend', `<div class="notice">${esc(t.sharedNotice)}</div>`);
   main.insertAdjacentHTML('beforeend', `<div class="notice" style="margin-top:8px;font-size:10px;">${esc(t.copyrightNotice)}</div>`);
+}
+
+// ---------------- Suggestions (for the school owner) ----------------
+// Looks at the school's own live records (fees, dues, teacher salaries,
+// student mix) and surfaces a short, plain-language list of things the
+// owner may want to act on. Everything here is computed from data already
+// in DATA/computeStats() — no network calls, nothing saved anywhere.
+function generateSuggestions() {
+  const s = computeStats();
+  const cur = monthKey();
+  const active = DATA.students.filter(x => x.status !== 'inactive');
+  const list = [];
+
+  // 1. Students seriously behind on fees (2+ months)
+  const overdueCount = active.filter(x => isFeePaying(x) && monthsOverdue(x) >= 2).length;
+  if (overdueCount > 0) {
+    list.push({ icon:'⚠️',
+      en:`${overdueCount} student${overdueCount>1?'s are':' is'} 2+ months behind on fees. Sending a reminder or reaching out to these families directly may help recover this faster.`,
+      ur:`${overdueCount} طلبہ کی فیس 2 یا زیادہ ماہ سے واجب الادا ہے۔ ان خاندانوں کو یاد دہانی بھیجنے یا براہ راست رابطہ کرنے سے وصولی جلدی ہو سکتی ہے۔` });
+  }
+
+  // 2. All-time finances running at a deficit
+  if (s.netBalance < 0) {
+    list.push({ icon:'📉',
+      en:`Your all-time net balance is currently in deficit (₨${fmt(Math.abs(s.netBalance))}). It may help to review recurring expenses or look into additional income sources.`,
+      ur:`آپ کا مجموعی خالص بیلنس اس وقت خسارے میں ہے (₨${fmt(Math.abs(s.netBalance))})۔ بار بار ہونے والے اخراجات کا جائزہ لینا یا آمدنی کے اضافی ذرائع تلاش کرنا مفید ہو سکتا ہے۔` });
+  }
+
+  // 3. Low fee collection rate so far this month
+  const totalDueThisMonth = s.feesCollectedThisMonth + s.feesDueThisMonth;
+  if (totalDueThisMonth > 0) {
+    const rate = s.feesCollectedThisMonth / totalDueThisMonth;
+    if (rate < 0.6) {
+      list.push({ icon:'💰',
+        en:`Only ${Math.round(rate*100)}% of this month's fees have been collected so far. Sending reminders earlier in the month tends to improve collection.`,
+        ur:`اس مہینے کی فیس کا صرف ${Math.round(rate*100)}% ہی اب تک وصول ہوا ہے۔ مہینے کے شروع میں یاد دہانی بھیجنے سے وصولی عموماً بہتر ہو جاتی ہے۔` });
+    }
+  }
+
+  // 4. High share of Free/Orphan (non fee-paying) students
+  const typedActive = s.payingCount + s.freeCount + s.orphanCount;
+  if (typedActive > 0) {
+    const freeRatio = (s.freeCount + s.orphanCount) / typedActive;
+    if (freeRatio > 0.35) {
+      list.push({ icon:'🤝',
+        en:`${Math.round(freeRatio*100)}% of your active students are Free or Orphan (non fee-paying). Looking into donors or a sponsorship program could help support these seats.`,
+        ur:`آپ کے فعال طلبہ میں سے ${Math.round(freeRatio*100)}% فری یا یتیم (غیر فیس ادا کرنے والے) ہیں۔ عطیہ دہندگان یا سپانسرشپ پروگرام تلاش کرنا ان نشستوں کی مدد کر سکتا ہے۔` });
+    }
+  }
+
+  // 5. Teacher salaries still pending this month
+  const unpaidTeachers = DATA.teachers.filter(tc => !teacherPayments(tc.id).some(p => p.month === cur));
+  if (DATA.teachers.length > 0 && unpaidTeachers.length > 0) {
+    list.push({ icon:'🧑‍🏫',
+      en:`${unpaidTeachers.length} of ${DATA.teachers.length} teachers haven't been paid yet this month. Timely salary payments help with staff retention.`,
+      ur:`${DATA.teachers.length} میں سے ${unpaidTeachers.length} اساتذہ کو اس مہینے تنخواہ ابھی تک ادا نہیں کی گئی۔ بروقت تنخواہ عملے کو برقرار رکھنے میں مددگار ہوتی ہے۔` });
+  }
+
+  // 6. Outstanding dues large relative to a normal month's collection
+  if (s.totalDuesAllTime > 0 && s.feesCollectedThisMonth > 0 && s.totalDuesAllTime > s.feesCollectedThisMonth * 3) {
+    list.push({ icon:'📋',
+      en:`Total outstanding dues (₨${fmt(s.totalDuesAllTime)}) are more than 3× this month's collection. A structured fee-recovery plan could help bring this down.`,
+      ur:`کل واجب الادا فیس (₨${fmt(s.totalDuesAllTime)}) اس مہینے کی وصولی سے 3 گنا سے زیادہ ہے۔ ایک منظم فیس وصولی منصوبہ اسے کم کرنے میں مدد دے سکتا ہے۔` });
+  }
+
+  return list;
+}
+
+function tplSuggestions() {
+  const list = generateSuggestions();
+  const items = list.length
+    ? list.map(x => `
+        <div class="stat-card" style="display:flex;gap:10px;align-items:flex-start;margin-bottom:12px;">
+          <div style="font-size:20px;line-height:1.3;">${x.icon}</div>
+          <div style="font-size:13px;line-height:1.55;">${esc(LANG === 'ur' ? x.ur : x.en)}</div>
+        </div>`).join('')
+    : `<div class="stat-card" style="text-align:center;opacity:.65;font-size:13px;">${esc(t.suggestionsAllGood)}</div>`;
+
+  return `
+    <div style="padding-top:16px;">
+      <div class="section-title" style="margin-top:0;">${esc(t.suggestionsTitle)}</div>
+      <p style="font-size:12px;opacity:.65;margin:-4px 0 14px;">${esc(t.suggestionsDesc)}</p>
+      ${items}
+    </div>`;
 }
 
 // ---------------- Admin Panel (owner only) ----------------
@@ -2670,18 +2920,21 @@ function tplDashboard() {
 
   return `
     <div style="padding-top:16px;">
+      ${CACHE_UNAVAILABLE ? `<div style="background:#B00020;color:#fff;font-size:12px;font-weight:600;text-align:center;padding:8px 10px;border-radius:10px;margin-bottom:12px;">${esc(LANG==='ur'
+        ? '⚠️ اس ڈیوائس پر کوئی محفوظ ڈیٹا موجود نہیں۔ نیچے دیے گئے اعداد اصل نہیں — انٹرنیٹ سے جوڑیں۔'
+        : '⚠️ No cached data on this device yet. Figures below are placeholders, not real balances — please connect to the internet once.')}${OFFLINE_DEBUG_INFO ? `<div style="font-weight:400;opacity:.85;margin-top:4px;font-size:11px;">${esc(OFFLINE_DEBUG_INFO)}</div>` : ''}</div>` : ''}
       <div class="stat-grid">
-        <div class="stat-card"><div class="lbl">${esc(t.totalStudents)}</div><div class="val">${s.activeCount}</div></div>
-        <div class="stat-card"><div class="lbl">${esc(t.totalIncome)}</div><div class="val" style="color:var(--sage);">₨${fmt(s.totalIncomeAllTime)}</div></div>
-        <div class="stat-card"><div class="lbl">${esc(t.totalExpense)}</div><div class="val" style="color:var(--rust);">₨${fmt(s.totalExpenseAllTime)}</div></div>
-        <div class="stat-card"><div class="lbl">${esc(t.teacherSalaries)}</div><div class="val">₨${fmt(s.totalSalariesAllTime)}</div></div>
+        <div class="stat-card"><div class="lbl">${esc(t.totalStudents)}</div><div class="val">${dv(s.activeCount)}</div></div>
+        <div class="stat-card"><div class="lbl">${esc(t.totalIncome)}</div><div class="val" style="color:var(--sage);">${dv('₨'+fmt(s.totalIncomeAllTime))}</div></div>
+        <div class="stat-card"><div class="lbl">${esc(t.totalExpense)}</div><div class="val" style="color:var(--rust);">${dv('₨'+fmt(s.totalExpenseAllTime))}</div></div>
+        <div class="stat-card"><div class="lbl">${esc(t.teacherSalaries)}</div><div class="val">${dv('₨'+fmt(s.totalSalariesAllTime))}</div></div>
       </div>
-      <div class="balance-card"><div class="lbl">${esc(t.netBalance)}</div><div class="val">₨${fmt(s.netBalance)}</div></div>
-      <div class="dues-card"><div class="lbl">${esc(t.totalDuesAllTime)}</div><div class="val">₨${fmt(s.totalDuesAllTime)}</div></div>
+      <div class="balance-card"><div class="lbl">${esc(t.netBalance)}</div><div class="val">${dv('₨'+fmt(s.netBalance))}</div></div>
+      <div class="dues-card"><div class="lbl">${esc(t.totalDuesAllTime)}</div><div class="val">${dv('₨'+fmt(s.totalDuesAllTime))}</div></div>
 
       <div class="other-fee-card">
         <div class="lbl">${esc(t.otherFeeStandalone)}</div>
-        <div class="val">₨${fmt(s.otherFeeThisMonth)}</div>
+        <div class="val">${dv('₨'+fmt(s.otherFeeThisMonth))}</div>
       </div>
 
       <div id="admin-notify-row" style="margin-top:10px;">
@@ -2690,17 +2943,17 @@ function tplDashboard() {
 
       <div class="section-title">${esc(t.thisMonth)}</div>
       <div class="stat-grid">
-        <div class="stat-card"><div class="lbl">${esc(t.feesCollected)}</div><div class="val" style="font-size:18px;">₨${fmt(s.feesCollectedThisMonth)}</div></div>
-        <div class="stat-card"><div class="lbl">${esc(t.feesDue)}</div><div class="val" style="font-size:18px;">₨${fmt(s.feesDueThisMonth)}</div></div>
-        <div class="stat-card"><div class="lbl">${esc(t.salaryPaid)}</div><div class="val" style="font-size:18px;">₨${fmt(s.salaryPaidThisMonth)}</div></div>
-        <div class="stat-card"><div class="lbl">${esc(t.expensesThisMonth)}</div><div class="val" style="font-size:18px;color:var(--rust);">₨${fmt(s.totalExpenseThisMonth)}</div></div>
+        <div class="stat-card"><div class="lbl">${esc(t.feesCollected)}</div><div class="val" style="font-size:18px;">${dv('₨'+fmt(s.feesCollectedThisMonth))}</div></div>
+        <div class="stat-card"><div class="lbl">${esc(t.feesDue)}</div><div class="val" style="font-size:18px;">${dv('₨'+fmt(s.feesDueThisMonth))}</div></div>
+        <div class="stat-card"><div class="lbl">${esc(t.salaryPaid)}</div><div class="val" style="font-size:18px;">${dv('₨'+fmt(s.salaryPaidThisMonth))}</div></div>
+        <div class="stat-card"><div class="lbl">${esc(t.expensesThisMonth)}</div><div class="val" style="font-size:18px;color:var(--rust);">${dv('₨'+fmt(s.totalExpenseThisMonth))}</div></div>
       </div>
 
       <div class="section-title">${esc(t.studentType)}</div>
       <div class="stat-grid" style="grid-template-columns:1fr 1fr 1fr;">
-        <div class="stat-card"><div class="lbl">${esc(t.feePaying)}</div><div class="val" style="font-size:18px;">${s.payingCount}</div></div>
-        <div class="stat-card"><div class="lbl">${esc(t.free)}</div><div class="val" style="font-size:18px;color:#2563A6;">${s.freeCount}</div></div>
-        <div class="stat-card"><div class="lbl">${esc(t.orphan)}</div><div class="val" style="font-size:18px;color:#8A6200;">${s.orphanCount}</div></div>
+        <div class="stat-card"><div class="lbl">${esc(t.feePaying)}</div><div class="val" style="font-size:18px;">${dv(s.payingCount)}</div></div>
+        <div class="stat-card"><div class="lbl">${esc(t.free)}</div><div class="val" style="font-size:18px;color:#2563A6;">${dv(s.freeCount)}</div></div>
+        <div class="stat-card"><div class="lbl">${esc(t.orphan)}</div><div class="val" style="font-size:18px;color:#8A6200;">${dv(s.orphanCount)}</div></div>
       </div>
 
       <div class="section-title">${esc(t.recentActivity)}</div>
@@ -4094,11 +4347,26 @@ async function renderClassAttendanceView(className) {
     <p style="font-size:10.5px;opacity:.55;margin-top:8px;">${esc(t.morning)} / ${esc(t.afternoon)} — ${esc(t.registerLegend)}</p>`;
 }
 
+// Offline-aware: mirrors the fetched exams into IndexedDB (keyed by class
+// name) so this view still opens with the last-synced marks when there's no
+// signal at all — same on-demand cache pattern as dmc_config/marks_sheet_data.
 async function openClassMarksView(className) {
   showModal(className + ' — ' + t.examMarksTitle, `<div id="cmv-body">…</div>`);
-  const { data, error } = await sb.from('class_exam_marks').select('*').eq('class_name', className).order('updated_at', { ascending: false });
   const body = document.getElementById('cmv-body');
-  if (error) { body.innerHTML = `<div class="err">${esc(error.message)}</div>`; return; }
+  let data = null, error = null;
+  if (navigator.onLine) {
+    const res = await sb.from('class_exam_marks').select('*').eq('class_name', className).order('updated_at', { ascending: false });
+    data = res.data; error = res.error;
+    if (!error && data) await idbPutRow('class_exam_marks', { class_name: className, exams: data });
+  } else {
+    error = null;
+  }
+  if (!navigator.onLine || error) {
+    const cached = await idbGetAll('class_exam_marks');
+    const row = cached.find(r => r.class_name === className);
+    data = row ? row.exams : [];
+    if (error && (!data || !data.length)) { body.innerHTML = `<div class="err">${esc(error.message)}</div>`; return; }
+  }
   if (!data || !data.length) { body.innerHTML = `<div class="empty">${esc(t.noExamsYet)}</div>`; return; }
   body.innerHTML = `<div class="list-card">${data.map(ex => `
     <button type="button" class="list-row" style="width:100%;text-align:left;border:none;background:none;cursor:pointer;" onclick='renderClassMarksDetail(${JSON.stringify(ex.id)})'>
@@ -4881,20 +5149,6 @@ function tplDMC() {
     </div>
 
     <div class="card">
-      <h3 style="margin-top:0;">Subject Configuration</h3>
-      <p style="font-size:12px;opacity:.7;">Define subjects and total marks (e.g., Urdu-100, English-100, Math-100)</p>
-      <div id="dmc-subject-config" style="margin-bottom:8px;">
-        <div style="display:flex;gap:6px;margin-bottom:8px;">
-          <input type="text" id="dmc-subj-name" autocomplete="off" placeholder="Subject Name" style="flex:1;">
-          <input type="number" id="dmc-subj-total" autocomplete="off" placeholder="Total Marks" style="flex:1;" value="100">
-          <button class="btn-ghost" onclick="addDMCSubject()">Add</button>
-        </div>
-        <div id="dmc-subjects-list" style="display:flex;flex-wrap:wrap;gap:6px;"></div>
-      </div>
-      <button class="btn-ghost" onclick="clearDMCSubjects()">Clear All Subjects</button>
-    </div>
-
-    <div class="card">
       <h3 style="margin-top:0;">Preview & Generate DMC</h3>
       <div id="dmc-preview"></div>
       <div style="margin-top:12px;display:flex;gap:6px;">
@@ -4990,6 +5244,35 @@ async function loadDMCConfig() {
   await idbPutRow('dmc_config', { id: 'main', ...data });
 }
 
+// Snapshots the currently-uploaded DMC batch (student rows + marks + which
+// class/section/date it's for) to IndexedDB, so it survives a page reload or
+// opening the app with no signal — mirrors the same on-demand cache pattern
+// as dmc_config, just for the upload itself instead of the school's settings.
+async function saveDMCUpload() {
+  await idbPutRow('dmc_upload', {
+    id: 'main', results: dmcResults, selectedClass: dmcSelectedClass,
+    section: dmcBatchSection, dateOfIssue: dmcBatchDateOfIssue
+  });
+}
+// Restores the last-cached DMC batch when the tab opens with nothing in
+// memory yet (fresh reload) — so offline (or a slow/flaky connection) still
+// shows the previously uploaded results instead of an empty upload screen.
+async function restoreDMCUploadIfEmpty() {
+  if (dmcResults.length) return;
+  const cached = await idbGetAll('dmc_upload');
+  const row = cached[0];
+  if (!row || !row.results || !row.results.length) return;
+  dmcResults = row.results;
+  dmcSelectedClass = row.selectedClass || '';
+  dmcBatchSection = row.section || '';
+  dmcBatchDateOfIssue = row.dateOfIssue || '';
+  renderDMCEditTable();
+  const clsSel = document.getElementById('dmc-class-select');
+  if (clsSel) clsSel.value = dmcSelectedClass;
+  const msgEl = document.getElementById('dmc-upload-msg');
+  if (msgEl) msgEl.innerHTML = `✓ Loaded ${dmcResults.length} students (from last saved upload)`;
+}
+
 async function saveDMCConfig() {
   const payload = {
     owner_id: CURRENT_USER.id, subjects: dmcSubjects, school_name: dmcSchoolName, logo: dmcLogo,
@@ -5010,16 +5293,6 @@ function renderDMCPreviewIfOpen() {
   if (dmcResults.length > 0 && document.getElementById('dmc-preview')) generateDMCPreview();
 }
 
-function addDMCSubject() {
-  const name = document.getElementById('dmc-subj-name').value.trim();
-  const total = Number(document.getElementById('dmc-subj-total').value) || 100;
-  if (!name) return;
-  dmcSubjects.push({name, total});
-  document.getElementById('dmc-subj-name').value = '';
-  saveDMCConfig();
-  renderDMCSubjects();
-}
-
 function renderDMCEditTable() {
   const container = document.getElementById('dmc-edit-table');
   if (!container) return;
@@ -5034,25 +5307,10 @@ function renderDMCEditTable() {
   container.innerHTML = dmcResults.map((r, i) => `
     <div style="display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--line);padding:8px 0;">
       <div style="width:22px;font-size:13px;color:var(--ink);flex-shrink:0;">${r.serialNo}.</div>
-      <input type="text" autocomplete="off" style="flex:1;" value="${esc(r.studentName)}" placeholder="Student Name" oninput="dmcResults[${i}].studentName=this.value">
-      <input type="text" autocomplete="off" style="width:110px;flex-shrink:0;" value="${esc(r.rollNo)}" placeholder="Roll No." oninput="dmcResults[${i}].rollNo=this.value">
+      <input type="text" autocomplete="off" style="flex:1;" value="${esc(r.studentName)}" placeholder="Student Name" oninput="dmcResults[${i}].studentName=this.value;saveDMCUpload();">
+      <input type="text" autocomplete="off" style="width:110px;flex-shrink:0;" value="${esc(r.rollNo)}" placeholder="Roll No." oninput="dmcResults[${i}].rollNo=this.value;saveDMCUpload();">
     </div>
   `).join('');
-}
-
-function renderDMCSubjects() {
-  document.getElementById('dmc-subjects-list').innerHTML = dmcSubjects.map((s, i) => `
-    <div style="background:#F0EBDA;padding:6px 10px;border-radius:6px;font-size:12px;display:flex;align-items:center;gap:6px;">
-      ${esc(s.name)} (${s.total})
-      <button class="btn-ghost" style="padding:0;font-size:10px;opacity:.6;" onclick="dmcSubjects.splice(${i},1);saveDMCConfig();renderDMCSubjects();">✕</button>
-    </div>
-  `).join('');
-}
-
-function clearDMCSubjects() {
-  dmcSubjects = [];
-  saveDMCConfig();
-  renderDMCSubjects();
 }
 
 function handleDMCExcelUpload(file) {
@@ -5078,34 +5336,48 @@ function handleDMCExcelUpload(file) {
           marks: {} // will be filled from other columns
         };
       });
-      
-      // Extract marks from other columns
+
+      // Every remaining column is a subject; its total marks are read
+      // straight from the column header itself (e.g. "Urdu/75", "Math/100")
+      // instead of a separate manual Subject Configuration step — dmcSubjects
+      // is fully rebuilt from the Excel headers on every upload.
+      // Blank-header columns (XLSX names these "__EMPTY", "__EMPTY_1", etc.)
+      // and any pre-existing summary column already in the sheet (Total,
+      // Grand Total, Percentage, Result, Position, Grade, Remarks...) are
+      // skipped — those aren't per-subject marks, and the certificate
+      // computes its own total/percentage from the real subjects anyway, so
+      // including them would double it up.
       const nonMarkCols = ['Student Name','Name','Student','Class','جماعت','Father Name',"Father's Name",'Father','S/O','Walid','Roll No','Roll No.','Roll Number','Roll','Section','سیکشن','Date of Issue','Issue Date'];
-      // Normalize a column/subject name for matching: lowercase, strip all
-      // punctuation, drop trailing numeric tokens (so "Urdu /100" or
-      // "Maths (100)" both reduce to "urdu"/"maths") and a trailing "marks"
-      // word — so real-world headers like "Urdu /100" still match a
-      // configured subject named "Urdu" instead of becoming a separate key
-      // and showing 0 obtained marks on the DMC.
-      const normalizeName = (s) => {
-        let tokens = String(s || '').toLowerCase().replace(/[^a-z0-9\u0600-\u06FF]+/g, ' ').trim().split(' ').filter(Boolean);
-        while (tokens.length && (/^\d+$/.test(tokens[tokens.length - 1]) || tokens[tokens.length - 1] === 'marks' || tokens[tokens.length - 1] === 'mark')) {
-          tokens.pop();
-        }
-        return tokens.join(' ');
+      const skipWords = ['total','total marks','total obtained','grand total','overall total','percentage','percent','result','position','rank','grade','remarks','status','division','signature'];
+      const isNonSubjectCol = (col) => {
+        if (nonMarkCols.includes(col)) return true;
+        const c = String(col || '').trim();
+        if (!c || /^__EMPTY/i.test(c)) return true; // blank header column
+        const norm = c.toLowerCase().replace(/[^a-z0-9\u0600-\u06FF]+/g, ' ').trim();
+        if (skipWords.includes(norm) || /^total\b/.test(norm)) return true;
+        return false;
       };
+      const parseSubjectHeader = (raw) => {
+        const m = String(raw || '').match(/^(.+?)[\s\/]+(\d+)\s*$/);
+        return m ? { name: m[1].trim(), total: Number(m[2]) } : { name: String(raw || '').trim(), total: 100 };
+      };
+      const subjectMap = new Map(); // original column header -> {name, total}
+      if (rows.length) {
+        Object.keys(rows[0]).forEach(col => {
+          if (isNonSubjectCol(col)) return;
+          const parsed = parseSubjectHeader(col);
+          if (!parsed.name) return; // no subject name could be read from this header — skip it entirely
+          subjectMap.set(col, parsed);
+        });
+      }
+      dmcSubjects = Array.from(subjectMap.values());
+      saveDMCConfig();
+
       dmcResults.forEach((r, idx) => {
         const row = rows[idx];
-        Object.keys(row).forEach(col => {
-          if (nonMarkCols.includes(col)) return;
-          const normCol = normalizeName(col);
-          if (!normCol) return; // blank/empty header column — nothing to attach marks to
-          // Prefer the canonical subject name from dmcSubjects config if it
-          // matches (even loosely) so totals/percentage calculations
-          // (which look up marks by s.name) always find the value.
-          const matchedSubject = dmcSubjects.find(s => normalizeName(s.name) === normCol);
-          const key = matchedSubject ? matchedSubject.name : col;
-          r.marks[key] = Number(row[col]) || 0;
+        subjectMap.forEach((subj, col) => {
+          if (row[col] === undefined) return;
+          r.marks[subj.name] = Number(row[col]) || 0;
         });
       });
 
@@ -5115,6 +5387,7 @@ function handleDMCExcelUpload(file) {
         : `✓ Loaded ${dmcResults.length} students`;
       document.getElementById('dmc-upload-msg').innerHTML = dmcLastUploadMsg;
       renderDMCEditTable();
+      saveDMCUpload();
     } catch (err) {
       dmcLastUploadMsg = `✗ Error: ${err.message}`;
       document.getElementById('dmc-upload-msg').innerHTML = dmcLastUploadMsg;
@@ -6040,6 +6313,14 @@ function registerLedgerTableHtml(rows) {
 // wheel/shift-scroll and any already-working native scroll are untouched.
 let _regBookMouseBound = false;
 let _regBookDrag = { active: false, wrap: null, startX: 0, startScroll: 0, moved: false };
+// Some Android WebViews replay a touch drag as synthetic "ghost" mouse
+// events (mousedown -> mousemove -> mouseup) right after the real touch
+// sequence ends. With both handlers bound on the same element, that ghost
+// sequence re-applied the same drag a second time on top of the touch-driven
+// scroll, which looked like the table "moving a little then snapping back".
+// Recording the last touch time lets mousedown ignore those ghost events;
+// a genuine desktop mouse (which never fires touchstart) is unaffected.
+let _regBookLastTouchTime = 0;
 function initRegBookScroll() {
   if (!_regBookMouseBound) {
     _regBookMouseBound = true;
@@ -6063,6 +6344,7 @@ function initRegBookScroll() {
     wrap._dragScrollBound = true;
 
     wrap.addEventListener('mousedown', (e) => {
+      if (Date.now() - _regBookLastTouchTime < 800) return; // ignore WebView ghost mouse event following a real touch drag
       _regBookDrag = { active: true, wrap, startX: e.clientX, startScroll: wrap.scrollLeft, moved: false };
       wrap.classList.add('rb-dragging');
     });
@@ -6070,10 +6352,12 @@ function initRegBookScroll() {
     let tStartX = 0, tStartY = 0, tStartScroll = 0, tMode = null, tMoved = false;
     const THRESH = 6;
     wrap.addEventListener('touchstart', (e) => {
+      _regBookLastTouchTime = Date.now();
       const tt = e.touches[0];
       tStartX = tt.clientX; tStartY = tt.clientY; tStartScroll = wrap.scrollLeft; tMode = null; tMoved = false;
     }, { passive: true });
     wrap.addEventListener('touchmove', (e) => {
+      _regBookLastTouchTime = Date.now();
       const tt = e.touches[0];
       const dx = tt.clientX - tStartX, dy = tt.clientY - tStartY;
       if (tMode === null) {
@@ -6088,6 +6372,7 @@ function initRegBookScroll() {
       // tMode === 'v': leave it alone, let the page scroll vertically as normal
     }, { passive: false });
     wrap.addEventListener('touchend', () => {
+      _regBookLastTouchTime = Date.now();
       if (tMode === 'h' && tMoved) wrap.addEventListener('click', (ev) => ev.stopPropagation(), { once: true, capture: true });
       tMode = null;
     });
@@ -7312,20 +7597,22 @@ function renderClassPortalAddStudent() {
     <p class="desc">${esc(t.classPortalAddStudentDesc)}</p>
     <label><span>${esc(t.classPortalStudentNamePlaceholder)}</span><input id="cp-add-name" placeholder="${esc(t.classPortalStudentNamePlaceholder)}"></label>
     <label><span>${esc(t.fatherName)}</span><input id="cp-add-father" placeholder="${esc(t.fatherName)}"></label>
+    <label><span>${esc(t.contact)}</span><input id="cp-add-phone" type="tel" placeholder="03XXXXXXXXX"></label>
     <div id="cp-add-msg" style="font-size:12px;margin:8px 0;"></div>
     <button class="btn-primary" style="width:100%;" onclick="submitClassPortalAddStudent()">${esc(t.classPortalMenuAddStudent)}</button>
   `;
 }
 
-function queueOfflineAddStudent(session, name, fatherName, msg, nameInput, fatherInput) {
+function queueOfflineAddStudent(session, name, fatherName, phone, msg, nameInput, fatherInput, phoneInput) {
   const tempId = 'local-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8);
   session.students = session.students || [];
-  session.students.push({ id: tempId, name, father_name: fatherName });
+  session.students.push({ id: tempId, name, father_name: fatherName, contact: phone });
   setClassSession(session);
-  queueClassWrite({ type: 'addStudent', tempId, schoolCode: session.schoolCode, loginId: session.loginId, password: session.password, name, fatherName });
+  queueClassWrite({ type: 'addStudent', tempId, schoolCode: session.schoolCode, loginId: session.loginId, password: session.password, name, fatherName, phone });
   msg.innerHTML = `<span class="ok">${esc(t.classPortalOffline)}</span>`;
   if (nameInput) nameInput.value = '';
   if (fatherInput) fatherInput.value = '';
+  if (phoneInput) phoneInput.value = '';
 }
 
 async function submitClassPortalAddStudent() {
@@ -7333,28 +7620,31 @@ async function submitClassPortalAddStudent() {
   const msg = document.getElementById('cp-add-msg');
   const nameInput = document.getElementById('cp-add-name');
   const fatherInput = document.getElementById('cp-add-father');
+  const phoneInput = document.getElementById('cp-add-phone');
   const name = nameInput ? nameInput.value.trim() : '';
   const fatherName = fatherInput ? fatherInput.value.trim() : '';
+  const phone = phoneInput ? phoneInput.value.trim() : '';
   if (!session || !name) return;
   if (!fatherName) { msg.innerHTML = `<div class="err">${esc(t.classPortalFatherNameRequired)}</div>`; return; }
   msg.textContent = '…';
-  if (!navigator.onLine) { queueOfflineAddStudent(session, name, fatherName, msg, nameInput, fatherInput); return; }
+  if (!navigator.onLine) { queueOfflineAddStudent(session, name, fatherName, phone, msg, nameInput, fatherInput, phoneInput); return; }
   try {
     const { data, error } = await sb.rpc('class_add_student', {
-      p_school_code: session.schoolCode, p_login_id: session.loginId, p_password: session.password, p_name: name, p_father_name: fatherName
+      p_school_code: session.schoolCode, p_login_id: session.loginId, p_password: session.password, p_name: name, p_father_name: fatherName, p_phone: phone
     });
     if (error || !data || !data.length) { msg.innerHTML = `<div class="err">${esc(t.classPortalInvalid)}</div>`; return; }
     session.students = session.students || [];
-    session.students.push({ id: data[0].id, name: data[0].name, father_name: data[0].father_name || fatherName });
+    session.students.push({ id: data[0].id, name: data[0].name, father_name: data[0].father_name || fatherName, contact: data[0].contact || phone });
     setClassSession(session);
     msg.innerHTML = `<span class="ok">✓ ${esc(t.classPortalAddStudentSaved)}</span>`;
     if (nameInput) nameInput.value = '';
     if (fatherInput) fatherInput.value = '';
+    if (phoneInput) phoneInput.value = '';
   } catch(e) {
     // navigator.onLine said we were online but the request itself failed
     // mid-flight (weak signal) — queue it the same way instead of losing
     // what was typed.
-    queueOfflineAddStudent(session, name, fatherName, msg, nameInput, fatherInput);
+    queueOfflineAddStudent(session, name, fatherName, phone, msg, nameInput, fatherInput, phoneInput);
   }
 }
 
@@ -7389,7 +7679,9 @@ function classPortalRosterHtml(session) {
     const cur = (classAttendanceDraft[id] || {})[session_];
     return `<button type="button" onclick="setClassAttendanceMark('${id}','${session_}','${val}')" style="flex:1;padding:6px 3px;border-radius:8px;font-size:10.5px;font-weight:600;border:1.5px solid ${cur===val?color:'var(--line)'};background:${cur===val?color:'#fff'};color:${cur===val?'#fff':'var(--ink)'};">${esc(label)}</button>`;
   };
-  return session.students.slice().sort((a,b)=>Number(a.roll_no||0)-Number(b.roll_no||0)).map(st => `
+  return session.students.slice().sort((a,b)=>Number(a.roll_no||0)-Number(b.roll_no||0)).map(st => {
+    const isAbsent = (classAttendanceDraft[st.id] || {}).am === 'absent' || (classAttendanceDraft[st.id] || {}).pm === 'absent';
+    return `
     <div style="border-bottom:1px solid var(--line);padding:8px 0;">
       <div style="font-size:13px;font-weight:600;margin-bottom:6px;">${st.roll_no ? '#'+esc(st.roll_no)+' — ' : ''}${esc(st.name)}</div>
       <div style="display:flex;align-items:center;gap:6px;margin-bottom:5px;">
@@ -7400,7 +7692,25 @@ function classPortalRosterHtml(session) {
         <div style="width:56px;font-size:10.5px;opacity:.65;">${esc(t.afternoon)}</div>
         <div style="display:flex;gap:5px;flex:1;">${opt(st.id,'pm','present',t.present,'var(--sage)')}${opt(st.id,'pm','leave',t.leave,'var(--gold)')}${opt(st.id,'pm','absent',t.absent,'var(--rust)')}</div>
       </div>
-    </div>`).join('');
+      ${isAbsent ? `<button type="button" onclick="sendAbsentSms('${st.id}')" style="margin-top:6px;width:100%;padding:6px;border-radius:8px;font-size:11px;font-weight:600;border:1.5px solid var(--rust);background:#fff;color:var(--rust);">📩 ${esc(LANG==='ur'?'والدین کو SMS بھیجیں':"Send SMS to Parent")}</button>` : ''}
+    </div>`;
+  }).join('');
+}
+
+// Opens the phone's own Messages app (no internet needed) with the absence
+// message pre-filled for this student's parent, using the number captured
+// when the student was added in the Class Portal. The teacher still has to
+// tap Send themselves — one message at a time, same as the fee-reminder SMS
+// elsewhere in the app; there is no automatic/background SMS sending here.
+function sendAbsentSms(studentId) {
+  const session = getClassSession();
+  const st = session && session.students && session.students.find(s => s.id === studentId);
+  if (!st) return;
+  if (!st.contact) { alert(LANG==='ur' ? 'اس طالب علم کا موبائل نمبر موجود نہیں۔' : 'No mobile number on file for this student.'); return; }
+  const msg = LANG==='ur'
+    ? `محترم سرپرست،\nآپ کا بچہ ${st.name} آج (${fmtDate(todayISO())}) اسکول میں غیر حاضر ہے۔ شکریہ`
+    : `Dear Parent, your child ${st.name} is absent from school today (${fmtDate(todayISO())}). - School`;
+  openFatherWhatsapp(st.contact, msg);
 }
 
 function setClassAttendanceMark(studentId, session_, status) {
@@ -7597,14 +7907,14 @@ async function flushClassQueue() {
     try {
       const { data, error } = await sb.rpc('class_add_student', {
         p_school_code: item.schoolCode, p_login_id: item.loginId, p_password: item.password,
-        p_name: item.name, p_father_name: item.fatherName
+        p_name: item.name, p_father_name: item.fatherName, p_phone: item.phone
       });
       if (error || !data || !data.length) { remaining.push(item); continue; }
       const realId = data[0].id;
       const session = getClassSession();
       if (session && session.students) {
         session.students = session.students.map(s => s.id === item.tempId
-          ? { id: realId, name: data[0].name, father_name: data[0].father_name || item.fatherName }
+          ? { id: realId, name: data[0].name, father_name: data[0].father_name || item.fatherName, contact: data[0].contact || item.phone }
           : s);
         setClassSession(session);
       }
@@ -7644,6 +7954,20 @@ if ('serviceWorker' in navigator) {
       // long time on phones that rarely fully close the browser.
       reg.update();
     }).catch(() => {});
+  });
+  // A new service worker can finish installing and take over (clients.claim())
+  // while this tab is still sitting open with the OLD page already loaded in
+  // memory — clients.claim() only changes who answers future network
+  // requests, it doesn't refresh what's already on screen. Left alone, that
+  // stale in-memory copy is exactly what a phone reopens from if it's ever
+  // relaunched while offline. Reloading once, right when control switches
+  // over, means an already-open tab picks up the new version immediately
+  // instead of waiting for someone to fully close and reopen the app.
+  // sessionStorage guards against a reload loop if this ever fires twice.
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (sessionStorage.getItem('sms_sw_reloaded')) return;
+    sessionStorage.setItem('sms_sw_reloaded', '1');
+    window.location.reload();
   });
 }
 
