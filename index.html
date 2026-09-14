@@ -2747,8 +2747,93 @@ function openSettings() {
       <p style="font-size:11px;opacity:.6;margin:0 0 8px;">${esc(t.exportHint)}</p>
       <button class="btn-ghost" style="width:100%;" onclick="exportBackup()">⬇ ${esc(t.exportBackup)}</button>
     </div>
+    <div style="margin-top:18px;padding-top:16px;border-top:1px solid var(--line);">
+      <p style="font-size:11px;opacity:.6;margin:0 0 8px;">${LANG==='ur' ? 'آف لائن مسئلے کی تشخیص کے لیے (جیسے ڈیش بورڈ 0 دکھانا)' : 'For diagnosing offline issues (e.g. dashboard showing 0)'}</p>
+      <button class="btn-ghost" style="width:100%;" onclick="showStorageDiagnostics()">🔍 ${LANG==='ur' ? 'اسٹوریج کی تشخیص' : 'Storage Diagnostics'}</button>
+    </div>
     <div style="margin-top:16px;"><button class="btn-ghost danger" onclick="logOut()">${esc(t.logOut)}</button></div>
   `);
+}
+
+// Self-contained, on-phone diagnostic report — no PC/remote-debugging
+// needed. Shows exactly what's actually persisted on THIS device right now
+// (IndexedDB row counts, localStorage snapshot, Cache Storage, whether the
+// browser granted "persistent storage", and how the app is being run) so
+// the offline-shows-zero bug can be diagnosed from a screenshot alone.
+async function showStorageDiagnostics() {
+  showModal(LANG==='ur' ? 'اسٹوریج کی تشخیص' : 'Storage Diagnostics', `<div id="diag-body" style="font-size:12px;white-space:pre-wrap;font-family:monospace;line-height:1.6;">${LANG==='ur' ? 'لوڈ ہو رہا ہے...' : 'Loading…'}</div>
+    <button class="btn-ghost" style="width:100%;margin-top:12px;" onclick="copyDiagnostics()">📋 ${LANG==='ur' ? 'کاپی کریں' : 'Copy'}</button>`);
+  const lines = [];
+  lines.push('=== School MS Storage Diagnostics ===');
+  lines.push('Time: ' + new Date().toLocaleString());
+  lines.push('navigator.onLine: ' + navigator.onLine);
+  lines.push('User agent: ' + navigator.userAgent);
+  lines.push('Display mode: ' + (window.matchMedia('(display-mode: standalone)').matches ? 'standalone (installed PWA)' : 'browser tab'));
+  lines.push('SW controller active: ' + !!(navigator.serviceWorker && navigator.serviceWorker.controller));
+  try {
+    if (navigator.storage && navigator.storage.persisted) {
+      lines.push('Storage persisted (protected from auto-eviction): ' + await navigator.storage.persisted());
+    } else {
+      lines.push('Storage persisted: not supported by this browser/webview');
+    }
+  } catch (e) { lines.push('Storage persisted: error — ' + e.message); }
+  try {
+    if (navigator.storage && navigator.storage.estimate) {
+      const est = await navigator.storage.estimate();
+      lines.push(`Storage usage: ${Math.round((est.usage||0)/1024)} KB of ${Math.round((est.quota||0)/1024/1024)} MB quota`);
+    } else {
+      lines.push('Storage estimate: not supported by this browser/webview');
+    }
+  } catch (e) { lines.push('Storage estimate: error — ' + e.message); }
+  lines.push('');
+  lines.push('--- IndexedDB (' + IDB_NAME + ') ---');
+  try {
+    const counts = await Promise.all(READ_CACHE_TABLES.map(tbl => idbGetAll(tbl)));
+    READ_CACHE_TABLES.forEach((tbl, i) => lines.push(tbl + ': ' + counts[i].length + ' rows'));
+    lines.push('TOTAL: ' + counts.reduce((a, c) => a + c.length, 0) + ' rows');
+  } catch (e) { lines.push('IndexedDB read failed: ' + e.message); }
+  lines.push('');
+  lines.push('--- localStorage snapshot backup ---');
+  try {
+    const snap = loadOfflineSnapshot();
+    if (!snap) {
+      lines.push('No snapshot found for this account on this device.');
+    } else {
+      const snapRows = (snap.students||[]).length + (snap.feePayments||[]).length + (snap.teachers||[]).length +
+        (snap.salaryPayments||[]).length + (snap.transactions||[]).length;
+      lines.push('Snapshot found — saved ' + (snap.savedAt ? new Date(snap.savedAt).toLocaleString() : 'unknown time'));
+      lines.push('students: ' + (snap.students||[]).length + ', fee_payments: ' + (snap.feePayments||[]).length + ', teachers: ' + (snap.teachers||[]).length + ', salary_payments: ' + (snap.salaryPayments||[]).length + ', transactions: ' + (snap.transactions||[]).length);
+    }
+  } catch (e) { lines.push('localStorage read failed: ' + e.message); }
+  lines.push('');
+  lines.push('--- Cache Storage (app shell / sw.js) ---');
+  try {
+    if (window.caches) {
+      const keys = await caches.keys();
+      for (const k of keys) {
+        const c = await caches.open(k);
+        const reqs = await c.keys();
+        lines.push(k + ': ' + reqs.length + ' cached files');
+      }
+    } else {
+      lines.push('Cache Storage API not available');
+    }
+  } catch (e) { lines.push('Cache Storage read failed: ' + e.message); }
+  lines.push('');
+  lines.push('Live DATA in memory right now: students ' + DATA.students.length + ', fee_payments ' + DATA.feePayments.length + ', teachers ' + DATA.teachers.length);
+  lines.push('CACHE_UNAVAILABLE flag: ' + CACHE_UNAVAILABLE);
+  const el = document.getElementById('diag-body');
+  if (el) el.textContent = lines.join('\n');
+  window._diagText = lines.join('\n');
+}
+function copyDiagnostics() {
+  if (!window._diagText) return;
+  navigator.clipboard.writeText(window._diagText).then(() => {
+    const btn = event.target;
+    const old = btn.textContent;
+    btn.textContent = LANG==='ur' ? '✓ کاپی ہو گیا' : '✓ Copied';
+    setTimeout(() => { btn.textContent = old; }, 1500);
+  }).catch(() => {});
 }
 
 function generateSchoolCode() {
