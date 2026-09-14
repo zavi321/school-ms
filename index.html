@@ -1027,7 +1027,7 @@ let _idbPromise = null;
 function idbOpen() {
   if (_idbPromise) return _idbPromise;
   _idbPromise = new Promise((resolve, reject) => {
-    const req = indexedDB.open(IDB_NAME, 4);
+    const req = indexedDB.open(IDB_NAME, 5);
     req.onupgradeneeded = () => {
       const db = req.result;
       READ_CACHE_TABLES.forEach(tbl => { if (!db.objectStoreNames.contains(tbl)) db.createObjectStore(tbl, { keyPath: 'id' }); });
@@ -1039,6 +1039,16 @@ function idbOpen() {
       // itself), cached locally so the sheet can be viewed, edited, and
       // printed/exported with zero internet.
       if (!db.objectStoreNames.contains('marks_sheet_data')) db.createObjectStore('marks_sheet_data', { keyPath: 'id' });
+      // Class Exam Marks (Class Marks View) — one row per class (keyed by
+      // class_name), cached locally so admin can still open a class's saved
+      // exam marks with zero internet, same as the other on-demand caches.
+      if (!db.objectStoreNames.contains('class_exam_marks')) db.createObjectStore('class_exam_marks', { keyPath: 'class_name' });
+      // The DMC Excel upload (dmcResults) previously lived only in memory —
+      // reloading the page (or opening the app offline after uploading while
+      // online) wiped it, even though dmc_config/subjects survived. Cached
+      // here as a single row so the last-uploaded batch survives a reload
+      // with zero internet.
+      if (!db.objectStoreNames.contains('dmc_upload')) db.createObjectStore('dmc_upload', { keyPath: 'id' });
     };
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);
@@ -2239,6 +2249,7 @@ function renderTab() {
   else if (TAB==='dmc') {
     main.innerHTML = tplDMC();
     renderDMCEditTable();
+    restoreDMCUploadIfEmpty();
     loadDMCConfig().then(() => {
       if (TAB !== 'dmc' || !document.getElementById('dmc-school-name')) return;
       // Previously this replaced the *entire* tab (main.innerHTML = tplDMC())
@@ -4185,11 +4196,26 @@ async function renderClassAttendanceView(className) {
     <p style="font-size:10.5px;opacity:.55;margin-top:8px;">${esc(t.morning)} / ${esc(t.afternoon)} — ${esc(t.registerLegend)}</p>`;
 }
 
+// Offline-aware: mirrors the fetched exams into IndexedDB (keyed by class
+// name) so this view still opens with the last-synced marks when there's no
+// signal at all — same on-demand cache pattern as dmc_config/marks_sheet_data.
 async function openClassMarksView(className) {
   showModal(className + ' — ' + t.examMarksTitle, `<div id="cmv-body">…</div>`);
-  const { data, error } = await sb.from('class_exam_marks').select('*').eq('class_name', className).order('updated_at', { ascending: false });
   const body = document.getElementById('cmv-body');
-  if (error) { body.innerHTML = `<div class="err">${esc(error.message)}</div>`; return; }
+  let data = null, error = null;
+  if (navigator.onLine) {
+    const res = await sb.from('class_exam_marks').select('*').eq('class_name', className).order('updated_at', { ascending: false });
+    data = res.data; error = res.error;
+    if (!error && data) await idbPutRow('class_exam_marks', { class_name: className, exams: data });
+  } else {
+    error = null;
+  }
+  if (!navigator.onLine || error) {
+    const cached = await idbGetAll('class_exam_marks');
+    const row = cached.find(r => r.class_name === className);
+    data = row ? row.exams : [];
+    if (error && (!data || !data.length)) { body.innerHTML = `<div class="err">${esc(error.message)}</div>`; return; }
+  }
   if (!data || !data.length) { body.innerHTML = `<div class="empty">${esc(t.noExamsYet)}</div>`; return; }
   body.innerHTML = `<div class="list-card">${data.map(ex => `
     <button type="button" class="list-row" style="width:100%;text-align:left;border:none;background:none;cursor:pointer;" onclick='renderClassMarksDetail(${JSON.stringify(ex.id)})'>
@@ -5067,6 +5093,35 @@ async function loadDMCConfig() {
   await idbPutRow('dmc_config', { id: 'main', ...data });
 }
 
+// Snapshots the currently-uploaded DMC batch (student rows + marks + which
+// class/section/date it's for) to IndexedDB, so it survives a page reload or
+// opening the app with no signal — mirrors the same on-demand cache pattern
+// as dmc_config, just for the upload itself instead of the school's settings.
+async function saveDMCUpload() {
+  await idbPutRow('dmc_upload', {
+    id: 'main', results: dmcResults, selectedClass: dmcSelectedClass,
+    section: dmcBatchSection, dateOfIssue: dmcBatchDateOfIssue
+  });
+}
+// Restores the last-cached DMC batch when the tab opens with nothing in
+// memory yet (fresh reload) — so offline (or a slow/flaky connection) still
+// shows the previously uploaded results instead of an empty upload screen.
+async function restoreDMCUploadIfEmpty() {
+  if (dmcResults.length) return;
+  const cached = await idbGetAll('dmc_upload');
+  const row = cached[0];
+  if (!row || !row.results || !row.results.length) return;
+  dmcResults = row.results;
+  dmcSelectedClass = row.selectedClass || '';
+  dmcBatchSection = row.section || '';
+  dmcBatchDateOfIssue = row.dateOfIssue || '';
+  renderDMCEditTable();
+  const clsSel = document.getElementById('dmc-class-select');
+  if (clsSel) clsSel.value = dmcSelectedClass;
+  const msgEl = document.getElementById('dmc-upload-msg');
+  if (msgEl) msgEl.innerHTML = `✓ Loaded ${dmcResults.length} students (from last saved upload)`;
+}
+
 async function saveDMCConfig() {
   const payload = {
     owner_id: CURRENT_USER.id, subjects: dmcSubjects, school_name: dmcSchoolName, logo: dmcLogo,
@@ -5101,8 +5156,8 @@ function renderDMCEditTable() {
   container.innerHTML = dmcResults.map((r, i) => `
     <div style="display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--line);padding:8px 0;">
       <div style="width:22px;font-size:13px;color:var(--ink);flex-shrink:0;">${r.serialNo}.</div>
-      <input type="text" autocomplete="off" style="flex:1;" value="${esc(r.studentName)}" placeholder="Student Name" oninput="dmcResults[${i}].studentName=this.value">
-      <input type="text" autocomplete="off" style="width:110px;flex-shrink:0;" value="${esc(r.rollNo)}" placeholder="Roll No." oninput="dmcResults[${i}].rollNo=this.value">
+      <input type="text" autocomplete="off" style="flex:1;" value="${esc(r.studentName)}" placeholder="Student Name" oninput="dmcResults[${i}].studentName=this.value;saveDMCUpload();">
+      <input type="text" autocomplete="off" style="width:110px;flex-shrink:0;" value="${esc(r.rollNo)}" placeholder="Roll No." oninput="dmcResults[${i}].rollNo=this.value;saveDMCUpload();">
     </div>
   `).join('');
 }
@@ -5181,6 +5236,7 @@ function handleDMCExcelUpload(file) {
         : `✓ Loaded ${dmcResults.length} students`;
       document.getElementById('dmc-upload-msg').innerHTML = dmcLastUploadMsg;
       renderDMCEditTable();
+      saveDMCUpload();
     } catch (err) {
       dmcLastUploadMsg = `✗ Error: ${err.message}`;
       document.getElementById('dmc-upload-msg').innerHTML = dmcLastUploadMsg;
