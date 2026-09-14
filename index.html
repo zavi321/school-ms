@@ -172,7 +172,7 @@
        hand horizontal panning to the JS drag-scroll fallback below instead
        of the browser's own touch handling, which is what was failing to
        engage on some devices. */
-    direction:ltr;touch-action:pan-y;cursor:grab;}
+    direction:ltr;touch-action:pan-x pan-y;cursor:grab;}
   .regbook-screen-wrap.rb-dragging{cursor:grabbing;}
   table.regbook-screen{border-collapse:collapse;width:100%;min-width:1180px;background:#FFFDF6;}
   table.regbook-screen th{background:#FFFDF6;color:var(--navy);font-weight:700;font-size:10.5px;padding:9px 6px;text-align:center;border:1px solid #E6AFAF;position:sticky;top:0;line-height:1.25;}
@@ -6106,6 +6106,14 @@ function registerLedgerTableHtml(rows) {
 // wheel/shift-scroll and any already-working native scroll are untouched.
 let _regBookMouseBound = false;
 let _regBookDrag = { active: false, wrap: null, startX: 0, startScroll: 0, moved: false };
+// Some Android WebViews replay a touch drag as synthetic "ghost" mouse
+// events (mousedown -> mousemove -> mouseup) right after the real touch
+// sequence ends. With both handlers bound on the same element, that ghost
+// sequence re-applied the same drag a second time on top of the touch-driven
+// scroll, which looked like the table "moving a little then snapping back".
+// Recording the last touch time lets mousedown ignore those ghost events;
+// a genuine desktop mouse (which never fires touchstart) is unaffected.
+let _regBookLastTouchTime = 0;
 function initRegBookScroll() {
   if (!_regBookMouseBound) {
     _regBookMouseBound = true;
@@ -6129,6 +6137,7 @@ function initRegBookScroll() {
     wrap._dragScrollBound = true;
 
     wrap.addEventListener('mousedown', (e) => {
+      if (Date.now() - _regBookLastTouchTime < 800) return; // ignore WebView ghost mouse event following a real touch drag
       _regBookDrag = { active: true, wrap, startX: e.clientX, startScroll: wrap.scrollLeft, moved: false };
       wrap.classList.add('rb-dragging');
     });
@@ -6136,10 +6145,12 @@ function initRegBookScroll() {
     let tStartX = 0, tStartY = 0, tStartScroll = 0, tMode = null, tMoved = false;
     const THRESH = 6;
     wrap.addEventListener('touchstart', (e) => {
+      _regBookLastTouchTime = Date.now();
       const tt = e.touches[0];
       tStartX = tt.clientX; tStartY = tt.clientY; tStartScroll = wrap.scrollLeft; tMode = null; tMoved = false;
     }, { passive: true });
     wrap.addEventListener('touchmove', (e) => {
+      _regBookLastTouchTime = Date.now();
       const tt = e.touches[0];
       const dx = tt.clientX - tStartX, dy = tt.clientY - tStartY;
       if (tMode === null) {
@@ -6154,6 +6165,7 @@ function initRegBookScroll() {
       // tMode === 'v': leave it alone, let the page scroll vertically as normal
     }, { passive: false });
     wrap.addEventListener('touchend', () => {
+      _regBookLastTouchTime = Date.now();
       if (tMode === 'h' && tMoved) wrap.addEventListener('click', (ev) => ev.stopPropagation(), { once: true, capture: true });
       tMode = null;
     });
