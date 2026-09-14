@@ -726,6 +726,9 @@ const T = {
     classPortalMenuMarksView:'View Marks Sheet', classPortalSelectExam:'Select Exam', classPortalNoExams:'No exam marks saved yet.',
     classPortalTotal:'Total', classPortalDownloadExcel:'Download Excel', classPortalSendWhatsapp:'Send via WhatsApp',
     classPortalWhatsappFallbackMsg:'Marks sheet Excel file has been downloaded to your phone — please attach it here and send.',
+    suggestions:'Suggestions', suggestionsTitle:'Suggestions for Your School',
+    suggestionsDesc:'A few observations based on your current records to help improve the school.',
+    suggestionsAllGood:'Everything looks healthy right now — no urgent suggestions.',
   },
   ur: {
     appName:'مالیاتی و ریکارڈ سسٹم', tagline:'اسکول انتظامیہ کے لیے',
@@ -885,6 +888,9 @@ const T = {
     classPortalMenuMarksView:'مارکس شیٹ دیکھیں', classPortalSelectExam:'امتحان منتخب کریں', classPortalNoExams:'ابھی تک کوئی امتحانی نمبرات محفوظ نہیں۔',
     classPortalTotal:'ٹوٹل', classPortalDownloadExcel:'ایکسل ڈاؤن لوڈ کریں', classPortalSendWhatsapp:'واٹس ایپ پر بھیجیں',
     classPortalWhatsappFallbackMsg:'مارکس شیٹ کی ایکسل فائل آپ کے فون میں ڈاؤن لوڈ ہو گئی ہے — براہ کرم یہاں اٹیچ کر کے بھیج دیں۔',
+    suggestions:'تجاویز', suggestionsTitle:'آپ کے اسکول کے لیے تجاویز',
+    suggestionsDesc:'اسکول کی بہتری میں مدد کے لیے آپ کے موجودہ ریکارڈ کی بنیاد پر چند مشاہدات۔',
+    suggestionsAllGood:'اس وقت سب کچھ بہتر نظر آ رہا ہے — کوئی فوری تجویز نہیں۔',
   }
 };
 
@@ -1953,10 +1959,11 @@ const NAV_ICONS = {
   marksSheet: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="18" rx="2"/><path d="M9 8h6M3 13h18M3 18h18"/></svg>`,
   admissionRegister: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 016.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"/><path d="M9 7h7M9 11h7"/></svg>`,
   admin: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l8 4v6c0 5-3.5 8.5-8 10-4.5-1.5-8-5-8-10V6l8-4z"/></svg>`,
+  suggestions: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18h6M10 22h4M12 2a6 6 0 00-4 10.5c.6.6 1 1.4 1 2.5h6c0-1.1.4-1.9 1-2.5A6 6 0 0012 2z"/></svg>`,
 };
 
 function renderNav() {
-  const tabs = ['dashboard','students','teachers','finance','reports','dmc','marksSheet','admissionRegister'];
+  const tabs = ['dashboard','students','teachers','finance','reports','dmc','marksSheet','admissionRegister','suggestions'];
   if (CURRENT_PROFILE && CURRENT_PROFILE.is_admin) tabs.push('admin');
   document.getElementById('navbar').innerHTML = tabs.map(k => `
     <button class="${TAB===k?'active':''}" onclick="setTab('${k}')">
@@ -2253,8 +2260,93 @@ function renderTab() {
   else if (TAB==='teacherRegister') main.innerHTML = tplTeacherRegister();
   else if (TAB==='classLogins') main.innerHTML = tplClassLogins();
   else if (TAB==='admin') { main.innerHTML = tplAdmin(); loadAdminLists(); return; }
+  else if (TAB==='suggestions') main.innerHTML = tplSuggestions();
   main.insertAdjacentHTML('beforeend', `<div class="notice">${esc(t.sharedNotice)}</div>`);
   main.insertAdjacentHTML('beforeend', `<div class="notice" style="margin-top:8px;font-size:10px;">${esc(t.copyrightNotice)}</div>`);
+}
+
+// ---------------- Suggestions (for the school owner) ----------------
+// Looks at the school's own live records (fees, dues, teacher salaries,
+// student mix) and surfaces a short, plain-language list of things the
+// owner may want to act on. Everything here is computed from data already
+// in DATA/computeStats() — no network calls, nothing saved anywhere.
+function generateSuggestions() {
+  const s = computeStats();
+  const cur = monthKey();
+  const active = DATA.students.filter(x => x.status !== 'inactive');
+  const list = [];
+
+  // 1. Students seriously behind on fees (2+ months)
+  const overdueCount = active.filter(x => isFeePaying(x) && monthsOverdue(x) >= 2).length;
+  if (overdueCount > 0) {
+    list.push({ icon:'⚠️',
+      en:`${overdueCount} student${overdueCount>1?'s are':' is'} 2+ months behind on fees. Sending a reminder or reaching out to these families directly may help recover this faster.`,
+      ur:`${overdueCount} طلبہ کی فیس 2 یا زیادہ ماہ سے واجب الادا ہے۔ ان خاندانوں کو یاد دہانی بھیجنے یا براہ راست رابطہ کرنے سے وصولی جلدی ہو سکتی ہے۔` });
+  }
+
+  // 2. All-time finances running at a deficit
+  if (s.netBalance < 0) {
+    list.push({ icon:'📉',
+      en:`Your all-time net balance is currently in deficit (₨${fmt(Math.abs(s.netBalance))}). It may help to review recurring expenses or look into additional income sources.`,
+      ur:`آپ کا مجموعی خالص بیلنس اس وقت خسارے میں ہے (₨${fmt(Math.abs(s.netBalance))})۔ بار بار ہونے والے اخراجات کا جائزہ لینا یا آمدنی کے اضافی ذرائع تلاش کرنا مفید ہو سکتا ہے۔` });
+  }
+
+  // 3. Low fee collection rate so far this month
+  const totalDueThisMonth = s.feesCollectedThisMonth + s.feesDueThisMonth;
+  if (totalDueThisMonth > 0) {
+    const rate = s.feesCollectedThisMonth / totalDueThisMonth;
+    if (rate < 0.6) {
+      list.push({ icon:'💰',
+        en:`Only ${Math.round(rate*100)}% of this month's fees have been collected so far. Sending reminders earlier in the month tends to improve collection.`,
+        ur:`اس مہینے کی فیس کا صرف ${Math.round(rate*100)}% ہی اب تک وصول ہوا ہے۔ مہینے کے شروع میں یاد دہانی بھیجنے سے وصولی عموماً بہتر ہو جاتی ہے۔` });
+    }
+  }
+
+  // 4. High share of Free/Orphan (non fee-paying) students
+  const typedActive = s.payingCount + s.freeCount + s.orphanCount;
+  if (typedActive > 0) {
+    const freeRatio = (s.freeCount + s.orphanCount) / typedActive;
+    if (freeRatio > 0.35) {
+      list.push({ icon:'🤝',
+        en:`${Math.round(freeRatio*100)}% of your active students are Free or Orphan (non fee-paying). Looking into donors or a sponsorship program could help support these seats.`,
+        ur:`آپ کے فعال طلبہ میں سے ${Math.round(freeRatio*100)}% فری یا یتیم (غیر فیس ادا کرنے والے) ہیں۔ عطیہ دہندگان یا سپانسرشپ پروگرام تلاش کرنا ان نشستوں کی مدد کر سکتا ہے۔` });
+    }
+  }
+
+  // 5. Teacher salaries still pending this month
+  const unpaidTeachers = DATA.teachers.filter(tc => !teacherPayments(tc.id).some(p => p.month === cur));
+  if (DATA.teachers.length > 0 && unpaidTeachers.length > 0) {
+    list.push({ icon:'🧑‍🏫',
+      en:`${unpaidTeachers.length} of ${DATA.teachers.length} teachers haven't been paid yet this month. Timely salary payments help with staff retention.`,
+      ur:`${DATA.teachers.length} میں سے ${unpaidTeachers.length} اساتذہ کو اس مہینے تنخواہ ابھی تک ادا نہیں کی گئی۔ بروقت تنخواہ عملے کو برقرار رکھنے میں مددگار ہوتی ہے۔` });
+  }
+
+  // 6. Outstanding dues large relative to a normal month's collection
+  if (s.totalDuesAllTime > 0 && s.feesCollectedThisMonth > 0 && s.totalDuesAllTime > s.feesCollectedThisMonth * 3) {
+    list.push({ icon:'📋',
+      en:`Total outstanding dues (₨${fmt(s.totalDuesAllTime)}) are more than 3× this month's collection. A structured fee-recovery plan could help bring this down.`,
+      ur:`کل واجب الادا فیس (₨${fmt(s.totalDuesAllTime)}) اس مہینے کی وصولی سے 3 گنا سے زیادہ ہے۔ ایک منظم فیس وصولی منصوبہ اسے کم کرنے میں مدد دے سکتا ہے۔` });
+  }
+
+  return list;
+}
+
+function tplSuggestions() {
+  const list = generateSuggestions();
+  const items = list.length
+    ? list.map(x => `
+        <div class="stat-card" style="display:flex;gap:10px;align-items:flex-start;margin-bottom:12px;">
+          <div style="font-size:20px;line-height:1.3;">${x.icon}</div>
+          <div style="font-size:13px;line-height:1.55;">${esc(LANG === 'ur' ? x.ur : x.en)}</div>
+        </div>`).join('')
+    : `<div class="stat-card" style="text-align:center;opacity:.65;font-size:13px;">${esc(t.suggestionsAllGood)}</div>`;
+
+  return `
+    <div style="padding-top:16px;">
+      <div class="section-title" style="margin-top:0;">${esc(t.suggestionsTitle)}</div>
+      <p style="font-size:12px;opacity:.65;margin:-4px 0 14px;">${esc(t.suggestionsDesc)}</p>
+      ${items}
+    </div>`;
 }
 
 // ---------------- Admin Panel (owner only) ----------------
