@@ -1865,6 +1865,25 @@ async function loadAllData() {
     ]);
     if (result === TIMED_OUT) { await offlineCacheRestore(); renderOfflineBanner(); return; }
     [s, fp, tc, sp, tx, ar, ta, hd, cl, sa] = result;
+    // Supabase-js resolves (never throws) even when an individual query
+    // fails server-side — a transient 500, a dropped connection mid-request
+    // on a weak signal, a momentary RLS/policy hiccup, etc. Promise.all above
+    // only catches a hard network rejection; a query that merely comes back
+    // with { data: null, error } sails straight through it. Previously that
+    // null was turned into [] by "s.data || []" below and then written to
+    // the offline cache as if it were confirmed-empty real data — silently
+    // erasing every previously-cached row for that table, permanently, even
+    // though nothing was actually deleted on the server. This is the root
+    // cause of "all data turns to 0 while offline": one flaky query on a
+    // weak connection, while everything else on screen still looked fine.
+    // Treat ANY per-query error exactly like the timeout/catch cases above —
+    // fall back to the last-known-good cache instead of overwriting it.
+    const results = [s, fp, tc, sp, tx, ar, ta, hd, cl, sa];
+    const failed = results.find(r => r && r.error);
+    if (failed) {
+      console.error('loadAllData: partial failure, keeping cached data', failed.error);
+      await offlineCacheRestore(); renderOfflineBanner(); return;
+    }
   } catch (e) {
     // Request(s) failed mid-flight (signal dropped just now) — same fallback.
     await offlineCacheRestore(); renderOfflineBanner(); return;
