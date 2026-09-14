@@ -1163,6 +1163,13 @@ function loadOfflineSnapshot() {
 // reach the server at all (opening the app with no signal, or losing signal
 // mid-request). The Admission Register is now cached too, so it stays
 // viewable (read-only, same as the other tables) while fully offline.
+// Human-readable trail of exactly what offlineCacheRestore() found (or
+// didn't) on this device, last time it ran. Shown in the CACHE_UNAVAILABLE
+// banner so a "why is this offline?" report comes with the actual numbers
+// instead of a screenshot of just the symptom — no PC/remote-debugging
+// needed to see whether IndexedDB, the localStorage snapshot, or both, came
+// back empty.
+let OFFLINE_DEBUG_INFO = '';
 async function offlineCacheRestore() {
   const [st, fp, tc, sp, tx, ta, hd, cl, sa, ar] = await Promise.all(
     READ_CACHE_TABLES.map(tbl => idbGetAll(tbl))
@@ -1175,12 +1182,22 @@ async function offlineCacheRestore() {
     // Fall back to the localStorage snapshot before accepting an all-zero
     // dashboard, so a real prior sync is never silently discarded.
     const snap = loadOfflineSnapshot();
-    if (snap) {
+    // A snapshot object existing is not the same as it holding real rows —
+    // an empty-but-present snapshot (e.g. saved before the first real sync
+    // ever completed) used to be accepted as "we have data" and silently
+    // rendered ₨0 everywhere with no warning banner. Only trust it once it
+    // actually contains at least one cached row.
+    const snapRows = snap ? (snap.students||[]).length + (snap.feePayments||[]).length + (snap.teachers||[]).length +
+      (snap.salaryPayments||[]).length + (snap.transactions||[]).length + (snap.teacherAttendance||[]).length +
+      (snap.holidays||[]).length + (snap.classLogins||[]).length + (snap.studentAttendance||[]).length +
+      (snap.admissionRegister||[]).length : 0;
+    if (snap && snapRows > 0) {
       DATA.students = snap.students || []; DATA.feePayments = snap.feePayments || []; DATA.teachers = snap.teachers || [];
       DATA.salaryPayments = snap.salaryPayments || []; DATA.transactions = snap.transactions || []; DATA.teacherAttendance = snap.teacherAttendance || [];
       DATA.holidays = snap.holidays || []; DATA.classLogins = snap.classLogins || []; DATA.studentAttendance = snap.studentAttendance || [];
       DATA.admissionRegister = snap.admissionRegister || [];
       CACHE_UNAVAILABLE = false;
+      OFFLINE_DEBUG_INFO = `IndexedDB: 0 rows · localStorage snapshot: ${snapRows} rows (saved ${snap.savedAt ? new Date(snap.savedAt).toLocaleString() : 'unknown time'})`;
       return;
     }
     // Genuinely nothing anywhere on this device — never synced yet, or the
@@ -1188,8 +1205,12 @@ async function offlineCacheRestore() {
     // of "₨0" (see CACHE_UNAVAILABLE above) rather than looking like real
     // financial data.
     CACHE_UNAVAILABLE = true;
+    OFFLINE_DEBUG_INFO = snap
+      ? `IndexedDB: 0 rows · localStorage snapshot: found but empty (saved ${snap.savedAt ? new Date(snap.savedAt).toLocaleString() : 'unknown time'})`
+      : 'IndexedDB: 0 rows · localStorage snapshot: none found on this device';
   } else {
     CACHE_UNAVAILABLE = false;
+    OFFLINE_DEBUG_INFO = `IndexedDB: ${totalRows} rows (students ${st.length}, fee_payments ${fp.length}, teachers ${tc.length}, salary_payments ${sp.length}, transactions ${tx.length})`;
   }
   DATA.students = st; DATA.feePayments = fp; DATA.teachers = tc;
   DATA.salaryPayments = sp; DATA.transactions = tx; DATA.teacherAttendance = ta; DATA.holidays = hd; DATA.classLogins = cl; DATA.studentAttendance = sa;
@@ -2901,7 +2922,7 @@ function tplDashboard() {
     <div style="padding-top:16px;">
       ${CACHE_UNAVAILABLE ? `<div style="background:#B00020;color:#fff;font-size:12px;font-weight:600;text-align:center;padding:8px 10px;border-radius:10px;margin-bottom:12px;">${esc(LANG==='ur'
         ? '⚠️ اس ڈیوائس پر کوئی محفوظ ڈیٹا موجود نہیں۔ نیچے دیے گئے اعداد اصل نہیں — انٹرنیٹ سے جوڑیں۔'
-        : '⚠️ No cached data on this device yet. Figures below are placeholders, not real balances — please connect to the internet once.')}</div>` : ''}
+        : '⚠️ No cached data on this device yet. Figures below are placeholders, not real balances — please connect to the internet once.')}${OFFLINE_DEBUG_INFO ? `<div style="font-weight:400;opacity:.85;margin-top:4px;font-size:11px;">${esc(OFFLINE_DEBUG_INFO)}</div>` : ''}</div>` : ''}
       <div class="stat-grid">
         <div class="stat-card"><div class="lbl">${esc(t.totalStudents)}</div><div class="val">${dv(s.activeCount)}</div></div>
         <div class="stat-card"><div class="lbl">${esc(t.totalIncome)}</div><div class="val" style="color:var(--sage);">${dv('₨'+fmt(s.totalIncomeAllTime))}</div></div>
