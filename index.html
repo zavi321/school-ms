@@ -904,6 +904,10 @@ const EXPENSE_CATS = ['Utilities','Maintenance','Supplies','Rent','Transport','E
 const INCOME_CATS = ['Donation','Grant','Sale','Fundraiser','Other'];
 
 const fmt = n => Number(n||0).toLocaleString('en-US');
+// Used on the dashboard to show "—" instead of a real-looking number/amount
+// when there is no cached data to show at all (see CACHE_UNAVAILABLE) — so
+// "we have nothing cached yet" never reads as "your balance is ₨0".
+const dv = (str) => CACHE_UNAVAILABLE ? '—' : str;
 const monthKey = (d=new Date()) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
 const monthLabel = mk => { const [y,m]=mk.split('-').map(Number); return new Date(y,m-1,1).toLocaleDateString(LANG==='ur'?'ur-PK':'en-US',{month:'short',year:'numeric'}); };
 const todayISO = () => new Date().toISOString().slice(0,10);
@@ -1176,8 +1180,16 @@ async function offlineCacheRestore() {
       DATA.salaryPayments = snap.salaryPayments || []; DATA.transactions = snap.transactions || []; DATA.teacherAttendance = snap.teacherAttendance || [];
       DATA.holidays = snap.holidays || []; DATA.classLogins = snap.classLogins || []; DATA.studentAttendance = snap.studentAttendance || [];
       DATA.admissionRegister = snap.admissionRegister || [];
+      CACHE_UNAVAILABLE = false;
       return;
     }
+    // Genuinely nothing anywhere on this device — never synced yet, or the
+    // browser wiped both caches. Flag it so the dashboard shows "—" instead
+    // of "₨0" (see CACHE_UNAVAILABLE above) rather than looking like real
+    // financial data.
+    CACHE_UNAVAILABLE = true;
+  } else {
+    CACHE_UNAVAILABLE = false;
   }
   DATA.students = st; DATA.feePayments = fp; DATA.teachers = tc;
   DATA.salaryPayments = sp; DATA.transactions = tx; DATA.teacherAttendance = ta; DATA.holidays = hd; DATA.classLogins = cl; DATA.studentAttendance = sa;
@@ -1186,6 +1198,15 @@ async function offlineCacheRestore() {
 
 let SYNCING = false;
 let PENDING_CONFLICTS = [];
+// True only when offlineCacheRestore() found literally nothing anywhere on
+// this device (no IndexedDB rows, no localStorage snapshot either) — i.e.
+// there is no cached data to show, as opposed to the school's real balances
+// genuinely being 0. tplDashboard() checks this to show "—" placeholders
+// instead of "₨0" figures, so a school never mistakes "we have no cached
+// copy yet" for "our money disappeared". Cleared the moment any real data
+// is found — from cache while offline, or freshly from the server once
+// back online.
+let CACHE_UNAVAILABLE = false;
 // Generic offline-aware write. `run` performs the real Supabase call when
 // online; `optimisticApply` updates DATA immediately so the UI reflects the
 // change with no network round-trip; `baseRow` is the last-known-synced copy
@@ -1337,8 +1358,39 @@ async function renderOfflineBanner() {
     el.style.display = 'none';
   }
 }
-window.addEventListener('online', () => { renderOfflineBanner(); flushSyncQueue(); });
+// Self-heal: the moment signal comes back, always pull fresh data from the
+// server and silently redraw — this is what fixes an already-affected
+// client (one whose local cache was empty/stale from before this fix
+// existed) without them having to do anything or ask "what happened".
+// flushSyncQueue() already does a loadAllData()+redraw at the end of a
+// clean run, but it skips entirely if SYNCING is already true or the queue
+// handling short-circuits — this direct call is the guaranteed fallback so
+// a refresh always happens on reconnect, queue or no queue, conflict or no
+// conflict.
+async function reconcileOnReconnect() {
+  if (!navigator.onLine) return;
+  ensurePersistentStorage(); // heuristics for granting this can change over a session — worth re-asking
+  await flushSyncQueue();
+  if (!SYNCING && CACHE_UNAVAILABLE) { await loadAllData(); }
+  renderOfflineBanner();
+  if (TAB) safeRenderTab();
+}
+window.addEventListener('online', () => { renderOfflineBanner(); reconcileOnReconnect(); });
 window.addEventListener('offline', () => renderOfflineBanner());
+// Mobile browsers can leave a backgrounded tab "frozen" without ever firing
+// online/offline while connectivity actually changes underneath it — the
+// tab can come back to the foreground still showing an old offline/zero
+// state even though the device has signal again. Re-checking on every
+// return to the foreground closes that gap. Throttled so rapid tab
+// switching doesn't spam the server.
+let _lastForegroundCheck = 0;
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState !== 'visible') return;
+  const now = Date.now();
+  if (now - _lastForegroundCheck < 15000) return;
+  _lastForegroundCheck = now;
+  reconcileOnReconnect();
+});
 
 // ---------------- Boot / session ----------------
 function renderForgotPassword() {
@@ -1403,7 +1455,30 @@ function renderForgotEmail() {
   `);
 }
 
+// Chrome (and most Android browsers) treat IndexedDB/localStorage for a
+// site like this as "best-effort" storage unless the origin is granted
+// persistent storage — meaning the OS can silently wipe it under storage
+// pressure (low disk space, the site not opened in a while, etc.) with zero
+// warning to the user. That wipe is indistinguishable from a real bug: the
+// exact same "shows data online, everything turns to 0 once offline"
+// symptom, except here the offline cache itself was erased by the browser,
+// not by anything in this app's own code. Requesting persistence here (every
+// boot, it's harmless to repeat) tells the browser this data matters and
+// should be protected the same way an installed app's storage is. It can
+// still be silently refused on some browsers/devices, so this reduces the
+// problem but cannot promise it will never happen again — encourage the
+// school to "Add to Home Screen" too, since installed PWAs get persistence
+// far more reliably than a plain browser tab.
+async function ensurePersistentStorage() {
+  try {
+    if (!(navigator.storage && navigator.storage.persist)) return;
+    const already = navigator.storage.persisted ? await navigator.storage.persisted() : false;
+    if (!already) await navigator.storage.persist();
+  } catch (e) { console.error('ensurePersistentStorage failed', e); }
+}
+
 async function boot() {
+  ensurePersistentStorage(); // fire-and-forget — never blocks boot on this
   document.body.className = LANG === 'ur' ? 'ur' : '';
 
   // A teacher scanning the Principal's QR code lands here with ?checkin=TOKEN —
@@ -1783,6 +1858,7 @@ async function loadAllData() {
   DATA.holidays = hd.data || [];
   DATA.classLogins = cl.data || [];
   DATA.studentAttendance = sa.data || [];
+  CACHE_UNAVAILABLE = false; // fresh data straight from the server — definitely real
   await offlineCacheStore();
   renderOfflineBanner();
   flushSyncQueue();
@@ -2823,18 +2899,21 @@ function tplDashboard() {
 
   return `
     <div style="padding-top:16px;">
+      ${CACHE_UNAVAILABLE ? `<div style="background:#B00020;color:#fff;font-size:12px;font-weight:600;text-align:center;padding:8px 10px;border-radius:10px;margin-bottom:12px;">${esc(LANG==='ur'
+        ? '⚠️ اس ڈیوائس پر کوئی محفوظ ڈیٹا موجود نہیں۔ نیچے دیے گئے اعداد اصل نہیں — انٹرنیٹ سے جوڑیں۔'
+        : '⚠️ No cached data on this device yet. Figures below are placeholders, not real balances — please connect to the internet once.')}</div>` : ''}
       <div class="stat-grid">
-        <div class="stat-card"><div class="lbl">${esc(t.totalStudents)}</div><div class="val">${s.activeCount}</div></div>
-        <div class="stat-card"><div class="lbl">${esc(t.totalIncome)}</div><div class="val" style="color:var(--sage);">₨${fmt(s.totalIncomeAllTime)}</div></div>
-        <div class="stat-card"><div class="lbl">${esc(t.totalExpense)}</div><div class="val" style="color:var(--rust);">₨${fmt(s.totalExpenseAllTime)}</div></div>
-        <div class="stat-card"><div class="lbl">${esc(t.teacherSalaries)}</div><div class="val">₨${fmt(s.totalSalariesAllTime)}</div></div>
+        <div class="stat-card"><div class="lbl">${esc(t.totalStudents)}</div><div class="val">${dv(s.activeCount)}</div></div>
+        <div class="stat-card"><div class="lbl">${esc(t.totalIncome)}</div><div class="val" style="color:var(--sage);">${dv('₨'+fmt(s.totalIncomeAllTime))}</div></div>
+        <div class="stat-card"><div class="lbl">${esc(t.totalExpense)}</div><div class="val" style="color:var(--rust);">${dv('₨'+fmt(s.totalExpenseAllTime))}</div></div>
+        <div class="stat-card"><div class="lbl">${esc(t.teacherSalaries)}</div><div class="val">${dv('₨'+fmt(s.totalSalariesAllTime))}</div></div>
       </div>
-      <div class="balance-card"><div class="lbl">${esc(t.netBalance)}</div><div class="val">₨${fmt(s.netBalance)}</div></div>
-      <div class="dues-card"><div class="lbl">${esc(t.totalDuesAllTime)}</div><div class="val">₨${fmt(s.totalDuesAllTime)}</div></div>
+      <div class="balance-card"><div class="lbl">${esc(t.netBalance)}</div><div class="val">${dv('₨'+fmt(s.netBalance))}</div></div>
+      <div class="dues-card"><div class="lbl">${esc(t.totalDuesAllTime)}</div><div class="val">${dv('₨'+fmt(s.totalDuesAllTime))}</div></div>
 
       <div class="other-fee-card">
         <div class="lbl">${esc(t.otherFeeStandalone)}</div>
-        <div class="val">₨${fmt(s.otherFeeThisMonth)}</div>
+        <div class="val">${dv('₨'+fmt(s.otherFeeThisMonth))}</div>
       </div>
 
       <div id="admin-notify-row" style="margin-top:10px;">
@@ -2843,17 +2922,17 @@ function tplDashboard() {
 
       <div class="section-title">${esc(t.thisMonth)}</div>
       <div class="stat-grid">
-        <div class="stat-card"><div class="lbl">${esc(t.feesCollected)}</div><div class="val" style="font-size:18px;">₨${fmt(s.feesCollectedThisMonth)}</div></div>
-        <div class="stat-card"><div class="lbl">${esc(t.feesDue)}</div><div class="val" style="font-size:18px;">₨${fmt(s.feesDueThisMonth)}</div></div>
-        <div class="stat-card"><div class="lbl">${esc(t.salaryPaid)}</div><div class="val" style="font-size:18px;">₨${fmt(s.salaryPaidThisMonth)}</div></div>
-        <div class="stat-card"><div class="lbl">${esc(t.expensesThisMonth)}</div><div class="val" style="font-size:18px;color:var(--rust);">₨${fmt(s.totalExpenseThisMonth)}</div></div>
+        <div class="stat-card"><div class="lbl">${esc(t.feesCollected)}</div><div class="val" style="font-size:18px;">${dv('₨'+fmt(s.feesCollectedThisMonth))}</div></div>
+        <div class="stat-card"><div class="lbl">${esc(t.feesDue)}</div><div class="val" style="font-size:18px;">${dv('₨'+fmt(s.feesDueThisMonth))}</div></div>
+        <div class="stat-card"><div class="lbl">${esc(t.salaryPaid)}</div><div class="val" style="font-size:18px;">${dv('₨'+fmt(s.salaryPaidThisMonth))}</div></div>
+        <div class="stat-card"><div class="lbl">${esc(t.expensesThisMonth)}</div><div class="val" style="font-size:18px;color:var(--rust);">${dv('₨'+fmt(s.totalExpenseThisMonth))}</div></div>
       </div>
 
       <div class="section-title">${esc(t.studentType)}</div>
       <div class="stat-grid" style="grid-template-columns:1fr 1fr 1fr;">
-        <div class="stat-card"><div class="lbl">${esc(t.feePaying)}</div><div class="val" style="font-size:18px;">${s.payingCount}</div></div>
-        <div class="stat-card"><div class="lbl">${esc(t.free)}</div><div class="val" style="font-size:18px;color:#2563A6;">${s.freeCount}</div></div>
-        <div class="stat-card"><div class="lbl">${esc(t.orphan)}</div><div class="val" style="font-size:18px;color:#8A6200;">${s.orphanCount}</div></div>
+        <div class="stat-card"><div class="lbl">${esc(t.feePaying)}</div><div class="val" style="font-size:18px;">${dv(s.payingCount)}</div></div>
+        <div class="stat-card"><div class="lbl">${esc(t.free)}</div><div class="val" style="font-size:18px;color:#2563A6;">${dv(s.freeCount)}</div></div>
+        <div class="stat-card"><div class="lbl">${esc(t.orphan)}</div><div class="val" style="font-size:18px;color:#8A6200;">${dv(s.orphanCount)}</div></div>
       </div>
 
       <div class="section-title">${esc(t.recentActivity)}</div>
