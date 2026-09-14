@@ -1535,7 +1535,24 @@ async function boot() {
   // by the time the app is reopened: getSession() then tries to refresh it
   // over the network, which simply hangs/fails when offline or on a weak
   // signal, instead of falling back to the still-valid cached data below.
-  const sessionResult = await withTimeout(sb.auth.getSession(), 6000);
+  //
+  // Unlike the Postgrest table queries elsewhere in this file (which always
+  // resolve with { data, error } even on failure), Supabase's AUTH client can
+  // actually reject/throw when a network-dependent token refresh fails (e.g.
+  // fully offline). withTimeout() only races a timeout — it never catches a
+  // rejection — so that throw was propagating straight out of this line,
+  // uncaught, and killing the entire boot() function before it ever reached
+  // the "offline → use last logged-in account" fallback a few lines below.
+  // The result: the loading screen froze forever and NOTHING rendered at all
+  // while offline — not the app, not even the login screen or Settings —
+  // which is the real "everything disappears offline" bug. Wrapping it here
+  // turns that crash into the same recoverable failure as a timeout.
+  let sessionResult;
+  try {
+    sessionResult = await withTimeout(sb.auth.getSession(), 6000);
+  } catch (e) {
+    sessionResult = { data: null, error: e };
+  }
   const session = sessionResult && sessionResult.data && sessionResult.data.session;
   const sessionCheckFailed = !session && !!(sessionResult && sessionResult.error);
   // Give the PASSWORD_RECOVERY listener a tick to fire first if this load came from a reset-link click.
