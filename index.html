@@ -169,10 +169,13 @@
      Withdrawal Register page (ruled paper, thin rose grid, centre spine). ---- */
   .regbook-screen-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;border-radius:6px;box-shadow:var(--shadow-sm);background:#FFFDF6;
     /* Keep scroll math (scrollLeft) consistent even in Urdu/RTL mode, and
-       hand horizontal panning to the JS drag-scroll fallback below instead
-       of the browser's own touch handling, which is what was failing to
-       engage on some devices. */
-    direction:ltr;touch-action:pan-y;cursor:grab;
+       hand ALL panning (both axes) to the JS drag-scroll fallback below
+       instead of the browser's own touch handling. touch-action:pan-y was
+       letting some browsers/WebViews lock the gesture to vertical-only as
+       soon as it started, before the JS could ever take over for a
+       horizontal drag — touch-action:none stops that pre-lock, and the JS
+       below drives vertical scrolling manually to compensate. */
+    direction:ltr;touch-action:none;cursor:grab;
     user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;}
   .regbook-screen-wrap.rb-dragging{cursor:grabbing;}
   .regbook-screen-wrap input.cell-input, .regbook-screen-wrap select.cell-input{user-select:text;-webkit-user-select:text;}
@@ -6550,12 +6553,12 @@ function initRegBookScroll() {
       wrap.classList.add('rb-dragging');
     });
 
-    let tStartX = 0, tStartY = 0, tStartScroll = 0, tMode = null, tMoved = false;
+    let tStartX = 0, tStartY = 0, tStartScroll = 0, tMode = null, tMoved = false, tLastY = 0;
     const THRESH = 6;
     wrap.addEventListener('touchstart', (e) => {
       _regBookLastTouchTime = Date.now();
       const tt = e.touches[0];
-      tStartX = tt.clientX; tStartY = tt.clientY; tStartScroll = wrap.scrollLeft; tMode = null; tMoved = false;
+      tStartX = tt.clientX; tStartY = tt.clientY; tLastY = tt.clientY; tStartScroll = wrap.scrollLeft; tMode = null; tMoved = false;
     }, { passive: true });
     wrap.addEventListener('touchmove', (e) => {
       _regBookLastTouchTime = Date.now();
@@ -6565,12 +6568,19 @@ function initRegBookScroll() {
         if (Math.abs(dx) < THRESH && Math.abs(dy) < THRESH) return;
         tMode = Math.abs(dx) > Math.abs(dy) ? 'h' : 'v';
       }
+      // touch-action is set to 'none' on this element (see CSS), so the
+      // browser hands us every move on this element for both axes — we drive
+      // scrolling manually either way instead of letting native pan-y decide
+      // the gesture's direction up front, which is what was blocking the
+      // horizontal drag on some devices/WebViews even with preventDefault().
+      e.preventDefault();
+      tMoved = true;
       if (tMode === 'h') {
-        e.preventDefault(); // take this gesture over from the page — it's a horizontal drag on the ledger
-        tMoved = true;
         wrap.scrollLeft = tStartScroll - dx;
+      } else {
+        window.scrollBy(0, tLastY - tt.clientY); // manual vertical scroll since native pan is disabled here
+        tLastY = tt.clientY;
       }
-      // tMode === 'v': leave it alone, let the page scroll vertically as normal
     }, { passive: false });
     wrap.addEventListener('touchend', () => {
       _regBookLastTouchTime = Date.now();
