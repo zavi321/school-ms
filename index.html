@@ -172,8 +172,10 @@
        hand horizontal panning to the JS drag-scroll fallback below instead
        of the browser's own touch handling, which is what was failing to
        engage on some devices. */
-    direction:ltr;touch-action:pan-y;cursor:grab;}
+    direction:ltr;touch-action:pan-y;cursor:grab;
+    user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;}
   .regbook-screen-wrap.rb-dragging{cursor:grabbing;}
+  .regbook-screen-wrap input.cell-input, .regbook-screen-wrap select.cell-input{user-select:text;-webkit-user-select:text;}
   table.regbook-screen{border-collapse:collapse;width:100%;min-width:1180px;background:#FFFDF6;}
   table.regbook-screen th{background:#FFFDF6;color:var(--navy);font-weight:700;font-size:10.5px;padding:9px 6px;text-align:center;border:1px solid #E6AFAF;position:sticky;top:0;line-height:1.25;}
   table.regbook-screen td{padding:10px 6px;text-align:center;border:1px solid #E6AFAF;font-size:12px;white-space:nowrap;color:var(--ink);}
@@ -729,6 +731,10 @@ const T = {
     suggestions:'Suggestions', suggestionsTitle:'Suggestions for Your School',
     suggestionsDesc:'A few observations based on your current records to help improve the school.',
     suggestionsAllGood:'Everything looks healthy right now — no urgent suggestions.',
+    aiSuggestionsTitle:'AI Insights', aiSuggestionsDesc:'Personalized suggestions from AI, based on your school\'s current records. Refreshes a few times a day.',
+    aiSuggestionsUpdatedAt:'Updated:', aiSuggestionsCachedNote:'Offline — showing last saved AI insights from:',
+    aiSuggestionsOfflineNone:'AI insights need internet the first time — connect once to load them, then they\'ll be available offline too.',
+    aiSuggestionsError:'Could not load AI insights right now. Please try again later.',
   },
   ur: {
     appName:'مالیاتی و ریکارڈ سسٹم', tagline:'اسکول انتظامیہ کے لیے',
@@ -891,6 +897,10 @@ const T = {
     suggestions:'تجاویز', suggestionsTitle:'آپ کے اسکول کے لیے تجاویز',
     suggestionsDesc:'اسکول کی بہتری میں مدد کے لیے آپ کے موجودہ ریکارڈ کی بنیاد پر چند مشاہدات۔',
     suggestionsAllGood:'اس وقت سب کچھ بہتر نظر آ رہا ہے — کوئی فوری تجویز نہیں۔',
+    aiSuggestionsTitle:'AI تجاویز', aiSuggestionsDesc:'آپ کے اسکول کے موجودہ ریکارڈ کی بنیاد پر AI کی ذاتی نوعیت کی تجاویز۔ دن میں چند بار اپڈیٹ ہوتی ہیں۔',
+    aiSuggestionsUpdatedAt:'اپڈیٹ:', aiSuggestionsCachedNote:'آف لائن — آخری محفوظ شدہ AI تجاویز دکھائی جا رہی ہیں، وقت:',
+    aiSuggestionsOfflineNone:'AI تجاویز کے لیے پہلی بار انٹرنیٹ درکار ہے — ایک بار انٹرنیٹ سے جڑیں، پھر یہ آف لائن بھی دستیاب ہوں گی۔',
+    aiSuggestionsError:'اس وقت AI تجاویز لوڈ نہیں ہو سکیں۔ براہ کرم بعد میں دوبارہ کوشش کریں۔',
   }
 };
 
@@ -1031,7 +1041,7 @@ let _idbPromise = null;
 function idbOpen() {
   if (_idbPromise) return _idbPromise;
   _idbPromise = new Promise((resolve, reject) => {
-    const req = indexedDB.open(IDB_NAME, 5);
+    const req = indexedDB.open(IDB_NAME, 6);
     req.onupgradeneeded = () => {
       const db = req.result;
       READ_CACHE_TABLES.forEach(tbl => { if (!db.objectStoreNames.contains(tbl)) db.createObjectStore(tbl, { keyPath: 'id' }); });
@@ -1053,6 +1063,10 @@ function idbOpen() {
       // here as a single row so the last-uploaded batch survives a reload
       // with zero internet.
       if (!db.objectStoreNames.contains('dmc_upload')) db.createObjectStore('dmc_upload', { keyPath: 'id' });
+      // AI-generated suggestions (see loadAiSuggestions) — cached locally,
+      // same on-demand pattern as dmc_config, so the last-fetched AI
+      // insights can still be shown while offline instead of nothing.
+      if (!db.objectStoreNames.contains('ai_suggestions')) db.createObjectStore('ai_suggestions', { keyPath: 'id' });
     };
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);
@@ -2455,7 +2469,7 @@ function renderTab() {
   else if (TAB==='teacherRegister') main.innerHTML = tplTeacherRegister();
   else if (TAB==='classLogins') main.innerHTML = tplClassLogins();
   else if (TAB==='admin') { main.innerHTML = tplAdmin(); loadAdminLists(); return; }
-  else if (TAB==='suggestions') main.innerHTML = tplSuggestions();
+  else if (TAB==='suggestions') { main.innerHTML = tplSuggestions(); loadAiSuggestions(); }
   main.insertAdjacentHTML('beforeend', `<div class="notice">${esc(t.sharedNotice)}</div>`);
   main.insertAdjacentHTML('beforeend', `<div class="notice" style="margin-top:8px;font-size:10px;">${esc(t.copyrightNotice)}</div>`);
 }
@@ -2541,7 +2555,70 @@ function tplSuggestions() {
       <div class="section-title" style="margin-top:0;">${esc(t.suggestionsTitle)}</div>
       <p style="font-size:12px;opacity:.65;margin:-4px 0 14px;">${esc(t.suggestionsDesc)}</p>
       ${items}
+
+      <div class="section-title" style="margin-top:24px;">${esc(t.aiSuggestionsTitle)}</div>
+      <p style="font-size:12px;opacity:.65;margin:-4px 0 14px;">${esc(t.aiSuggestionsDesc)}</p>
+      <div id="ai-sugg-body"><div class="skel-line" style="width:90%;"></div><div class="skel-line" style="width:65%;"></div></div>
     </div>`;
+}
+
+// ---------------- AI Insights (Supabase Edge Function → Claude) ----------------
+// A second, separate layer of suggestions on top of generateSuggestions()
+// above: instead of fixed hand-written rules, this calls a Supabase Edge
+// Function ("generate-ai-suggestions") which asks an AI model to look at
+// this school's own aggregated stats and write a few fresh, specific
+// suggestions. The Edge Function itself caches its result server-side and
+// only calls the AI again after 8 hours (so this refreshes about 3
+// times/day total, no matter how often the owner opens this tab — keeping
+// AI usage/cost bounded across every school using the app). No student
+// names or raw records are ever sent — only rounded-up counts/totals.
+async function idbGetAiSuggestions() {
+  const rows = await idbGetAll('ai_suggestions');
+  return rows[0] || null;
+}
+async function idbSaveAiSuggestions(content, generatedAt) {
+  await idbPutRow('ai_suggestions', { id: 'current', content, generatedAt });
+}
+function renderAiSuggestionsList(el, list, generatedAt, isStale) {
+  if (!list || !list.length) { smoothSwapHtml(el, `<div class="stat-card" style="text-align:center;opacity:.65;font-size:13px;">${esc(t.suggestionsAllGood)}</div>`); return; }
+  const timeStr = generatedAt ? new Date(generatedAt).toLocaleString() : '';
+  const note = `<div style="font-size:11px;opacity:.6;margin-bottom:8px;">${esc(isStale ? t.aiSuggestionsCachedNote : t.aiSuggestionsUpdatedAt)} ${esc(timeStr)}</div>`;
+  const items = list.map(x => `
+    <div class="stat-card" style="display:flex;gap:10px;align-items:flex-start;margin-bottom:12px;">
+      <div style="font-size:20px;line-height:1.3;">${esc(x.icon || '✨')}</div>
+      <div style="font-size:13px;line-height:1.55;">${esc((LANG === 'ur' ? x.ur : x.en) || '')}</div>
+    </div>`).join('');
+  smoothSwapHtml(el, note + items);
+}
+async function loadAiSuggestions() {
+  const el = document.getElementById('ai-sugg-body');
+  if (!el) return;
+  // No signal at all — show whatever AI insights were saved from the last
+  // successful load instead of nothing, same offline-cache pattern used
+  // everywhere else in this file (dmc_config, marks_sheet_data, etc.).
+  if (!navigator.onLine) {
+    const cached = await idbGetAiSuggestions();
+    if (cached && cached.content && cached.content.length) renderAiSuggestionsList(el, cached.content, cached.generatedAt, true);
+    else smoothSwapHtml(el, `<div class="stat-card" style="text-align:center;opacity:.65;font-size:13px;">${esc(t.aiSuggestionsOfflineNone)}</div>`);
+    return;
+  }
+  try {
+    const result = await withTimeout(sb.functions.invoke('generate-ai-suggestions', { body: { lang: LANG } }), 15000);
+    const data = result && result.data;
+    const error = result && result.error;
+    if (error || !data || data.error || !data.content) {
+      const cached = await idbGetAiSuggestions();
+      if (cached && cached.content && cached.content.length) renderAiSuggestionsList(el, cached.content, cached.generatedAt, true);
+      else smoothSwapHtml(el, `<div class="err">${esc(t.aiSuggestionsError)}</div>`);
+      return;
+    }
+    await idbSaveAiSuggestions(data.content, data.generated_at);
+    renderAiSuggestionsList(el, data.content, data.generated_at, false);
+  } catch (e) {
+    const cached = await idbGetAiSuggestions();
+    if (cached && cached.content && cached.content.length) renderAiSuggestionsList(el, cached.content, cached.generatedAt, true);
+    else smoothSwapHtml(el, `<div class="err">${esc(t.aiSuggestionsError)}</div>`);
+  }
 }
 
 // ---------------- Admin Panel (owner only) ----------------
@@ -6466,6 +6543,9 @@ function initRegBookScroll() {
 
     wrap.addEventListener('mousedown', (e) => {
       if (Date.now() - _regBookLastTouchTime < 800) return; // ignore WebView ghost mouse event following a real touch drag
+      const tag = (e.target && e.target.tagName) || '';
+      if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return; // let normal focus/click happen on editable cells
+      e.preventDefault(); // stop native text-selection drag from fighting the custom scroll, which was causing the "moves a little then snaps back" behaviour
       _regBookDrag = { active: true, wrap, startX: e.clientX, startScroll: wrap.scrollLeft, moved: false };
       wrap.classList.add('rb-dragging');
     });
