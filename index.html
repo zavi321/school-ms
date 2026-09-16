@@ -6741,37 +6741,44 @@ function initRegBookScroll() {
       wrap.classList.add('rb-dragging');
     });
 
-    let tStartX = 0, tStartY = 0, tStartScroll = 0, tMode = null, tMoved = false, tLastY = 0;
+    let tStartX = 0, tStartY = 0, tLastX = 0, tLastY = 0, tMoved = false;
     const THRESH = 6;
     wrap.addEventListener('touchstart', (e) => {
       const tt = e.touches[0];
-      tStartX = tt.clientX; tStartY = tt.clientY; tLastY = tt.clientY; tStartScroll = wrap.scrollLeft; tMode = null; tMoved = false;
+      tStartX = tt.clientX; tStartY = tt.clientY; tLastX = tt.clientX; tLastY = tt.clientY; tMoved = false;
     }, { passive: true });
     wrap.addEventListener('touchmove', (e) => {
       const tt = e.touches[0];
-      const dx = tt.clientX - tStartX, dy = tt.clientY - tStartY;
-      if (tMode === null) {
-        if (Math.abs(dx) < THRESH && Math.abs(dy) < THRESH) return;
-        tMode = Math.abs(dx) > Math.abs(dy) ? 'h' : 'v';
-      }
+      const totalDX = tt.clientX - tStartX, totalDY = tt.clientY - tStartY;
+      if (!tMoved && Math.abs(totalDX) < THRESH && Math.abs(totalDY) < THRESH) return;
       // touch-action is set to 'none' on this element (see CSS), so the
       // browser hands us every move on this element for both axes — we drive
       // scrolling manually either way instead of letting native pan-y decide
       // the gesture's direction up front, which is what was blocking the
       // horizontal drag on some devices/WebViews even with preventDefault().
+      //
+      // Both axes are driven every frame from the raw finger delta since the
+      // *previous* touchmove, instead of picking one axis based on the first
+      // couple of pixels of movement and locking to it for the whole drag.
+      // That old one-shot lock meant a swipe that started even slightly
+      // diagonal (very common — fingers rarely move in a perfectly straight
+      // line) got stuck reading as "vertical" for its entire duration, so
+      // horizontal drag looked completely dead no matter how far left/right
+      // the finger kept moving. It also meant the click-swallow below never
+      // armed for that drag, so the finger lifting let the tap fall through
+      // to an attendance cell underneath — toggling it and triggering a
+      // re-render that reset scrollLeft to 0, which is what made the table
+      // look like it was randomly snapping back mid-scroll.
       e.preventDefault();
       tMoved = true;
-      if (tMode === 'h') {
-        wrap.scrollLeft = tStartScroll - dx;
-      } else {
-        _regBookPendingDY += (tLastY - tt.clientY); // manual vertical scroll since native pan is disabled here
-        tLastY = tt.clientY;
-        if (_regBookScrollRAF === null) _regBookScrollRAF = requestAnimationFrame(_regBookFlushVerticalScroll);
-      }
+      wrap.scrollLeft -= (tt.clientX - tLastX);
+      tLastX = tt.clientX;
+      _regBookPendingDY += (tLastY - tt.clientY); // manual vertical scroll since native pan is disabled here
+      tLastY = tt.clientY;
+      if (_regBookScrollRAF === null) _regBookScrollRAF = requestAnimationFrame(_regBookFlushVerticalScroll);
     }, { passive: false });
     wrap.addEventListener('touchend', () => {
-      if (tMode === 'h' && tMoved) wrap.addEventListener('click', (ev) => ev.stopPropagation(), { once: true, capture: true });
-      tMode = null;
+      if (tMoved) wrap.addEventListener('click', (ev) => ev.stopPropagation(), { once: true, capture: true });
     });
   });
   initRegBookSliders();
