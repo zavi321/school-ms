@@ -6652,15 +6652,25 @@ function initRegBookSliders() {
       wrap.scrollLeft = (newLeft / state.maxThumbLeft) * state.maxScroll;
     };
 
-    let mState = null;
-    thumb.addEventListener('mousedown', (e) => { if (_regBookIsTouchDevice) return; e.preventDefault(); mState = startDrag(e.clientX); });
-    window.addEventListener('mousemove', (e) => { if (mState) moveDrag(mState, e.clientX); });
-    window.addEventListener('mouseup', () => { mState = null; });
-
-    let tState = null;
-    thumb.addEventListener('touchstart', (e) => { tState = startDrag(e.touches[0].clientX); }, { passive: true });
-    thumb.addEventListener('touchmove', (e) => { e.preventDefault(); moveDrag(tState, e.touches[0].clientX); }, { passive: false });
-    thumb.addEventListener('touchend', () => { tState = null; });
+    let pState = null, pPointerId = null;
+    thumb.addEventListener('pointerdown', (e) => {
+      if (e.pointerType === 'mouse' && e.button !== 0) return;
+      pPointerId = e.pointerId;
+      pState = startDrag(e.clientX);
+      try { thumb.setPointerCapture(pPointerId); } catch (err) {}
+    });
+    thumb.addEventListener('pointermove', (e) => {
+      if (pState === null || e.pointerId !== pPointerId) return;
+      e.preventDefault();
+      moveDrag(pState, e.clientX);
+    });
+    const endThumbDrag = (e) => {
+      if (e.pointerId !== pPointerId) return;
+      pState = null;
+      try { thumb.releasePointerCapture(pPointerId); } catch (err) {}
+    };
+    thumb.addEventListener('pointerup', endThumbDrag);
+    thumb.addEventListener('pointercancel', endThumbDrag);
   });
 }
 
@@ -6692,94 +6702,78 @@ function _regBookFlushVerticalScroll() {
   }
 }
 
-let _regBookMouseBound = false;
-let _regBookDrag = { active: false, wrap: null, startX: 0, startScroll: 0, moved: false };
-// Some Android WebViews replay a touch drag as synthetic "ghost" mouse
-// events (mousedown -> mousemove -> mouseup) — sometimes over a second
-// after the real touch sequence ends. With both handlers bound on the same
-// element, that ghost sequence re-applied a *second*, independent drag
-// computed from the original touch's start position on top of the
-// already-touch-scrolled table, which is exactly what looked like the
-// table "scrolling correctly, then snapping back to the start" a moment
-// later. A time-based guard (ignore mousedown within N ms of the last
-// touch) is fragile — the ghost event's delay varies by device and can
-// exceed any reasonable window. The robust fix: a device that has ever
-// fired a real touchstart is a touchscreen, full stop — permanently
-// ignore the mouse-drag path on it for the rest of the session, rather
-// than re-arming a timer after every touch. Genuine desktop mice (which
-// never fire touchstart) are completely unaffected.
-let _regBookIsTouchDevice = false;
-window.addEventListener('touchstart', () => { _regBookIsTouchDevice = true; }, { passive: true, once: true });
+// Drag-to-scroll for the ledger tables, built on Pointer Events instead of
+// separate touch + mouse handlers. Touch and mouse used to be handled by two
+// completely independent listener sets on the same element; some Android
+// WebViews then replay a finished touch drag as a synthetic "ghost" mouse
+// sequence (mousedown -> mousemove -> mouseup), sometimes over a second
+// later, which re-ran a *second* independent drag on top of the
+// already-touch-scrolled table — that's what looked like the table
+// "scrolling correctly, then snapping back to the start" a moment later.
+// Pointer Events collapse touch/mouse/pen into a single event stream (each
+// physical interaction fires pointerdown/move/up exactly once, regardless of
+// input type), so that whole class of duplicate-drag bug can't occur.
+// setPointerCapture also pins all subsequent events for this interaction to
+// this element even if the finger drifts, which is more reliable than raw
+// touch events against a browser's own edge/back-swipe gesture recognizer.
 function initRegBookScroll() {
-  if (!_regBookMouseBound) {
-    _regBookMouseBound = true;
-    window.addEventListener('mousemove', (e) => {
-      const d = _regBookDrag;
-      if (!d.active) return;
-      const dx = e.clientX - d.startX;
-      if (Math.abs(dx) > 3) d.moved = true;
-      d.wrap.scrollLeft = d.startScroll - dx;
-    });
-    window.addEventListener('mouseup', () => {
-      const d = _regBookDrag;
-      if (!d.active) return;
-      d.active = false;
-      d.wrap.classList.remove('rb-dragging');
-      if (d.moved) d.wrap.addEventListener('click', (ev) => ev.stopPropagation(), { once: true, capture: true });
-    });
-  }
   document.querySelectorAll('.regbook-screen-wrap, .reg-drag-wrap').forEach(wrap => {
     if (wrap._dragScrollBound) return; // don't double-bind on re-render
     wrap._dragScrollBound = true;
 
-    wrap.addEventListener('mousedown', (e) => {
-      if (_regBookIsTouchDevice) return; // this is a touchscreen — any "mouse" event here is a WebView ghost replay of a real touch, not a real mouse
+    let active = false, pointerId = null, moved = false;
+    let startX = 0, startY = 0, lastX = 0, lastY = 0;
+    const THRESH = 6;
+
+    wrap.addEventListener('pointerdown', (e) => {
       const tag = (e.target && e.target.tagName) || '';
       if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return; // let normal focus/click happen on editable cells
-      e.preventDefault(); // stop native text-selection drag from fighting the custom scroll, which was causing the "moves a little then snaps back" behaviour
-      _regBookDrag = { active: true, wrap, startX: e.clientX, startScroll: wrap.scrollLeft, moved: false };
+      if (e.pointerType === 'mouse' && e.button !== 0) return; // only primary mouse button
+      active = true; moved = false; pointerId = e.pointerId;
+      startX = lastX = e.clientX; startY = lastY = e.clientY;
+      try { wrap.setPointerCapture(pointerId); } catch (err) {}
       wrap.classList.add('rb-dragging');
     });
 
-    let tStartX = 0, tStartY = 0, tLastX = 0, tLastY = 0, tMoved = false;
-    const THRESH = 6;
-    wrap.addEventListener('touchstart', (e) => {
-      const tt = e.touches[0];
-      tStartX = tt.clientX; tStartY = tt.clientY; tLastX = tt.clientX; tLastY = tt.clientY; tMoved = false;
-    }, { passive: true });
-    wrap.addEventListener('touchmove', (e) => {
-      const tt = e.touches[0];
-      const totalDX = tt.clientX - tStartX, totalDY = tt.clientY - tStartY;
-      if (!tMoved && Math.abs(totalDX) < THRESH && Math.abs(totalDY) < THRESH) return;
-      // touch-action is set to 'none' on this element (see CSS), so the
-      // browser hands us every move on this element for both axes — we drive
-      // scrolling manually either way instead of letting native pan-y decide
-      // the gesture's direction up front, which is what was blocking the
-      // horizontal drag on some devices/WebViews even with preventDefault().
-      //
-      // Both axes are driven every frame from the raw finger delta since the
-      // *previous* touchmove, instead of picking one axis based on the first
-      // couple of pixels of movement and locking to it for the whole drag.
-      // That old one-shot lock meant a swipe that started even slightly
-      // diagonal (very common — fingers rarely move in a perfectly straight
-      // line) got stuck reading as "vertical" for its entire duration, so
-      // horizontal drag looked completely dead no matter how far left/right
-      // the finger kept moving. It also meant the click-swallow below never
-      // armed for that drag, so the finger lifting let the tap fall through
-      // to an attendance cell underneath — toggling it and triggering a
-      // re-render that reset scrollLeft to 0, which is what made the table
-      // look like it was randomly snapping back mid-scroll.
+    wrap.addEventListener('pointermove', (e) => {
+      if (!active || e.pointerId !== pointerId) return;
+      const totalDX = e.clientX - startX, totalDY = e.clientY - startY;
+      if (!moved && Math.abs(totalDX) < THRESH && Math.abs(totalDY) < THRESH) return;
+      // Both axes are driven every frame from the raw pointer delta since the
+      // *previous* move, instead of picking one axis up front from the first
+      // couple of pixels and locking to it for the whole drag — a swipe that
+      // starts even slightly diagonal (very common) used to get stuck reading
+      // as "vertical" for its entire duration, so horizontal drag looked
+      // completely dead no matter how far left/right the finger kept moving.
       e.preventDefault();
-      tMoved = true;
-      wrap.scrollLeft -= (tt.clientX - tLastX);
-      tLastX = tt.clientX;
-      _regBookPendingDY += (tLastY - tt.clientY); // manual vertical scroll since native pan is disabled here
-      tLastY = tt.clientY;
-      if (_regBookScrollRAF === null) _regBookScrollRAF = requestAnimationFrame(_regBookFlushVerticalScroll);
-    }, { passive: false });
-    wrap.addEventListener('touchend', () => {
-      if (tMoved) wrap.addEventListener('click', (ev) => ev.stopPropagation(), { once: true, capture: true });
+      moved = true;
+      const dx = e.clientX - lastX, dy = e.clientY - lastY;
+      lastX = e.clientX; lastY = e.clientY;
+      // Whichever axis moved more THIS frame wins; the smaller one is dropped
+      // rather than also applied, so a mostly-horizontal swipe never leaks
+      // into a page-wide vertical shift (and vice versa for a real vertical
+      // swipe started on the table).
+      if (Math.abs(dx) >= Math.abs(dy)) {
+        wrap.scrollLeft -= dx;
+      } else {
+        _regBookPendingDY += -dy; // manual vertical scroll since native pan is disabled here (touch-action:none)
+        if (_regBookScrollRAF === null) _regBookScrollRAF = requestAnimationFrame(_regBookFlushVerticalScroll);
+      }
     });
+
+    const endDrag = (e) => {
+      if (!active || e.pointerId !== pointerId) return;
+      active = false;
+      wrap.classList.remove('rb-dragging');
+      try { wrap.releasePointerCapture(pointerId); } catch (err) {}
+      // Swallow the click that follows a real drag so it doesn't fall through
+      // to an attendance/row cell underneath and toggle it — that accidental
+      // toggle used to trigger a re-render that reset scrollLeft to 0, which
+      // is what made the table look like it randomly snapped back mid-scroll.
+      if (moved) wrap.addEventListener('click', (ev) => ev.stopPropagation(), { once: true, capture: true });
+    };
+    wrap.addEventListener('pointerup', endDrag);
+    wrap.addEventListener('pointercancel', endDrag);
   });
   initRegBookSliders();
 }
