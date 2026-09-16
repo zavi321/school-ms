@@ -8387,7 +8387,19 @@ if ('serviceWorker' in navigator) {
   navigator.serviceWorker.addEventListener('controllerchange', () => {
     if (sessionStorage.getItem('sms_sw_reloaded')) return;
     sessionStorage.setItem('sms_sw_reloaded', '1');
-    window.location.reload();
+    // Don't yank the page out from under an in-progress interaction — typing
+    // in a field, or dragging one of the ledger tables (see
+    // _regBookDragActive / safeRenderTab above) — that unconditional reload
+    // was exactly what looked like the Admission Register table randomly
+    // resetting mid-scroll. Wait until the user isn't mid-action, rechecking
+    // shortly after, instead of reloading out from under them.
+    const tryReload = () => {
+      const ae = document.activeElement;
+      const typing = ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA');
+      if (typing || _regBookDragActive) { setTimeout(tryReload, 500); return; }
+      window.location.reload();
+    };
+    tryReload();
   });
 }
 
