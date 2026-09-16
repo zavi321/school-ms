@@ -37,6 +37,12 @@
     --shadow-md:0 2px 6px rgba(15,39,64,.07), 0 8px 20px rgba(15,39,64,.06);
   }
   *{box-sizing:border-box;}
+/* Disables the browser's native pull-to-refresh/rubber-band gesture. This
+   gesture is only active while online (browsers skip it when offline, since
+   a refresh can't do anything without a connection) — that's why the
+   Admission Register's horizontal drag-scroll below worked fine offline but
+   fought with the browser and snapped back once online. */
+html, body{overscroll-behavior:none;}
   body{margin:0;background:var(--cream);color:var(--ink);font-family:Inter,sans-serif;}
   body.ur{font-family:'Noto Sans Urdu',sans-serif;direction:rtl;}
   .hidden{display:none !important;}
@@ -178,6 +184,9 @@
     direction:ltr;touch-action:none;cursor:grab;
     user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;}
   .regbook-screen-wrap.rb-dragging{cursor:grabbing;}
+  .regbook-scroll-track{position:relative;height:26px;background:#F0EBDA;border-radius:999px;margin-bottom:8px;}
+  .regbook-scroll-thumb{position:absolute;top:2px;left:0;height:22px;min-width:40px;background:var(--navy);color:var(--gold-soft);border-radius:999px;box-shadow:0 2px 8px rgba(15,39,64,.25);display:flex;align-items:center;justify-content:center;font-size:13px;touch-action:none;cursor:grab;}
+  .regbook-scroll-thumb:active{cursor:grabbing;}
   .regbook-screen-wrap input.cell-input, .regbook-screen-wrap select.cell-input{user-select:text;-webkit-user-select:text;}
   table.regbook-screen{border-collapse:collapse;width:100%;min-width:1180px;background:#FFFDF6;}
   table.regbook-screen th{background:#FFFDF6;color:var(--navy);font-weight:700;font-size:10.5px;padding:9px 6px;text-align:center;border:1px solid #E6AFAF;position:sticky;top:0;line-height:1.25;}
@@ -644,6 +653,10 @@ const T = {
     settings:'Account Settings', changeSchoolName:'School Name', changeSchoolNameUr:'School Name (Urdu)', changePassword:'New Password (leave blank to keep current)',
     saveSettings:'Save Changes', settingsSaved:'Saved successfully.', logOut:'Log Out',
     exportBackup:'Download Backup (Excel)', exportHint:'Save a full copy of your records to your device.',
+    clearCache:'Clear App Cache', clearCacheHint:'Deletes locally saved data and cached files on this device, then reloads the latest version of the app. Your account and records on the server are not affected.',
+    clearCacheConfirm:'This will clear locally cached data on this device and reload the app. Continue?',
+    clearCachePending:'You have unsynced changes on this device waiting to upload. Please go online and wait for them to finish syncing before clearing the cache — clearing now could lose them.',
+    clearCacheWorking:'Clearing…',
     // Whitelist / Admin onboarding
     notWhitelistedTitle:'This email is not registered with us yet.',
     notWhitelistedDesc:'To register your school, please contact us via SMS first.',
@@ -813,6 +826,10 @@ const T = {
     settings:'اکاؤنٹ کی ترتیبات', changeSchoolName:'اسکول کا نام', changeSchoolNameUr:'اسکول کا نام (اردو)', changePassword:'نیا پاس ورڈ (خالی چھوڑیں اگر تبدیل نہیں کرنا)',
     saveSettings:'تبدیلیاں محفوظ کریں', settingsSaved:'کامیابی سے محفوظ ہو گیا۔', logOut:'لاگ آؤٹ',
     exportBackup:'بیک اپ ڈاؤن لوڈ کریں (ایکسل)', exportHint:'اپنے تمام ریکارڈ کی مکمل کاپی اپنے ڈیوائس میں محفوظ کریں۔',
+    clearCache:'ایپ کیش صاف کریں', clearCacheHint:'اس ڈیوائس پر محفوظ شدہ مقامی ڈیٹا اور کیش شدہ فائلیں حذف کر کے ایپ کا تازہ ترین ورژن لوڈ کرتا ہے۔ سرور پر آپ کا اکاؤنٹ اور ریکارڈ محفوظ رہتے ہیں۔',
+    clearCacheConfirm:'یہ اس ڈیوائس پر مقامی طور پر کیش شدہ ڈیٹا صاف کر کے ایپ دوبارہ لوڈ کرے گا۔ جاری رکھیں؟',
+    clearCachePending:'اس ڈیوائس پر کچھ غیر مطابقت پذیر (unsynced) تبدیلیاں اپ لوڈ ہونے کی منتظر ہیں۔ کیش صاف کرنے سے پہلے آن لائن ہو کر ان کے sync مکمل ہونے کا انتظار کریں — ابھی صاف کرنے سے یہ ضائع ہو سکتی ہیں۔',
+    clearCacheWorking:'صاف ہو رہا ہے…',
     notWhitelistedTitle:'یہ ای میل ابھی تک ہمارے ساتھ رجسٹرڈ نہیں ہے۔',
     notWhitelistedDesc:'اپنا اسکول رجسٹر کروانے کے لیے پہلے ہم سے SMS پر رابطہ کریں۔',
     contactOnWhatsApp:'SMS پر رابطہ کریں',
@@ -2867,6 +2884,11 @@ function openSettings() {
       <p style="font-size:11px;opacity:.6;margin:0 0 8px;">${LANG==='ur' ? 'آف لائن مسئلے کی تشخیص کے لیے (جیسے ڈیش بورڈ 0 دکھانا)' : 'For diagnosing offline issues (e.g. dashboard showing 0)'}</p>
       <button class="btn-ghost" style="width:100%;" onclick="showStorageDiagnostics()">🔍 ${LANG==='ur' ? 'اسٹوریج کی تشخیص' : 'Storage Diagnostics'}</button>
     </div>
+    <div style="margin-top:18px;padding-top:16px;border-top:1px solid var(--line);">
+      <p style="font-size:11px;opacity:.6;margin:0 0 8px;">${esc(t.clearCacheHint)}</p>
+      <div id="clear-cache-msg"></div>
+      <button class="btn-ghost" style="width:100%;" onclick="clearAppCache()">🧹 ${esc(t.clearCache)}</button>
+    </div>
     <div style="margin-top:16px;"><button class="btn-ghost danger" onclick="logOut()">${esc(t.logOut)}</button></div>
   `);
 }
@@ -2942,6 +2964,82 @@ async function showStorageDiagnostics() {
   if (el) el.textContent = lines.join('\n');
   window._diagText = lines.join('\n');
 }
+// User-facing "Clear App Cache" (Settings screen). Wipes only locally
+// cached copies of data (IndexedDB read-cache tables, the localStorage
+// backup snapshot, and the Cache Storage used by the service worker for
+// app-shell files), then reloads — so the browser/app is forced to fetch
+// the newest deployed index.html/sw.js instead of an old cached one.
+// Deliberately does NOT touch: the Supabase auth session (user stays
+// logged in), the chosen language, or — most importantly — sync_queue,
+// which holds any offline edits not yet pushed to the server. If that
+// queue is non-empty we refuse and tell the user to reconnect first,
+// since deleting the IndexedDB database would silently discard that
+// unsynced work.
+async function clearAppCache() {
+  const msg = document.getElementById('clear-cache-msg');
+  let pending = 0;
+  try { pending = (await idbGetAll('sync_queue')).length; } catch (e) {}
+  if (pending > 0) {
+    if (msg) msg.innerHTML = `<div class="err">${esc(t.clearCachePending)}</div>`;
+    return;
+  }
+  if (!confirm(t.clearCacheConfirm)) return;
+  if (msg) msg.innerHTML = `<div class="ok">${esc(t.clearCacheWorking)}</div>`;
+
+  // 1. Delete the IndexedDB database (closing any open connection first,
+  // otherwise deleteDatabase() stalls waiting for it to close).
+  try {
+    if (_idbPromise) { try { (await _idbPromise).close(); } catch (e) {} }
+    _idbPromise = null;
+    await new Promise((resolve) => {
+      const req = indexedDB.deleteDatabase(IDB_NAME);
+      req.onsuccess = () => resolve();
+      req.onerror = () => resolve();
+      req.onblocked = () => resolve();
+    });
+  } catch (e) {}
+
+  // 2. Clear the localStorage read-cache copies (offline snapshot + cached
+  // profile), but leave sms_lang and the Supabase auth token alone.
+  try {
+    const toRemove = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && (k.startsWith(OFFLINE_SNAPSHOT_KEY) || k.startsWith('sms_cached_profile_') || k === 'examRecordsCleanupRanOn')) {
+        toRemove.push(k);
+      }
+    }
+    toRemove.forEach(k => localStorage.removeItem(k));
+  } catch (e) {}
+
+  // 3. Clear the Cache Storage API entries the service worker uses for the
+  // app shell (HTML/CSS/JS), so the next load fetches fresh files.
+  try {
+    if (window.caches) {
+      const keys = await caches.keys();
+      await Promise.all(keys.map(k => caches.delete(k)));
+    }
+  } catch (e) {}
+
+  // 4. Unregister the service worker itself so it re-installs fresh on
+  // reload, picking up the newest sw.js instead of an old cached copy.
+  try {
+    if (navigator.serviceWorker) {
+      const regs = await navigator.serviceWorker.getRegistrations();
+      await Promise.all(regs.map(r => r.unregister()));
+    }
+  } catch (e) {}
+
+  // 5. A plain reload() can still be answered by the browser's own normal
+  // HTTP cache (separate from Cache Storage above) if the server sent a
+  // cache-control header allowing it — that's the "online cache" a script
+  // can't force-clear directly. Reloading to a URL with a fresh, unique
+  // query string sidesteps that: the browser treats it as a different
+  // resource and is forced to fetch it from the network instead of disk.
+  const bustUrl = location.pathname + '?_cachebust=' + Date.now();
+  location.replace(bustUrl);
+}
+
 function copyDiagnostics() {
   if (!window._diagText) return;
   navigator.clipboard.writeText(window._diagText).then(() => {
@@ -6493,12 +6591,67 @@ function registerLedgerTableHtml(rows) {
 
   if (rows.length === 0) return `<div class="empty">${esc(t.noRegisterEntries)}</div>`;
   return `
+    <div class="regbook-scroll-track">
+      <div class="regbook-scroll-thumb">↔</div>
+    </div>
     <div class="regbook-screen-wrap">
       <table class="regbook-screen">
         <thead><tr>${headCols.map((c,i) => `<th${i===SPINE_AFTER?' class="rb-spine"':''}>${esc(c)}</th>`).join('')}</tr></thead>
         <tbody>${rows.map(dataRow).join('')}</tbody>
       </table>
     </div>`;
+}
+
+// Single draggable handle (a small drag-to-scroll slider), added as a
+// hands-on alternative to dragging the table itself directly — this gives a
+// dedicated, always-reliable control even on a device/browser combo where
+// the table's own drag-scroll still misbehaves. The handle's width reflects
+// how much of the table is visible, and its position mirrors scroll
+// progress; dragging it (mouse or touch) drives the table's scrollLeft.
+function initRegBookSliders() {
+  document.querySelectorAll('.regbook-scroll-track').forEach(track => {
+    const wrap = track.nextElementSibling;
+    const thumb = track.querySelector('.regbook-scroll-thumb');
+    if (!wrap || !thumb || !wrap.classList.contains('regbook-screen-wrap')) return;
+
+    const sync = () => {
+      const trackW = track.clientWidth;
+      const maxScroll = wrap.scrollWidth - wrap.clientWidth;
+      if (maxScroll <= 0) { thumb.style.width = trackW + 'px'; thumb.style.left = '0px'; return; }
+      const thumbW = Math.max(40, trackW * (wrap.clientWidth / wrap.scrollWidth));
+      const maxThumbLeft = trackW - thumbW;
+      const ratio = wrap.scrollLeft / maxScroll;
+      thumb.style.width = thumbW + 'px';
+      thumb.style.left = (ratio * maxThumbLeft) + 'px';
+    };
+    sync();
+    if (!wrap._sliderScrollBound) { wrap._sliderScrollBound = true; wrap.addEventListener('scroll', sync); }
+    if (thumb._dragBound) return; // don't double-bind on re-render
+    thumb._dragBound = true;
+
+    const startDrag = (clientX) => ({
+      startX: clientX, startThumbLeft: thumb.offsetLeft,
+      maxThumbLeft: track.clientWidth - thumb.offsetWidth,
+      maxScroll: wrap.scrollWidth - wrap.clientWidth
+    });
+    const moveDrag = (state, clientX) => {
+      if (!state || state.maxThumbLeft <= 0) return;
+      const dx = clientX - state.startX;
+      const newLeft = Math.min(state.maxThumbLeft, Math.max(0, state.startThumbLeft + dx));
+      thumb.style.left = newLeft + 'px';
+      wrap.scrollLeft = (newLeft / state.maxThumbLeft) * state.maxScroll;
+    };
+
+    let mState = null;
+    thumb.addEventListener('mousedown', (e) => { e.preventDefault(); mState = startDrag(e.clientX); });
+    window.addEventListener('mousemove', (e) => { if (mState) moveDrag(mState, e.clientX); });
+    window.addEventListener('mouseup', () => { mState = null; });
+
+    let tState = null;
+    thumb.addEventListener('touchstart', (e) => { tState = startDrag(e.touches[0].clientX); }, { passive: true });
+    thumb.addEventListener('touchmove', (e) => { e.preventDefault(); moveDrag(tState, e.touches[0].clientX); }, { passive: false });
+    thumb.addEventListener('touchend', () => { tState = null; });
+  });
 }
 
 // Manual drag-scroll fallback for the ledger-book table(s) — both the
@@ -6588,6 +6741,7 @@ function initRegBookScroll() {
       tMode = null;
     });
   });
+  initRegBookSliders();
 }
 
 function tplRegisterList() {
