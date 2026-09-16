@@ -2478,6 +2478,7 @@ function reFocusAfterRender(inputId) {
 
 function renderTab() {
   const main = document.getElementById('main');
+  _regBookCaptureScroll(); // remember horizontal scroll position before this rebuild wipes it
   if (TAB==='dashboard') main.innerHTML = tplDashboard();
   else if (TAB==='students') main.innerHTML = tplStudents();
   else if (TAB==='teachers') main.innerHTML = tplTeachers();
@@ -2504,8 +2505,8 @@ function renderTab() {
     });
   }
   else if (TAB==='marksSheet') main.innerHTML = tplMarksSheet();
-  else if (TAB==='admissionRegister') { main.innerHTML = tplAdmissionRegister(); initRegBookScroll(); }
-  else if (TAB==='teacherRegister') { main.innerHTML = tplTeacherRegister(); initRegBookScroll(); }
+  else if (TAB==='admissionRegister') { main.innerHTML = tplAdmissionRegister(); initRegBookScroll(); _regBookRestoreScroll(); }
+  else if (TAB==='teacherRegister') { main.innerHTML = tplTeacherRegister(); initRegBookScroll(); _regBookRestoreScroll(); }
   else if (TAB==='classLogins') main.innerHTML = tplClassLogins();
   else if (TAB==='admin') { main.innerHTML = tplAdmin(); loadAdminLists(); return; }
   else if (TAB==='suggestions') { main.innerHTML = tplSuggestions(); loadAiSuggestions(); }
@@ -6729,6 +6730,33 @@ function _regBookFlushVerticalScroll() {
 // setPointerCapture also pins all subsequent events for this interaction to
 // this element even if the finger drifts, which is more reliable than raw
 // touch events against a browser's own edge/back-swipe gesture recognizer.
+// Root cause of "scroll ho jata hai lekin wapas ajata hai" (scrolls, then
+// snaps straight back): on a weak/flaky mobile connection, the browser's
+// 'online' event (or a background sync finishing) can fire literally while
+// the user is mid-drag. That redraw is correctly *deferred* while
+// _regBookDragActive is true (see safeRenderTab above) — but the moment the
+// drag ends, that deferred redraw fires immediately (pendingRenderOnDragEnd),
+// which tears down and rebuilds the table from scratch. A freshly rebuilt
+// .regbook-screen-wrap/.reg-drag-wrap always starts at scrollLeft 0, so the
+// horizontal position the user just dragged to is thrown away right as they
+// let go — looks exactly like "scrolls, then snaps back", in either
+// direction, every time a redraw happens to land right after a drag.
+// Capturing scrollLeft immediately before any renderTab() rebuild and
+// re-applying it right after the table (and its drag-scroll bindings) are
+// rebuilt keeps the user's scroll position through any redraw, deferred or not.
+let _regBookScrollPositions = {};
+function _regBookCaptureScroll() {
+  document.querySelectorAll('.regbook-screen-wrap, .reg-drag-wrap').forEach((wrap, i) => {
+    _regBookScrollPositions[wrap.className + '_' + i] = wrap.scrollLeft;
+  });
+}
+function _regBookRestoreScroll() {
+  document.querySelectorAll('.regbook-screen-wrap, .reg-drag-wrap').forEach((wrap, i) => {
+    const key = wrap.className + '_' + i;
+    if (_regBookScrollPositions[key]) wrap.scrollLeft = _regBookScrollPositions[key];
+  });
+}
+
 function initRegBookScroll() {
   document.querySelectorAll('.regbook-screen-wrap, .reg-drag-wrap').forEach(wrap => {
     if (wrap._dragScrollBound) return; // don't double-bind on re-render
