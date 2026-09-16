@@ -181,14 +181,14 @@ html, body{overscroll-behavior:none;}
        soon as it started, before the JS could ever take over for a
        horizontal drag — touch-action:none stops that pre-lock, and the JS
        below drives vertical scrolling manually to compensate. */
-    direction:ltr;touch-action:none;cursor:grab;
+    direction:ltr;touch-action:none;cursor:grab;overscroll-behavior:contain;
     user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;}
   .regbook-screen-wrap.rb-dragging{cursor:grabbing;}
   /* Same drag-to-scroll treatment as the regbook tables above (touch-action
      none + JS-driven scrollLeft), applied to plain card-table-wrap tables
      that need it — currently just the Teacher Attendance Register, whose
      native overflow-x:auto was not reliably engaging on some devices. */
-  .reg-drag-wrap{touch-action:none;cursor:grab;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;}
+  .reg-drag-wrap{touch-action:none;cursor:grab;overscroll-behavior:contain;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;}
   .reg-drag-wrap.rb-dragging{cursor:grabbing;}
   .regbook-scroll-track{position:relative;height:26px;background:#F0EBDA;border-radius:999px;margin-bottom:8px;}
   .regbook-scroll-thumb{position:absolute;top:2px;left:0;height:22px;min-width:40px;background:var(--navy);color:var(--gold-soft);border-radius:999px;box-shadow:0 2px 8px rgba(15,39,64,.25);display:flex;align-items:center;justify-content:center;font-size:13px;touch-action:none;cursor:grab;}
@@ -1329,11 +1329,24 @@ async function offlineWrite({ table, action, payload, id, onConflict, baseRow, r
 // field inside #main, and fires it once they leave that field instead — the
 // data has already synced either way, this only delays the *visual* refresh.
 let pendingRenderOnBlur = false;
+// Same "don't redraw out from under the user" problem also applies to an
+// in-progress drag-scroll on the Admission Register / Teacher Attendance
+// ledger tables (see initRegBookScroll below) — that drag isn't an INPUT or
+// TEXTAREA, so the focus check below never caught it. A flaky-connection
+// 'online' event firing mid-drag would tear down and rebuild the tab, which
+// recreates the scroll wrapper from scratch at scrollLeft 0 — that's what
+// looked like the table scrolling, then snapping back to the start.
+let _regBookDragActive = false;
+let pendingRenderOnDragEnd = false;
 function safeRenderTab() {
   const ae = document.activeElement;
   const main = document.getElementById('main');
   if (ae && main && main.contains(ae) && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA')) {
     pendingRenderOnBlur = true;
+    return;
+  }
+  if (_regBookDragActive) {
+    pendingRenderOnDragEnd = true;
     return;
   }
   renderTab();
@@ -6730,6 +6743,7 @@ function initRegBookScroll() {
       if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return; // let normal focus/click happen on editable cells
       if (e.pointerType === 'mouse' && e.button !== 0) return; // only primary mouse button
       active = true; moved = false; pointerId = e.pointerId;
+      _regBookDragActive = true;
       startX = lastX = e.clientX; startY = lastY = e.clientY;
       try { wrap.setPointerCapture(pointerId); } catch (err) {}
       wrap.classList.add('rb-dragging');
@@ -6764,6 +6778,13 @@ function initRegBookScroll() {
     const endDrag = (e) => {
       if (!active || e.pointerId !== pointerId) return;
       active = false;
+      _regBookDragActive = false;
+      if (pendingRenderOnDragEnd) {
+        pendingRenderOnDragEnd = false;
+        // Let the drag/click handling below finish first, then redraw with
+        // whatever data arrived while the redraw was held off.
+        setTimeout(() => { if (TAB) renderTab(); }, 0);
+      }
       wrap.classList.remove('rb-dragging');
       try { wrap.releasePointerCapture(pointerId); } catch (err) {}
       // Swallow the click that follows a real drag so it doesn't fall through
