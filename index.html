@@ -2020,8 +2020,21 @@ const UR_MONTH_NAMES = ['جنوری','فروری','مارچ','اپریل','مئ�
 function duesBreakdownLinesUrdu(studentId) {
   const { rows } = buildAcademicYearLedger(studentId);
   const L = T.ur;
-  return rows
-    .filter(r => !r.blank)
+  const entryRows = rows.filter(r => !r.blank);
+
+  // Only report the months making up the *current* unpaid streak. r.balance
+  // is the running cumulative balance carried month to month (see
+  // buildAcademicYearLedger above) — once it's fully cleared (<=0) at some
+  // month, everything before that point is settled, even if that particular
+  // month's own charges once looked unpaid before a later month's payment
+  // caught it up. e.g. February shows a due, March's payment clears the
+  // running balance, April has a new due of its own — only April should be
+  // listed, not February (which is what was causing the confusion).
+  let lastClearedIndex = -1;
+  entryRows.forEach((r, i) => { if (r.balance <= 0) lastClearedIndex = i; });
+  const activeRows = entryRows.slice(lastClearedIndex + 1);
+
+  return activeRows
     .map(r => {
       const e = r.e;
       const monthDue = Number(e.school_fee||0) + Number(e.sports_fund||0) + Number(e.admission_fee||0) + Number(e.exam_fee||0) + Number(e.other_fee||0) - Number(e.amount||0);
@@ -2038,6 +2051,40 @@ function duesBreakdownLinesUrdu(studentId) {
       return `${UR_MONTH_NAMES[monthNum-1]}:\n` + parts.map(p => `- ${p}`).join('\n');
     })
     .filter(Boolean);
+}
+
+// Itemized "payment received" SMS — same principle as duesBreakdownLinesUrdu
+// above: don't just say "Rs X received", break it down by fee category
+// (School Fee / Sports Fund / Admission Fee / Exam Fee / Other) so the parent
+// can see exactly what the payment covered, plus any balance still
+// outstanding for that student. e/entry is a fee_payments row (or ledger
+// row's .e) with school_fee/sports_fund/admission_fee/exam_fee/other_fee/amount.
+function paidReceiptMessage(studentName, monthText, e, remainingBalance) {
+  const parts = [];
+  if (Number(e.school_fee||0) > 0) parts.push(`School Fee: Rs ${fmt(e.school_fee)}`);
+  if (Number(e.sports_fund||0) > 0) parts.push(`Sports Fund: Rs ${fmt(e.sports_fund)}`);
+  if (Number(e.admission_fee||0) > 0) parts.push(`Admission Fee: Rs ${fmt(e.admission_fee)}`);
+  if (Number(e.exam_fee||0) > 0) parts.push(`Annual Exam Fee: Rs ${fmt(e.exam_fee)}`);
+  if (Number(e.other_fee||0) > 0) parts.push(`Other Fee: Rs ${fmt(e.other_fee)}`);
+  const breakdown = parts.length ? ('\n' + parts.map(p => `- ${p}`).join('\n')) : '';
+  const balLine = remainingBalance > 0 ? `\nBalance Remaining: Rs ${fmt(remainingBalance)}` : '';
+  return `Dear Parent, fee payment of Rs ${fmt(e.amount||0)} received for ${studentName} (${monthText}).${breakdown}${balLine}\nThank you. - School`;
+}
+
+// Wrapper for the 💬 button on a fee-card row: looked up by studentId+month
+// (rather than building the message text inline in the onclick attribute)
+// so the multi-line breakdown text never has to survive being embedded in an
+// HTML attribute string.
+function sendPaidReceiptSms(studentId, month) {
+  const s = DATA.students.find(x => x.id === studentId);
+  if (!s) return;
+  const [my, mm] = month.split('-').map(Number);
+  const academicYearOf = (year, mon) => (mon >= 2 ? year : year - 1);
+  const { rows } = buildAcademicYearLedger(studentId, academicYearOf(my, mm));
+  const row = rows.find(r => !r.blank && r.mk === month);
+  if (!row) return;
+  const msg = paidReceiptMessage(s.name, monthLabel(month), row.e, row.balance);
+  openFatherWhatsapp(s.contact || '', msg);
 }
 
 // Always in Urdu regardless of the site's current display language, since parents
@@ -3853,7 +3900,7 @@ function openStudentDetail(id, viewYear) {
               <td>${r.blank ? '—' : esc(r.e.receipt_no||'—')}</td>
               <td>${r.blank ? '—' : esc(fmtDate(r.e.pay_date)||'')}</td>
               <td>${r.blank ? '' : `<button class="print-btn" title="${esc(t.print)}" onclick="printReceipt('${id}','${r.e.id}')">🖨️</button>`}</td>
-              <td>${r.blank ? '' : `<button class="print-btn" title="Send SMS to father" onclick="openFatherWhatsapp('${esc(s.contact||'')}', 'Dear Parent, fee of Rs ${fmt(r.totalPaid)} for ${esc(s.name)} (${esc(monthLabel(r.mk))}) has been received. Thank you. - School')">💬</button>`}</td>
+              <td>${r.blank ? '' : `<button class="print-btn" title="Send SMS to father" onclick="sendPaidReceiptSms('${id}','${r.mk}')">💬</button>`}</td>
               <td>${r.blank ? '' : `<button class="del-x" onclick="deleteFeePayment('${r.e.id}','${id}')">✕</button>`}</td>
             </tr>`).join('')}
         </tbody>
@@ -3960,7 +4007,11 @@ async function submitFeePayment(studentId) {
   // while queued offline — unlike the old wa.me link, the sms: link opens the
   // phone's own Messages app with no internet needed at all.
   if (isNewEntry && student && date === todayISO()) {
-    const msg = `Dear Parent, fee of Rs ${Number(amount).toLocaleString()} for ${student.name} (${month}) has been received. Thank you. - School`;
+    const [my, mm] = month.split('-').map(Number);
+    const academicYearOf = (y, m) => (m >= 2 ? y : y - 1);
+    const { rows: ledgerRows } = buildAcademicYearLedger(studentId, academicYearOf(my, mm));
+    const row = ledgerRows.find(r => !r.blank && r.mk === month);
+    const msg = paidReceiptMessage(student.name, monthLabel(month), payload, row ? row.balance : 0);
     openFatherWhatsapp(student.contact, msg); // opens the phone's Messages app, pre-filled, ready to send
   }
   if (!queued) await loadAllData();
