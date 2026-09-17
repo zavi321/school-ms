@@ -5859,20 +5859,6 @@ function renderDMCCertificate(result) {
   const shadow3D = '1px 1px 0 rgba(0,0,0,.4),2px 2px 0 rgba(0,0,0,.32),3px 3px 0 rgba(0,0,0,.25),4px 4px 4px rgba(0,0,0,.4)';
   const shadow3Dsm = '0.5px 0.5px 0 rgba(0,0,0,.4),1px 1px 0 rgba(0,0,0,.32),1.5px 1.5px 0 rgba(0,0,0,.25),2px 2px 2px rgba(0,0,0,.4)';
 
-  // NOTE: mix-blend-mode was tried here for auto-contrast against any
-  // background, but Chromium's print/PDF pipeline frequently fails to
-  // render blend-mode text at all (it prints blank), so the certificate
-  // silently stopped printing. Using a plain, print-safe color choice
-  // instead: white+dark-halo when a custom background image is set
-  // (which is often dark/patterned), plain black+3D pop otherwise.
-  const nameColor = dmcBackground ? '#fff' : '#000';
-  const nameShadow = dmcBackground
-    ? '-1px -1px 0 rgba(15,39,64,.85),1px -1px 0 rgba(15,39,64,.85),-1px 1px 0 rgba(15,39,64,.85),1px 1px 0 rgba(15,39,64,.85),2px 2px 3px rgba(0,0,0,.5),3px 3px 5px rgba(0,0,0,.4)'
-    : '1px 1px 0 rgba(255,255,255,.6),2px 2px 3px rgba(0,0,0,.4),3px 3px 5px rgba(0,0,0,.3)';
-  const taglineShadow = dmcBackground
-    ? '-0.5px -0.5px 0 rgba(15,39,64,.85),0.5px -0.5px 0 rgba(15,39,64,.85),-0.5px 0.5px 0 rgba(15,39,64,.85),0.5px 0.5px 0 rgba(15,39,64,.85),1px 1px 2px rgba(0,0,0,.5),2px 2px 3px rgba(0,0,0,.4)'
-    : '0.5px 0.5px 0 rgba(255,255,255,.6),1px 1px 2px rgba(0,0,0,.4),2px 2px 3px rgba(0,0,0,.3)';
-
   // When a custom background image is uploaded, several blocks (student info
   // box, marks table, remarks, signatures) would otherwise sit directly on
   // the raw artwork with fixed dark text — unreadable if the uploaded design
@@ -5883,6 +5869,25 @@ function renderDMCCertificate(result) {
   // needed. Certificates with no background image are completely unchanged
   // (panelBg stays transparent, panelText/panelLabel keep the original colors).
   const bgIsDark = dmcBackground && (dmcDesign.bgBrightness ?? 200) < 130;
+
+  // NOTE: mix-blend-mode was tried here for auto-contrast against any
+  // background, but Chromium's print/PDF pipeline frequently fails to
+  // render blend-mode text at all (it prints blank), so the certificate
+  // silently stopped printing. Using a plain, print-safe color choice
+  // instead, keyed off the same bgIsDark brightness check the panels use
+  // above: white+dark-halo on a dark background, dark+light-halo on a
+  // light background, plain black+3D pop when there's no background image.
+  const nameColor = bgIsDark ? '#fff' : '#000';
+  const nameShadow = !dmcBackground
+    ? '1px 1px 0 rgba(255,255,255,.6),2px 2px 3px rgba(0,0,0,.4),3px 3px 5px rgba(0,0,0,.3)'
+    : bgIsDark
+      ? '-1px -1px 0 rgba(15,39,64,.85),1px -1px 0 rgba(15,39,64,.85),-1px 1px 0 rgba(15,39,64,.85),1px 1px 0 rgba(15,39,64,.85),2px 2px 3px rgba(0,0,0,.5),3px 3px 5px rgba(0,0,0,.4)'
+      : '-1px -1px 0 rgba(255,255,255,.85),1px -1px 0 rgba(255,255,255,.85),-1px 1px 0 rgba(255,255,255,.85),1px 1px 0 rgba(255,255,255,.85),2px 2px 3px rgba(0,0,0,.3),3px 3px 4px rgba(0,0,0,.2)';
+  const taglineShadow = !dmcBackground
+    ? '0.5px 0.5px 0 rgba(255,255,255,.6),1px 1px 2px rgba(0,0,0,.4),2px 2px 3px rgba(0,0,0,.3)'
+    : bgIsDark
+      ? '-0.5px -0.5px 0 rgba(15,39,64,.85),0.5px -0.5px 0 rgba(15,39,64,.85),-0.5px 0.5px 0 rgba(15,39,64,.85),0.5px 0.5px 0 rgba(15,39,64,.85),1px 1px 2px rgba(0,0,0,.5),2px 2px 3px rgba(0,0,0,.4)'
+      : '-0.5px -0.5px 0 rgba(255,255,255,.85),0.5px -0.5px 0 rgba(255,255,255,.85),-0.5px 0.5px 0 rgba(255,255,255,.85),0.5px 0.5px 0 rgba(255,255,255,.85),1px 1px 2px rgba(0,0,0,.3),2px 2px 3px rgba(0,0,0,.2)';
   const panelBg    = dmcBackground ? (bgIsDark ? 'rgba(8,16,28,.66)' : 'rgba(255,255,255,.86)') : 'transparent';
   const panelText  = dmcBackground ? (bgIsDark ? '#F5F1E4' : '#1C2530') : '#1C2530';
   const panelLabel = dmcBackground ? (bgIsDark ? '#F5F1E4' : pc) : pc;
@@ -8379,9 +8384,9 @@ function classPortalMarksGridHtml(session) {
   return `
     <div class="card-table-wrap" style="margin-top:8px;">
       <table class="card-table">
-        <thead><tr><th style="text-align:left;">${esc(t.studentName)}</th>${classMarksDraft.subjects.map(s=>`<th>${esc(s.name||'—')} /${esc(s.total)}</th>`).join('')}</tr></thead>
+        <thead><tr><th style="text-align:left;">${esc(t.studentName)}</th><th style="text-align:left;">${esc(t.fatherName)}</th>${classMarksDraft.subjects.map(s=>`<th>${esc(s.name||'—')} /${esc(s.total)}</th>`).join('')}</tr></thead>
         <tbody>${students.map(st => `
-          <tr><td class="mo">${st.roll_no?'#'+esc(st.roll_no)+' ':''}${esc(st.name)}</td>
+          <tr><td class="mo">${st.roll_no?'#'+esc(st.roll_no)+' ':''}${esc(st.name)}</td><td>${esc(st.father_name||'')}</td>
           ${classMarksDraft.subjects.map(s => `<td style="padding:3px;"><input type="number" style="width:56px;text-align:center;padding:5px 2px;" value="${(classMarksDraft.marks[st.id]||{})[s.name] ?? ''}" onchange="setClassMark('${st.id}','${esc(s.name).replace(/'/g,"\\'")}',this.value,${s.total})"></td>`).join('')}
           </tr>`).join('')}
         </tbody>
