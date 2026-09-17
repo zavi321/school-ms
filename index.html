@@ -8189,7 +8189,8 @@ async function submitClassPortalAddStudent() {
     const { data, error } = await sb.rpc('class_add_student', {
       p_school_code: session.schoolCode, p_login_id: session.loginId, p_password: session.password, p_name: name, p_father_name: fatherName, p_phone: phone
     });
-    if (error || !data || !data.length) { msg.innerHTML = `<div class="err">${esc(t.classPortalInvalid)}</div>`; return; }
+    if (error) { msg.innerHTML = `<div class="err">DEBUG: ${esc(error.message || JSON.stringify(error))}</div>`; return; }
+    if (!data || !data.length) { msg.innerHTML = `<div class="err">${esc(t.classPortalInvalid)} (DEBUG: Add Student RPC returned 0 rows)</div>`; return; }
     session.students = session.students || [];
     session.students.push({ id: data[0].id, name: data[0].name, father_name: data[0].father_name || fatherName, contact: data[0].contact || phone });
     setClassSession(session);
