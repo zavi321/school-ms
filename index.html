@@ -5859,61 +5859,51 @@ function renderDMCCertificate(result) {
   const shadow3D = '1px 1px 0 rgba(0,0,0,.4),2px 2px 0 rgba(0,0,0,.32),3px 3px 0 rgba(0,0,0,.25),4px 4px 4px rgba(0,0,0,.4)';
   const shadow3Dsm = '0.5px 0.5px 0 rgba(0,0,0,.4),1px 1px 0 rgba(0,0,0,.32),1.5px 1.5px 0 rgba(0,0,0,.25),2px 2px 2px rgba(0,0,0,.4)';
 
-  // When a custom background image is uploaded, several blocks (student info
-  // box, marks table, remarks, signatures) would otherwise sit directly on
-  // the raw artwork with fixed dark text — unreadable if the uploaded design
-  // is itself dark or busy there. Using the brightness measured at upload
-  // time (dmcDesign.bgBrightness, 0=black..255=white), each such block gets
-  // a translucent backing panel plus a text color chosen to read clearly
-  // against it — automatically, per uploaded design, with no manual choice
-  // needed. Certificates with no background image are completely unchanged
-  // (panelBg stays transparent, panelText/panelLabel keep the original colors).
-  const bgIsDark = dmcBackground && (dmcDesign.bgBrightness ?? 200) < 130;
-
   // NOTE: mix-blend-mode was tried here for auto-contrast against any
   // background, but Chromium's print/PDF pipeline frequently fails to
   // render blend-mode text at all (it prints blank), so the certificate
   // silently stopped printing. Using a plain, print-safe color choice
-  // instead, keyed off the same bgIsDark brightness check the panels use
-  // above: white+dark-halo on a dark background, dark+light-halo on a
-  // light background, plain black+3D pop when there's no background image.
-  const nameColor = bgIsDark ? '#fff' : '#000';
-  const nameShadow = !dmcBackground
-    ? '1px 1px 0 rgba(255,255,255,.6),2px 2px 3px rgba(0,0,0,.4),3px 3px 5px rgba(0,0,0,.3)'
-    : bgIsDark
-      ? '-1px -1px 0 rgba(15,39,64,.85),1px -1px 0 rgba(15,39,64,.85),-1px 1px 0 rgba(15,39,64,.85),1px 1px 0 rgba(15,39,64,.85),2px 2px 3px rgba(0,0,0,.5),3px 3px 5px rgba(0,0,0,.4)'
-      : '-1px -1px 0 rgba(255,255,255,.85),1px -1px 0 rgba(255,255,255,.85),-1px 1px 0 rgba(255,255,255,.85),1px 1px 0 rgba(255,255,255,.85),2px 2px 3px rgba(0,0,0,.3),3px 3px 4px rgba(0,0,0,.2)';
-  const taglineShadow = !dmcBackground
-    ? '0.5px 0.5px 0 rgba(255,255,255,.6),1px 1px 2px rgba(0,0,0,.4),2px 2px 3px rgba(0,0,0,.3)'
-    : bgIsDark
-      ? '-0.5px -0.5px 0 rgba(15,39,64,.85),0.5px -0.5px 0 rgba(15,39,64,.85),-0.5px 0.5px 0 rgba(15,39,64,.85),0.5px 0.5px 0 rgba(15,39,64,.85),1px 1px 2px rgba(0,0,0,.5),2px 2px 3px rgba(0,0,0,.4)'
-      : '-0.5px -0.5px 0 rgba(255,255,255,.85),0.5px -0.5px 0 rgba(255,255,255,.85),-0.5px 0.5px 0 rgba(255,255,255,.85),0.5px 0.5px 0 rgba(255,255,255,.85),1px 1px 2px rgba(0,0,0,.3),2px 2px 3px rgba(0,0,0,.2)';
-  const panelBg    = dmcBackground ? (bgIsDark ? 'rgba(8,16,28,.66)' : 'rgba(255,255,255,.86)') : 'transparent';
-  const panelText  = dmcBackground ? (bgIsDark ? '#F5F1E4' : '#1C2530') : '#1C2530';
-  const panelLabel = dmcBackground ? (bgIsDark ? '#F5F1E4' : pc) : pc;
-  const panelMuted = dmcBackground ? (bgIsDark ? '#C9C2A6' : '#333') : '#333';
-  const panelLine  = dmcBackground ? (bgIsDark ? 'rgba(245,241,228,.35)' : '#C9C2A6') : '#C9C2A6';
+  // instead: white+dark-halo when a custom background image is set
+  // (which is often dark/patterned), plain black+3D pop otherwise.
+  const nameColor = dmcBackground ? '#fff' : '#000';
+  const nameShadow = dmcBackground
+    ? '-1px -1px 0 rgba(15,39,64,.85),1px -1px 0 rgba(15,39,64,.85),-1px 1px 0 rgba(15,39,64,.85),1px 1px 0 rgba(15,39,64,.85),2px 2px 3px rgba(0,0,0,.5),3px 3px 5px rgba(0,0,0,.4)'
+    : '1px 1px 0 rgba(255,255,255,.6),2px 2px 3px rgba(0,0,0,.4),3px 3px 5px rgba(0,0,0,.3)';
+  const taglineShadow = dmcBackground
+    ? '-0.5px -0.5px 0 rgba(15,39,64,.85),0.5px -0.5px 0 rgba(15,39,64,.85),-0.5px 0.5px 0 rgba(15,39,64,.85),0.5px 0.5px 0 rgba(15,39,64,.85),1px 1px 2px rgba(0,0,0,.5),2px 2px 3px rgba(0,0,0,.4)'
+    : '0.5px 0.5px 0 rgba(255,255,255,.6),1px 1px 2px rgba(0,0,0,.4),2px 2px 3px rgba(0,0,0,.3)';
+
+  // When a custom certificate background image is set, several sections (the
+  // student-info box, marks table rows, remarks value, and signature footer)
+  // sit directly on top of that image with no color of their own — fine on the
+  // plain cream default, but unreadable if the uploaded image is dark or busy
+  // there. Rather than sampling the image's colors (unreliable, and this
+  // file's print pipeline already can't rely on mix-blend-mode — see the note
+  // above), give those sections a light, semi-opaque "glass" backing so the
+  // same dark text stays legible no matter what sits behind it. Falls back to
+  // fully transparent (today's look) when there's no background image.
+  const panelBg = dmcBackground ? 'rgba(255,255,255,.86)' : 'transparent';
 
   const subjectsHtml = dmcSubjects.map((s, i) => {
     const marks = Number(result.marks[s.name]) || 0;
     const subjPct = s.total ? (marks / s.total) * 100 : 0;
     const subjGrade = dmcGradeFor(subjPct);
     return `
-      <tr style="border-bottom:1px solid ${panelLine};">
-        <td style="padding:6px 12px;text-align:center;font-size:13px;font-weight:800;color:${panelText};">${i+1}</td>
-        <td style="padding:6px 12px;text-align:left;font-size:14px;font-weight:900;color:${panelText};">${esc(s.name)}</td>
-        <td style="padding:6px 12px;text-align:center;font-size:14px;font-weight:800;color:${panelMuted};">${s.total}</td>
-        <td style="padding:6px 12px;text-align:center;font-size:14px;font-weight:900;color:${panelLabel};">${marks}</td>
-        <td style="padding:6px 12px;text-align:center;font-size:13px;font-weight:900;color:${panelLabel};">${subjGrade}</td>
+      <tr style="border-bottom:1px solid #E7E0CE;">
+        <td style="padding:6px 12px;text-align:center;font-size:13px;font-weight:800;color:#1C2530;">${i+1}</td>
+        <td style="padding:6px 12px;text-align:left;font-size:14px;font-weight:900;color:#1C2530;">${esc(s.name)}</td>
+        <td style="padding:6px 12px;text-align:center;font-size:14px;font-weight:800;color:#333;">${s.total}</td>
+        <td style="padding:6px 12px;text-align:center;font-size:14px;font-weight:900;color:#0F2740;">${marks}</td>
+        <td style="padding:6px 12px;text-align:center;font-size:13px;font-weight:900;color:#0F2740;">${subjGrade}</td>
       </tr>`;
   }).join('');
 
   const infoField = (icon, label, value) => `
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
       <span style="flex-shrink:0;width:20px;text-align:center;">${icon}</span>
-      <span style="flex-shrink:0;width:108px;font-size:14px;font-weight:900;color:${panelLabel};">${esc(label)}</span>
-      <span style="font-size:14px;font-weight:900;color:${panelText};">:</span>
-      <span style="flex:1;font-size:15px;font-weight:900;color:${panelText};border-bottom:1px solid ${panelLine};padding-bottom:2px;">${esc(value || '\u2014')}</span>
+      <span style="flex-shrink:0;width:108px;font-size:14px;font-weight:900;color:#0F2740;">${esc(label)}</span>
+      <span style="font-size:14px;font-weight:900;color:#1C2530;">:</span>
+      <span style="flex:1;font-size:15px;font-weight:900;color:#1C2530;border-bottom:1px solid #C9C2A6;padding-bottom:2px;">${esc(value || '\u2014')}</span>
     </div>`;
 
 
@@ -5927,7 +5917,7 @@ function renderDMCCertificate(result) {
       <div style="max-width:800px;margin:0 auto;background:${pc};padding:8px;border-radius:22px;position:relative;overflow:hidden;">
         <div style="background:${bg};border:2px solid ${ac};border-radius:16px;padding:18px 26px 16px;position:relative;z-index:0;overflow:hidden;">
           ${dmcBackground ? `<div style="position:absolute;inset:0;z-index:-2;background-image:url(${dmcBackground});background-size:100% 100%;background-repeat:no-repeat;background-position:center;"></div>` : ''}
-          ${dmcLogo ? `<div style="position:absolute;inset:0;z-index:-1;display:flex;align-items:center;justify-content:center;pointer-events:none;overflow:hidden;"><img src="${dmcLogo}" style="width:63%;max-width:364px;object-fit:contain;opacity:.2;filter:blur(1px);"></div>` : ''}
+          ${dmcLogo ? `<div style="position:absolute;inset:0;z-index:-1;display:flex;align-items:center;justify-content:center;pointer-events:none;overflow:hidden;"><img src="${dmcLogo}" style="width:63%;max-width:364px;object-fit:contain;opacity:.5;filter:blur(1px);"></div>` : ''}
 
           <!-- Header: logo back on the side (as in the original layout), with
                the school name as a plain auto-sizing line so long names never
@@ -5956,14 +5946,14 @@ function renderDMCCertificate(result) {
           <!-- Title banner -->
           <div style="text-align:center;">
             <div style="display:inline-block;background:${pc};color:#fff;padding:9px 26px;border-radius:6px;font-weight:900;font-size:14px;letter-spacing:.06em;">${esc((dmcDesign.certTitle || 'DETAIL MARKS CERTIFICATE').toUpperCase())}</div>
-            ${dmcAcademicSession ? `<div style="margin-top:10px;"><span style="display:inline-block;border:1px solid ${ac};color:${pc};padding:4px 18px;border-radius:999px;font-size:11px;font-weight:900;letter-spacing:.03em;">ACADEMIC SESSION: ${esc(dmcAcademicSession)}</span></div>` : ''}
+            ${dmcAcademicSession ? `<div style="margin-top:10px;"><span style="display:inline-block;background:${panelBg};border:1px solid ${ac};color:${pc};padding:4px 18px;border-radius:999px;font-size:11px;font-weight:900;letter-spacing:.03em;">ACADEMIC SESSION: ${esc(dmcAcademicSession)}</span></div>` : ''}
           </div>
 
           <!-- Student Information section -->
           <div style="margin:14px 0 0;">
             <div style="display:inline-block;background:${pc};color:#fff;padding:7px 18px;font-size:13px;font-weight:900;letter-spacing:.05em;border-radius:4px 10px 4px 4px;">STUDENT INFORMATION</div>
           </div>
-          <div style="border:1px solid ${ac};border-radius:10px;padding:12px 18px 2px;margin-top:8px;background:${panelBg};">
+          <div style="background:${panelBg};border:1px solid ${ac};border-radius:10px;padding:12px 18px 2px;margin-top:8px;">
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 20px;">
               <div>
                 ${infoField('&#128100;','Student Name', result.studentName)}
@@ -5978,10 +5968,8 @@ function renderDMCCertificate(result) {
             </div>
           </div>
 
-          <!-- Marks Table: wrapped in its own backing panel so every row reads
-               clearly no matter what sits behind it on the uploaded design. -->
-          <div style="background:${panelBg};border-radius:8px;overflow:hidden;margin:8px 0;">
-          <table style="width:100%;border-collapse:collapse;">
+          <!-- Marks Table -->
+          <table style="width:100%;border-collapse:collapse;margin:8px 0;background:${panelBg};">
             <thead>
               <tr style="background:${pc};color:#fff;">
                 <th style="padding:8px 12px;text-align:center;font-weight:900;font-size:11px;letter-spacing:.04em;width:44px;">S.NO</th>
@@ -6003,16 +5991,16 @@ function renderDMCCertificate(result) {
                    row above it — Percentage sits under TOTAL MARKS, Position sits
                    under OBTAINED MARKS, Grade sits under GRADE (same last column). -->
               <tr style="border-top:2px solid ${pc};font-weight:900;">
-                <td colspan="2" style="padding:8px 12px;text-align:left;color:${panelLabel};font-size:11px;letter-spacing:.04em;text-shadow:${shadow3Dsm};">RESULT</td>
-                <td style="padding:8px 12px;text-align:center;color:${panelLabel};">
+                <td colspan="2" style="padding:8px 12px;text-align:left;color:${pc};font-size:11px;letter-spacing:.04em;text-shadow:${shadow3Dsm};">RESULT</td>
+                <td style="padding:8px 12px;text-align:center;color:${pc};">
                   <div style="font-size:9px;letter-spacing:.04em;opacity:.75;text-shadow:${shadow3Dsm};">%AGE</div>
                   <div style="font-size:16px;line-height:1;margin-top:2px;">&#128200;</div>
                   <div style="font-size:34px;line-height:1;text-shadow:${shadow3D};">${percentage}%</div>
                 </td>
-                <td style="padding:8px 12px;text-align:center;color:${panelLabel};">
+                <td style="padding:8px 12px;text-align:center;color:${pc};">
                   <div style="font-size:9px;letter-spacing:.04em;opacity:.75;text-shadow:${shadow3Dsm};">POSITION</div>
                   <div style="font-size:16px;line-height:1;margin-top:2px;">&#129351;</div>
-                  <div style="font-size:62px;font-weight:900;line-height:1;-webkit-text-stroke:0.4px ${panelLabel};text-shadow:${shadow3D};">${dmcDesign.showPosition ? ordinal(position) : '\u2014'}</div>
+                  <div style="font-size:62px;font-weight:900;line-height:1;-webkit-text-stroke:0.4px ${pc};text-shadow:${shadow3D};">${dmcDesign.showPosition ? ordinal(position) : '\u2014'}</div>
                 </td>
                 <td style="padding:8px 12px;text-align:center;color:${dmcGradeColor(grade)};">
                   <div style="font-size:9px;letter-spacing:.04em;opacity:.75;text-shadow:${shadow3Dsm};">GRADE</div>
@@ -6022,27 +6010,25 @@ function renderDMCCertificate(result) {
               </tr>
             </tbody>
           </table>
-          </div>
 
           <!-- Remarks -->
           <div style="display:flex;margin-top:10px;border:1px solid ${pc};border-radius:8px;overflow:hidden;">
             <div style="background:${pc};color:#fff;font-weight:900;font-size:13px;letter-spacing:.05em;padding:8px 22px;">REMARKS</div>
-            <div style="flex:1;display:flex;align-items:center;justify-content:center;gap:8px;font-weight:900;font-size:13px;letter-spacing:.05em;color:${dmcGradeColor(grade)};background:${panelBg};">${dmcRemarkFor(grade)}</div>
+            <div style="flex:1;background:${panelBg};display:flex;align-items:center;justify-content:center;gap:8px;font-weight:900;font-size:13px;letter-spacing:.05em;color:${dmcGradeColor(grade)};">${dmcRemarkFor(grade)}</div>
           </div>
 
-          <!-- Footer: signatures — each label sits on its own small backing
-               panel so it stays legible over whatever artwork is behind it. -->
+          <!-- Footer: signatures -->
           <div style="display:flex;align-items:flex-end;justify-content:space-between;margin-top:10px;gap:12px;">
-            <div style="text-align:center;flex:1;background:${panelBg};border-radius:6px;padding:4px 6px;">
-              <div style="border-bottom:1px solid ${panelLabel};margin-bottom:6px;"></div>
-              <div style="font-size:10px;font-weight:900;color:${panelLabel};letter-spacing:.03em;">${esc((dmcDesign.teacherLabel || 'CLASS TEACHER SIGNATURE').toUpperCase())}</div>
+            <div style="text-align:center;flex:1;background:${panelBg};border-radius:6px;padding:${dmcBackground ? '6px 8px 4px' : '0'};">
+              <div style="border-bottom:1px solid ${pc};margin-bottom:6px;"></div>
+              <div style="font-size:10px;font-weight:900;color:${pc};letter-spacing:.03em;">${esc((dmcDesign.teacherLabel || 'CLASS TEACHER SIGNATURE').toUpperCase())}</div>
             </div>
             ${dmcDesign.showStamp ? `<div style="text-align:center;flex-shrink:0;width:70px;">
-              <div style="width:56px;height:56px;border:1px dashed ${ac};border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:8px;font-weight:900;color:${panelLabel};opacity:.85;margin:0 auto;background:${panelBg};">SCHOOL<br>STAMP</div>
+              <div style="width:56px;height:56px;border:1px dashed ${ac};border-radius:50%;background:${panelBg};display:flex;align-items:center;justify-content:center;font-size:8px;font-weight:900;color:${pc};opacity:.85;margin:0 auto;">SCHOOL<br>STAMP</div>
             </div>` : ''}
-            <div style="text-align:center;flex:1;background:${panelBg};border-radius:6px;padding:4px 6px;">
-              <div style="border-bottom:1px solid ${panelLabel};margin-bottom:6px;"></div>
-              <div style="font-size:10px;font-weight:900;color:${panelLabel};letter-spacing:.03em;">${esc((dmcDesign.principalLabel || 'PRINCIPAL SIGNATURE').toUpperCase())}</div>
+            <div style="text-align:center;flex:1;background:${panelBg};border-radius:6px;padding:${dmcBackground ? '6px 8px 4px' : '0'};">
+              <div style="border-bottom:1px solid ${pc};margin-bottom:6px;"></div>
+              <div style="font-size:10px;font-weight:900;color:${pc};letter-spacing:.03em;">${esc((dmcDesign.principalLabel || 'PRINCIPAL SIGNATURE').toUpperCase())}</div>
             </div>
           </div>
 
@@ -6071,37 +6057,6 @@ function handleDMCLogoUpload(file) {
   reader.readAsDataURL(file);
 }
 
-// Reads a small downsized sample of an uploaded background image to estimate
-// its overall brightness (0 = solid black .. 255 = solid white). The
-// certificate then uses this to automatically choose light or dark text and
-// a matching backing panel, instead of the school having to pick a text
-// color by hand for every design they upload.
-function computeImageBrightness(dataUrl) {
-  return new Promise((resolve) => {
-    const img = new Image();
-    img.onload = () => {
-      const size = 24; // small enough to be instant, big enough to average well
-      const c = document.createElement('canvas');
-      c.width = size; c.height = size;
-      const ctx = c.getContext('2d');
-      ctx.drawImage(img, 0, 0, size, size);
-      try {
-        const data = ctx.getImageData(0, 0, size, size).data;
-        let total = 0, count = 0;
-        for (let i = 0; i < data.length; i += 4) {
-          // Standard perceived-luminance weighting (green reads brighter to
-          // the eye than red or blue at the same numeric value).
-          total += data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114;
-          count++;
-        }
-        resolve(count ? total / count : 200);
-      } catch (e) { resolve(200); } // unreadable pixels (shouldn't happen for data: URLs) — assume a light image
-    };
-    img.onerror = () => resolve(200);
-    img.src = dataUrl;
-  });
-}
-
 // Lets a school upload its own full certificate design (border, watermark,
 // pattern, etc.) as one image. It fully replaces the app's own certificate
 // background — shown at its full size with no cropping (contain-fit) — and
@@ -6109,9 +6064,8 @@ function computeImageBrightness(dataUrl) {
 function handleDMCBackgroundUpload(file) {
   if (!file) return;
   const reader = new FileReader();
-  reader.onload = async (e) => {
+  reader.onload = (e) => {
     dmcBackground = e.target.result;
-    dmcDesign.bgBrightness = await computeImageBrightness(dmcBackground);
     saveDMCConfig();
     renderTab();
     renderDMCPreviewIfOpen();
@@ -6121,7 +6075,6 @@ function handleDMCBackgroundUpload(file) {
 
 function removeDMCBackground() {
   dmcBackground = null;
-  delete dmcDesign.bgBrightness;
   saveDMCConfig();
   renderTab();
   renderDMCPreviewIfOpen();
@@ -7901,7 +7854,8 @@ async function submitClassPortalLogin() {
     if (!data || !data.length) { msg.innerHTML = `<div class="err">${esc(t.classPortalInvalid)} (DEBUG: RPC returned 0 rows)</div>`; return; }
     setClassSession({
       schoolCode, loginId, password,
-      ownerId: data[0].owner_id, className: data[0].class_name, teacherName: data[0].teacher_name || '', students: data[0].students || []
+      ownerId: data[0].owner_id, className: data[0].class_name, teacherName: data[0].teacher_name || '',
+      schoolName: data[0].school_name || '', students: data[0].students || []
     });
     setupClassPortalManifest(data[0].class_name);
     CLASS_PORTAL_SCREEN = 'menu';
@@ -8189,8 +8143,7 @@ async function submitClassPortalAddStudent() {
     const { data, error } = await sb.rpc('class_add_student', {
       p_school_code: session.schoolCode, p_login_id: session.loginId, p_password: session.password, p_name: name, p_father_name: fatherName, p_phone: phone
     });
-    if (error) { msg.innerHTML = `<div class="err">DEBUG: ${esc(error.message || JSON.stringify(error))}</div>`; return; }
-    if (!data || !data.length) { msg.innerHTML = `<div class="err">${esc(t.classPortalInvalid)} (DEBUG: Add Student RPC returned 0 rows)</div>`; return; }
+    if (error || !data || !data.length) { msg.innerHTML = `<div class="err">${esc(t.classPortalInvalid)}</div>`; return; }
     session.students = session.students || [];
     session.students.push({ id: data[0].id, name: data[0].name, father_name: data[0].father_name || fatherName, contact: data[0].contact || phone });
     setClassSession(session);
@@ -8265,9 +8218,7 @@ function sendAbsentSms(studentId) {
   const st = session && session.students && session.students.find(s => s.id === studentId);
   if (!st) return;
   if (!st.contact) { alert(LANG==='ur' ? 'اس طالب علم کا موبائل نمبر موجود نہیں۔' : 'No mobile number on file for this student.'); return; }
-  const msg = LANG==='ur'
-    ? `محترم سرپرست،\nآپ کا بچہ ${st.name} آج (${fmtDate(todayISO())}) اسکول میں غیر حاضر ہے۔ شکریہ`
-    : `Dear Parent, your child ${st.name} is absent from school today (${fmtDate(todayISO())}). - School`;
+  const msg = `${fmtDate(todayISO())}: محترم سرپرست، آپ کا بچہ ${st.name} آج اسکول میں غیر حاضر ہے۔ نہ آنے کا اگر کوئی معقول وجہ ہو تو سکول سے رابطہ کریں، ورنہ غیر حاضر تصور ہوگا۔ شکریہ - ${session.schoolName || 'سکول'}`;
   openFatherWhatsapp(st.contact, msg);
 }
 
@@ -8385,9 +8336,9 @@ function classPortalMarksGridHtml(session) {
   return `
     <div class="card-table-wrap" style="margin-top:8px;">
       <table class="card-table">
-        <thead><tr><th style="text-align:left;">${esc(t.studentName)}</th><th style="text-align:left;">${esc(t.fatherName)}</th>${classMarksDraft.subjects.map(s=>`<th>${esc(s.name||'—')} /${esc(s.total)}</th>`).join('')}</tr></thead>
+        <thead><tr><th style="text-align:left;">${esc(t.studentName)}</th>${classMarksDraft.subjects.map(s=>`<th>${esc(s.name||'—')} /${esc(s.total)}</th>`).join('')}</tr></thead>
         <tbody>${students.map(st => `
-          <tr><td class="mo">${st.roll_no?'#'+esc(st.roll_no)+' ':''}${esc(st.name)}</td><td>${esc(st.father_name||'')}</td>
+          <tr><td class="mo">${st.roll_no?'#'+esc(st.roll_no)+' ':''}${esc(st.name)}</td>
           ${classMarksDraft.subjects.map(s => `<td style="padding:3px;"><input type="number" style="width:56px;text-align:center;padding:5px 2px;" value="${(classMarksDraft.marks[st.id]||{})[s.name] ?? ''}" onchange="setClassMark('${st.id}','${esc(s.name).replace(/'/g,"\\'")}',this.value,${s.total})"></td>`).join('')}
           </tr>`).join('')}
         </tbody>
