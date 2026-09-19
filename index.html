@@ -634,6 +634,7 @@ const T = {
     totalOtherIncomeAllTime:'Total Other Income (all-time)', totalOtherExpenseAllTime:'Total Other Expenses (all-time)',
     perClassBreakdown:'Per-Class Fee Status', duesOutstanding:'Dues Outstanding',
     confirmDelete:'Delete this record? This cannot be undone.', yes:'Yes, delete', no:'No, keep it',
+    strikeOffStudent:'Strike Off', confirmStrikeOff:'Mark this student as left the school? They will be hidden from active lists, attendance, and rosters, but their fee and admission history is kept and this can be undone anytime.', restoreStudent:'Restore Student',
     langToggle:'اردو', sharedNotice:'Your data is private to your school account — no other school can see it.',
     copyrightNotice:'© 2026 Zavi Software. All rights reserved. This software is licensed for use by your school only — it may not be resold, redistributed, or transferred to any other party.',
     enterAmount:'Enter amount',
@@ -744,6 +745,7 @@ const T = {
     classPortalNoSubjects:'Add at least one subject first.', classPortalSaveMarks:'Save Marks', classPortalMarksSaved:'Marks saved.',
     classPortalNoStudents:'No students found for this class yet.', classPortalMarksExceed:'Marks cannot exceed the subject total.',
     classPortalMenuAddStudent:'Add Student', classPortalAddStudentTitle:'Add Student', classPortalAddStudentDesc:"Enter the student's name and father's name to add them to this class.",
+    classPortalMenuManageStudents:'Manage Students', classPortalManageStudentsDesc:'If a student has left the school, strike them off here. They will be removed from attendance, register and marks, but their record and history stay safe and can be restored by the school.', classPortalNoStudents:'No students in this class yet.',
     classPortalStudentNamePlaceholder:'Student Name', classPortalAddStudentSaved:'Student added.', classPortalAddStudentOffline:'You are offline — connect to the internet to add a student.',
     classPortalFatherNameRequired:"Father's name is required.",
     classPortalPhoneRequired:"Contact number is required.",
@@ -809,6 +811,7 @@ const T = {
     totalOtherIncomeAllTime:'کل دیگر آمدنی', totalOtherExpenseAllTime:'کل دیگر اخراجات',
     perClassBreakdown:'جماعت کے لحاظ سے فیس کی صورتحال', duesOutstanding:'واجب الادا رقم',
     confirmDelete:'یہ ریکارڈ حذف کریں؟ یہ واپس نہیں ہو سکتا۔', yes:'ہاں، حذف کریں', no:'نہیں',
+    strikeOffStudent:'اسکول چھوڑنے پر نشان زد کریں', confirmStrikeOff:'اس طالب علم کو اسکول چھوڑنے والا نشان زد کریں؟ یہ فعال فہرستوں، حاضری اور رجسٹر سے چھپ جائے گا، مگر اس کا فیس اور داخلہ ریکارڈ محفوظ رہے گا اور یہ کسی بھی وقت واپس کیا جا سکتا ہے۔', restoreStudent:'طالب علم کو بحال کریں',
     langToggle:'English', sharedNotice:'آپ کا ڈیٹا صرف آپ کے اسکول کے اکاؤنٹ تک محدود ہے — کوئی اور اسکول اسے نہیں دیکھ سکتا۔',
     copyrightNotice:'© 2026 Zavi Software۔ جملہ حقوق محفوظ ہیں۔ یہ سافٹ ویئر صرف آپ کے اسکول کے استعمال کے لیے لائسنس یافتہ ہے — اسے دوبارہ فروخت، تقسیم، یا کسی اور کو منتقل نہیں کیا جا سکتا۔',
     enterAmount:'رقم درج کریں',
@@ -915,6 +918,7 @@ const T = {
     classPortalNoSubjects:'پہلے کم از کم ایک مضمون شامل کریں۔', classPortalSaveMarks:'نمبرات محفوظ کریں', classPortalMarksSaved:'نمبرات محفوظ ہو گئے۔',
     classPortalNoStudents:'اس کلاس کے لیے ابھی کوئی طالب علم نہیں ملا۔', classPortalMarksExceed:'نمبر مضمون کے کل نمبروں سے زیادہ نہیں ہو سکتے۔',
     classPortalMenuAddStudent:'طالب علم شامل کریں', classPortalAddStudentTitle:'طالب علم شامل کریں', classPortalAddStudentDesc:'طالب علم کا نام اور والد کا نام درج کریں تاکہ اسے اس کلاس میں شامل کیا جا سکے۔',
+    classPortalMenuManageStudents:'طلبہ کا انتظام', classPortalManageStudentsDesc:'اگر کوئی طالب علم اسکول چھوڑ چکا ہے تو یہاں سے اسے نشان زد کریں۔ وہ حاضری، رجسٹر اور نمبروں سے ہٹ جائے گا، مگر اس کا ریکارڈ محفوظ رہے گا اور اسکول اسے دوبارہ بحال کر سکتا ہے۔', classPortalNoStudents:'اس کلاس میں ابھی کوئی طالب علم نہیں۔',
     classPortalStudentNamePlaceholder:'طالب علم کا نام', classPortalAddStudentSaved:'طالب علم شامل ہو گیا۔', classPortalAddStudentOffline:'آپ آف لائن ہیں — طالب علم شامل کرنے کے لیے انٹرنیٹ سے جڑیں۔',
     classPortalFatherNameRequired:'والد کا نام درج کرنا ضروری ہے۔',
     classPortalPhoneRequired:'رابطہ نمبر درج کرنا ضروری ہے۔',
@@ -3910,9 +3914,41 @@ function openStudentDetail(id, viewYear) {
     </div>
     <div style="margin-top:16px;display:flex;gap:8px;">
       <button class="btn-ghost" style="flex:1;" onclick="printFeeCard('${id}', ${startYear})">🖨️ ${esc(t.printCard)}</button>
+      ${s.status === 'inactive'
+        ? `<button class="btn-ghost" style="flex:1;" onclick="guardedSubmit(this, ()=>unstrikeStudent('${id}'))">${esc(t.restoreStudent)}</button>`
+        : `<button class="btn-ghost danger" style="flex:1;" onclick="confirmStrikeOffStudent('${id}')">${esc(t.strikeOffStudent)}</button>`}
       <button class="btn-ghost danger" style="flex:1;" onclick="confirmDelete('student','${id}')">${esc(t.delete)}</button>
     </div>
   `);
+}
+
+// "Strike Off" marks a student who has left the school as inactive (status
+// = 'inactive') rather than deleting them — every existing active-student
+// filter across the app (`s.status !== 'inactive'`) already excludes them
+// from rosters, fee lists, dashboards, etc, while their full fee/admission
+// history stays intact and can still be viewed/printed from their record,
+// and "un-strike" is always possible if this was done by mistake.
+function confirmStrikeOffStudent(id) {
+  showModal(t.strikeOffStudent, `
+    <p style="font-size:14px;">${esc(t.confirmStrikeOff)}</p>
+    <div class="flexgap">
+      <button class="btn-ghost" onclick="closeModal()">${esc(t.no)}</button>
+      <button class="btn-primary" style="flex:1;background:var(--rust);" onclick="guardedSubmit(this, ()=>strikeOffStudent('${id}'))">${esc(t.yes)}</button>
+    </div>
+  `);
+}
+async function strikeOffStudent(id) {
+  const { error } = await offlineUpdateStudent(id, { status: 'inactive' });
+  if (reportSaveError(error)) return;
+  closeModal();
+  await loadAllData();
+  openStudentDetail(id);
+}
+async function unstrikeStudent(id) {
+  const { error } = await offlineUpdateStudent(id, { status: 'active' });
+  if (reportSaveError(error)) return;
+  await loadAllData();
+  openStudentDetail(id);
 }
 
 // Shared offline-aware single-student update — used by the name/class/type
@@ -7888,7 +7924,8 @@ function renderClassPortalMenu() {
     <button class="btn-primary" style="width:100%;margin-bottom:10px;" onclick="renderClassPortalRegister()">${esc(t.classPortalMenuRegister)}</button>
     <button class="btn-primary" style="width:100%;margin-bottom:10px;" onclick="renderClassPortalMarks()">${esc(t.classPortalMenuMarks)}</button>
     <button class="btn-primary" style="width:100%;margin-bottom:10px;" onclick="renderClassPortalMarksView()">${esc(t.classPortalMenuMarksView)}</button>
-    <button class="btn-ghost" style="width:100%;" onclick="renderClassPortalAddStudent()">${esc(t.classPortalMenuAddStudent)}</button>
+    <button class="btn-ghost" style="width:100%;margin-bottom:10px;" onclick="renderClassPortalAddStudent()">${esc(t.classPortalMenuAddStudent)}</button>
+    <button class="btn-ghost" style="width:100%;" onclick="renderClassPortalManageStudents()">${esc(t.classPortalMenuManageStudents)}</button>
     ${queue.length ? `<p style="font-size:11px;opacity:.6;margin-top:14px;">${esc(t.classPortalOffline)} (${queue.length})</p>` : ''}
   `;
 }
@@ -8097,6 +8134,57 @@ async function shareClassMarksWhatsapp() {
   } catch (e) { /* user cancelled, or share isn't supported — fall through */ }
   XLSX.writeFile(wb, fileName, { cellStyles: true });
   window.open(`https://wa.me/?text=${encodeURIComponent(t.classPortalWhatsappFallbackMsg)}`, '_blank');
+}
+
+// ---- Manage Students (teacher can mark a student who left the school as
+// struck off — hides them from the class roster/attendance/marks without
+// deleting their record, which stays intact for the admin to see) ----
+function renderClassPortalManageStudents() {
+  CLASS_PORTAL_SCREEN = 'manageStudents';
+  const session = getClassSession();
+  const body = document.getElementById('class-portal-body');
+  if (!session || !body) return;
+  const students = (session.students || []).slice().sort((a,b) => (a.name||'').localeCompare(b.name||''));
+  body.innerHTML = `
+    <button class="btn-ghost" style="padding:9px 14px;margin-bottom:10px;" onclick="renderClassPortalMenu()">‹ ${esc(t.classPortalBackToMenu)}</button>
+    <h2 style="margin-top:0;">${esc(t.classPortalMenuManageStudents)}</h2>
+    <p class="desc">${esc(t.classPortalManageStudentsDesc)}</p>
+    <div id="cp-manage-msg" style="font-size:12px;margin:8px 0;"></div>
+    ${students.length ? students.map(st => `
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;border-bottom:1px solid var(--line);padding:10px 0;">
+        <div style="font-size:13px;font-weight:600;">${esc(st.name)}</div>
+        <button class="btn-ghost danger" style="flex:none;padding:6px 12px;font-size:11px;" onclick="confirmClassPortalStrikeOff('${st.id}','${esc(st.name).replace(/'/g,"\\'")}')">${esc(t.strikeOffStudent)}</button>
+      </div>`).join('') : `<p class="desc">${esc(t.classPortalNoStudents)}</p>`}
+  `;
+}
+
+function confirmClassPortalStrikeOff(studentId, studentName) {
+  showModal(t.strikeOffStudent, `
+    <p style="font-size:14px;">${esc(t.confirmStrikeOff)}</p>
+    <div class="flexgap">
+      <button class="btn-ghost" onclick="closeModal()">${esc(t.no)}</button>
+      <button class="btn-primary" style="flex:1;background:var(--rust);" onclick="guardedSubmit(this, ()=>submitClassPortalStrikeOff('${studentId}'))">${esc(t.yes)}</button>
+    </div>
+  `);
+}
+
+async function submitClassPortalStrikeOff(studentId) {
+  const session = getClassSession();
+  if (!session) return;
+  if (!navigator.onLine) { alert(LANG==='ur' ? 'یہ کام آف لائن نہیں ہو سکتا۔ براہ کرم انٹرنیٹ سے جڑ کر دوبارہ کوشش کریں۔' : 'This needs an internet connection. Please try again once online.'); return; }
+  try {
+    const { data, error } = await sb.rpc('class_strike_off_student', {
+      p_school_code: session.schoolCode, p_login_id: session.loginId, p_password: session.password, p_student_id: studentId
+    });
+    closeModal();
+    if (error || !data) { alert(t.classPortalInvalid); return; }
+    session.students = (session.students || []).filter(s => s.id !== studentId);
+    setClassSession(session);
+    renderClassPortalManageStudents();
+  } catch(e) {
+    closeModal();
+    alert(LANG==='ur' ? 'خرابی پیش آئی، دوبارہ کوشش کریں۔' : 'Something went wrong, please try again.');
+  }
 }
 
 // ---- Add Student (teacher can add a new student to their own class) ----
