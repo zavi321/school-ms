@@ -746,6 +746,7 @@ const T = {
     classPortalMenuAddStudent:'Add Student', classPortalAddStudentTitle:'Add Student', classPortalAddStudentDesc:"Enter the student's name and father's name to add them to this class.",
     classPortalStudentNamePlaceholder:'Student Name', classPortalAddStudentSaved:'Student added.', classPortalAddStudentOffline:'You are offline — connect to the internet to add a student.',
     classPortalFatherNameRequired:"Father's name is required.",
+    classPortalPhoneRequired:"Contact number is required.",
     classPortalLoadExam:'Load a saved exam to edit', classPortalNewExam:'— New Exam —',
     classPortalMenuMarksView:'View Marks Sheet', classPortalSelectExam:'Select Exam', classPortalNoExams:'No exam marks saved yet.',
     classPortalTotal:'Total', classPortalDownloadExcel:'Download Excel', classPortalSendWhatsapp:'Send via WhatsApp',
@@ -916,6 +917,7 @@ const T = {
     classPortalMenuAddStudent:'طالب علم شامل کریں', classPortalAddStudentTitle:'طالب علم شامل کریں', classPortalAddStudentDesc:'طالب علم کا نام اور والد کا نام درج کریں تاکہ اسے اس کلاس میں شامل کیا جا سکے۔',
     classPortalStudentNamePlaceholder:'طالب علم کا نام', classPortalAddStudentSaved:'طالب علم شامل ہو گیا۔', classPortalAddStudentOffline:'آپ آف لائن ہیں — طالب علم شامل کرنے کے لیے انٹرنیٹ سے جڑیں۔',
     classPortalFatherNameRequired:'والد کا نام درج کرنا ضروری ہے۔',
+    classPortalPhoneRequired:'رابطہ نمبر درج کرنا ضروری ہے۔',
     classPortalLoadExam:'محفوظ امتحان میں ترمیم کے لیے منتخب کریں', classPortalNewExam:'— نیا امتحان —',
     classPortalMenuMarksView:'مارکس شیٹ دیکھیں', classPortalSelectExam:'امتحان منتخب کریں', classPortalNoExams:'ابھی تک کوئی امتحانی نمبرات محفوظ نہیں۔',
     classPortalTotal:'ٹوٹل', classPortalDownloadExcel:'ایکسل ڈاؤن لوڈ کریں', classPortalSendWhatsapp:'واٹس ایپ پر بھیجیں',
@@ -8137,6 +8139,7 @@ async function submitClassPortalAddStudent() {
   const phone = phoneInput ? phoneInput.value.trim() : '';
   if (!session || !name) return;
   if (!fatherName) { msg.innerHTML = `<div class="err">${esc(t.classPortalFatherNameRequired)}</div>`; return; }
+  if (!phone) { msg.innerHTML = `<div class="err">${esc(t.classPortalPhoneRequired)}</div>`; return; }
   msg.textContent = '…';
   if (!navigator.onLine) { queueOfflineAddStudent(session, name, fatherName, phone, msg, nameInput, fatherInput, phoneInput); return; }
   try {
