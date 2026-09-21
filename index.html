@@ -668,9 +668,9 @@ const T = {
     notWhitelistedTitle:'This email is not registered with us yet.',
     notWhitelistedDesc:'To register your school, please contact us via SMS first.',
     contactOnWhatsApp:'Contact us via SMS',
-    sendSmsToFather:'SMS Parents', overdueRemindersTitle:'Send overdue reminders',
-    overdueRemindersDesc:'These students are 2+ months behind on fees. Tap Send next to each to open your Messages app with a month-by-month reminder pre-filled for their father.',
-    noOverdueStudents:'No students are 2+ months overdue right now.', send:'Send',
+    sendSmsToFather:'SMS Parents', overdueRemindersTitle:'Send due reminders',
+    overdueRemindersDesc:'These students have pending fee dues. Tap Send next to each to open your Messages app with a month-by-month reminder pre-filled for their father.',
+    noOverdueStudents:'No students have pending dues right now.', send:'Send',
     sendFeeRequest:'Send fee request', feeRequestTitle:'Send fee request', feeRequestDesc:'These students currently have pending dues. Tap Send next to each to open your Messages app with a month-by-month reminder pre-filled for their father.',
     noDueStudents:'No students currently have pending dues.',
     signUpPendingTitle:'Almost done!',
@@ -844,8 +844,8 @@ const T = {
     notWhitelistedDesc:'اپنا اسکول رجسٹر کروانے کے لیے پہلے ہم سے SMS پر رابطہ کریں۔',
     contactOnWhatsApp:'SMS پر رابطہ کریں',
     sendSmsToFather:'والدین کو SMS', overdueRemindersTitle:'واجبات کی یاد دہانی بھیجیں',
-    overdueRemindersDesc:'یہ طلبہ 2 یا زائد مہینوں سے فیس کے واجب الادا ہیں۔ ہر ایک کے سامنے "بھیجیں" دبائیں تاکہ والد کے میسجز ایپ میں ہر مہینے کی تفصیل کے ساتھ پیغام کھل جائے۔',
-    noOverdueStudents:'فی الحال کوئی طالب علم 2 مہینوں سے زائد واجب الادا نہیں ہے۔', send:'بھیجیں',
+    overdueRemindersDesc:'ان طلبہ کی فیس واجب الادا ہے۔ ہر ایک کے سامنے "بھیجیں" دبائیں تاکہ والد کے میسجز ایپ میں ہر مہینے کی تفصیل کے ساتھ پیغام کھل جائے۔',
+    noOverdueStudents:'فی الحال کسی طالب علم کی کوئی فیس واجب الادا نہیں ہے۔', send:'بھیجیں',
     sendFeeRequest:'فیس کی درخواست بھیجیں', feeRequestTitle:'فیس کی درخواست بھیجیں', feeRequestDesc:'ان طلبہ کی فیس واجب الادا ہے۔ ہر ایک کے سامنے "بھیجیں" دبائیں تاکہ والد کے میسجز ایپ میں ہر مہینے کی تفصیل کے ساتھ پیغام کھل جائے۔',
     noDueStudents:'فی الحال کسی طالب علم کی کوئی فیس واجب الادا نہیں ہے۔',
     signUpPendingTitle:'تقریباً مکمل!',
@@ -3534,7 +3534,7 @@ function tplStudentsResults() {
 
   return `
       ${(() => {
-        const overdueCount = DATA.students.filter(s => s.status!=='inactive' && monthsOverdue(s) >= 2).length;
+        const overdueCount = DATA.students.filter(s => s.status!=='inactive' && isFeePaying(s) && studentBalance(s.id) > 0).length;
         return `
           <div style="display:flex;gap:8px;margin-bottom:12px;">
             ${overdueCount > 0 ? `
@@ -3652,8 +3652,8 @@ async function runPromoteAllStudents() {
 
 function openOverdueReminders() {
   const overdue = DATA.students
-    .filter(s => s.status!=='inactive' && monthsOverdue(s) >= 2)
-    .sort((a,b) => monthsOverdue(b) - monthsOverdue(a));
+    .filter(s => s.status!=='inactive' && isFeePaying(s) && studentBalance(s.id) > 0)
+    .sort((a,b) => studentBalance(b.id) - studentBalance(a.id));
   const rows = overdue.length === 0
     ? `<div class="empty">${esc(t.noOverdueStudents)}</div>`
     : overdue.map(s => `
