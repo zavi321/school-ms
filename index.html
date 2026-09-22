@@ -760,6 +760,19 @@ const T = {
     aiSuggestionsUpdatedAt:'Updated:', aiSuggestionsCachedNote:'Offline — showing last saved AI insights from:',
     aiSuggestionsOfflineNone:'AI insights need internet the first time — connect once to load them, then they\'ll be available offline too.',
     aiSuggestionsError:'Could not load AI insights right now. Please try again later.',
+    diaryPortalTitle:'Diary Login', diaryPortalDesc:'Enter your School Code and the Diary Password given by your school.',
+    diaryPasswordLabel:'Diary Password', diaryPortalLoginButton:'Log In', diaryPortalInvalid:'Incorrect School Code or Diary Password.',
+    diaryMenuTitle:'Select Subject', diaryMenuDesc:'Tap a subject, then choose the class you want to write an entry for.',
+    diaryAddSubject:'+ Add Subject', diaryNewSubjectPrompt:'Enter subject name', diaryLogout:'Switch School',
+    diaryChooseClassTitle:'Select Class', diaryEntryTitle:'New Diary Entry', diaryEntryDate:'Date',
+    diaryEntryPlaceholder:'Write homework / class work / notice…', diarySave:'Save Entry',
+    diarySaved:'Diary entry saved.', diaryOfflineSaved:'Saved offline — will sync automatically once you\'re back online.',
+    diaryBackToSubjects:'‹ Subjects', diaryBackToClasses:'‹ Classes',
+    parentDiaryTitle:'Diary', parentNoDiary:'No diary entries yet.',
+    parentPortalOfflineNote:'You are offline — showing last saved data from:',
+    parentPortalSwitchStudent:'View a different child', parentPortalOfflineNoCache:'You are offline and no saved data is available yet. Please connect to the internet once to load your child\'s info.',
+    diaryPasswordHint:'One password for the whole school — any teacher uses this on the Diary device to write entries.',
+    diaryPasswordRequired:'Please enter a diary password.',
   },
   ur: {
     appName:'مالیاتی و ریکارڈ سسٹم', tagline:'اسکول انتظامیہ کے لیے',
@@ -933,6 +946,19 @@ const T = {
     aiSuggestionsUpdatedAt:'اپڈیٹ:', aiSuggestionsCachedNote:'آف لائن — آخری محفوظ شدہ AI تجاویز دکھائی جا رہی ہیں، وقت:',
     aiSuggestionsOfflineNone:'AI تجاویز کے لیے پہلی بار انٹرنیٹ درکار ہے — ایک بار انٹرنیٹ سے جڑیں، پھر یہ آف لائن بھی دستیاب ہوں گی۔',
     aiSuggestionsError:'اس وقت AI تجاویز لوڈ نہیں ہو سکیں۔ براہ کرم بعد میں دوبارہ کوشش کریں۔',
+    diaryPortalTitle:'ڈائری لاگ اِن', diaryPortalDesc:'اپنا اسکول کوڈ اور اسکول کی طرف سے دیا گیا ڈائری پاس ورڈ درج کریں۔',
+    diaryPasswordLabel:'ڈائری پاس ورڈ', diaryPortalLoginButton:'لاگ اِن', diaryPortalInvalid:'غلط اسکول کوڈ یا ڈائری پاس ورڈ۔',
+    diaryMenuTitle:'مضمون منتخب کریں', diaryMenuDesc:'ایک مضمون منتخب کریں، پھر وہ کلاس منتخب کریں جس کے لیے اندراج کرنا ہے۔',
+    diaryAddSubject:'+ نیا مضمون شامل کریں', diaryNewSubjectPrompt:'مضمون کا نام درج کریں', diaryLogout:'اسکول تبدیل کریں',
+    diaryChooseClassTitle:'کلاس منتخب کریں', diaryEntryTitle:'نئی ڈائری اندراج', diaryEntryDate:'تاریخ',
+    diaryEntryPlaceholder:'ہوم ورک / کلاس ورک / نوٹس لکھیں…', diarySave:'اندراج محفوظ کریں',
+    diarySaved:'ڈائری اندراج محفوظ ہو گئی۔', diaryOfflineSaved:'آف لائن محفوظ ہو گیا — انٹرنیٹ آنے پر خود بخود بھیج دیا جائے گا۔',
+    diaryBackToSubjects:'‹ مضامین', diaryBackToClasses:'‹ کلاسز',
+    parentDiaryTitle:'ڈائری', parentNoDiary:'ابھی تک کوئی ڈائری اندراج نہیں۔',
+    parentPortalOfflineNote:'آپ آف لائن ہیں — آخری محفوظ شدہ ڈیٹا دکھایا جا رہا ہے، وقت:',
+    parentPortalSwitchStudent:'دوسرا بچہ دیکھیں', parentPortalOfflineNoCache:'آپ آف لائن ہیں اور ابھی تک کوئی محفوظ ڈیٹا دستیاب نہیں۔ براہ کرم ایک بار انٹرنیٹ سے جڑیں۔',
+    diaryPasswordHint:'پورے اسکول کے لیے ایک پاس ورڈ — کوئی بھی استاد ڈائری ڈیوائس پر یہی استعمال کرے گا۔',
+    diaryPasswordRequired:'براہ کرم ڈائری پاس ورڈ درج کریں۔',
   }
 };
 
@@ -1579,6 +1605,13 @@ async function boot() {
   // Supabase Auth session of its own. See class_attendance_marks_migration.sql.
   const classPortal = new URLSearchParams(window.location.search).get('class');
   if (classPortal) { renderClassPortalEntry(); return; }
+
+  // A teacher using the shared Diary device lands here with ?diary=1 — one
+  // school-wide login (separate from the per-class Attendance login above),
+  // verified server-side via diary_login_verify (and again on every entry
+  // write via diary_add_entry). See diary_migration.sql.
+  const diaryPortal = new URLSearchParams(window.location.search).get('diary');
+  if (diaryPortal) { renderDiaryPortalEntry(); return; }
 
 
   let handledAsRecovery = false;
@@ -2950,6 +2983,12 @@ function openSettings() {
       <button class="btn-primary" style="width:100%;" onclick="saveSchoolCode()">${esc(t.saveSettings)}</button>
     </div>
     <div style="margin-top:18px;padding-top:16px;border-top:1px solid var(--line);">
+      <label><span>${esc(t.diaryPasswordLabel)}</span><input id="set-diary-pw" value="${esc(CURRENT_PROFILE.diary_password||'')}" placeholder="e.g., diary123"></label>
+      <p style="font-size:11px;opacity:.6;margin:4px 0 8px;">${esc(t.diaryPasswordHint)}</p>
+      <div id="set-diary-msg"></div>
+      <button class="btn-primary" style="width:100%;" onclick="saveDiaryPassword()">${esc(t.saveSettings)}</button>
+    </div>
+    <div style="margin-top:18px;padding-top:16px;border-top:1px solid var(--line);">
       <p style="font-size:11px;opacity:.6;margin:0 0 8px;">${esc(t.exportHint)}</p>
       <button class="btn-ghost" style="width:100%;" onclick="exportBackup()">⬇ ${esc(t.exportBackup)}</button>
     </div>
@@ -3140,6 +3179,16 @@ async function saveSchoolCode() {
   }
   CURRENT_PROFILE.school_code = code;
   codeMsg.innerHTML = `<div class="ok">${esc(t.saved)}</div>`;
+}
+
+async function saveDiaryPassword() {
+  const msg = document.getElementById('set-diary-msg');
+  const pw = document.getElementById('set-diary-pw').value.trim();
+  if (!pw) { msg.innerHTML = `<div class="err">${esc(t.diaryPasswordRequired)}</div>`; return; }
+  const { error } = await sb.from('profiles').update({ diary_password: pw }).eq('id', CURRENT_USER.id);
+  if (error) { msg.innerHTML = `<div class="err">${esc(friendlyErrorMsg(error))}</div>`; return; }
+  CURRENT_PROFILE.diary_password = pw;
+  msg.innerHTML = `<div class="ok">${esc(t.saved)}</div>`;
 }
 
 function exportBackup() {
@@ -7799,6 +7848,27 @@ async function flushCheckinQueue() {
 const CLASS_SESSION_KEY = 'sms_class_session'; // { schoolCode, loginId, password, ownerId, className, students, schoolName }
 const CLASS_QUEUE_KEY = 'sms_class_queue';
 
+// ---- Diary Portal storage (single school-wide login, separate from the
+// per-class Attendance/Marks login above) ----
+const DIARY_SESSION_KEY = 'sms_diary_session'; // { schoolCode, password, ownerId, schoolName }
+const DIARY_QUEUE_KEY = 'sms_diary_queue';
+const DIARY_SUBJECTS_KEY = 'sms_diary_subjects'; // subject names used on this device, remembered as quick-tap buttons
+function getDiarySession() { try { return JSON.parse(localStorage.getItem(DIARY_SESSION_KEY) || 'null'); } catch(e) { return null; } }
+function setDiarySession(s) { localStorage.setItem(DIARY_SESSION_KEY, JSON.stringify(s)); }
+function clearDiarySession() { localStorage.removeItem(DIARY_SESSION_KEY); }
+function getDiaryQueue() { try { return JSON.parse(localStorage.getItem(DIARY_QUEUE_KEY) || '[]'); } catch(e) { return []; } }
+function setDiaryQueue(q) { localStorage.setItem(DIARY_QUEUE_KEY, JSON.stringify(q)); }
+function queueDiaryWrite(item) { const q = getDiaryQueue(); q.push({ ...item, ts: Date.now() }); setDiaryQueue(q); }
+function getDiarySubjects() { try { return JSON.parse(localStorage.getItem(DIARY_SUBJECTS_KEY) || '[]'); } catch(e) { return []; } }
+function rememberDiarySubject(name) {
+  const list = getDiarySubjects();
+  if (!list.includes(name)) { list.push(name); localStorage.setItem(DIARY_SUBJECTS_KEY, JSON.stringify(list)); }
+}
+// A small starter list so the subject screen isn't empty on first use —
+// schools can add more (or ones not in this list) with "+ Add Subject",
+// and anything added is remembered on that device from then on.
+const DIARY_DEFAULT_SUBJECTS = ['Urdu','English','Math','Science','Islamiat','Pak Studies','Computer','Social Studies'];
+
 function getClassSession() { try { return JSON.parse(localStorage.getItem(CLASS_SESSION_KEY) || 'null'); } catch(e) { return null; } }
 function setClassSession(s) { localStorage.setItem(CLASS_SESSION_KEY, JSON.stringify(s)); }
 function clearClassSession() { localStorage.removeItem(CLASS_SESSION_KEY); }
@@ -8543,6 +8613,178 @@ async function flushClassQueue() {
   if (body && CLASS_PORTAL_SCREEN === 'menu') renderClassPortalMenu();
 }
 
+// ---------------- Diary Portal (public, ?diary=1) ----------------
+// One school-wide login (School Code + Diary Password, set by the owner and
+// checked server-side by diary_login_verify), used by whichever teacher is
+// in the room at the time. A subject is picked first, then a class, then the
+// entry is written — so no teacher can write into a subject that isn't
+// theirs to begin with by simply not tapping it. Entries save straight to
+// Supabase when online, or queue locally (same pattern as the Class Portal
+// above) and sync automatically once the connection is back.
+let DIARY_SCREEN = 'menu'; // 'menu' | 'classes' | 'entry'
+let DIARY_SUBJECT = '';
+let DIARY_CLASS = '';
+
+async function renderDiaryPortalEntry() {
+  document.getElementById('loading').classList.add('hidden');
+  renderAuthShell(`<div id="diary-portal-body"><div style="text-align:center;padding:20px 0;opacity:.6;">…</div></div>`);
+  await flushDiaryQueue(); // clear any older offline writes first
+  const session = getDiarySession();
+  if (session) {
+    DIARY_SCREEN = 'menu';
+    renderDiaryMenu();
+  } else {
+    renderDiaryLoginForm();
+  }
+  window.addEventListener('online', () => flushDiaryQueue());
+  setInterval(() => { if (navigator.onLine) flushDiaryQueue(); }, 20000);
+}
+
+function renderDiaryLoginForm() {
+  const body = document.getElementById('diary-portal-body');
+  body.innerHTML = `
+    <h2>${esc(t.diaryPortalTitle)}</h2>
+    <p class="desc">${esc(t.diaryPortalDesc)}</p>
+    <label><span>${esc(t.parentSchoolCodeLabel)}</span><input id="dp-school-code" style="text-transform:uppercase;" autocapitalize="characters"></label>
+    <label><span>${esc(t.diaryPasswordLabel)}</span><input id="dp-pw" type="password"></label>
+    <div id="dp-msg" style="font-size:12px;margin-bottom:8px;"></div>
+    <button class="btn-primary" style="width:100%;" onclick="submitDiaryLogin()">${esc(t.diaryPortalLoginButton)}</button>
+  `;
+}
+
+async function submitDiaryLogin() {
+  const msg = document.getElementById('dp-msg');
+  const schoolCode = document.getElementById('dp-school-code').value.trim();
+  const password = document.getElementById('dp-pw').value;
+  if (!schoolCode || !password) return;
+  msg.textContent = '…';
+  if (!navigator.onLine) { msg.innerHTML = `<div class="err">${esc(t.classPortalOfflineNoList)}</div>`; return; }
+  try {
+    const { data, error } = await sb.rpc('diary_login_verify', { p_school_code: schoolCode, p_password: password });
+    if (error || !data || !data.length) { msg.innerHTML = `<div class="err">${esc(t.diaryPortalInvalid)}</div>`; return; }
+    setDiarySession({ schoolCode, password, ownerId: data[0].owner_id, schoolName: data[0].school_name || '' });
+    DIARY_SCREEN = 'menu';
+    renderDiaryMenu();
+  } catch(e) {
+    msg.innerHTML = `<div class="err">${esc(t.diaryPortalInvalid)}</div>`;
+  }
+}
+
+function diaryPortalLogout() {
+  clearDiarySession();
+  renderDiaryLoginForm();
+}
+
+function renderDiaryMenu() {
+  DIARY_SCREEN = 'menu';
+  const session = getDiarySession();
+  const body = document.getElementById('diary-portal-body');
+  if (!session || !body) return;
+  const queue = getDiaryQueue();
+  const subjects = Array.from(new Set([...DIARY_DEFAULT_SUBJECTS, ...getDiarySubjects()]));
+  body.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+      <h2 style="margin:0;">${esc(session.schoolName || t.diaryMenuTitle)}</h2>
+      <button class="btn-ghost" style="flex:none;padding:7px 12px;font-size:12px;" onclick="diaryPortalLogout()">${esc(t.diaryLogout)}</button>
+    </div>
+    <p class="desc">${esc(t.diaryMenuDesc)}</p>
+    <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px;">
+      ${subjects.map(s => `<button class="btn-primary" style="flex:none;padding:9px 16px;" onclick="renderDiaryClasses('${esc(s).replace(/'/g,"\\'")}')">${esc(s)}</button>`).join('')}
+      <button class="btn-ghost" style="flex:none;padding:9px 16px;" onclick="promptDiaryNewSubject()">${esc(t.diaryAddSubject)}</button>
+    </div>
+    ${queue.length ? `<p style="font-size:11px;opacity:.6;margin-top:14px;">${esc(t.classPortalOffline)} (${queue.length})</p>` : ''}
+  `;
+}
+
+function promptDiaryNewSubject() {
+  const name = (prompt(t.diaryNewSubjectPrompt) || '').trim();
+  if (!name) return;
+  rememberDiarySubject(name);
+  renderDiaryClasses(name);
+}
+
+function renderDiaryClasses(subject) {
+  DIARY_SCREEN = 'classes';
+  DIARY_SUBJECT = subject;
+  const body = document.getElementById('diary-portal-body');
+  if (!body) return;
+  body.innerHTML = `
+    <button class="btn-ghost" style="padding:9px 14px;margin-bottom:10px;" onclick="renderDiaryMenu()">${esc(t.diaryBackToSubjects)}</button>
+    <h2 style="margin-top:0;">${esc(subject)}</h2>
+    <p class="desc">${esc(t.diaryChooseClassTitle)}</p>
+    <div style="display:flex;flex-wrap:wrap;gap:8px;">
+      ${CLASS_OPTIONS.map(c => `<button class="btn-primary" style="flex:none;padding:9px 16px;" onclick="renderDiaryEntryForm('${esc(c).replace(/'/g,"\\'")}')">${esc(c)}</button>`).join('')}
+    </div>
+  `;
+}
+
+function renderDiaryEntryForm(className) {
+  DIARY_SCREEN = 'entry';
+  DIARY_CLASS = className;
+  const body = document.getElementById('diary-portal-body');
+  if (!body) return;
+  body.innerHTML = `
+    <button class="btn-ghost" style="padding:9px 14px;margin-bottom:10px;" onclick="renderDiaryClasses('${esc(DIARY_SUBJECT).replace(/'/g,"\\'")}')">${esc(t.diaryBackToClasses)}</button>
+    <h2 style="margin-top:0;">${esc(DIARY_SUBJECT)} — ${esc(className)}</h2>
+    <label><span>${esc(t.diaryEntryDate)}</span><input id="de-date" type="date" value="${todayISO()}"></label>
+    <label><span>${esc(t.diaryEntryTitle)}</span><textarea id="de-text" rows="5" placeholder="${esc(t.diaryEntryPlaceholder)}"></textarea></label>
+    <div id="de-msg" style="font-size:12px;margin-bottom:8px;"></div>
+    <button class="btn-primary" style="width:100%;" onclick="submitDiaryEntry()">${esc(t.diarySave)}</button>
+  `;
+}
+
+async function submitDiaryEntry() {
+  const session = getDiarySession();
+  if (!session) return;
+  const date = document.getElementById('de-date').value || todayISO();
+  const text = document.getElementById('de-text').value.trim();
+  const msg = document.getElementById('de-msg');
+  if (!text) return;
+  rememberDiarySubject(DIARY_SUBJECT);
+  const payload = {
+    schoolCode: session.schoolCode, password: session.password,
+    className: DIARY_CLASS, subject: DIARY_SUBJECT, date, text
+  };
+  if (!navigator.onLine) {
+    queueDiaryWrite({ type: 'entry', ...payload });
+    msg.innerHTML = `<div class="ok">${esc(t.diaryOfflineSaved)}</div>`;
+    setTimeout(() => renderDiaryMenu(), 900);
+    return;
+  }
+  try {
+    const { error } = await sb.rpc('diary_add_entry', {
+      p_school_code: payload.schoolCode, p_password: payload.password, p_class_name: payload.className,
+      p_subject: payload.subject, p_entry_date: payload.date, p_entry_text: payload.text
+    });
+    if (error) { queueDiaryWrite({ type: 'entry', ...payload }); msg.innerHTML = `<div class="ok">${esc(t.diaryOfflineSaved)}</div>`; setTimeout(() => renderDiaryMenu(), 900); return; }
+    msg.innerHTML = `<div class="ok">${esc(t.diarySaved)}</div>`;
+    setTimeout(() => renderDiaryMenu(), 900);
+  } catch(e) {
+    queueDiaryWrite({ type: 'entry', ...payload });
+    msg.innerHTML = `<div class="ok">${esc(t.diaryOfflineSaved)}</div>`;
+    setTimeout(() => renderDiaryMenu(), 900);
+  }
+}
+
+async function flushDiaryQueue() {
+  if (!navigator.onLine) return;
+  const q = getDiaryQueue();
+  if (!q.length) return;
+  const remaining = [];
+  for (const item of q) {
+    try {
+      const { error } = await sb.rpc('diary_add_entry', {
+        p_school_code: item.schoolCode, p_password: item.password, p_class_name: item.className,
+        p_subject: item.subject, p_entry_date: item.date, p_entry_text: item.text
+      });
+      if (error) remaining.push(item);
+    } catch(e) { remaining.push(item); }
+  }
+  setDiaryQueue(remaining);
+  const body = document.getElementById('diary-portal-body');
+  if (body && DIARY_SCREEN === 'menu') renderDiaryMenu();
+}
+
 boot();
 
 if ('serviceWorker' in navigator) {
@@ -8590,14 +8832,54 @@ if ('serviceWorker' in navigator) {
 // directly, and access automatically stops once the school marks that
 // admission-register entry as withdrawn (i.e. issues the Leaving/Character
 // Certificate for that student).
+// So a parent can reopen this page with no signal at all and still see fees,
+// results and the diary, the last-fetched record is cached on-device after
+// every successful lookup (keyed to the exact School Code/Roll/PIN entered)
+// and reloaded from that cache first on every visit — a silent background
+// refresh runs on top of it if there's a connection, without blocking the
+// view the parent already sees.
+const PP_CACHE_KEY = 'sms_parent_portal_cache';
+function getPpCache() { try { return JSON.parse(localStorage.getItem(PP_CACHE_KEY) || 'null'); } catch(e) { return null; } }
+function setPpCache(c) { localStorage.setItem(PP_CACHE_KEY, JSON.stringify(c)); }
+function clearPpCache() { localStorage.removeItem(PP_CACHE_KEY); }
+
 function renderParentPortal() {
   document.getElementById('loading').classList.add('hidden');
   renderAuthShell(`
     <div style="text-align:${LANG==='ur'?'right':'left'};margin-bottom:8px;">
       <button class="lang-mini" onclick="toggleLangParentPortal()">${esc(t.langToggle)}</button>
     </div>
-    <div id="parent-portal-body">${parentPortalFormHtml()}</div>
+    <div id="parent-portal-body">…</div>
   `);
+  const cache = getPpCache();
+  if (cache && cache.data) {
+    renderParentPortalResult(cache.data, { fromCache: true, ts: cache.ts });
+    if (navigator.onLine) refreshParentPortalSilently(cache);
+  } else {
+    document.getElementById('parent-portal-body').innerHTML = parentPortalFormHtml();
+  }
+}
+
+async function refreshParentPortalSilently(cache) {
+  try {
+    const { data, error } = await sb.rpc('parent_portal_lookup', {
+      p_school_code: cache.schoolCode, p_roll: cache.roll, p_pin: cache.pin
+    });
+    if (error || !data || !data.length) return;
+    const r = data[0];
+    let diary = [];
+    try {
+      const dRes = await sb.rpc('diary_portal_list', { p_school_code: cache.schoolCode, p_class_name: r.class_admitted || '' });
+      diary = (dRes && dRes.data) || [];
+    } catch(e) {}
+    r.diary_entries = diary;
+    setPpCache({ schoolCode: cache.schoolCode, roll: cache.roll, pin: cache.pin, data: r, ts: Date.now() });
+    // Only repaint if the parent is still looking at this same student's cached view
+    // (not, say, results they've since navigated away from within this page).
+    if (PP_CURRENT === cache.data || (PP_CURRENT && PP_CURRENT.student_name === r.student_name)) {
+      renderParentPortalResult(r, { fromCache: false });
+    }
+  } catch(e) {}
 }
 
 function toggleLangParentPortal() {
@@ -8627,6 +8909,15 @@ async function submitParentPortalLookup() {
   const roll = document.getElementById('pp-roll').value.trim();
   const pin = document.getElementById('pp-pin').value.trim();
   if (!schoolCode || !roll || !pin) return;
+  if (!navigator.onLine) {
+    const cache = getPpCache();
+    if (cache && cache.schoolCode === schoolCode && String(cache.roll) === String(roll) && String(cache.pin) === String(pin)) {
+      renderParentPortalResult(cache.data, { fromCache: true, ts: cache.ts });
+    } else {
+      msg.innerHTML = `<div class="err">${esc(t.parentPortalOfflineNoCache)}</div>`;
+    }
+    return;
+  }
   msg.textContent = '…';
   const { data, error } = await sb.rpc('parent_portal_lookup', {
     p_school_code: schoolCode, p_roll: roll, p_pin: pin
@@ -8635,15 +8926,37 @@ async function submitParentPortalLookup() {
     msg.innerHTML = `<div class="err">${esc(t.parentNotFound)}</div>`;
     return;
   }
-  renderParentPortalResult(data[0]);
+  const r = data[0];
+  let diary = [];
+  try {
+    const dRes = await sb.rpc('diary_portal_list', { p_school_code: schoolCode, p_class_name: r.class_admitted || '' });
+    diary = (dRes && dRes.data) || [];
+  } catch(e) {}
+  r.diary_entries = diary;
+  setPpCache({ schoolCode, roll, pin, data: r, ts: Date.now() });
+  renderParentPortalResult(r, { fromCache: false });
 }
 
 let PP_CURRENT = null; // last-loaded parent portal record, so click-to-expand handlers can read it back
 
-function renderParentPortalResult(r) {
+function renderParentPortalResult(r, opts) {
+  opts = opts || {};
   PP_CURRENT = r;
   const body = document.getElementById('parent-portal-body');
   const name = (LANG === 'ur' && r.student_name_ur) ? r.student_name_ur : r.student_name;
+  const offlineBanner = opts.fromCache ? `<p style="font-size:11px;opacity:.65;margin-bottom:10px;">${esc(t.parentPortalOfflineNote)} ${esc(new Date(opts.ts).toLocaleString())}</p>` : '';
+  const diaryEntries = r.diary_entries || [];
+  const diaryHtml = `
+    <div class="section-title" style="margin-top:14px;">${esc(t.parentDiaryTitle)}</div>
+    ${diaryEntries.length ? `<div class="list-card">${diaryEntries.map(d => `
+      <div class="list-row" style="flex-direction:column;align-items:stretch;">
+        <div style="display:flex;justify-content:space-between;">
+          <div class="nm">${esc(d.subject || '')}</div>
+          <div class="sub">${esc(fmtDate(d.entry_date) || '')}</div>
+        </div>
+        <div class="sub" style="margin-top:4px;white-space:pre-wrap;">${esc(d.entry_text || '')}</div>
+      </div>`).join('')}</div>` : `<p style="font-size:12px;opacity:.6;">${esc(t.parentNoDiary)}</p>`}
+  `;
 
   const dobLine = (r.dob_figures || r.dob_words) ? `${esc(t.dobLabel || 'Date of Birth')}: ${esc(r.dob_words || fmtDate(r.dob_figures) || '')}` : '';
   const admLine = r.admission_date ? `${esc(t.admissionDate)}: ${esc(fmtDate(r.admission_date))}` : '';
@@ -8674,12 +8987,14 @@ function renderParentPortalResult(r) {
       </div>`).join('')}</div>` : `<p style="font-size:12px;opacity:.6;margin-top:14px;">${esc(t.parentNoResults)}</p>`;
 
   body.innerHTML = `
+    ${offlineBanner}
     <h2>${esc(name)}</h2>
     <p class="desc">${esc(r.school_name || '')} · ${esc(r.class_admitted || '')}${r.father_name ? ' · ' + esc(r.father_name) : ''}</p>
     ${(admLine || dobLine) ? `<p class="desc" style="margin-top:-4px;">${[admLine, dobLine].filter(Boolean).join(' · ')}</p>` : ''}
     ${feeHtml}
     ${resultsHtml}
-    <button class="btn-ghost" style="width:100%;margin-top:16px;" onclick="document.getElementById('parent-portal-body').innerHTML = parentPortalFormHtml()">${esc(t.parentBackToStart)}</button>
+    ${diaryHtml}
+    <button class="btn-ghost" style="width:100%;margin-top:16px;" onclick="clearPpCache(); document.getElementById('parent-portal-body').innerHTML = parentPortalFormHtml()">${esc(t.parentPortalSwitchStudent)}</button>
   `;
 }
 
