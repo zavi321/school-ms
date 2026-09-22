@@ -8948,13 +8948,16 @@ function renderParentPortalResult(r, opts) {
   const diaryEntries = r.diary_entries || [];
   const diaryHtml = `
     <div class="section-title" style="margin-top:14px;">${esc(t.parentDiaryTitle)}</div>
-    ${diaryEntries.length ? `<div class="list-card">${diaryEntries.map(d => `
-      <div class="list-row" style="flex-direction:column;align-items:stretch;">
+    ${diaryEntries.length ? `<div class="list-card">${diaryEntries.map((d, i) => `
+      <div class="list-row" style="cursor:pointer;flex-direction:column;align-items:stretch;" onclick="togglePpDiary(${i})">
         <div style="display:flex;justify-content:space-between;">
           <div class="nm">${esc(d.subject || '')}</div>
-          <div class="sub">${esc(fmtDate(d.entry_date) || '')}</div>
+          <div style="display:flex;align-items:center;gap:8px;">
+            <div class="sub">${esc(fmtDate(d.entry_date) || '')}</div>
+            <span style="opacity:.5;">▾</span>
+          </div>
         </div>
-        <div class="sub" style="margin-top:4px;white-space:pre-wrap;">${esc(d.entry_text || '')}</div>
+        <div id="pp-diary-${i}" class="hidden sub" style="margin-top:8px;white-space:pre-wrap;">${esc(d.entry_text || '')}</div>
       </div>`).join('')}</div>` : `<p style="font-size:12px;opacity:.6;">${esc(t.parentNoDiary)}</p>`}
   `;
 
@@ -9022,6 +9025,11 @@ function togglePpMarks(i) {
     <tbody>${subjects.map(s => `<tr style="border-top:1px solid var(--line);"><td style="padding:4px 0;">${esc(s.name)}</td><td style="text-align:right;">${esc(marks[s.name] ?? '—')}/${esc(s.total)}</td></tr>`).join('')}</tbody>
   </table>`;
   box.classList.remove('hidden');
+}
+function togglePpDiary(i) {
+  const box = document.getElementById('pp-diary-' + i);
+  if (!box) return;
+  box.classList.toggle('hidden');
 }
 console.log('SchoolMS build: 2026-09-07-dmc-archive-marks-year'); // bump this string on every deploy to verify (in browser console) which version is actually running
 </script>
