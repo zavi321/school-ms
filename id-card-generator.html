@@ -19,6 +19,7 @@
   /* ---- ID CARD ---- */
   .id-card{
     width:320px;height:200px;border-radius:14px;background:linear-gradient(135deg,var(--navy),#173A5E);
+    background-size:cover;background-position:center;
     color:#fff;padding:14px;position:relative;overflow:hidden;box-shadow:0 6px 18px rgba(0,0,0,.25);
     font-family:Arial,sans-serif;
   }
@@ -75,6 +76,10 @@
 
     <label>Contact</label>
     <input type="text" id="contact" placeholder="e.g. 03001234567">
+
+    <label>Card Background (optional)</label>
+    <input type="file" id="cardBg" class="file-btn" accept="image/*">
+    <button type="button" class="btn" id="resetBgBtn" style="margin-top:8px;padding:6px 14px;font-size:12px;">Reset to Default</button>
   </div>
 
   <div class="card-col">
@@ -132,6 +137,26 @@
   }
   readImage($('studentPhoto'), $('cardPhoto'));
   readImage($('schoolLogo'), $('cardLogo'));
+
+  // Card background: user-uploaded image, drawn behind the data with a
+  // translucent navy tint (same approach as the DMC certificate background)
+  // so the white text on top stays readable regardless of the image.
+  const DEFAULT_BG = 'linear-gradient(135deg,var(--navy),#173A5E)';
+  const idCardEl = $('idCard');
+  $('cardBg').addEventListener('change', e => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = ev => {
+      idCardEl.style.backgroundImage =
+        `linear-gradient(rgba(15,39,64,.55),rgba(15,39,64,.55)), url('${ev.target.result}')`;
+    };
+    reader.readAsDataURL(file);
+  });
+  $('resetBgBtn').addEventListener('click', () => {
+    idCardEl.style.backgroundImage = DEFAULT_BG;
+    $('cardBg').value = '';
+  });
 
   function updateQR(){
     const data = [
