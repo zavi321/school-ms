@@ -368,11 +368,16 @@ html, body{overscroll-behavior:none;}
     .thermal-receipt .tr-dash{border-top:1px dashed #000;margin:5px 0;}
 
     /* ---- Timetable print ----
-       min-height:100vh + flex-column fills the whole printed page instead
-       of the card sitting as a small block at the top with blank white
-       space below it; the footer's margin-top:auto pins it to the bottom
-       of the page either way, whether the grid has 3 rows or 12. */
-    .tt-print{font-family:Inter,sans-serif;width:100%;min-height:100vh;margin:0;box-sizing:border-box;padding:14mm 12mm;background:var(--cream);display:flex;flex-direction:column;border:2px solid var(--gold);}
+       Deliberately NOT forcing min-height:100vh here — a print page's
+       physical printable area is slightly smaller than 100vh once the
+       browser's own page margins are subtracted, so a box forced to exactly
+       100vh reliably overflowed by a hair and spilled a near-empty second
+       page. Generous padding + the border/background frame still make the
+       card feel like a full, deliberate page instead of a small floating
+       block, without gambling on an exact page height. page-break-inside
+       and -after are set to avoid as extra insurance against a stray
+       second page. */
+    .tt-print{font-family:Inter,sans-serif;width:100%;margin:0;box-sizing:border-box;padding:16mm 14mm;background:var(--cream);border:2px solid var(--gold);page-break-inside:avoid;page-break-after:avoid;}
     .tt-print[dir="rtl"]{font-family:'Noto Nastaliq Urdu',serif;}
     .tt-print-head{background:#0F2740;background-image:linear-gradient(135deg,#0F2740 0%,#0A1B2C 100%);border-radius:12px 12px 0 0;padding:20px 24px 16px;position:relative;overflow:hidden;}
     .tt-print-head::after{content:'';position:absolute;right:-30px;top:-30px;width:130px;height:130px;border-radius:999px;background:#C9A227;opacity:.10;}
@@ -391,7 +396,7 @@ html, body{overscroll-behavior:none;}
     .tt-print-empty{color:#C7C0A8;}
     .tt-print-break-th{background:#FBF1DA !important;color:#8A6200;}
     .tt-print-break-td{background:#FCF6E6 !important;font-weight:700;font-size:10px;color:#8A6200;}
-    .tt-print-foot{display:flex;justify-content:space-between;align-items:center;padding:10px 24px;background:#FAF6EC;border:1px solid #E7E0CE;border-top:2px solid #C9A227;border-radius:0 0 12px 12px;font-size:10px;color:#555;margin-top:auto;}
+    .tt-print-foot{display:flex;justify-content:space-between;align-items:center;padding:10px 24px;background:#FAF6EC;border:1px solid #E7E0CE;border-top:2px solid #C9A227;border-radius:0 0 12px 12px;font-size:10px;color:#555;margin-top:16px;}
     .tt-print-foot .tt-print-brand{font-family:Fraunces,serif;color:#0F2740;font-weight:600;}
 
     /* ---- Fee Card (khoobsurat design) ---- */
