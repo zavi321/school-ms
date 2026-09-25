@@ -5621,7 +5621,6 @@ async function loadCertificateLog() {
   if (!error) certLogCache = data || [];
 }
 let dmcLogo = null; // base64 logo image
-let dmcBackground = null; // base64 full-certificate background/design image, uploaded per-school
 let dmcSchoolName = 'SCHOOL NAME'; // editable school name for certificates
 let dmcTagline = ''; // optional motto shown under the school name
 let dmcAcademicSession = ''; // optional e.g. "2025-2026"
@@ -5663,20 +5662,14 @@ function tplDMC() {
 
     <div class="card">
       <h3 style="margin-top:0;">School Configuration for DMC</h3>
-      <p style="font-size:11px;opacity:.6;">Set your school logo and name for certificates. The certificate's main color stays dark blue for every school; the accent (trim) color is picked automatically from your logo.</p>
+      <p style="font-size:11px;opacity:.6;">Set your school logo and name for certificates. The certificate's background and accent (trim) colors are generated automatically to match your logo.</p>
       
       <label>
         <span>School Logo (Upload Image)</span>
         <input type="file" id="dmc-logo-input" accept="image/*" onchange="handleDMCLogoUpload(this.files[0])">
       </label>
       <div id="dmc-logo-preview">${dmcLogoPreviewHtml()}</div>
-
-      <label>
-        <span>Certificate Background / Design (optional, Upload Image)</span>
-        <input type="file" id="dmc-background-input" accept="image/*" onchange="handleDMCBackgroundUpload(this.files[0])">
-      </label>
-      <div id="dmc-background-preview">${dmcBackgroundPreviewHtml()}</div>
-      <p style="font-size:11px;opacity:.6;margin-top:-4px;">If uploaded, this design fully replaces the app's default certificate background (shown in full, not cropped) — student data is printed directly on top of it.</p>
+      <p style="font-size:11px;opacity:.6;margin-top:-4px;">The certificate's background and trim colors are generated automatically from your logo's own colors.</p>
 
       <label>
         <span>School Name (for DMC)</span>
@@ -5758,12 +5751,6 @@ let dmcConfigLoaded = false;
 function dmcLogoPreviewHtml() {
   return dmcLogo ? `<div style="margin-bottom:12px;"><img src="${dmcLogo}" style="max-height:80px;max-width:150px;border-radius:4px;"></div>` : '';
 }
-function dmcBackgroundPreviewHtml() {
-  return dmcBackground ? `<div style="margin-bottom:12px;position:relative;display:inline-block;">
-    <img src="${dmcBackground}" style="max-height:80px;max-width:150px;border-radius:4px;border:1px solid var(--line);">
-    <button class="btn-ghost danger" style="position:absolute;top:-6px;right:-6px;padding:2px 6px;font-size:10px;border-radius:999px;" onclick="removeDMCBackground()">✕</button>
-  </div>` : '';
-}
 
 // Pushes the current dmcSchoolName/dmcTagline/etc. globals into the already-
 // rendered DMC tab's DOM, field by field, instead of tearing the whole tab
@@ -5783,8 +5770,6 @@ function applyDMCConfigToFields() {
   setIfNotFocused('dmc-quote', dmcQuote);
   const logoBox = document.getElementById('dmc-logo-preview');
   if (logoBox) logoBox.innerHTML = dmcLogoPreviewHtml();
-  const bgBox = document.getElementById('dmc-background-preview');
-  if (bgBox) bgBox.innerHTML = dmcBackgroundPreviewHtml();
 }
 
 // Applies a loaded DMC config object (from Supabase or the offline cache)
@@ -5794,7 +5779,6 @@ function applyDMCConfig(data) {
   if (data.subjects) dmcSubjects = data.subjects;
   if (data.school_name) dmcSchoolName = data.school_name;
   if (data.logo) dmcLogo = data.logo;
-  if (data.background) dmcBackground = data.background;
   if (data.tagline) dmcTagline = data.tagline;
   if (data.academic_session) dmcAcademicSession = data.academic_session;
   if (data.quote) dmcQuote = data.quote;
@@ -5862,7 +5846,7 @@ async function restoreDMCUploadIfEmpty() {
 async function saveDMCConfig() {
   const payload = {
     owner_id: CURRENT_USER.id, subjects: dmcSubjects, school_name: dmcSchoolName, logo: dmcLogo,
-    background: dmcBackground, tagline: dmcTagline, academic_session: dmcAcademicSession, quote: dmcQuote, design: dmcDesign,
+    tagline: dmcTagline, academic_session: dmcAcademicSession, quote: dmcQuote, design: dmcDesign,
     updated_at: new Date().toISOString()
   };
   // Cache locally right away — so certificates use the latest settings even
@@ -6048,16 +6032,6 @@ function renderDMCCertificate(result) {
   const bg = dmcDesign.bgColor      || '#FAF6EC';   // background (cream by default)
   const acLight = lightenColor(ac, 0.45);           // soft accent tint (was the fixed #E4C765)
 
-  // The uploaded certificate background image can be dark in some spots (e.g. a
-  // navy header/footer band) and light in others, but the same text sits on top
-  // everywhere. Rather than guessing per-pixel what's underneath, give dark text
-  // a thin white halo — invisible on light backgrounds, but it outlines the
-  // letters clearly if they land on a dark patch, so the writing never disappears.
-  const haloOnDark = '-1px -1px 0 #fff,1px -1px 0 #fff,-1px 1px 0 #fff,1px 1px 0 #fff,0 0 4px rgba(255,255,255,.9)';
-  // Same idea in reverse, for text that's white — a thin dark halo so it stays
-  // readable if it lands on a light patch of the background image.
-  const haloOnLight = '-1px -1px 0 rgba(15,39,64,.85),1px -1px 0 rgba(15,39,64,.85),-1px 1px 0 rgba(15,39,64,.85),1px 1px 0 rgba(15,39,64,.85),0 0 4px rgba(0,0,0,.7)';
-
   // Full 3D / embossed look applied to every piece of text on the
   // certificate (subject names, student info, marks, summary row, etc),
   // not just the school name. Small variant for compact table/label text,
@@ -6071,30 +6045,14 @@ function renderDMCCertificate(result) {
   const shadow3D = '1px 1px 0 rgba(0,0,0,.4),2px 2px 0 rgba(0,0,0,.32),3px 3px 0 rgba(0,0,0,.25),4px 4px 4px rgba(0,0,0,.4)';
   const shadow3Dsm = '0.5px 0.5px 0 rgba(0,0,0,.4),1px 1px 0 rgba(0,0,0,.32),1.5px 1.5px 0 rgba(0,0,0,.25),2px 2px 2px rgba(0,0,0,.4)';
 
-  // NOTE: mix-blend-mode was tried here for auto-contrast against any
-  // background, but Chromium's print/PDF pipeline frequently fails to
-  // render blend-mode text at all (it prints blank), so the certificate
-  // silently stopped printing. Using a plain, print-safe color choice
-  // instead: white+dark-halo when a custom background image is set
-  // (which is often dark/patterned), plain black+3D pop otherwise.
-  const nameColor = dmcBackground ? '#fff' : '#000';
-  const nameShadow = dmcBackground
-    ? '-1px -1px 0 rgba(15,39,64,.85),1px -1px 0 rgba(15,39,64,.85),-1px 1px 0 rgba(15,39,64,.85),1px 1px 0 rgba(15,39,64,.85),2px 2px 3px rgba(0,0,0,.5),3px 3px 5px rgba(0,0,0,.4)'
-    : '1px 1px 0 rgba(255,255,255,.6),2px 2px 3px rgba(0,0,0,.4),3px 3px 5px rgba(0,0,0,.3)';
-  const taglineShadow = dmcBackground
-    ? '-0.5px -0.5px 0 rgba(15,39,64,.85),0.5px -0.5px 0 rgba(15,39,64,.85),-0.5px 0.5px 0 rgba(15,39,64,.85),0.5px 0.5px 0 rgba(15,39,64,.85),1px 1px 2px rgba(0,0,0,.5),2px 2px 3px rgba(0,0,0,.4)'
-    : '0.5px 0.5px 0 rgba(255,255,255,.6),1px 1px 2px rgba(0,0,0,.4),2px 2px 3px rgba(0,0,0,.3)';
-
-  // When a custom certificate background image is set, several sections (the
-  // student-info box, marks table rows, remarks value, and signature footer)
-  // sit directly on top of that image with no color of their own — fine on the
-  // plain cream default, but unreadable if the uploaded image is dark or busy
-  // there. Rather than sampling the image's colors (unreliable, and this
-  // file's print pipeline already can't rely on mix-blend-mode — see the note
-  // above), give those sections a light, semi-opaque "glass" backing so the
-  // same dark text stays legible no matter what sits behind it. Falls back to
-  // fully transparent (today's look) when there's no background image.
-  const panelBg = dmcBackground ? 'rgba(255,255,255,.86)' : 'transparent';
+  // The certificate background is now always a plain, auto-generated color
+  // (a light tint of the logo's own color — see extractLogoColor), never a
+  // busy uploaded image, so a simple plain black + soft 3D pop reads clearly
+  // every time and there's no need to guess contrast against an image.
+  const nameColor = '#000';
+  const nameShadow = '1px 1px 0 rgba(255,255,255,.6),2px 2px 3px rgba(0,0,0,.4),3px 3px 5px rgba(0,0,0,.3)';
+  const taglineShadow = '0.5px 0.5px 0 rgba(255,255,255,.6),1px 1px 2px rgba(0,0,0,.4),2px 2px 3px rgba(0,0,0,.3)';
+  const panelBg = 'transparent';
 
   const subjectsHtml = dmcSubjects.map((s, i) => {
     const marks = Number(result.marks[s.name]) || 0;
@@ -6128,7 +6086,6 @@ function renderDMCCertificate(result) {
     <div class="dmc-cert" style="page-break-after:always;page-break-inside:avoid;break-inside:avoid;margin-bottom:24px;font-family:Inter,sans-serif;">
       <div style="max-width:800px;margin:0 auto;background:${pc};padding:8px;border-radius:22px;position:relative;overflow:hidden;">
         <div style="background:${bg};border:2px solid ${ac};border-radius:16px;padding:18px 26px 16px;position:relative;z-index:0;overflow:hidden;">
-          ${dmcBackground ? `<div style="position:absolute;inset:0;z-index:-2;background-image:url(${dmcBackground});background-size:100% 100%;background-repeat:no-repeat;background-position:center;"></div>` : ''}
           ${dmcLogo ? `<div style="position:absolute;inset:0;z-index:-1;display:flex;align-items:center;justify-content:center;pointer-events:none;overflow:hidden;"><img src="${dmcLogo}" style="width:63%;max-width:364px;object-fit:contain;opacity:.5;filter:blur(1px);"></div>` : ''}
 
           <!-- Header: logo back on the side (as in the original layout), with
@@ -6231,14 +6188,14 @@ function renderDMCCertificate(result) {
 
           <!-- Footer: signatures -->
           <div style="display:flex;align-items:flex-end;justify-content:space-between;margin-top:10px;gap:12px;">
-            <div style="text-align:center;flex:1;background:${panelBg};border-radius:6px;padding:${dmcBackground ? '6px 8px 4px' : '0'};">
+            <div style="text-align:center;flex:1;background:${panelBg};border-radius:6px;padding:0;">
               <div style="border-bottom:1px solid ${pc};margin-bottom:6px;"></div>
               <div style="font-size:10px;font-weight:900;color:${pc};letter-spacing:.03em;">${esc((dmcDesign.teacherLabel || 'CLASS TEACHER SIGNATURE').toUpperCase())}</div>
             </div>
             ${dmcDesign.showStamp ? `<div style="text-align:center;flex-shrink:0;width:70px;">
               <div style="width:56px;height:56px;border:1px dashed ${ac};border-radius:50%;background:${panelBg};display:flex;align-items:center;justify-content:center;font-size:8px;font-weight:900;color:${pc};opacity:.85;margin:0 auto;">SCHOOL<br>STAMP</div>
             </div>` : ''}
-            <div style="text-align:center;flex:1;background:${panelBg};border-radius:6px;padding:${dmcBackground ? '6px 8px 4px' : '0'};">
+            <div style="text-align:center;flex:1;background:${panelBg};border-radius:6px;padding:0;">
               <div style="border-bottom:1px solid ${pc};margin-bottom:6px;"></div>
               <div style="font-size:10px;font-weight:900;color:${pc};letter-spacing:.03em;">${esc((dmcDesign.principalLabel || 'PRINCIPAL SIGNATURE').toUpperCase())}</div>
             </div>
@@ -6251,45 +6208,75 @@ function renderDMCCertificate(result) {
 }
 
 
-// The certificate colors (banner/header background and accent trim) are kept
-// fixed at this dark blue for every school, regardless of what colors are in
-// their logo — colors are no longer auto-picked from the uploaded logo.
+// Fallback color, used only if a logo's color can't be read (e.g. a fully
+// transparent/blank image) — otherwise every school's colors now come from
+// their own uploaded logo instead of one fixed color for everyone.
 const DMC_FIXED_PRIMARY = '#0F2740';
+
+// Darken a #rrggbb hex color by `pct` (0-1) toward black — the counterpart to
+// lightenColor() above. Used to turn the logo's own color into a deeper shade
+// for the banner/border (accentColor), while lightenColor() turns it into a
+// pale tint for the certificate's background (bgColor).
+function darkenColor(hex, pct) {
+  const h = (hex || '#0F2740').replace('#', '');
+  const num = parseInt(h.length === 3 ? h.split('').map(c => c + c).join('') : h, 16);
+  const r = (num >> 16) & 255, g = (num >> 8) & 255, b = num & 255;
+  const mix = c => Math.round(c * (1 - pct));
+  return `#${[mix(r), mix(g), mix(b)].map(v => v.toString(16).padStart(2, '0')).join('')}`;
+}
+
+// Reads the uploaded logo's own average color off a canvas, so the
+// certificate's colors can be generated to match it automatically instead of
+// requiring a separate manual background upload. Skips near-white/near-black
+// pixels (usually padding around the mark, not the mark itself) so the
+// average leans toward the logo's actual color rather than its background.
+function extractLogoColor(dataUrl, callback) {
+  const img = new Image();
+  img.onload = () => {
+    const size = 48; // a small sample is plenty and keeps this fast
+    const canvas = document.createElement('canvas');
+    canvas.width = size; canvas.height = size;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(img, 0, 0, size, size);
+    let r = 0, g = 0, b = 0, n = 0;
+    try {
+      const data = ctx.getImageData(0, 0, size, size).data;
+      for (let i = 0; i < data.length; i += 4) {
+        if (data[i + 3] < 128) continue; // skip transparent pixels
+        const rr = data[i], gg = data[i + 1], bb = data[i + 2];
+        const lum = (rr + gg + bb) / 3;
+        if (lum > 240 || lum < 15) continue; // skip near-white/near-black padding
+        r += rr; g += gg; b += bb; n++;
+      }
+    } catch (e) { /* canvas can be tainted for some image sources — fall back below */ }
+    if (!n) { callback(DMC_FIXED_PRIMARY); return; }
+    r = Math.round(r / n); g = Math.round(g / n); b = Math.round(b / n);
+    callback(`#${[r, g, b].map(v => v.toString(16).padStart(2, '0')).join('')}`);
+  };
+  img.onerror = () => callback(DMC_FIXED_PRIMARY);
+  img.src = dataUrl;
+}
 
 function handleDMCLogoUpload(file) {
   if (!file) return;
   const reader = new FileReader();
   reader.onload = (e) => {
     dmcLogo = e.target.result;
-    dmcDesign.primaryColor = DMC_FIXED_PRIMARY;
-    dmcDesign.accentColor = DMC_FIXED_PRIMARY;
-    saveDMCConfig();
-    renderTab();
+    extractLogoColor(dmcLogo, (color) => {
+      // Banner/header background: a deeper shade of the logo's color, dark
+      // enough for the white header text to stay readable on top of it.
+      dmcDesign.primaryColor = darkenColor(color, 0.35);
+      // Border trim: the logo's color itself.
+      dmcDesign.accentColor = color;
+      // Certificate background: a very pale tint of the same color, so the
+      // black body text printed on it stays clearly legible.
+      dmcDesign.bgColor = lightenColor(color, 0.9);
+      saveDMCConfig();
+      renderTab();
+      renderDMCPreviewIfOpen();
+    });
   };
   reader.readAsDataURL(file);
-}
-
-// Lets a school upload its own full certificate design (border, watermark,
-// pattern, etc.) as one image. It fully replaces the app's own certificate
-// background — shown at its full size with no cropping (contain-fit) — and
-// the data (name, marks, etc.) is printed directly on top of it.
-function handleDMCBackgroundUpload(file) {
-  if (!file) return;
-  const reader = new FileReader();
-  reader.onload = (e) => {
-    dmcBackground = e.target.result;
-    saveDMCConfig();
-    renderTab();
-    renderDMCPreviewIfOpen();
-  };
-  reader.readAsDataURL(file);
-}
-
-function removeDMCBackground() {
-  dmcBackground = null;
-  saveDMCConfig();
-  renderTab();
-  renderDMCPreviewIfOpen();
 }
 
 // Permanently archives this batch of DMC results (full marks included) to the
