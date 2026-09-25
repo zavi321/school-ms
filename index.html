@@ -308,8 +308,12 @@ html, body{overscroll-behavior:none;}
   /* ---- Timetable grid (on-screen) ---- */
   .tt-grid{border-collapse:collapse;width:100%;}
   .tt-grid th,.tt-grid td{border:1px solid var(--line);padding:4px;}
-  .tt-grid th{background:var(--surface2);font-size:11px;white-space:nowrap;}
-  .tt-period-num{font-weight:700;text-align:center;background:var(--surface2);font-size:12px;}
+  .tt-grid th{background:var(--cream);font-size:11px;white-space:nowrap;}
+  .tt-class-name{font-weight:700;text-align:center;background:var(--cream);font-size:12px;white-space:nowrap;}
+  .tt-period-label{font-weight:700;font-size:11px;text-align:center;margin-bottom:3px;}
+  .tt-period-time{display:flex;align-items:center;gap:3px;justify-content:center;}
+  .tt-period-time input[type="time"]{width:auto;padding:2px;font-size:10px;min-width:64px;}
+  .tt-period-time span{font-size:9px;opacity:.6;}
   .tt-cell{min-width:110px;vertical-align:top;}
   .tt-subject{width:100%;border:none;background:transparent;font-size:12px;padding:3px 2px;display:block;box-sizing:border-box;}
   .tt-teacher{width:100%;border:none;background:transparent;font-size:11px;padding:2px;box-sizing:border-box;}
@@ -339,13 +343,25 @@ html, body{overscroll-behavior:none;}
     .thermal-receipt .tr-dash{border-top:1px dashed #000;margin:5px 0;}
 
     /* ---- Timetable print ---- */
-    .tt-print{font-family:Inter,sans-serif;}
-    .tt-print h2{font-family:Fraunces,serif;color:#0F2740;margin:0 0 2px;}
-    .tt-print-sub{color:#555;font-size:13px;margin-bottom:14px;}
-    .tt-print-table{width:100%;border-collapse:collapse;}
-    .tt-print-table th,.tt-print-table td{border:1px solid #999;padding:6px 4px;text-align:center;font-size:12px;}
-    .tt-print-teacher{display:block;font-size:10px;color:#555;margin-top:2px;}
-    .tt-print-period{font-weight:700;background:#f0f0f0;}
+    .tt-print{font-family:Inter,sans-serif;max-width:720px;margin:0 auto;}
+    .tt-print[dir="rtl"]{font-family:'Noto Nastaliq Urdu',serif;}
+    .tt-print-head{background:#0F2740;background-image:linear-gradient(135deg,#0F2740 0%,#0A1B2C 100%);border-radius:12px 12px 0 0;padding:20px 24px 16px;position:relative;overflow:hidden;}
+    .tt-print-head::after{content:'';position:absolute;right:-30px;top:-30px;width:130px;height:130px;border-radius:999px;background:#C9A227;opacity:.10;}
+    .tt-print-head .eyebrow{color:#E4C765;font-size:10px;letter-spacing:.16em;text-transform:uppercase;opacity:.85;margin:0 0 4px;position:relative;}
+    .tt-print-head h2{font-family:Fraunces,serif;color:#fff;font-size:20px;margin:0 0 2px;position:relative;}
+    .tt-print-head .tt-print-sub{color:#E4C765;opacity:.95;font-size:13px;font-weight:600;position:relative;}
+    .tt-print-logo{height:40px;width:40px;object-fit:contain;border-radius:6px;background:#fff;padding:3px;margin-bottom:8px;position:relative;}
+    .tt-print-table{width:100%;border-collapse:collapse;background:#fff;border:1px solid #E7E0CE;border-top:none;}
+    .tt-print-table thead th{background:#FAF6EC;color:#0F2740;font-size:10.5px;text-transform:uppercase;letter-spacing:.04em;padding:8px 4px;text-align:center;font-weight:700;border-bottom:2px solid #C9A227;}
+    .tt-print-table thead .tt-print-time{display:block;text-transform:none;font-size:8.5px;font-weight:500;color:#8A6200;letter-spacing:0;margin-top:2px;}
+    .tt-print-table tbody td{border:1px solid #EFEAD9;padding:8px 4px;text-align:center;font-size:12px;vertical-align:middle;color:#1C2530;}
+    .tt-print-table tbody tr:nth-child(even){background:#FCFAF3;}
+    .tt-print-classname{font-weight:700;background:#FAF6EC !important;color:#0F2740;white-space:nowrap;}
+    .tt-print-subject{font-weight:600;}
+    .tt-print-teacher{display:block;font-size:9.5px;color:#8A6200;margin-top:2px;font-weight:500;}
+    .tt-print-empty{color:#C7C0A8;}
+    .tt-print-foot{display:flex;justify-content:space-between;align-items:center;padding:10px 24px;background:#FAF6EC;border:1px solid #E7E0CE;border-top:2px solid #C9A227;border-radius:0 0 12px 12px;font-size:10px;color:#555;}
+    .tt-print-foot .tt-print-brand{font-family:Fraunces,serif;color:#0F2740;font-weight:600;}
 
     /* ---- Fee Card (khoobsurat design) ---- */
     .fc-wrap{font-family:Inter,sans-serif;border-radius:14px;overflow:hidden;border:1px solid #E7E0CE;box-shadow:0 2px 10px rgba(15,39,64,.08);}
@@ -576,12 +592,12 @@ html, body{overscroll-behavior:none;}
   create policy "activity_log_insert_own" on activity_log
     for insert with check (owner_id = auth.uid());
 
-  -- ---- Timetable (one row per class + day + period) ----
+  -- ---- Timetable (one row per class + period — same schedule every day) ----
   create table if not exists timetable (
     id uuid primary key default gen_random_uuid(),
     owner_id uuid not null references auth.users(id) on delete cascade,
     class_name text not null,
-    day_of_week text not null,     -- 'Mon'..'Sat'
+    day_of_week text not null,     -- kept for compatibility; always 'ALL' now (schedule no longer varies by day)
     period int not null,
     subject text,
     teacher_id uuid references teachers(id) on delete set null,
@@ -591,6 +607,19 @@ html, body{overscroll-behavior:none;}
   alter table timetable enable row level security;
   drop policy if exists "timetable_all_own" on timetable;
   create policy "timetable_all_own" on timetable
+    for all using (owner_id = auth.uid()) with check (owner_id = auth.uid());
+
+  -- ---- Timetable period times (start/end time shown in each period's column header) ----
+  create table if not exists timetable_periods (
+    owner_id uuid not null references auth.users(id) on delete cascade,
+    period int not null,
+    start_time text,
+    end_time text,
+    primary key (owner_id, period)
+  );
+  alter table timetable_periods enable row level security;
+  drop policy if exists "timetable_periods_all_own" on timetable_periods;
+  create policy "timetable_periods_all_own" on timetable_periods
     for all using (owner_id = auth.uid()) with check (owner_id = auth.uid());
      ============================================================================ -->
 
@@ -2848,7 +2877,7 @@ function renderTab() {
     main.innerHTML = tplTimetable();
     initRegBookScroll();
     _regBookRestoreScroll();
-    if (ttStatus === 'idle') loadTimetableForClass(ttClass);
+    if (ttStatus === 'idle') loadTimetableGrid();
   }
   else if (TAB==='admin') { main.innerHTML = tplAdmin(); loadAdminLists(); return; }
   main.insertAdjacentHTML('beforeend', `<div class="notice">${esc(t.sharedNotice)}</div>`);
@@ -5074,23 +5103,23 @@ function tplClassLogins() {
     </div>`;
 }
 
-// ---------------- Timetable (simple version) ----------------
-// One grid per class: fixed Mon-Sat days, editable period rows with a
-// Subject text field + Teacher dropdown per cell. Deliberately lazy-loaded
-// (not part of loadAllData's critical Promise.all) so the rest of the app
-// keeps working even before the one-time SQL setup (see CONFIG comment near
-// the top of this file) has been run in Supabase.
-const TT_DAYS = [
-  { key: 'Mon', en: 'Mon', ur: 'پیر' },
-  { key: 'Tue', en: 'Tue', ur: 'منگل' },
-  { key: 'Wed', en: 'Wed', ur: 'بدھ' },
-  { key: 'Thu', en: 'Thu', ur: 'جمعرات' },
-  { key: 'Fri', en: 'Fri', ur: 'جمعہ' },
-  { key: 'Sat', en: 'Sat', ur: 'ہفتہ' },
-];
-let ttClass = null;           // currently selected class
-let ttRows = [];              // timetable rows for ttClass: {id, day_of_week, period, subject, teacher_id}
-let ttPeriods = 7;            // number of period rows shown (grows via +Add Period, or from saved data)
+// ---------------- Timetable (master grid: all classes × periods) ----------------
+// One single grid for the whole school: rows are classes, columns are periods
+// (each with an editable start/end time), each cell holds a Subject + Teacher
+// for that class in that period. Same schedule applies every day, so there is
+// no day-of-week axis. Deliberately lazy-loaded (not part of loadAllData's
+// critical Promise.all) so the rest of the app keeps working even before the
+// one-time SQL setup (see CONFIG comment near the top of this file) has been
+// run in Supabase.
+const TT_ORDINAL_EN = ['1st','2nd','3rd','4th','5th','6th','7th','8th','9th','10th','11th','12th'];
+const TT_ORDINAL_UR = ['پہلا','دوسرا','تیسرا','چوتھا','پانچواں','چھٹا','ساتواں','آٹھواں','نواں','دسواں','گیارہواں','بارہواں'];
+function ttPeriodLabel(n) {
+  if (LANG === 'ur') return (TT_ORDINAL_UR[n - 1] || (n + 'واں')) + ' پیریڈ';
+  return (TT_ORDINAL_EN[n - 1] || (n + 'th')) + ' Period';
+}
+let ttRows = [];              // all timetable rows for this school: {id, class_name, period, subject, teacher_id}
+let ttPeriodTimes = {};       // period number -> {start_time, end_time}
+let ttPeriods = 7;            // number of period columns shown (grows via +Add Period, or from saved data)
 let ttStatus = 'idle';        // 'idle' | 'loading' | 'ready' | 'missing_table'
 
 function ttClassOptions() {
@@ -5099,27 +5128,31 @@ function ttClassOptions() {
   return Array.from(set);
 }
 
-async function loadTimetableForClass(cls) {
-  ttClass = cls; ttStatus = 'loading';
+async function loadTimetableGrid() {
+  ttStatus = 'loading';
   renderTab();
-  const { data, error } = await sb.from('timetable').select('*')
-    .eq('owner_id', CURRENT_USER.id).eq('class_name', cls);
-  if (error) { ttStatus = 'missing_table'; ttRows = []; }
+  const [gridRes, timesRes] = await Promise.all([
+    sb.from('timetable').select('*').eq('owner_id', CURRENT_USER.id),
+    sb.from('timetable_periods').select('*').eq('owner_id', CURRENT_USER.id),
+  ]);
+  if (gridRes.error) { ttStatus = 'missing_table'; ttRows = []; }
   else {
-    ttRows = data || [];
+    ttRows = gridRes.data || [];
     ttPeriods = Math.max(7, ...ttRows.map(r => r.period), 0);
+    ttPeriodTimes = {};
+    (timesRes.data || []).forEach(r => { ttPeriodTimes[r.period] = { start_time: r.start_time, end_time: r.end_time }; });
     ttStatus = 'ready';
   }
+  await loadDMCConfig(); // pulls the editable school logo/name shown at the top of the timetable
   if (TAB === 'timetable') renderTab();
 }
 
-function ttSetClass(cls) { loadTimetableForClass(cls); }
 function ttAddPeriod() { ttPeriods += 1; renderTab(); }
 
-async function saveTimetableCell(day, period, field, value) {
-  const existing = ttRows.find(r => r.day_of_week === day && r.period === period);
+async function saveTimetableCell(className, period, field, value) {
+  const existing = ttRows.find(r => r.class_name === className && r.period === period);
   const payload = {
-    owner_id: CURRENT_USER.id, class_name: ttClass, day_of_week: day, period,
+    owner_id: CURRENT_USER.id, class_name: className, day_of_week: 'ALL', period,
     subject: field === 'subject' ? (value || null) : (existing ? existing.subject : null),
     teacher_id: field === 'teacher_id' ? (value || null) : (existing ? existing.teacher_id : null),
   };
@@ -5127,15 +5160,39 @@ async function saveTimetableCell(day, period, field, value) {
     .upsert(payload, { onConflict: 'owner_id,class_name,day_of_week,period' })
     .select().maybeSingle();
   if (error) { alert((LANG === 'ur' ? 'محفوظ نہیں ہوا: ' : 'Could not save: ') + error.message); return; }
-  const idx = ttRows.findIndex(r => r.day_of_week === day && r.period === period);
+  const idx = ttRows.findIndex(r => r.class_name === className && r.period === period);
   if (idx >= 0) ttRows[idx] = data; else ttRows.push(data);
-  logCustomActivity(`Updated timetable: ${ttClass} — ${day} period ${period}`, 'update');
+  logCustomActivity(`Updated timetable: ${className} — period ${period}`, 'update');
+}
+
+async function savePeriodTime(period, field, value) {
+  ttPeriodTimes[period] = { ...(ttPeriodTimes[period] || {}), [field]: value };
+  const payload = {
+    owner_id: CURRENT_USER.id, period,
+    start_time: ttPeriodTimes[period].start_time || null,
+    end_time: ttPeriodTimes[period].end_time || null,
+  };
+  const { error } = await sb.from('timetable_periods').upsert(payload, { onConflict: 'owner_id,period' });
+  if (error) alert((LANG === 'ur' ? 'محفوظ نہیں ہوا: ' : 'Could not save: ') + error.message);
+}
+
+// Lightweight logo upload for the Timetable header — reuses the same school
+// logo/name shown on certificates (dmcLogo/dmcSchoolName, saved via
+// saveDMCConfig), so it's one editable identity across the whole app rather
+// than a separate copy just for this screen.
+function handleTimetableLogoUpload(file) {
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    dmcLogo = e.target.result;
+    saveDMCConfig();
+    if (TAB === 'timetable') renderTab();
+  };
+  reader.readAsDataURL(file);
 }
 
 function tplTimetable() {
   const classes = ttClassOptions();
-  if (!ttClass) ttClass = classes[0] || '';
-  const dayLabel = d => LANG === 'ur' ? d.ur : d.en;
   let gridHtml;
   if (ttStatus === 'loading') {
     gridHtml = `<p style="font-size:13px;opacity:.6;">${LANG === 'ur' ? 'لوڈ ہو رہا ہے…' : 'Loading…'}</p>`;
@@ -5144,24 +5201,36 @@ function tplTimetable() {
       ? 'ٹائم ٹیبل ابھی سیٹ اپ نہیں ہوا۔ فائل کے شروع میں CONFIG کے قریب دیا گیا SQL، Supabase میں ایک بار چلائیں، پھر دوبارہ کوشش کریں۔'
       : "Timetable isn't set up yet — run the one-time SQL near CONFIG at the top of this file in your Supabase SQL editor, then try again."}</p>`;
   } else {
-    const cell = (day, period) => {
-      const row = ttRows.find(r => r.day_of_week === day.key && r.period === period);
+    const periodHeader = (p) => {
+      const times = ttPeriodTimes[p] || {};
+      return `
+        <th>
+          <div class="tt-period-label">${esc(ttPeriodLabel(p))}</div>
+          <div class="tt-period-time">
+            <input type="time" value="${esc(times.start_time || '')}" onchange="savePeriodTime(${p},'start_time',this.value)">
+            <span>${LANG === 'ur' ? 'تا' : 'to'}</span>
+            <input type="time" value="${esc(times.end_time || '')}" onchange="savePeriodTime(${p},'end_time',this.value)">
+          </div>
+        </th>`;
+    };
+    const cell = (className, period) => {
+      const row = ttRows.find(r => r.class_name === className && r.period === period);
       const teacherOptions = DATA.teachers.map(tc =>
         `<option value="${tc.id}" ${row && row.teacher_id === tc.id ? 'selected' : ''}>${esc(tc.name)}</option>`).join('');
       return `
         <td class="tt-cell">
           <input type="text" class="tt-subject" placeholder="${LANG === 'ur' ? 'مضمون' : 'Subject'}"
             value="${esc(row && row.subject ? row.subject : '')}"
-            onchange="saveTimetableCell('${day.key}',${period},'subject',this.value)">
-          <select class="tt-teacher" onchange="saveTimetableCell('${day.key}',${period},'teacher_id',this.value)">
+            onchange="saveTimetableCell('${esc(className).replace(/'/g,"\\'")}',${period},'subject',this.value)">
+          <select class="tt-teacher" onchange="saveTimetableCell('${esc(className).replace(/'/g,"\\'")}',${period},'teacher_id',this.value)">
             <option value="">${LANG === 'ur' ? '— استاد —' : '— Teacher —'}</option>
             ${teacherOptions}
           </select>
         </td>`;
     };
-    const headerRow = `<tr><th>${LANG === 'ur' ? 'پیریڈ' : 'Period'}</th>${TT_DAYS.map(d => `<th>${esc(dayLabel(d))}</th>`).join('')}</tr>`;
-    const bodyRows = Array.from({ length: ttPeriods }, (_, i) => i + 1).map(p =>
-      `<tr><td class="tt-period-num">${p}</td>${TT_DAYS.map(d => cell(d, p)).join('')}</tr>`).join('');
+    const headerRow = `<tr><th>${LANG === 'ur' ? 'جماعت' : 'Class'}</th>${Array.from({ length: ttPeriods }, (_, i) => periodHeader(i + 1)).join('')}</tr>`;
+    const bodyRows = classes.map(c =>
+      `<tr><td class="tt-class-name">${esc(c)}</td>${Array.from({ length: ttPeriods }, (_, i) => cell(c, i + 1)).join('')}</tr>`).join('');
     gridHtml = `
       <div class="reg-drag-wrap" style="overflow-x:auto;">
         <table class="tt-grid">${headerRow}${bodyRows}</table>
@@ -5174,10 +5243,15 @@ function tplTimetable() {
         <span>${LANG === 'ur' ? 'ٹائم ٹیبل' : 'Timetable'}</span>
         <button onclick="printTimetable()" style="border:none;background:var(--navy);color:var(--gold-soft);border-radius:8px;padding:5px 12px;font-size:11px;font-weight:600;">🖨️ ${esc(t.print)}</button>
       </div>
-      <div style="margin-bottom:14px;">
-        <select onchange="ttSetClass(this.value)">
-          ${classes.map(c => `<option value="${esc(c)}" ${c === ttClass ? 'selected' : ''}>${esc(c)}</option>`).join('')}
-        </select>
+      <div class="card" style="display:flex;align-items:center;gap:12px;margin-bottom:14px;">
+        <div style="flex-shrink:0;text-align:center;">
+          ${dmcLogo ? `<img src="${dmcLogo}" style="height:46px;width:46px;object-fit:contain;border-radius:8px;display:block;margin:0 auto 4px;">`
+            : `<div style="height:46px;width:46px;border-radius:8px;background:var(--line);display:flex;align-items:center;justify-content:center;font-size:9px;color:#999;margin:0 auto 4px;">${LANG === 'ur' ? 'لوگو' : 'Logo'}</div>`}
+          <input type="file" accept="image/*" style="font-size:9px;width:100px;" onchange="handleTimetableLogoUpload(this.files[0])">
+        </div>
+        <input type="text" value="${esc(dmcSchoolName === 'SCHOOL NAME' ? '' : dmcSchoolName)}" placeholder="${LANG === 'ur' ? 'اسکول کا نام' : 'School Name'}"
+          style="flex:1;font-family:Fraunces,serif;font-size:15px;font-weight:600;border:none;border-bottom:1px solid var(--line);background:transparent;padding:6px 2px;color:var(--navy);"
+          onchange="dmcSchoolName=this.value||'SCHOOL NAME'; saveDMCConfig();">
       </div>
       ${gridHtml}
     </div>`;
@@ -5185,24 +5259,38 @@ function tplTimetable() {
 
 function printTimetable() {
   if (ttStatus !== 'ready') return;
-  const dayLabel = d => LANG === 'ur' ? d.ur : d.en;
-  const rows = Array.from({ length: ttPeriods }, (_, i) => i + 1).map(p => {
-    const cells = TT_DAYS.map(d => {
-      const row = ttRows.find(r => r.day_of_week === d.key && r.period === p);
+  const classes = ttClassOptions();
+  const periodTimeStr = (p) => {
+    const times = ttPeriodTimes[p] || {};
+    return (times.start_time && times.end_time) ? `<span class="tt-print-time">${esc(times.start_time)} ${LANG === 'ur' ? 'تا' : 'to'} ${esc(times.end_time)}</span>` : '';
+  };
+  const headerRow = `<tr><th>${LANG === 'ur' ? 'جماعت' : 'Class'}</th>${Array.from({ length: ttPeriods }, (_, i) => i + 1)
+    .map(p => `<th>${esc(ttPeriodLabel(p))}${periodTimeStr(p)}</th>`).join('')}</tr>`;
+  const rows = classes.map(c => {
+    const cells = Array.from({ length: ttPeriods }, (_, i) => i + 1).map(p => {
+      const row = ttRows.find(r => r.class_name === c && r.period === p);
       const tc = row && row.teacher_id ? DATA.teachers.find(x => x.id === row.teacher_id) : null;
-      const subj = row && row.subject ? esc(row.subject) : '';
+      const subj = row && row.subject ? `<span class="tt-print-subject">${esc(row.subject)}</span>` : `<span class="tt-print-empty">—</span>`;
       return `<td>${subj}${tc ? `<span class="tt-print-teacher">${esc(tc.name)}</span>` : ''}</td>`;
     }).join('');
-    return `<tr><td class="tt-print-period">${p}</td>${cells}</tr>`;
+    return `<tr><td class="tt-print-classname">${esc(c)}</td>${cells}</tr>`;
   }).join('');
+  const schoolName = (dmcSchoolName && dmcSchoolName !== 'SCHOOL NAME') ? dmcSchoolName : (CURRENT_PROFILE.school_name || 'School');
   document.getElementById('print-area').innerHTML = `
-    <div class="tt-print">
-      <h2>${esc(CURRENT_PROFILE.school_name || 'School')}</h2>
-      <div class="tt-print-sub">${LANG === 'ur' ? 'ٹائم ٹیبل' : 'Timetable'} — ${esc(ttClass)}</div>
+    <div class="tt-print" dir="${LANG === 'ur' ? 'rtl' : 'ltr'}">
+      <div class="tt-print-head">
+        ${dmcLogo ? `<img class="tt-print-logo" src="${dmcLogo}">` : ''}
+        <div class="eyebrow">${LANG === 'ur' ? 'ٹائم ٹیبل' : 'School Timetable'}</div>
+        <h2>${esc(schoolName)}</h2>
+      </div>
       <table class="tt-print-table">
-        <thead><tr><th>${LANG === 'ur' ? 'پیریڈ' : 'Period'}</th>${TT_DAYS.map(d => `<th>${esc(dayLabel(d))}</th>`).join('')}</tr></thead>
+        <thead>${headerRow}</thead>
         <tbody>${rows}</tbody>
       </table>
+      <div class="tt-print-foot">
+        <span class="tt-print-brand">${esc(schoolName)}</span>
+        <span>${LANG === 'ur' ? 'تاریخ اجراء' : 'Printed'}: ${esc(fmtDate(new Date().toISOString()))}</span>
+      </div>
     </div>`;
   window.print();
 }
