@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Teacher ID Card Generator</title>
+<title>Service Card Generator</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap">
 <style>
@@ -25,7 +25,7 @@
   input{width:100%;padding:9px 11px;border:1px solid var(--line);border-radius:7px;font-size:14px;font-family:inherit;background:#FDFCF8;color:var(--ink);outline:none;transition:border-color .12s ease,box-shadow .12s ease;}
   input:focus{border-color:var(--gold);box-shadow:0 0 0 3px rgba(201,162,39,.15);}
 
-  .card-col{flex:0 0 344px;display:flex;flex-direction:column;align-items:center;gap:16px;position:sticky;top:24px;}
+  .card-col{flex:0 0 344px;display:flex;flex-direction:column;align-items:center;gap:12px;position:sticky;top:24px;}
 
   /* ---- ID CARD ---- */
   .id-card{
@@ -68,23 +68,40 @@
   .card-footer{position:absolute;left:16px;right:16px;bottom:11px;display:flex;align-items:flex-end;justify-content:space-between;z-index:1;}
   .card-footer .valid{font-size:8px;color:rgba(255,255,255,.62);line-height:1.5;}
   .card-footer .valid b{color:var(--gold-soft);font-size:9.5px;display:block;font-weight:700;}
-  .card-footer .qr-wrap{text-align:center;}
+  .card-footer .qr-wrap{text-align:center;transform:translateY(6px);}
   .card-footer .qr-box{background:#fff;padding:3px;border-radius:6px;box-shadow:0 2px 6px rgba(0,0,0,.25);}
   .card-footer .qr-box canvas,.card-footer .qr-box img{display:block;width:40px;height:40px;}
   .card-footer .qr-cap{font-size:6px;letter-spacing:.08em;color:rgba(255,255,255,.5);margin-top:3px;text-transform:uppercase;}
 
-  .btn{background:var(--navy);color:var(--gold-soft);border:none;padding:11px 22px;border-radius:9px;font-size:14px;font-weight:600;cursor:pointer;box-shadow:0 2px 8px rgba(15,39,64,.3);}
+  .btn{background:var(--navy);color:var(--gold-soft);border:none;padding:11px 22px;border-radius:9px;font-size:14px;font-weight:600;cursor:pointer;box-shadow:0 2px 8px rgba(15,39,64,.3);width:100%;}
   .btn:active{transform:scale(.97);}
+  .btn-outline{background:#fff;color:var(--navy);border:1.5px solid var(--navy);box-shadow:none;}
+  .btn-print{background:var(--gold);color:var(--navy-deep);}
   .file-btn{font-size:12px;}
   .hint{font-size:11px;color:#8892A0;margin-top:2px;}
 
+  /* ---- QUEUE (multiple different people, ready to print together) ---- */
+  .queue-section{max-width:920px;margin:32px auto 0;}
+  .queue-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;}
+  .queue-header h3{margin:0;font-size:15px;font-family:'Fraunces',serif;color:var(--navy);}
+  .queue-header .clear-link{font-size:12px;color:#B3261E;background:none;border:none;cursor:pointer;font-weight:600;}
+  .queue-empty{font-size:13px;color:#8892A0;background:#fff;border:1px dashed var(--line);border-radius:10px;padding:18px;text-align:center;}
+  .print-sheet{display:flex;flex-wrap:wrap;gap:16px;}
+  .queue-item{position:relative;}
+  .queue-item .id-card{width:344px;height:216px;}
+  .queue-remove{position:absolute;top:-8px;right:-8px;width:24px;height:24px;border-radius:50%;background:#B3261E;color:#fff;border:2px solid #fff;font-size:14px;line-height:1;cursor:pointer;box-shadow:0 2px 6px rgba(0,0,0,.25);z-index:5;}
+
   @media print{
-    @page{ size:85.6mm 54mm; margin:0; }
-    body{background:#fff;padding:0;}
-    body *{visibility:hidden;}
-    .id-card,.id-card *{visibility:visible;}
-    .id-card{position:absolute;top:0;left:0;width:85.6mm;height:54mm;border-radius:0;box-shadow:none;}
-    .id-card .notch{background:#fff;}
+    *{-webkit-print-color-adjust:exact !important;print-color-adjust:exact !important;color-adjust:exact !important;}
+    @page{ size:A4; margin:10mm; }
+    html,body{background:#fff;margin:0;padding:0;}
+    .form-col,.card-col,.queue-header,.queue-empty,.queue-remove{display:none !important;}
+    .wrap{display:block;max-width:none;margin:0;gap:0;}
+    .queue-section{max-width:none;margin:0;}
+    .print-sheet{display:flex !important;flex-wrap:wrap;gap:6mm;align-content:flex-start;justify-content:flex-start;}
+    .queue-item{page-break-inside:avoid;break-inside:avoid;}
+    .queue-item .id-card{width:85.6mm;height:54mm;border-radius:10px;box-shadow:none;margin:0;}
+    .queue-item .id-card .notch{background:#fff;}
   }
 </style>
 </head>
@@ -93,7 +110,7 @@
 <div class="wrap">
   <div class="form-col">
     <div class="kicker">Identity Documents</div>
-    <h2>Teacher ID Card Generator</h2>
+    <h2>Service Card Generator</h2>
 
     <div class="group" id="brandingBlock">
       <div class="group-title">Branding</div>
@@ -101,7 +118,7 @@
       <input type="file" id="schoolLogo" class="file-btn" accept="image/*">
       <label>School Name</label>
       <input type="text" id="schoolName" placeholder="e.g. Islamia School & College" value="Islamia School & College">
-      <p class="hint">Card colour is drawn automatically from the logo.</p>
+      <p class="hint">Card colour is drawn automatically from the logo. Branding stays the same for every card you add.</p>
     </div>
 
     <label>Teacher Photo</label>
@@ -130,7 +147,7 @@
         <div class="logo-ring"><img id="cardLogo" src="https://placehold.co/40x40/ffffff/0F2740?text=S"></div>
         <div class="brand-text">
           <div class="sname" id="cardSchool">Islamia School &amp; College</div>
-          <div class="tagline">Staff Identity Card</div>
+          <div class="tagline">Service Card</div>
         </div>
         <div class="role-tag">Staff</div>
       </div>
@@ -156,7 +173,17 @@
       </div>
     </div>
 
-    <button class="btn" onclick="window.print()">Print / Save as PDF</button>
+    <button class="btn" onclick="addToQueue()">+ Add to Print List</button>
+    <button class="btn btn-print" onclick="printQueue()">Print List (<span id="queueCountBtn">0</span>)</button>
+  </div>
+
+  <div class="queue-section">
+    <div class="queue-header">
+      <h3>Print List — <span id="queueCount">0</span> card(s)</h3>
+      <button class="clear-link" onclick="clearQueue()">Clear all</button>
+    </div>
+    <div class="queue-empty" id="queueEmpty">No cards added yet. Fill the form on the left and click "Add to Print List" for each teacher — everyone you add will print together on the same page(s).</div>
+    <div class="print-sheet" id="printSheet"></div>
   </div>
 </div>
 
@@ -183,16 +210,13 @@
     document.getElementById('brandingBlock').style.opacity = '.6';
   })();
 
-  function readImage(inputEl, targetImgEl){
-    inputEl.addEventListener('change', e => {
-      const file = e.target.files[0];
-      if(!file) return;
-      const reader = new FileReader();
-      reader.onload = ev => { targetImgEl.src = ev.target.result; };
-      reader.readAsDataURL(file);
-    });
-  }
-  readImage($('teacherPhoto'), $('cardPhoto'));
+  $('teacherPhoto').addEventListener('change', e => {
+    const file = e.target.files[0];
+    if(!file) return;
+    const reader = new FileReader();
+    reader.onload = ev => { $('cardPhoto').src = ev.target.result; };
+    reader.readAsDataURL(file);
+  });
 
   // Card background: instead of a manual upload, the color is derived
   // automatically from the school logo's dominant color, so the card always
@@ -226,12 +250,13 @@
       b: Math.max(0, Math.min(255, rgb.b + amt))
     };
   }
+  let currentBg = null;
   function applyLogoBackground(imgEl){
     const rgb = getDominantColor(imgEl);
     if(!rgb) return;
     const dark = shade(rgb, -40);
-    idCardEl.style.backgroundImage =
-      `linear-gradient(135deg, rgb(${rgb.r},${rgb.g},${rgb.b}), rgb(${dark.r},${dark.g},${dark.b}))`;
+    currentBg = `linear-gradient(135deg, rgb(${rgb.r},${rgb.g},${rgb.b}), rgb(${dark.r},${dark.g},${dark.b}))`;
+    idCardEl.style.backgroundImage = currentBg;
   }
   $('schoolLogo').addEventListener('change', e => {
     const file = e.target.files[0];
@@ -251,13 +276,15 @@
     return String(d.getDate()).padStart(2,'0') + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + d.getFullYear();
   }
 
-  function updateQR(){
-    const data = [
+  function currentQRData(){
+    return [
       $('name').value, $('qualification').value, $('designation').value,
       fmtDate($('joining').value), $('contact').value, $('schoolName').value
-    ].join(' | ');
+    ].join(' | ') || 'teacher';
+  }
+  function updateQR(){
     qr.clear();
-    qr.makeCode(data || 'teacher');
+    qr.makeCode(currentQRData());
   }
 
   // Academic session label (e.g. "2026–27"), computed automatically so
@@ -280,6 +307,118 @@
       updateQR();
     });
   });
+
+  // ---- PRINT LIST: each "Add to Print List" click snapshots the current
+  // card as one more DIFFERENT person, so many teachers print together on
+  // the same page(s) instead of many copies of the same one. ----
+  let entries = [];
+  let nextId = 0;
+
+  function addToQueue(){
+    entries.push({
+      id: nextId++,
+      name: $('name').value || 'Teacher Name',
+      qualification: $('qualification').value || '—',
+      designation: $('designation').value || '—',
+      joining: fmtDate($('joining').value),
+      contact: $('contact').value || '—',
+      schoolName: $('schoolName').value || '—',
+      session: sessionLabel(),
+      photoSrc: $('cardPhoto').src,
+      logoSrc: $('cardLogo').src,
+      bg: currentBg,
+      qrData: currentQRData()
+    });
+    renderQueue();
+    resetPersonFields();
+  }
+
+  function resetPersonFields(){
+    $('teacherPhoto').value = '';
+    $('name').value = '';
+    $('qualification').value = '';
+    $('designation').value = '';
+    $('joining').value = '';
+    $('contact').value = '';
+    $('cardPhoto').src = 'https://placehold.co/70x80/33475A/ffffff?text=Photo';
+    $('cardName').textContent = 'Teacher Name';
+    $('cardQual').textContent = '—';
+    $('cardDesig').textContent = '—';
+    $('cardJoining').textContent = '—';
+    $('cardContact').textContent = '—';
+    updateQR();
+    $('name').focus();
+  }
+
+  function removeEntry(id){
+    entries = entries.filter(e => e.id !== id);
+    renderQueue();
+  }
+
+  function clearQueue(){
+    if(entries.length && !confirm('Remove all cards from the print list?')) return;
+    entries = [];
+    renderQueue();
+  }
+
+  function cardInnerMarkup(e, suffix){
+    return `
+      <span class="notch"></span>
+      <div class="card-top">
+        <div class="logo-ring"><img src="${e.logoSrc}"></div>
+        <div class="brand-text">
+          <div class="sname">${e.schoolName}</div>
+          <div class="tagline">Service Card</div>
+        </div>
+        <div class="role-tag">Staff</div>
+      </div>
+      <div class="card-rule"></div>
+      <div class="card-body">
+        <img class="photo" src="${e.photoSrc}">
+        <div class="card-main">
+          <div class="cname">${e.name}</div>
+          <div class="info-grid">
+            <div class="full"><span class="lbl">Qualification</span><b>${e.qualification}</b></div>
+            <div><span class="lbl">Designation</span><b>${e.designation}</b></div>
+            <div><span class="lbl">Joined</span><b>${e.joining}</b></div>
+            <div class="full"><span class="lbl">Contact</span><b>${e.contact}</b></div>
+          </div>
+        </div>
+      </div>
+      <div class="card-footer">
+        <div class="valid">Session<b>${e.session}</b></div>
+        <div class="qr-wrap">
+          <div class="qr-box" id="qrBox${suffix}"></div>
+          <div class="qr-cap">Scan to verify</div>
+        </div>
+      </div>`;
+  }
+
+  function renderQueue(){
+    const sheet = $('printSheet');
+    sheet.innerHTML = entries.map(e => {
+      const suffix = '-q' + e.id;
+      const bgStyle = e.bg ? ` style="background-image:${e.bg}"` : '';
+      return `<div class="queue-item">
+        <button class="queue-remove" onclick="removeEntry(${e.id})" title="Remove">×</button>
+        <div class="id-card"${bgStyle}>${cardInnerMarkup(e, suffix)}</div>
+      </div>`;
+    }).join('');
+
+    entries.forEach(e => {
+      const box = $('qrBox-q' + e.id);
+      if(box) new QRCode(box, { text: e.qrData, width: 44, height: 44 });
+    });
+
+    $('queueCount').textContent = entries.length;
+    $('queueCountBtn').textContent = entries.length;
+    $('queueEmpty').style.display = entries.length ? 'none' : 'block';
+  }
+
+  function printQueue(){
+    if(entries.length === 0) addToQueue();
+    window.print();
+  }
 </script>
 </body>
 </html>
