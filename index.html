@@ -530,6 +530,34 @@ html, body{overscroll-behavior:none;}
 </script>
 <!-- ==================================================================================== -->
 
+<!-- ============================================================================
+     ONE-TIME SETUP for Activity Log — run this once in the Supabase SQL editor
+     (Project → SQL Editor → New query → paste → Run). Safe to re-run; it only
+     creates things if they don't already exist yet.
+
+  create table if not exists activity_log (
+    id uuid primary key default gen_random_uuid(),
+    owner_id uuid not null references auth.users(id) on delete cascade,
+    actor_email text,
+    action text not null,          -- 'insert' | 'update' | 'upsert' | 'delete'
+    table_name text not null,      -- which module: students, fee_payments, etc.
+    description text not null,     -- human-readable summary, e.g. "Added student: Ali Khan"
+    created_at timestamptz not null default now()
+  );
+  create index if not exists activity_log_owner_created_idx
+    on activity_log (owner_id, created_at desc);
+
+  alter table activity_log enable row level security;
+
+  -- Each school can only see and write its own log rows.
+  drop policy if exists "activity_log_select_own" on activity_log;
+  create policy "activity_log_select_own" on activity_log
+    for select using (owner_id = auth.uid());
+  drop policy if exists "activity_log_insert_own" on activity_log;
+  create policy "activity_log_insert_own" on activity_log
+    for insert with check (owner_id = auth.uid());
+     ============================================================================ -->
+
 <div id="loading" class="loading">Loading…</div>
 <div id="offline-banner" style="display:none;position:fixed;top:0;left:0;right:0;z-index:9999;background:var(--navy-deep);color:#fff;font-size:12px;font-weight:600;text-align:center;padding:6px 10px;"></div>
 <div id="auth-root"></div>
@@ -1373,8 +1401,72 @@ function withTimeout(promise, ms = 6000) {
     new Promise((resolve) => setTimeout(() => resolve({ data: null, error: { message: 'TypeError: Failed to fetch (timed out)' } }), ms))
   ]);
 }
+// ---------------- Activity Log ----------------
+// Fire-and-forget audit trail. Hooked once here inside offlineWrite instead of
+// at each of the ~20 call sites, so every insert/update/upsert/delete that
+// already flows through offlineWrite is covered automatically, present and
+// future. Deliberately NOT awaited by callers and wrapped so it can never
+// throw or slow down / block the real save — if the activity_log table
+// hasn't been created yet (see the ONE-TIME SETUP comment near CONFIG above),
+// or the device is offline, this silently does nothing.
+const ACTIVITY_LOG_TABLES = new Set([
+  'students', 'fee_payments', 'teachers', 'salary_payments',
+  'transactions', 'admission_register', 'class_logins'
+  // teacher_attendance / holidays intentionally excluded — too high-volume
+  // (marked daily) to be a useful audit trail and would drown out everything else.
+]);
+function describeActivity(table, action, payload, baseRow) {
+  const row = payload || baseRow || {};
+  const verb = action === 'insert' ? 'Added' : action === 'delete' ? 'Deleted' : action === 'upsert' ? 'Recorded' : 'Updated';
+  if (table === 'students') {
+    const name = row.name || (baseRow && baseRow.name) || 'student';
+    return `${verb} student: ${name}${row.class_name ? ' (' + row.class_name + ')' : ''}`;
+  }
+  if (table === 'fee_payments') {
+    const sid = row.student_id || (baseRow && baseRow.student_id);
+    const s = DATA.students.find(x => x.id === sid);
+    const month = row.month || (baseRow && baseRow.month);
+    return `${verb} fee payment: ${s ? s.name : 'student'}${month ? ' — ' + monthLabel(month) : ''}${row.amount != null ? ' — Rs ' + fmt(row.amount) : ''}`;
+  }
+  if (table === 'teachers') {
+    const name = row.name || (baseRow && baseRow.name) || 'teacher';
+    return `${verb} teacher: ${name}`;
+  }
+  if (table === 'salary_payments') {
+    const tid = row.teacher_id || (baseRow && baseRow.teacher_id);
+    const tc = DATA.teachers.find(x => x.id === tid);
+    const month = row.month || (baseRow && baseRow.month);
+    return `${verb} salary payment: ${tc ? tc.name : 'teacher'}${month ? ' — ' + monthLabel(month) : ''}${row.amount != null ? ' — Rs ' + fmt(row.amount) : ''}`;
+  }
+  if (table === 'transactions') {
+    return `${verb} ${row.type || ''} transaction: ${row.category || ''}${row.amount != null ? ' — Rs ' + fmt(row.amount) : ''}`.trim();
+  }
+  if (table === 'admission_register') {
+    const name = row.student_name || (baseRow && baseRow.student_name) || 'entry';
+    return `${verb} admission register entry: ${name}`;
+  }
+  if (table === 'class_logins') {
+    const cls = row.class_name || (baseRow && baseRow.class_name) || '';
+    return `${verb} class login${cls ? ': ' + cls : ''}`;
+  }
+  return `${verb} ${table} record`;
+}
+function logActivity(table, action, payload, id, baseRow) {
+  if (!ACTIVITY_LOG_TABLES.has(table)) return;
+  if (!navigator.onLine || !CURRENT_USER) return; // best-effort only — no offline queueing for log entries
+  try {
+    const description = describeActivity(table, action, payload, baseRow);
+    sb.from('activity_log').insert({
+      owner_id: CURRENT_USER.id,
+      actor_email: CURRENT_USER.email || null,
+      action, table_name: table, description
+    }).then(() => {}).catch(() => {}); // table may not exist yet — never let this break a real save
+  } catch (e) { /* never let logging break the actual save */ }
+}
+
 async function offlineWrite({ table, action, payload, id, onConflict, baseRow, run, optimisticApply }) {
   optimisticApply();
+  logActivity(table, action, payload, id, baseRow);
   if (navigator.onLine) {
     try {
       const result = await run();
@@ -3117,7 +3209,15 @@ function openSettings() {
     </div>
     <div style="margin-top:18px;padding-top:16px;border-top:1px solid var(--line);">
       <p style="font-size:11px;opacity:.6;margin:0 0 8px;">${esc(t.exportHint)}</p>
-      <button class="btn-ghost" style="width:100%;" onclick="exportBackup()">⬇ ${esc(t.exportBackup)}</button>
+      <button class="btn-ghost" style="width:100%;margin-bottom:8px;" onclick="exportBackup()">⬇ ${esc(t.exportBackup)}</button>
+      <button class="btn-ghost" style="width:100%;" onclick="exportFullBackupJSON()">🗄 ${LANG==='ur' ? 'مکمل بیک اپ (بحالی کے لیے)' : 'Full Backup (for Restore)'}</button>
+      <p style="font-size:11px;opacity:.55;margin:8px 0 6px;">${LANG==='ur' ? 'یہ فائل بعد میں تمام ڈیٹا واپس لانے کے لیے استعمال ہو سکتی ہے۔' : 'Keep this file safe — it can bring all your data back later, exactly as it was.'}</p>
+      <input type="file" id="restore-file-input" accept="application/json" style="display:none;" onchange="handleRestoreFileSelected(this)">
+      <button class="btn-ghost" style="width:100%;" onclick="document.getElementById('restore-file-input').click()">⤴ ${LANG==='ur' ? 'بیک اپ سے بحال کریں' : 'Restore from Backup'}</button>
+      <div id="restore-msg" style="margin-top:8px;"></div>
+    </div>
+    <div style="margin-top:18px;padding-top:16px;border-top:1px solid var(--line);">
+      <button class="btn-ghost" style="width:100%;" onclick="openActivityLog()">📋 ${LANG==='ur' ? 'سرگرمی لاگ دیکھیں' : 'View Activity Log'}</button>
     </div>
     <div style="margin-top:18px;padding-top:16px;border-top:1px solid var(--line);">
       <p style="font-size:11px;opacity:.6;margin:0 0 8px;">${LANG==='ur' ? 'آئی ڈی کارڈز پرنٹ کریں' : 'Print ID Cards'}</p>
@@ -3321,6 +3421,134 @@ async function saveDiaryPassword() {
   if (error) { msg.innerHTML = `<div class="err">${esc(friendlyErrorMsg(error))}</div>`; return; }
   CURRENT_PROFILE.diary_password = pw;
   msg.innerHTML = `<div class="ok">${esc(t.saved)}</div>`;
+}
+
+// Generic activity-log entry not tied to one of the ACTIVITY_LOG_TABLES rows
+// above (e.g. "downloaded a backup", "restored a backup") — same best-effort,
+// never-throws behavior as logActivity().
+function logCustomActivity(description, action) {
+  if (!navigator.onLine || !CURRENT_USER) return;
+  try {
+    sb.from('activity_log').insert({
+      owner_id: CURRENT_USER.id, actor_email: CURRENT_USER.email || null,
+      action: action || 'other', table_name: 'backup', description
+    }).then(() => {}).catch(() => {});
+  } catch (e) { /* never let logging break the actual action */ }
+}
+
+async function openActivityLog() {
+  showModal(LANG === 'ur' ? 'سرگرمی لاگ' : 'Activity Log', `<div id="activity-log-body" style="font-size:13px;opacity:.7;">${LANG === 'ur' ? 'لوڈ ہو رہا ہے…' : 'Loading…'}</div>`);
+  const { data, error } = await sb.from('activity_log').select('*')
+    .eq('owner_id', CURRENT_USER.id).order('created_at', { ascending: false }).limit(200);
+  const body = document.getElementById('activity-log-body');
+  if (!body) return; // modal was closed before this resolved
+  if (error) {
+    body.innerHTML = `<p style="font-size:13px;opacity:.7;">${LANG === 'ur'
+      ? 'سرگرمی لاگ ابھی سیٹ اپ نہیں ہوا۔ فائل کے شروع میں CONFIG کے قریب دیا گیا SQL، Supabase میں ایک بار چلائیں۔'
+      : "Activity Log isn't set up yet — run the one-time SQL near CONFIG at the top of this file in your Supabase SQL editor, then try again."}</p>`;
+    return;
+  }
+  if (!data || !data.length) {
+    body.innerHTML = `<p style="font-size:13px;opacity:.6;">${LANG === 'ur' ? 'ابھی تک کوئی سرگرمی ریکارڈ نہیں ہوئی۔' : 'No activity recorded yet.'}</p>`;
+    return;
+  }
+  body.innerHTML = `<div style="max-height:60vh;overflow-y:auto;">${data.map(r => `
+    <div style="padding:9px 0;border-bottom:1px solid var(--line);">
+      <div style="font-size:13px;">${esc(r.description)}</div>
+      <div style="font-size:11px;opacity:.55;margin-top:2px;">${esc(r.actor_email || '')}${r.actor_email ? ' · ' : ''}${new Date(r.created_at).toLocaleString(LANG === 'ur' ? 'ur-PK' : 'en-US')}</div>
+    </div>`).join('')}</div>`;
+}
+
+// ---------------- Full Backup (JSON) & Restore ----------------
+// exportBackup() below (Excel) is a human-readable report — great for
+// printing/sharing, but lossy (rounded to display columns, no row IDs), so
+// it can't safely be fed back in. This JSON export keeps every raw row from
+// every table, IDs included, so it can be restored later without guesswork.
+function exportFullBackupJSON() {
+  const payload = {
+    version: 1,
+    exported_at: new Date().toISOString(),
+    school_name: CURRENT_PROFILE.school_name || '',
+    profile: {
+      school_name: CURRENT_PROFILE.school_name || null,
+      school_name_ur: CURRENT_PROFILE.school_name_ur || null,
+      school_code: CURRENT_PROFILE.school_code || null,
+      diary_password: CURRENT_PROFILE.diary_password || null
+    },
+    data: {
+      students: DATA.students, fee_payments: DATA.feePayments, teachers: DATA.teachers,
+      salary_payments: DATA.salaryPayments, transactions: DATA.transactions,
+      admission_register: DATA.admissionRegister, teacher_attendance: DATA.teacherAttendance,
+      holidays: DATA.holidays, class_logins: DATA.classLogins, student_attendance: DATA.studentAttendance
+    }
+  };
+  const blob = new Blob([JSON.stringify(payload)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const schoolPart = (CURRENT_PROFILE.school_name || 'school').replace(/[^a-z0-9]+/gi, '_');
+  a.href = url; a.download = `${schoolPart}_full_backup_${fmtDate(todayISO())}.json`;
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
+  logCustomActivity('Downloaded a full backup', 'export');
+}
+
+// Holds the parsed backup while the user reviews the summary and confirms —
+// kept in memory only (never inlined into an onclick attribute), since a
+// backup can be many thousands of rows.
+let PENDING_RESTORE_DATA = null;
+async function handleRestoreFileSelected(input) {
+  const file = input.files && input.files[0];
+  input.value = ''; // so picking the same file again later still fires 'change'
+  if (!file) return;
+  const msg = document.getElementById('restore-msg');
+  msg.innerHTML = `<div style="font-size:12px;opacity:.7;">${LANG === 'ur' ? 'فائل پڑھی جا رہی ہے…' : 'Reading file…'}</div>`;
+  let parsed;
+  try { parsed = JSON.parse(await file.text()); } catch (e) { parsed = null; }
+  if (!parsed || typeof parsed.data !== 'object') {
+    msg.innerHTML = `<div class="err">${LANG === 'ur' ? 'یہ ایک درست بیک اپ فائل نہیں ہے۔' : 'This does not look like a valid backup file.'}</div>`;
+    return;
+  }
+  PENDING_RESTORE_DATA = parsed;
+  const counts = Object.entries(parsed.data)
+    .map(([k, v]) => `${k.replace(/_/g, ' ')}: ${Array.isArray(v) ? v.length : 0}`).join(' · ');
+  msg.innerHTML = `
+    <div style="font-size:12px;background:var(--surface2);padding:10px;border-radius:8px;">
+      <div style="margin-bottom:8px;">${LANG === 'ur' ? 'اس بیک اپ میں شامل ہے' : 'This backup contains'}: ${esc(counts)}</div>
+      <div style="margin-bottom:10px;opacity:.7;">${LANG === 'ur'
+        ? 'بحالی سے موجودہ ریکارڈ نہیں مٹیں گے — صرف شامل یا اپڈیٹ ہوں گے۔'
+        : 'Restoring will not delete any current records — it only adds new ones and updates matching ones by ID.'}</div>
+      <button class="btn-primary" style="width:100%;" onclick="confirmRestoreBackup()">${LANG === 'ur' ? 'تصدیق کریں اور بحال کریں' : 'Confirm & Restore'}</button>
+    </div>`;
+}
+async function confirmRestoreBackup() {
+  const parsed = PENDING_RESTORE_DATA;
+  const msg = document.getElementById('restore-msg');
+  if (!parsed) return;
+  msg.innerHTML = `<div style="font-size:12px;opacity:.7;">${LANG === 'ur' ? 'بحال کیا جا رہا ہے…' : 'Restoring…'}</div>`;
+  const TABLES = ['students', 'fee_payments', 'teachers', 'salary_payments', 'transactions',
+    'admission_register', 'teacher_attendance', 'holidays', 'class_logins', 'student_attendance'];
+  const failed = [];
+  for (const key of TABLES) {
+    const rows = parsed.data[key];
+    if (!Array.isArray(rows) || !rows.length) continue;
+    // Force ownership onto the account currently restoring — protects against
+    // a backup that was shared between schools, or restored onto a new login.
+    const scoped = rows.map(r => ({ ...r, owner_id: CURRENT_USER.id }));
+    // Chunked so a large school's full history doesn't hit Supabase's
+    // per-request row/size limits in one go.
+    for (let i = 0; i < scoped.length; i += 500) {
+      const { error } = await sb.from(key).upsert(scoped.slice(i, i + 500), { onConflict: 'id' });
+      if (error) { failed.push(key); break; }
+    }
+  }
+  PENDING_RESTORE_DATA = null;
+  await loadAllData(); renderTab();
+  if (failed.length) {
+    msg.innerHTML = `<div class="err">${(LANG === 'ur' ? 'کچھ حصے بحال نہیں ہو سکے: ' : 'Some parts could not be restored: ') + esc(failed.join(', '))}</div>`;
+  } else {
+    msg.innerHTML = `<div class="ok">${LANG === 'ur' ? 'بحالی مکمل ہو گئی۔' : 'Restore complete.'}</div>`;
+    logCustomActivity('Restored data from a backup file', 'restore');
+  }
 }
 
 function exportBackup() {
