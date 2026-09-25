@@ -53,11 +53,13 @@
     <label>Student Photo</label>
     <input type="file" id="studentPhoto" class="file-btn" accept="image/*">
 
-    <label>School Logo</label>
-    <input type="file" id="schoolLogo" class="file-btn" accept="image/*">
+    <div id="brandingBlock">
+      <label>School Logo</label>
+      <input type="file" id="schoolLogo" class="file-btn" accept="image/*">
 
-    <label>School Name</label>
-    <input type="text" id="schoolName" placeholder="e.g. Islamia School & College" value="Islamia School & College">
+      <label>School Name</label>
+      <input type="text" id="schoolName" placeholder="e.g. Islamia School & College" value="Islamia School & College">
+    </div>
 
     <label>Student Name</label>
     <input type="text" id="name" placeholder="Full name">
@@ -99,8 +101,25 @@
 </div>
 
 <script>
+  // ---- PER-CLIENT SCHOOL CONFIG ----
+  // Set this once per deployed school (e.g. inject from Supabase school_settings
+  // row at page load, or hardcode when building each client's copy). If not set,
+  // fields stay manually editable — same file, works for every school either way.
+  // window.SCHOOL_CONFIG = { name: 'Islamia School & College', logo: 'https://.../logo.png' };
+
   const $ = id => document.getElementById(id);
   let qr = new QRCode($('qrBox'), { text: 'student', width: 44, height: 44 });
+
+  (function applySchoolConfig(){
+    const cfg = window.SCHOOL_CONFIG;
+    if (!cfg) return;
+    if (cfg.name) { $('schoolName').value = cfg.name; $('cardSchool').textContent = cfg.name; }
+    if (cfg.logo) { $('cardLogo').src = cfg.logo; }
+    // Lock branding fields so staff at each school can't accidentally change it
+    $('schoolName').readOnly = true;
+    $('schoolLogo').disabled = true;
+    document.getElementById('brandingBlock').style.opacity = '.6';
+  })();
 
   function readImage(inputEl, targetImgEl){
     inputEl.addEventListener('change', e => {
