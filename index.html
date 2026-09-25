@@ -222,6 +222,23 @@ html, body{overscroll-behavior:none;}
      native overflow-x:auto was not reliably engaging on some devices. */
   .reg-drag-wrap{touch-action:none;cursor:grab;overscroll-behavior:contain;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;}
   .reg-drag-wrap.rb-dragging{cursor:grabbing;}
+  /* Plain native-scroll wrapper for tables whose cells are mostly inputs/
+     selects (e.g. Timetable) — .reg-drag-wrap's touch-action:none relies on
+     the JS drag-scroll to move the table, but that JS deliberately ignores
+     touches starting on an INPUT/SELECT/TEXTAREA (so tapping a cell to edit
+     it doesn't fight a drag). A grid that's almost entirely input/select
+     cells then has nowhere left to grab, and with native scroll disabled by
+     touch-action:none, the whole table gets stuck — no scroll in either
+     direction. This class keeps native overflow-x:auto touch scrolling
+     enabled instead, which works fine even when the touch starts on an
+     input; it's included in the same scroll-position capture/restore below.*/
+  /* overscroll-behavior-x:contain stops the edge-of-scroll bounce from
+     fighting the page's own vertical scroll mid-drag, and touch-action:pan-x
+     tells the browser up front this wrapper only ever pans horizontally so
+     it can start native momentum scrolling immediately instead of waiting a
+     few frames to decide the gesture's direction — together this is what
+     was read as "atak atak" (catching, then jumping) while dragging. */
+  .tt-scroll-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;overscroll-behavior-x:contain;touch-action:pan-x;}
   .regbook-scroll-track{position:relative;height:26px;background:#F0EBDA;border-radius:999px;margin-bottom:8px;}
   .regbook-scroll-thumb{position:absolute;top:2px;left:0;height:22px;min-width:40px;background:var(--navy);color:var(--gold-soft);border-radius:999px;box-shadow:0 2px 8px rgba(15,39,64,.25);display:flex;align-items:center;justify-content:center;font-size:13px;touch-action:none;cursor:grab;}
   .regbook-scroll-thumb:active{cursor:grabbing;}
@@ -305,8 +322,12 @@ html, body{overscroll-behavior:none;}
 
   #print-area{display:none;}
 
-  /* ---- Timetable grid (on-screen) ---- */
-  .tt-grid{border-collapse:collapse;width:100%;}
+  /* ---- Timetable grid (on-screen) ----
+     table-layout:fixed + an explicit <colgroup> (see ttColGroup in the JS)
+     means column widths come from fixed numbers instead of being
+     recalculated from cell content (inputs/selects) on every frame — that
+     per-frame recalculation was the other half of the scroll stutter. */
+  .tt-grid{border-collapse:collapse;table-layout:fixed;}
   .tt-grid th,.tt-grid td{border:1px solid var(--line);padding:4px;}
   .tt-grid th{background:var(--cream);font-size:11px;white-space:nowrap;}
   .tt-class-name{font-weight:700;text-align:center;background:var(--cream);font-size:12px;white-space:nowrap;}
@@ -314,9 +335,14 @@ html, body{overscroll-behavior:none;}
   .tt-period-time{display:flex;align-items:center;gap:3px;justify-content:center;}
   .tt-period-time input[type="time"]{width:auto;padding:2px;font-size:10px;min-width:64px;}
   .tt-period-time span{font-size:9px;opacity:.6;}
-  .tt-cell{min-width:110px;vertical-align:top;}
+  .tt-cell{vertical-align:top;}
   .tt-subject{width:100%;border:none;background:transparent;font-size:12px;padding:3px 2px;display:block;box-sizing:border-box;}
   .tt-teacher{width:100%;border:none;background:transparent;font-size:11px;padding:2px;box-sizing:border-box;}
+  /* The optional "Break" column spliced between two periods (school-editable —
+     see "Break after which period?" below the grid). */
+  .tt-break-col{background:#FBF1DA;text-align:center;vertical-align:middle;}
+  .tt-break-col .tt-break-label{font-weight:700;font-size:10.5px;color:var(--rust);writing-mode:vertical-rl;text-orientation:mixed;}
+  .tt-break-th{background:#FBF1DA !important;}
 
   @media print {
     *{-webkit-print-color-adjust:exact;print-color-adjust:exact;}
@@ -343,7 +369,7 @@ html, body{overscroll-behavior:none;}
     .thermal-receipt .tr-dash{border-top:1px dashed #000;margin:5px 0;}
 
     /* ---- Timetable print ---- */
-    .tt-print{font-family:Inter,sans-serif;max-width:720px;margin:0 auto;}
+    .tt-print{font-family:Inter,sans-serif;width:100%;margin:0;}
     .tt-print[dir="rtl"]{font-family:'Noto Nastaliq Urdu',serif;}
     .tt-print-head{background:#0F2740;background-image:linear-gradient(135deg,#0F2740 0%,#0A1B2C 100%);border-radius:12px 12px 0 0;padding:20px 24px 16px;position:relative;overflow:hidden;}
     .tt-print-head::after{content:'';position:absolute;right:-30px;top:-30px;width:130px;height:130px;border-radius:999px;background:#C9A227;opacity:.10;}
@@ -360,6 +386,8 @@ html, body{overscroll-behavior:none;}
     .tt-print-subject{font-weight:600;}
     .tt-print-teacher{display:block;font-size:9.5px;color:#8A6200;margin-top:2px;font-weight:500;}
     .tt-print-empty{color:#C7C0A8;}
+    .tt-print-break-th{background:#FBF1DA !important;color:#8A6200;}
+    .tt-print-break-td{background:#FCF6E6 !important;font-weight:700;font-size:10px;color:#8A6200;}
     .tt-print-foot{display:flex;justify-content:space-between;align-items:center;padding:10px 24px;background:#FAF6EC;border:1px solid #E7E0CE;border-top:2px solid #C9A227;border-radius:0 0 12px 12px;font-size:10px;color:#555;}
     .tt-print-foot .tt-print-brand{font-family:Fraunces,serif;color:#0F2740;font-weight:600;}
 
@@ -620,6 +648,24 @@ html, body{overscroll-behavior:none;}
   alter table timetable_periods enable row level security;
   drop policy if exists "timetable_periods_all_own" on timetable_periods;
   create policy "timetable_periods_all_own" on timetable_periods
+    for all using (owner_id = auth.uid()) with check (owner_id = auth.uid());
+
+  -- ---- Timetable settings (per-school: which classes to show as rows, how
+  -- many periods, and where the break falls — schools differ a lot here:
+  -- some only go up to 5th/8th/10th, some to 12th, and some take their break
+  -- after period 4, others after period 5, etc.) ----
+  create table if not exists timetable_settings (
+    owner_id uuid primary key references auth.users(id) on delete cascade,
+    classes jsonb,                    -- ordered array of class names to show; null/empty = use the default list
+    periods_count int not null default 7,
+    break_after int not null default 0,   -- 0 = no break column; else the period number the break follows
+    break_start text,
+    break_end text,
+    updated_at timestamptz not null default now()
+  );
+  alter table timetable_settings enable row level security;
+  drop policy if exists "timetable_settings_all_own" on timetable_settings;
+  create policy "timetable_settings_all_own" on timetable_settings
     for all using (owner_id = auth.uid()) with check (owner_id = auth.uid());
      ============================================================================ -->
 
@@ -2875,7 +2921,6 @@ function renderTab() {
   else if (TAB==='classLogins') main.innerHTML = tplClassLogins();
   else if (TAB==='timetable') {
     main.innerHTML = tplTimetable();
-    initRegBookScroll();
     _regBookRestoreScroll();
     if (ttStatus === 'idle') loadTimetableGrid();
   }
@@ -5111,6 +5156,12 @@ function tplClassLogins() {
 // critical Promise.all) so the rest of the app keeps working even before the
 // one-time SQL setup (see CONFIG comment near the top of this file) has been
 // run in Supabase.
+//
+// Schools differ a lot here — some only go up to 5th, some to 8th/10th/12th,
+// period counts vary (7 vs 8), and where the break falls varies too (after
+// period 4 vs after period 5) — so which classes show as rows, how many
+// period columns there are, and the break position are all editable per
+// school and saved in timetable_settings, instead of being hardcoded.
 const TT_ORDINAL_EN = ['1st','2nd','3rd','4th','5th','6th','7th','8th','9th','10th','11th','12th'];
 const TT_ORDINAL_UR = ['پہلا','دوسرا','تیسرا','چوتھا','پانچواں','چھٹا','ساتواں','آٹھواں','نواں','دسواں','گیارہواں','بارہواں'];
 function ttPeriodLabel(n) {
@@ -5119,35 +5170,139 @@ function ttPeriodLabel(n) {
 }
 let ttRows = [];              // all timetable rows for this school: {id, class_name, period, subject, teacher_id}
 let ttPeriodTimes = {};       // period number -> {start_time, end_time}
-let ttPeriods = 7;            // number of period columns shown (grows via +Add Period, or from saved data)
+let ttPeriods = 7;            // number of period columns shown (school-editable, saved in timetable_settings)
+let ttClasses = null;         // null = use the default class list (CLASS_OPTIONS ∪ any class names already on students);
+                               // otherwise an explicit, school-chosen list of classes to show as rows
+let ttBreakAfter = 0;         // 0 = no break column; otherwise the period number the break is shown right after
+let ttBreakStart = '';
+let ttBreakEnd = '';
 let ttStatus = 'idle';        // 'idle' | 'loading' | 'ready' | 'missing_table'
 
-function ttClassOptions() {
+function ttDefaultClassOptions() {
   const set = new Set(CLASS_OPTIONS);
   DATA.students.forEach(s => { if (s.class_name) set.add(s.class_name); });
   return Array.from(set);
+}
+function ttClassOptions() {
+  return (ttClasses && ttClasses.length) ? ttClasses : ttDefaultClassOptions();
+}
+
+// The columns to render left-to-right: period 1..ttPeriods, with a single
+// non-editable "Break" column spliced in right after period `ttBreakAfter`
+// (if set). The header, body rows, colgroup and the printed version all walk
+// this same list so they never fall out of sync with each other.
+function ttColumns() {
+  const cols = [];
+  for (let p = 1; p <= ttPeriods; p++) {
+    cols.push({ type: 'period', period: p });
+    if (ttBreakAfter === p) cols.push({ type: 'break' });
+  }
+  return cols;
 }
 
 async function loadTimetableGrid() {
   ttStatus = 'loading';
   renderTab();
-  const [gridRes, timesRes] = await Promise.all([
+  const [gridRes, timesRes, settingsRes] = await Promise.all([
     sb.from('timetable').select('*').eq('owner_id', CURRENT_USER.id),
     sb.from('timetable_periods').select('*').eq('owner_id', CURRENT_USER.id),
+    sb.from('timetable_settings').select('*').eq('owner_id', CURRENT_USER.id).maybeSingle(),
   ]);
   if (gridRes.error) { ttStatus = 'missing_table'; ttRows = []; }
   else {
     ttRows = gridRes.data || [];
-    ttPeriods = Math.max(7, ...ttRows.map(r => r.period), 0);
     ttPeriodTimes = {};
     (timesRes.data || []).forEach(r => { ttPeriodTimes[r.period] = { start_time: r.start_time, end_time: r.end_time }; });
+    const settings = (settingsRes && settingsRes.data) || null;
+    if (settings) {
+      ttPeriods = settings.periods_count || 7;
+      ttClasses = Array.isArray(settings.classes) ? settings.classes : null;
+      ttBreakAfter = settings.break_after || 0;
+      ttBreakStart = settings.break_start || '';
+      ttBreakEnd = settings.break_end || '';
+    } else {
+      // No saved settings yet (schools that were already using the timetable
+      // before this feature existed) — fall back to the old auto-detect
+      // behaviour so their existing grid still shows exactly as before.
+      ttPeriods = Math.max(7, ...ttRows.map(r => r.period), 0);
+      ttClasses = null;
+      ttBreakAfter = 0;
+      ttBreakStart = ''; ttBreakEnd = '';
+    }
     ttStatus = 'ready';
   }
   await loadDMCConfig(); // pulls the editable school logo/name shown at the top of the timetable
   if (TAB === 'timetable') renderTab();
 }
 
-function ttAddPeriod() { ttPeriods += 1; renderTab(); }
+async function saveTimetableSettings() {
+  const payload = {
+    owner_id: CURRENT_USER.id,
+    classes: ttClasses,
+    periods_count: ttPeriods,
+    break_after: ttBreakAfter,
+    break_start: ttBreakStart || null,
+    break_end: ttBreakEnd || null,
+  };
+  const { error } = await sb.from('timetable_settings').upsert(payload, { onConflict: 'owner_id' });
+  if (error) alert((LANG === 'ur' ? 'محفوظ نہیں ہوا: ' : 'Could not save: ') + error.message);
+}
+
+function ttAddPeriod() { ttPeriods += 1; saveTimetableSettings(); renderTab(); }
+function ttRemovePeriod() {
+  if (ttPeriods <= 1) return;
+  if (ttBreakAfter >= ttPeriods) ttBreakAfter = 0; // don't leave the break dangling past the last period
+  ttPeriods -= 1;
+  saveTimetableSettings();
+  renderTab();
+}
+function ttSetBreakAfter(value) {
+  ttBreakAfter = Math.max(0, Math.min(ttPeriods, parseInt(value, 10) || 0));
+  saveTimetableSettings();
+  renderTab();
+}
+function ttSaveBreakTime(field, value) {
+  if (field === 'start') ttBreakStart = value; else ttBreakEnd = value;
+  saveTimetableSettings();
+}
+
+// "Manage Classes" — lets a school hide the class rows it doesn't have
+// (a school that only goes up to 5th, say, unticks 6th–12th) without
+// touching CLASS_OPTIONS itself, which every other tab in the app still
+// relies on for its own class dropdowns.
+function openManageTtClasses() {
+  const current = ttClassOptions();
+  const allOptions = Array.from(new Set([...CLASS_OPTIONS, ...current]));
+  showModal(LANG === 'ur' ? 'جماعتیں منتخب کریں' : 'Manage Classes', `
+    <p style="font-size:12px;opacity:.65;margin:-4px 0 12px;">${LANG === 'ur'
+      ? 'صرف وہ جماعتیں منتخب کریں جو آپ کے اسکول میں موجود ہیں۔'
+      : 'Tick only the classes that exist at your school — this only changes what shows on the Timetable.'}</p>
+    <div id="tt-class-list" style="display:flex;flex-direction:column;gap:2px;max-height:44vh;overflow-y:auto;margin-bottom:12px;">
+      ${allOptions.map(c => `
+        <label style="display:flex;align-items:center;gap:8px;margin:0;padding:7px 4px;border-bottom:1px solid var(--line);">
+          <input type="checkbox" value="${esc(c)}" ${current.includes(c) ? 'checked' : ''} style="width:auto;">
+          <span style="font-size:13px;">${esc(c)}</span>
+        </label>`).join('')}
+    </div>
+    <label><span>${LANG === 'ur' ? 'نئی جماعت شامل کریں (اختیاری)' : 'Add a custom class (optional)'}</span>
+      <input id="tt-custom-class" placeholder="${LANG === 'ur' ? 'مثلاً منٹیسوری' : 'e.g. Montessori'}">
+    </label>
+    <div class="flexgap">
+      <button class="btn-ghost" onclick="closeModal()">${esc(t.cancel)}</button>
+      <button class="btn-primary" style="flex:1" onclick="submitManageTtClasses()">${esc(t.save)}</button>
+    </div>
+  `);
+}
+
+function submitManageTtClasses() {
+  const checked = Array.from(document.querySelectorAll('#tt-class-list input[type="checkbox"]:checked')).map(el => el.value);
+  const custom = (document.getElementById('tt-custom-class').value || '').trim();
+  if (custom && !checked.includes(custom)) checked.push(custom);
+  ttClasses = checked; // an empty selection just falls back to the default list via ttClassOptions()
+  saveTimetableSettings();
+  closeModal();
+  renderTab();
+}
 
 async function saveTimetableCell(className, period, field, value) {
   const existing = ttRows.find(r => r.class_name === className && r.period === period);
@@ -5191,6 +5346,19 @@ function handleTimetableLogoUpload(file) {
   reader.readAsDataURL(file);
 }
 
+// One fixed pixel width per column type. table-layout:fixed + a matching
+// <colgroup> means the browser lays the table out once from these numbers
+// instead of re-measuring every input/select's content on every scroll
+// frame — see the .tt-grid CSS comment for why that mattered.
+const TT_COL_CLASS_W = 92, TT_COL_PERIOD_W = 132, TT_COL_BREAK_W = 60;
+function ttColGroup(cols) {
+  return `<colgroup><col style="width:${TT_COL_CLASS_W}px">${cols.map(c =>
+    `<col style="width:${c.type === 'break' ? TT_COL_BREAK_W : TT_COL_PERIOD_W}px">`).join('')}</colgroup>`;
+}
+function ttTableWidth(cols) {
+  return TT_COL_CLASS_W + cols.reduce((sum, c) => sum + (c.type === 'break' ? TT_COL_BREAK_W : TT_COL_PERIOD_W), 0);
+}
+
 function tplTimetable() {
   const classes = ttClassOptions();
   let gridHtml;
@@ -5201,6 +5369,7 @@ function tplTimetable() {
       ? 'ٹائم ٹیبل ابھی سیٹ اپ نہیں ہوا۔ فائل کے شروع میں CONFIG کے قریب دیا گیا SQL، Supabase میں ایک بار چلائیں، پھر دوبارہ کوشش کریں۔'
       : "Timetable isn't set up yet — run the one-time SQL near CONFIG at the top of this file in your Supabase SQL editor, then try again."}</p>`;
   } else {
+    const cols = ttColumns();
     const periodHeader = (p) => {
       const times = ttPeriodTimes[p] || {};
       return `
@@ -5213,6 +5382,15 @@ function tplTimetable() {
           </div>
         </th>`;
     };
+    const breakHeader = () => `
+      <th class="tt-break-th">
+        <div class="tt-period-label">${LANG === 'ur' ? 'وقفہ' : 'Break'}</div>
+        <div class="tt-period-time">
+          <input type="time" value="${esc(ttBreakStart)}" onchange="ttSaveBreakTime('start',this.value)">
+          <span>${LANG === 'ur' ? 'تا' : 'to'}</span>
+          <input type="time" value="${esc(ttBreakEnd)}" onchange="ttSaveBreakTime('end',this.value)">
+        </div>
+      </th>`;
     const cell = (className, period) => {
       const row = ttRows.find(r => r.class_name === className && r.period === period);
       const teacherOptions = DATA.teachers.map(tc =>
@@ -5228,14 +5406,27 @@ function tplTimetable() {
           </select>
         </td>`;
     };
-    const headerRow = `<tr><th>${LANG === 'ur' ? 'جماعت' : 'Class'}</th>${Array.from({ length: ttPeriods }, (_, i) => periodHeader(i + 1)).join('')}</tr>`;
+    const breakCell = () => `<td class="tt-break-col"><span class="tt-break-label">${LANG === 'ur' ? 'وقفہ' : 'Break'}</span></td>`;
+    const headerRow = `<tr><th>${LANG === 'ur' ? 'جماعت' : 'Class'}</th>${cols.map(c => c.type === 'break' ? breakHeader() : periodHeader(c.period)).join('')}</tr>`;
     const bodyRows = classes.map(c =>
-      `<tr><td class="tt-class-name">${esc(c)}</td>${Array.from({ length: ttPeriods }, (_, i) => cell(c, i + 1)).join('')}</tr>`).join('');
+      `<tr><td class="tt-class-name">${esc(c)}</td>${cols.map(col => col.type === 'break' ? breakCell() : cell(c, col.period)).join('')}</tr>`).join('');
     gridHtml = `
-      <div class="reg-drag-wrap" style="overflow-x:auto;">
-        <table class="tt-grid">${headerRow}${bodyRows}</table>
+      <div class="tt-scroll-wrap">
+        <table class="tt-grid" style="width:${ttTableWidth(cols)}px;">${ttColGroup(cols)}${headerRow}${bodyRows}</table>
       </div>
-      <button class="btn-ghost" style="margin-top:10px;" onclick="ttAddPeriod()">+ ${LANG === 'ur' ? 'پیریڈ شامل کریں' : 'Add Period'}</button>`;
+      <div class="flexgap" style="margin-top:10px;flex-wrap:wrap;">
+        <button class="btn-ghost" onclick="ttAddPeriod()">+ ${LANG === 'ur' ? 'پیریڈ شامل کریں' : 'Add Period'}</button>
+        <button class="btn-ghost" onclick="ttRemovePeriod()">− ${LANG === 'ur' ? 'پیریڈ ہٹائیں' : 'Remove Period'}</button>
+        <button class="btn-ghost" onclick="openManageTtClasses()">${LANG === 'ur' ? 'جماعتیں منتخب کریں' : 'Manage Classes'}</button>
+      </div>
+      <label style="margin-top:10px;max-width:260px;">
+        <span>${LANG === 'ur' ? 'وقفہ کس پیریڈ کے بعد؟' : 'Break after which period?'}</span>
+        <select onchange="ttSetBreakAfter(this.value)">
+          <option value="0" ${ttBreakAfter === 0 ? 'selected' : ''}>${LANG === 'ur' ? 'کوئی وقفہ نہیں' : 'No break'}</option>
+          ${Array.from({ length: ttPeriods }, (_, i) => i + 1).map(p =>
+            `<option value="${p}" ${ttBreakAfter === p ? 'selected' : ''}>${esc(ttPeriodLabel(p))} ${LANG === 'ur' ? 'کے بعد' : 'after'}</option>`).join('')}
+        </select>
+      </label>`;
   }
   return `
     <div style="padding-top:16px;">
@@ -5260,15 +5451,19 @@ function tplTimetable() {
 function printTimetable() {
   if (ttStatus !== 'ready') return;
   const classes = ttClassOptions();
+  const cols = ttColumns();
   const periodTimeStr = (p) => {
     const times = ttPeriodTimes[p] || {};
     return (times.start_time && times.end_time) ? `<span class="tt-print-time">${esc(times.start_time)} ${LANG === 'ur' ? 'تا' : 'to'} ${esc(times.end_time)}</span>` : '';
   };
-  const headerRow = `<tr><th>${LANG === 'ur' ? 'جماعت' : 'Class'}</th>${Array.from({ length: ttPeriods }, (_, i) => i + 1)
-    .map(p => `<th>${esc(ttPeriodLabel(p))}${periodTimeStr(p)}</th>`).join('')}</tr>`;
+  const breakTimeStr = () => (ttBreakStart && ttBreakEnd) ? `<span class="tt-print-time">${esc(ttBreakStart)} ${LANG === 'ur' ? 'تا' : 'to'} ${esc(ttBreakEnd)}</span>` : '';
+  const headerRow = `<tr><th>${LANG === 'ur' ? 'جماعت' : 'Class'}</th>${cols.map(c => c.type === 'break'
+    ? `<th class="tt-print-break-th">${LANG === 'ur' ? 'وقفہ' : 'Break'}${breakTimeStr()}</th>`
+    : `<th>${esc(ttPeriodLabel(c.period))}${periodTimeStr(c.period)}</th>`).join('')}</tr>`;
   const rows = classes.map(c => {
-    const cells = Array.from({ length: ttPeriods }, (_, i) => i + 1).map(p => {
-      const row = ttRows.find(r => r.class_name === c && r.period === p);
+    const cells = cols.map(col => {
+      if (col.type === 'break') return `<td class="tt-print-break-td">${LANG === 'ur' ? 'وقفہ' : 'Break'}</td>`;
+      const row = ttRows.find(r => r.class_name === c && r.period === col.period);
       const tc = row && row.teacher_id ? DATA.teachers.find(x => x.id === row.teacher_id) : null;
       const subj = row && row.subject ? `<span class="tt-print-subject">${esc(row.subject)}</span>` : `<span class="tt-print-empty">—</span>`;
       return `<td>${subj}${tc ? `<span class="tt-print-teacher">${esc(tc.name)}</span>` : ''}</td>`;
@@ -5294,6 +5489,7 @@ function printTimetable() {
     </div>`;
   window.print();
 }
+
 
 function openAddClassLogin(id) {
   const existing = id ? DATA.classLogins.find(x => x.id === id) : null;
@@ -7558,12 +7754,12 @@ function _regBookFlushVerticalScroll() {
 // rebuilt keeps the user's scroll position through any redraw, deferred or not.
 let _regBookScrollPositions = {};
 function _regBookCaptureScroll() {
-  document.querySelectorAll('.regbook-screen-wrap, .reg-drag-wrap').forEach((wrap, i) => {
+  document.querySelectorAll('.regbook-screen-wrap, .reg-drag-wrap, .tt-scroll-wrap').forEach((wrap, i) => {
     _regBookScrollPositions[wrap.className + '_' + i] = wrap.scrollLeft;
   });
 }
 function _regBookRestoreScroll() {
-  document.querySelectorAll('.regbook-screen-wrap, .reg-drag-wrap').forEach((wrap, i) => {
+  document.querySelectorAll('.regbook-screen-wrap, .reg-drag-wrap, .tt-scroll-wrap').forEach((wrap, i) => {
     const key = wrap.className + '_' + i;
     if (_regBookScrollPositions[key]) wrap.scrollLeft = _regBookScrollPositions[key];
   });
