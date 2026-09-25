@@ -2370,7 +2370,6 @@ function renderSidebar() {
 
   const moreLinks = [
     link('admissionRegister', t.admissionRegister, NAV_ICONS.admissionRegister, "setTab('admissionRegister')", 'admissionRegister'),
-    link('suggestions', t.suggestions, NAV_ICONS.suggestions, "setTab('suggestions')", 'suggestions'),
     (CURRENT_PROFILE && CURRENT_PROFILE.is_admin) ? link('admin', t.admin, NAV_ICONS.admin, "setTab('admin')", 'admin') : '',
   ].join('');
 
@@ -2408,7 +2407,7 @@ function confirmSidebarLogout() {
 }
 
 function renderNav() {
-  const tabs = ['dashboard','students','teachers','finance','reports','dmc','marksSheet','admissionRegister','suggestions'];
+  const tabs = ['dashboard','students','teachers','finance','reports','dmc','marksSheet','admissionRegister'];
   if (CURRENT_PROFILE && CURRENT_PROFILE.is_admin) tabs.push('admin');
   document.getElementById('navbar').innerHTML = tabs.map(k => `
     <button class="${TAB===k?'active':''}" onclick="setTab('${k}')">
@@ -2707,7 +2706,6 @@ function renderTab() {
   else if (TAB==='teacherRegister') { main.innerHTML = tplTeacherRegister(); initRegBookScroll(); _regBookRestoreScroll(); }
   else if (TAB==='classLogins') main.innerHTML = tplClassLogins();
   else if (TAB==='admin') { main.innerHTML = tplAdmin(); loadAdminLists(); return; }
-  else if (TAB==='suggestions') { main.innerHTML = tplSuggestions(); loadAiSuggestions(); }
   main.insertAdjacentHTML('beforeend', `<div class="notice">${esc(t.sharedNotice)}</div>`);
   main.insertAdjacentHTML('beforeend', `<div class="notice" style="margin-top:8px;font-size:10px;">${esc(t.copyrightNotice)}</div>`);
 }

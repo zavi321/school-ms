@@ -77,10 +77,6 @@
 
     <label>Contact</label>
     <input type="text" id="contact" placeholder="e.g. 03001234567">
-
-    <label>Card Background (optional)</label>
-    <input type="file" id="cardBg" class="file-btn" accept="image/*">
-    <button type="button" class="btn" id="resetBgBtn" style="margin-top:8px;padding:6px 14px;font-size:12px;">Reset to Default</button>
   </div>
 
   <div class="card-col">
@@ -120,7 +116,11 @@
     const cfg = window.SCHOOL_CONFIG;
     if (!cfg) return;
     if (cfg.name) { $('schoolName').value = cfg.name; $('cardSchool').textContent = cfg.name; }
-    if (cfg.logo) { $('cardLogo').src = cfg.logo; }
+    if (cfg.logo) {
+      $('cardLogo').crossOrigin = 'anonymous';
+      $('cardLogo').onload = () => applyLogoBackground($('cardLogo'));
+      $('cardLogo').src = cfg.logo;
+    }
     $('schoolName').readOnly = true;
     $('schoolLogo').disabled = true;
     document.getElementById('brandingBlock').style.opacity = '.6';
@@ -136,26 +136,55 @@
     });
   }
   readImage($('teacherPhoto'), $('cardPhoto'));
-  readImage($('schoolLogo'), $('cardLogo'));
 
-  // Card background: user-uploaded image, drawn behind the data with a
-  // translucent navy tint (same approach as the DMC certificate background)
-  // so the white text on top stays readable regardless of the image.
-  const DEFAULT_BG = 'linear-gradient(135deg,var(--navy),#173A5E)';
+  // Card background: instead of a manual upload, the color is derived
+  // automatically from the school logo's dominant color, so the card always
+  // matches the school's branding.
   const idCardEl = $('idCard');
-  $('cardBg').addEventListener('change', e => {
+  function getDominantColor(imgEl){
+    try{
+      const size = 40;
+      const c = document.createElement('canvas');
+      c.width = size; c.height = size;
+      const ctx = c.getContext('2d');
+      ctx.drawImage(imgEl, 0, 0, size, size);
+      const data = ctx.getImageData(0, 0, size, size).data;
+      let r=0,g=0,b=0,n=0;
+      for(let i=0;i<data.length;i+=4){
+        if(data[i+3] < 100) continue; // skip transparent pixels
+        const rr=data[i], gg=data[i+1], bb=data[i+2];
+        // Skip near-white/near-black pixels so a white logo background or
+        // black outline doesn't wash out the actual brand color.
+        if((rr>235&&gg>235&&bb>235) || (rr<20&&gg<20&&bb<20)) continue;
+        r+=rr; g+=gg; b+=bb; n++;
+      }
+      if(!n) return null;
+      return { r: Math.round(r/n), g: Math.round(g/n), b: Math.round(b/n) };
+    }catch(e){ return null; } // canvas tainted by a cross-origin logo — keep default
+  }
+  function shade(rgb, amt){
+    return {
+      r: Math.max(0, Math.min(255, rgb.r + amt)),
+      g: Math.max(0, Math.min(255, rgb.g + amt)),
+      b: Math.max(0, Math.min(255, rgb.b + amt))
+    };
+  }
+  function applyLogoBackground(imgEl){
+    const rgb = getDominantColor(imgEl);
+    if(!rgb) return;
+    const dark = shade(rgb, -40);
+    idCardEl.style.backgroundImage =
+      `linear-gradient(135deg, rgb(${rgb.r},${rgb.g},${rgb.b}), rgb(${dark.r},${dark.g},${dark.b}))`;
+  }
+  $('schoolLogo').addEventListener('change', e => {
     const file = e.target.files[0];
-    if (!file) return;
+    if(!file) return;
     const reader = new FileReader();
     reader.onload = ev => {
-      idCardEl.style.backgroundImage =
-        `linear-gradient(rgba(15,39,64,.55),rgba(15,39,64,.55)), url('${ev.target.result}')`;
+      $('cardLogo').src = ev.target.result;
+      $('cardLogo').onload = () => applyLogoBackground($('cardLogo'));
     };
     reader.readAsDataURL(file);
-  });
-  $('resetBgBtn').addEventListener('click', () => {
-    idCardEl.style.backgroundImage = DEFAULT_BG;
-    $('cardBg').value = '';
   });
 
   function fmtDate(v){
