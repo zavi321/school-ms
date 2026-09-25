@@ -233,12 +233,11 @@ html, body{overscroll-behavior:none;}
      enabled instead, which works fine even when the touch starts on an
      input; it's included in the same scroll-position capture/restore below.*/
   /* overscroll-behavior-x:contain stops the edge-of-scroll bounce from
-     fighting the page's own vertical scroll mid-drag, and touch-action:pan-x
-     tells the browser up front this wrapper only ever pans horizontally so
-     it can start native momentum scrolling immediately instead of waiting a
-     few frames to decide the gesture's direction — together this is what
-     was read as "atak atak" (catching, then jumping) while dragging. */
-  .tt-scroll-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;overscroll-behavior-x:contain;touch-action:pan-x;}
+     fighting the page's own vertical scroll mid-drag. touch-action must
+     allow BOTH pan-x (scroll the grid sideways) and pan-y (let a touch that
+     starts on the grid still scroll the page up/down) — pan-x alone was
+     stopping vertical scrolling anywhere over the timetable. */
+  .tt-scroll-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;overscroll-behavior-x:contain;touch-action:pan-x pan-y;}
   .regbook-scroll-track{position:relative;height:26px;background:#F0EBDA;border-radius:999px;margin-bottom:8px;}
   .regbook-scroll-thumb{position:absolute;top:2px;left:0;height:22px;min-width:40px;background:var(--navy);color:var(--gold-soft);border-radius:999px;box-shadow:0 2px 8px rgba(15,39,64,.25);display:flex;align-items:center;justify-content:center;font-size:13px;touch-action:none;cursor:grab;}
   .regbook-scroll-thumb:active{cursor:grabbing;}
@@ -368,8 +367,12 @@ html, body{overscroll-behavior:none;}
     .thermal-receipt .tr-row{display:flex;justify-content:space-between;gap:6px;padding:2px 0;}
     .thermal-receipt .tr-dash{border-top:1px dashed #000;margin:5px 0;}
 
-    /* ---- Timetable print ---- */
-    .tt-print{font-family:Inter,sans-serif;width:100%;margin:0;}
+    /* ---- Timetable print ----
+       min-height:100vh + flex-column fills the whole printed page instead
+       of the card sitting as a small block at the top with blank white
+       space below it; the footer's margin-top:auto pins it to the bottom
+       of the page either way, whether the grid has 3 rows or 12. */
+    .tt-print{font-family:Inter,sans-serif;width:100%;min-height:100vh;margin:0;box-sizing:border-box;padding:14mm 12mm;background:var(--cream);display:flex;flex-direction:column;border:2px solid var(--gold);}
     .tt-print[dir="rtl"]{font-family:'Noto Nastaliq Urdu',serif;}
     .tt-print-head{background:#0F2740;background-image:linear-gradient(135deg,#0F2740 0%,#0A1B2C 100%);border-radius:12px 12px 0 0;padding:20px 24px 16px;position:relative;overflow:hidden;}
     .tt-print-head::after{content:'';position:absolute;right:-30px;top:-30px;width:130px;height:130px;border-radius:999px;background:#C9A227;opacity:.10;}
@@ -380,7 +383,7 @@ html, body{overscroll-behavior:none;}
     .tt-print-table{width:100%;border-collapse:collapse;background:#fff;border:1px solid #E7E0CE;border-top:none;}
     .tt-print-table thead th{background:#FAF6EC;color:#0F2740;font-size:10.5px;text-transform:uppercase;letter-spacing:.04em;padding:8px 4px;text-align:center;font-weight:700;border-bottom:2px solid #C9A227;}
     .tt-print-table thead .tt-print-time{display:block;text-transform:none;font-size:8.5px;font-weight:500;color:#8A6200;letter-spacing:0;margin-top:2px;}
-    .tt-print-table tbody td{border:1px solid #EFEAD9;padding:8px 4px;text-align:center;font-size:12px;vertical-align:middle;color:#1C2530;}
+    .tt-print-table tbody td{border:1px solid #EFEAD9;padding:12px 4px;text-align:center;font-size:13px;vertical-align:middle;color:#1C2530;}
     .tt-print-table tbody tr:nth-child(even){background:#FCFAF3;}
     .tt-print-classname{font-weight:700;background:#FAF6EC !important;color:#0F2740;white-space:nowrap;}
     .tt-print-subject{font-weight:600;}
@@ -388,7 +391,7 @@ html, body{overscroll-behavior:none;}
     .tt-print-empty{color:#C7C0A8;}
     .tt-print-break-th{background:#FBF1DA !important;color:#8A6200;}
     .tt-print-break-td{background:#FCF6E6 !important;font-weight:700;font-size:10px;color:#8A6200;}
-    .tt-print-foot{display:flex;justify-content:space-between;align-items:center;padding:10px 24px;background:#FAF6EC;border:1px solid #E7E0CE;border-top:2px solid #C9A227;border-radius:0 0 12px 12px;font-size:10px;color:#555;}
+    .tt-print-foot{display:flex;justify-content:space-between;align-items:center;padding:10px 24px;background:#FAF6EC;border:1px solid #E7E0CE;border-top:2px solid #C9A227;border-radius:0 0 12px 12px;font-size:10px;color:#555;margin-top:auto;}
     .tt-print-foot .tt-print-brand{font-family:Fraunces,serif;color:#0F2740;font-weight:600;}
 
     /* ---- Fee Card (khoobsurat design) ---- */
