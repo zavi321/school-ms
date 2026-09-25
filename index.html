@@ -1546,7 +1546,7 @@ let pendingRenderOnDragEnd = false;
 function safeRenderTab() {
   const ae = document.activeElement;
   const main = document.getElementById('main');
-  if (ae && main && main.contains(ae) && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA')) {
+  if (ae && main && main.contains(ae) && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.tagName === 'SELECT')) {
     pendingRenderOnBlur = true;
     return;
   }
@@ -1558,7 +1558,7 @@ function safeRenderTab() {
 }
 document.addEventListener('focusout', (e) => {
   if (!pendingRenderOnBlur) return;
-  if (!e.target || (e.target.tagName !== 'INPUT' && e.target.tagName !== 'TEXTAREA')) return;
+  if (!e.target || (e.target.tagName !== 'INPUT' && e.target.tagName !== 'TEXTAREA' && e.target.tagName !== 'SELECT')) return;
   pendingRenderOnBlur = false;
   // Let the blur/value-commit finish first, then redraw with fresh data.
   setTimeout(() => { if (TAB) renderTab(); }, 0);
@@ -2846,6 +2846,8 @@ function renderTab() {
   else if (TAB==='classLogins') main.innerHTML = tplClassLogins();
   else if (TAB==='timetable') {
     main.innerHTML = tplTimetable();
+    initRegBookScroll();
+    _regBookRestoreScroll();
     if (ttStatus === 'idle') loadTimetableForClass(ttClass);
   }
   else if (TAB==='admin') { main.innerHTML = tplAdmin(); loadAdminLists(); return; }
@@ -5161,7 +5163,7 @@ function tplTimetable() {
     const bodyRows = Array.from({ length: ttPeriods }, (_, i) => i + 1).map(p =>
       `<tr><td class="tt-period-num">${p}</td>${TT_DAYS.map(d => cell(d, p)).join('')}</tr>`).join('');
     gridHtml = `
-      <div style="overflow-x:auto;">
+      <div class="reg-drag-wrap" style="overflow-x:auto;">
         <table class="tt-grid">${headerRow}${bodyRows}</table>
       </div>
       <button class="btn-ghost" style="margin-top:10px;" onclick="ttAddPeriod()">+ ${LANG === 'ur' ? 'پیریڈ شامل کریں' : 'Add Period'}</button>`;
