@@ -304,6 +304,16 @@ html, body{overscroll-behavior:none;}
   .class-header .chev.collapsed{transform:rotate(-90deg);}
 
   #print-area{display:none;}
+
+  /* ---- Timetable grid (on-screen) ---- */
+  .tt-grid{border-collapse:collapse;width:100%;}
+  .tt-grid th,.tt-grid td{border:1px solid var(--line);padding:4px;}
+  .tt-grid th{background:var(--surface2);font-size:11px;white-space:nowrap;}
+  .tt-period-num{font-weight:700;text-align:center;background:var(--surface2);font-size:12px;}
+  .tt-cell{min-width:110px;vertical-align:top;}
+  .tt-subject{width:100%;border:none;background:transparent;font-size:12px;padding:3px 2px;display:block;box-sizing:border-box;}
+  .tt-teacher{width:100%;border:none;background:transparent;font-size:11px;padding:2px;box-sizing:border-box;}
+
   @media print {
     *{-webkit-print-color-adjust:exact;print-color-adjust:exact;}
     html, body{height:auto !important;background:#fff !important;}
@@ -327,6 +337,15 @@ html, body{overscroll-behavior:none;}
     .thermal-receipt .tr-sm{font-size:9px;opacity:.8;}
     .thermal-receipt .tr-row{display:flex;justify-content:space-between;gap:6px;padding:2px 0;}
     .thermal-receipt .tr-dash{border-top:1px dashed #000;margin:5px 0;}
+
+    /* ---- Timetable print ---- */
+    .tt-print{font-family:Inter,sans-serif;}
+    .tt-print h2{font-family:Fraunces,serif;color:#0F2740;margin:0 0 2px;}
+    .tt-print-sub{color:#555;font-size:13px;margin-bottom:14px;}
+    .tt-print-table{width:100%;border-collapse:collapse;}
+    .tt-print-table th,.tt-print-table td{border:1px solid #999;padding:6px 4px;text-align:center;font-size:12px;}
+    .tt-print-teacher{display:block;font-size:10px;color:#555;margin-top:2px;}
+    .tt-print-period{font-weight:700;background:#f0f0f0;}
 
     /* ---- Fee Card (khoobsurat design) ---- */
     .fc-wrap{font-family:Inter,sans-serif;border-radius:14px;overflow:hidden;border:1px solid #E7E0CE;box-shadow:0 2px 10px rgba(15,39,64,.08);}
@@ -556,6 +575,23 @@ html, body{overscroll-behavior:none;}
   drop policy if exists "activity_log_insert_own" on activity_log;
   create policy "activity_log_insert_own" on activity_log
     for insert with check (owner_id = auth.uid());
+
+  -- ---- Timetable (one row per class + day + period) ----
+  create table if not exists timetable (
+    id uuid primary key default gen_random_uuid(),
+    owner_id uuid not null references auth.users(id) on delete cascade,
+    class_name text not null,
+    day_of_week text not null,     -- 'Mon'..'Sat'
+    period int not null,
+    subject text,
+    teacher_id uuid references teachers(id) on delete set null,
+    created_at timestamptz not null default now(),
+    unique (owner_id, class_name, day_of_week, period)
+  );
+  alter table timetable enable row level security;
+  drop policy if exists "timetable_all_own" on timetable;
+  create policy "timetable_all_own" on timetable
+    for all using (owner_id = auth.uid()) with check (owner_id = auth.uid());
      ============================================================================ -->
 
 <div id="loading" class="loading">Loading…</div>
@@ -2432,6 +2468,7 @@ const NAV_ICONS = {
   dmc: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 5c0-1 0-2 1-2h16c1 0 1 1 1 2v14c0 1 0 2-1 2H4c-1 0-1-1-1-2V5z"/><path d="M7 10h10M7 14h8M7 18h6"/></svg>`,
   marksSheet: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="18" rx="2"/><path d="M9 8h6M3 13h18M3 18h18"/></svg>`,
   admissionRegister: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 016.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"/><path d="M9 7h7M9 11h7"/></svg>`,
+  timetable: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M3 9h18M9 4v18"/></svg>`,
   admin: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l8 4v6c0 5-3.5 8.5-8 10-4.5-1.5-8-5-8-10V6l8-4z"/></svg>`,
   suggestions: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18h6M10 22h4M12 2a6 6 0 00-4 10.5c.6.6 1 1.4 1 2.5h6c0-1.1.4-1.9 1-2.5A6 6 0 0012 2z"/></svg>`,
 };
@@ -2471,6 +2508,7 @@ function renderSidebar() {
 
   const moreLinks = [
     link('admissionRegister', t.admissionRegister, NAV_ICONS.admissionRegister, "setTab('admissionRegister')", 'admissionRegister'),
+    link('timetable', LANG==='ur' ? 'ٹائم ٹیبل' : 'Timetable', NAV_ICONS.timetable, "setTab('timetable')", 'timetable'),
     (CURRENT_PROFILE && CURRENT_PROFILE.is_admin) ? link('admin', t.admin, NAV_ICONS.admin, "setTab('admin')", 'admin') : '',
   ].join('');
 
@@ -2508,11 +2546,11 @@ function confirmSidebarLogout() {
 }
 
 function renderNav() {
-  const tabs = ['dashboard','students','teachers','finance','reports','dmc','marksSheet','admissionRegister'];
+  const tabs = ['dashboard','students','teachers','finance','reports','dmc','marksSheet','admissionRegister','timetable'];
   if (CURRENT_PROFILE && CURRENT_PROFILE.is_admin) tabs.push('admin');
   document.getElementById('navbar').innerHTML = tabs.map(k => `
     <button class="${TAB===k?'active':''}" onclick="setTab('${k}')">
-      ${NAV_ICONS[k]}<span>${esc(t[k] || t.admin)}</span>
+      ${NAV_ICONS[k]}<span>${k==='timetable' ? (LANG==='ur'?'ٹائم ٹیبل':'Timetable') : esc(t[k] || t.admin)}</span>
     </button>`).join('');
 }
 
@@ -2806,6 +2844,10 @@ function renderTab() {
   else if (TAB==='admissionRegister') { main.innerHTML = tplAdmissionRegister(); initRegBookScroll(); _regBookRestoreScroll(); }
   else if (TAB==='teacherRegister') { main.innerHTML = tplTeacherRegister(); initRegBookScroll(); _regBookRestoreScroll(); }
   else if (TAB==='classLogins') main.innerHTML = tplClassLogins();
+  else if (TAB==='timetable') {
+    main.innerHTML = tplTimetable();
+    if (ttStatus === 'idle') loadTimetableForClass(ttClass);
+  }
   else if (TAB==='admin') { main.innerHTML = tplAdmin(); loadAdminLists(); return; }
   main.insertAdjacentHTML('beforeend', `<div class="notice">${esc(t.sharedNotice)}</div>`);
   main.insertAdjacentHTML('beforeend', `<div class="notice" style="margin-top:8px;font-size:10px;">${esc(t.copyrightNotice)}</div>`);
@@ -5028,6 +5070,139 @@ function tplClassLogins() {
             </div>
           </div>`).join('')}
     </div>`;
+}
+
+// ---------------- Timetable (simple version) ----------------
+// One grid per class: fixed Mon-Sat days, editable period rows with a
+// Subject text field + Teacher dropdown per cell. Deliberately lazy-loaded
+// (not part of loadAllData's critical Promise.all) so the rest of the app
+// keeps working even before the one-time SQL setup (see CONFIG comment near
+// the top of this file) has been run in Supabase.
+const TT_DAYS = [
+  { key: 'Mon', en: 'Mon', ur: 'پیر' },
+  { key: 'Tue', en: 'Tue', ur: 'منگل' },
+  { key: 'Wed', en: 'Wed', ur: 'بدھ' },
+  { key: 'Thu', en: 'Thu', ur: 'جمعرات' },
+  { key: 'Fri', en: 'Fri', ur: 'جمعہ' },
+  { key: 'Sat', en: 'Sat', ur: 'ہفتہ' },
+];
+let ttClass = null;           // currently selected class
+let ttRows = [];              // timetable rows for ttClass: {id, day_of_week, period, subject, teacher_id}
+let ttPeriods = 7;            // number of period rows shown (grows via +Add Period, or from saved data)
+let ttStatus = 'idle';        // 'idle' | 'loading' | 'ready' | 'missing_table'
+
+function ttClassOptions() {
+  const set = new Set(CLASS_OPTIONS);
+  DATA.students.forEach(s => { if (s.class_name) set.add(s.class_name); });
+  return Array.from(set);
+}
+
+async function loadTimetableForClass(cls) {
+  ttClass = cls; ttStatus = 'loading';
+  renderTab();
+  const { data, error } = await sb.from('timetable').select('*')
+    .eq('owner_id', CURRENT_USER.id).eq('class_name', cls);
+  if (error) { ttStatus = 'missing_table'; ttRows = []; }
+  else {
+    ttRows = data || [];
+    ttPeriods = Math.max(7, ...ttRows.map(r => r.period), 0);
+    ttStatus = 'ready';
+  }
+  if (TAB === 'timetable') renderTab();
+}
+
+function ttSetClass(cls) { loadTimetableForClass(cls); }
+function ttAddPeriod() { ttPeriods += 1; renderTab(); }
+
+async function saveTimetableCell(day, period, field, value) {
+  const existing = ttRows.find(r => r.day_of_week === day && r.period === period);
+  const payload = {
+    owner_id: CURRENT_USER.id, class_name: ttClass, day_of_week: day, period,
+    subject: field === 'subject' ? (value || null) : (existing ? existing.subject : null),
+    teacher_id: field === 'teacher_id' ? (value || null) : (existing ? existing.teacher_id : null),
+  };
+  const { data, error } = await sb.from('timetable')
+    .upsert(payload, { onConflict: 'owner_id,class_name,day_of_week,period' })
+    .select().maybeSingle();
+  if (error) { alert((LANG === 'ur' ? 'محفوظ نہیں ہوا: ' : 'Could not save: ') + error.message); return; }
+  const idx = ttRows.findIndex(r => r.day_of_week === day && r.period === period);
+  if (idx >= 0) ttRows[idx] = data; else ttRows.push(data);
+  logCustomActivity(`Updated timetable: ${ttClass} — ${day} period ${period}`, 'update');
+}
+
+function tplTimetable() {
+  const classes = ttClassOptions();
+  if (!ttClass) ttClass = classes[0] || '';
+  const dayLabel = d => LANG === 'ur' ? d.ur : d.en;
+  let gridHtml;
+  if (ttStatus === 'loading') {
+    gridHtml = `<p style="font-size:13px;opacity:.6;">${LANG === 'ur' ? 'لوڈ ہو رہا ہے…' : 'Loading…'}</p>`;
+  } else if (ttStatus === 'missing_table') {
+    gridHtml = `<p style="font-size:13px;opacity:.7;">${LANG === 'ur'
+      ? 'ٹائم ٹیبل ابھی سیٹ اپ نہیں ہوا۔ فائل کے شروع میں CONFIG کے قریب دیا گیا SQL، Supabase میں ایک بار چلائیں، پھر دوبارہ کوشش کریں۔'
+      : "Timetable isn't set up yet — run the one-time SQL near CONFIG at the top of this file in your Supabase SQL editor, then try again."}</p>`;
+  } else {
+    const cell = (day, period) => {
+      const row = ttRows.find(r => r.day_of_week === day.key && r.period === period);
+      const teacherOptions = DATA.teachers.map(tc =>
+        `<option value="${tc.id}" ${row && row.teacher_id === tc.id ? 'selected' : ''}>${esc(tc.name)}</option>`).join('');
+      return `
+        <td class="tt-cell">
+          <input type="text" class="tt-subject" placeholder="${LANG === 'ur' ? 'مضمون' : 'Subject'}"
+            value="${esc(row && row.subject ? row.subject : '')}"
+            onchange="saveTimetableCell('${day.key}',${period},'subject',this.value)">
+          <select class="tt-teacher" onchange="saveTimetableCell('${day.key}',${period},'teacher_id',this.value)">
+            <option value="">${LANG === 'ur' ? '— استاد —' : '— Teacher —'}</option>
+            ${teacherOptions}
+          </select>
+        </td>`;
+    };
+    const headerRow = `<tr><th>${LANG === 'ur' ? 'پیریڈ' : 'Period'}</th>${TT_DAYS.map(d => `<th>${esc(dayLabel(d))}</th>`).join('')}</tr>`;
+    const bodyRows = Array.from({ length: ttPeriods }, (_, i) => i + 1).map(p =>
+      `<tr><td class="tt-period-num">${p}</td>${TT_DAYS.map(d => cell(d, p)).join('')}</tr>`).join('');
+    gridHtml = `
+      <div style="overflow-x:auto;">
+        <table class="tt-grid">${headerRow}${bodyRows}</table>
+      </div>
+      <button class="btn-ghost" style="margin-top:10px;" onclick="ttAddPeriod()">+ ${LANG === 'ur' ? 'پیریڈ شامل کریں' : 'Add Period'}</button>`;
+  }
+  return `
+    <div style="padding-top:16px;">
+      <div class="section-title" style="margin-top:0;display:flex;justify-content:space-between;align-items:center;">
+        <span>${LANG === 'ur' ? 'ٹائم ٹیبل' : 'Timetable'}</span>
+        <button onclick="printTimetable()" style="border:none;background:var(--navy);color:var(--gold-soft);border-radius:8px;padding:5px 12px;font-size:11px;font-weight:600;">🖨️ ${esc(t.print)}</button>
+      </div>
+      <div style="margin-bottom:14px;">
+        <select onchange="ttSetClass(this.value)">
+          ${classes.map(c => `<option value="${esc(c)}" ${c === ttClass ? 'selected' : ''}>${esc(c)}</option>`).join('')}
+        </select>
+      </div>
+      ${gridHtml}
+    </div>`;
+}
+
+function printTimetable() {
+  if (ttStatus !== 'ready') return;
+  const dayLabel = d => LANG === 'ur' ? d.ur : d.en;
+  const rows = Array.from({ length: ttPeriods }, (_, i) => i + 1).map(p => {
+    const cells = TT_DAYS.map(d => {
+      const row = ttRows.find(r => r.day_of_week === d.key && r.period === p);
+      const tc = row && row.teacher_id ? DATA.teachers.find(x => x.id === row.teacher_id) : null;
+      const subj = row && row.subject ? esc(row.subject) : '';
+      return `<td>${subj}${tc ? `<span class="tt-print-teacher">${esc(tc.name)}</span>` : ''}</td>`;
+    }).join('');
+    return `<tr><td class="tt-print-period">${p}</td>${cells}</tr>`;
+  }).join('');
+  document.getElementById('print-area').innerHTML = `
+    <div class="tt-print">
+      <h2>${esc(CURRENT_PROFILE.school_name || 'School')}</h2>
+      <div class="tt-print-sub">${LANG === 'ur' ? 'ٹائم ٹیبل' : 'Timetable'} — ${esc(ttClass)}</div>
+      <table class="tt-print-table">
+        <thead><tr><th>${LANG === 'ur' ? 'پیریڈ' : 'Period'}</th>${TT_DAYS.map(d => `<th>${esc(dayLabel(d))}</th>`).join('')}</tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
+  window.print();
 }
 
 function openAddClassLogin(id) {
