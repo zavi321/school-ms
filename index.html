@@ -260,6 +260,13 @@ html, body{overscroll-behavior:none;}
   .ledger-row:last-child{border-bottom:none;}
   .amt-pos{color:var(--sage);font-weight:600;font-size:14px;}
   .amt-neg{color:var(--rust);font-weight:600;font-size:14px;}
+  .chart-card{margin-bottom:16px;}
+  .chart-head{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;}
+  .chart-legend{display:flex;gap:14px;font-size:11px;opacity:.75;}
+  .chart-legend span{display:flex;align-items:center;gap:5px;}
+  .chart-legend i{width:9px;height:9px;border-radius:2px;display:inline-block;}
+  .chart-card svg text{font-family:Inter,sans-serif;}
+  body.ur .chart-card svg text{font-family:'Noto Sans Urdu',sans-serif;}
   .del-btn{background:none;border:none;color:var(--rust);font-size:14px;}
   .loading{min-height:100vh;display:flex;align-items:center;justify-content:center;color:var(--navy);font-size:14px;}
 
@@ -663,6 +670,7 @@ const T = {
     salaryLedger:'Salary Ledger', payMonth:'Pay Month',
     baseSalary:'Base Salary', attendanceBonus:'Attendance Bonus', extraClass:'Extra Class',
     addTransaction:'Add Entry', income:'Income', expense:'Expense', category:'Category', description:'Description', date:'Date',
+    monthlyChartTitle:'Monthly Income vs Expense',
     noTransactions:'No entries yet.',
     summaryReport:'Summary Report', totalCollectedAllTime:'Total Fees Collected (all-time)', totalSalariesAllTime:'Total Salaries Paid (all-time)',
     totalOtherIncomeAllTime:'Total Other Income (all-time)', totalOtherExpenseAllTime:'Total Other Expenses (all-time)',
@@ -855,6 +863,7 @@ const T = {
     salaryLedger:'تنخواہ کھاتہ', payMonth:'ادائیگی کا مہینہ',
     baseSalary:'بنیادی تنخواہ', attendanceBonus:'حاضری بونس', extraClass:'اضافی کلاس',
     addTransaction:'اندراج شامل کریں', income:'آمدنی', expense:'اخراجات', category:'قسم', description:'تفصیل', date:'تاریخ',
+    monthlyChartTitle:'ماہانہ آمدنی بمقابلہ اخراجات',
     noTransactions:'ابھی کوئی اندراج نہیں۔',
     summaryReport:'خلاصہ رپورٹ', totalCollectedAllTime:'کل وصول شدہ فیس', totalSalariesAllTime:'کل ادا شدہ تنخواہیں',
     totalOtherIncomeAllTime:'کل دیگر آمدنی', totalOtherExpenseAllTime:'کل دیگر اخراجات',
@@ -1004,7 +1013,7 @@ const CLASS_OPTIONS = ['Nursery','KG','1st','2nd','3rd','4th','5th','6th','7th',
 const STUDENT_TYPES = ['paying','free','orphan'];
 function typeLabel(type) { return type==='free' ? t.free : type==='orphan' ? t.orphan : t.feePaying; }
 function isFeePaying(s) { return (s.student_type || 'paying') === 'paying'; }
-const EXPENSE_CATS = ['Utilities','Maintenance','Supplies','Rent','Transport','Events','Other'];
+const EXPENSE_CATS = ['Electricity','Rent','Stationery','Salary','Transport','Maintenance','Other'];
 const INCOME_CATS = ['Donation','Grant','Sale','Fundraiser','Other'];
 
 const fmt = n => Number(n||0).toLocaleString('en-US');
@@ -5234,12 +5243,63 @@ function printSalaryVoucher(paymentId, teacherId) {
 }
 
 // ---------------- Finance ----------------
+// Monthly Income vs Expense — built from the Finance tab's own transactions
+// (the income/expense entries logged here), last 6 calendar months.
+function monthlyIncomeExpenseSeries(n) {
+  n = n || 6;
+  const now = new Date();
+  const months = [];
+  for (let i = n - 1; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    months.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
+  }
+  return months.map(mk => {
+    const rows = DATA.transactions.filter(x => String(x.txn_date || '').slice(0, 7) === mk);
+    const income = rows.filter(x => x.type === 'income').reduce((a, b) => a + Number(b.amount || 0), 0);
+    const expense = rows.filter(x => x.type === 'expense').reduce((a, b) => a + Number(b.amount || 0), 0);
+    return { month: mk, income, expense };
+  });
+}
+function tplIncomeExpenseChart() {
+  const series = monthlyIncomeExpenseSeries(6);
+  const hasData = series.some(s => s.income || s.expense);
+  if (!hasData) return '';
+  const max = Math.max(1, ...series.map(s => Math.max(s.income, s.expense)));
+  const chartH = 130, barW = 14, gap = 8, groupGap = 24;
+  const groupW = barW * 2 + gap;
+  const chartW = series.length * (groupW + groupGap);
+  const bars = series.map((s, i) => {
+    const x0 = i * (groupW + groupGap);
+    const incH = Math.round((s.income / max) * chartH);
+    const expH = Math.round((s.expense / max) * chartH);
+    return `
+      <g>
+        <rect x="${x0}" y="${chartH - incH}" width="${barW}" height="${Math.max(incH,1)}" rx="3" fill="var(--sage)"/>
+        <rect x="${x0 + barW + gap}" y="${chartH - expH}" width="${barW}" height="${Math.max(expH,1)}" rx="3" fill="var(--rust)"/>
+        <text x="${x0 + barW + gap / 2}" y="${chartH + 16}" text-anchor="middle" font-size="9" fill="var(--ink)" opacity=".65">${esc(monthLabel(s.month))}</text>
+      </g>`;
+  }).join('');
+  return `
+    <div class="card chart-card">
+      <div class="chart-head">
+        <div class="section-title" style="margin:0;">${esc(t.monthlyChartTitle)}</div>
+        <div class="chart-legend">
+          <span><i style="background:var(--sage)"></i>${esc(t.income)}</span>
+          <span><i style="background:var(--rust)"></i>${esc(t.expense)}</span>
+        </div>
+      </div>
+      <svg viewBox="0 0 ${chartW} ${chartH + 28}" style="width:100%;height:auto;display:block;margin-top:10px;" preserveAspectRatio="xMidYMid meet">
+        ${bars}
+      </svg>
+    </div>`;
+}
 function tplFinance() {
   return `
     <div style="padding-top:16px;">
       <div style="display:flex;justify-content:flex-end;margin-bottom:12px;">
         <button class="btn-primary" style="width:auto;padding:9px 16px;" onclick="openAddTxn()">+ ${esc(t.addTransaction)}</button>
       </div>
+      ${tplIncomeExpenseChart()}
       ${DATA.transactions.length===0 ? `<div class="empty">${esc(t.noTransactions)}</div>` :
         `<div class="list-card">` + DATA.transactions.map(x=>`
           <div class="list-row">
