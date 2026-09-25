@@ -5,44 +5,86 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Teacher ID Card Generator</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap">
 <style>
-  :root{ --navy:#0F2740; --gold:#C9A227; --line:#E2E2E2; }
+  :root{
+    --navy:#0F2740; --navy-deep:#0A1B2C; --gold:#C9A227; --gold-soft:#E9CE7A;
+    --ivory:#FBF7EC; --ink:#1C2530; --line:#E7E0CE; --page:#EEF1F4;
+  }
   *{box-sizing:border-box;}
-  body{font-family:Arial,sans-serif;background:#F4F4F4;margin:0;padding:20px;}
-  .wrap{max-width:900px;margin:0 auto;display:flex;gap:24px;flex-wrap:wrap;}
-  .form-col{flex:1;min-width:280px;background:#fff;border-radius:10px;padding:18px;box-shadow:0 2px 8px rgba(0,0,0,.08);}
-  .form-col h2{margin-top:0;font-size:18px;color:var(--navy);}
-  label{display:block;font-size:13px;font-weight:600;margin:10px 0 4px;color:#333;}
-  input{width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:6px;font-size:14px;}
-  .card-col{flex:0 0 340px;display:flex;flex-direction:column;align-items:center;gap:16px;}
+  body{font-family:'Inter',Arial,sans-serif;background:var(--page);margin:0;padding:28px 20px;color:var(--ink);}
+  .wrap{max-width:920px;margin:0 auto;display:flex;gap:28px;flex-wrap:wrap;align-items:flex-start;}
+
+  .form-col{flex:1;min-width:280px;background:#fff;border-radius:14px;padding:20px 22px;box-shadow:0 1px 3px rgba(15,39,64,.06),0 10px 28px rgba(15,39,64,.07);}
+  .form-col .kicker{font-size:10.5px;letter-spacing:.14em;color:var(--gold);font-weight:700;text-transform:uppercase;margin-bottom:2px;}
+  .form-col h2{margin:0 0 16px;font-size:19px;font-family:'Fraunces',serif;font-weight:600;color:var(--navy);}
+  .group{border:1px solid var(--line);border-radius:10px;padding:12px 14px 4px;margin-bottom:16px;}
+  .group-title{font-size:10.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--navy);opacity:.55;margin-bottom:6px;}
+  label{display:block;font-size:12.5px;font-weight:600;margin:10px 0 4px;color:#4A5568;}
+  label:first-child{margin-top:0;}
+  input{width:100%;padding:9px 11px;border:1px solid var(--line);border-radius:7px;font-size:14px;font-family:inherit;background:#FDFCF8;color:var(--ink);outline:none;transition:border-color .12s ease,box-shadow .12s ease;}
+  input:focus{border-color:var(--gold);box-shadow:0 0 0 3px rgba(201,162,39,.15);}
+
+  .card-col{flex:0 0 344px;display:flex;flex-direction:column;align-items:center;gap:16px;position:sticky;top:24px;}
 
   /* ---- ID CARD ---- */
   .id-card{
-    width:320px;height:200px;border-radius:14px;background:linear-gradient(135deg,var(--navy),#173A5E);
+    width:344px;height:216px;border-radius:16px;background:linear-gradient(135deg,var(--navy),var(--navy-deep));
     background-size:cover;background-position:center;
-    color:#fff;padding:14px;position:relative;overflow:hidden;box-shadow:0 6px 18px rgba(0,0,0,.25);
-    font-family:Arial,sans-serif;
+    color:#fff;position:relative;overflow:hidden;isolation:isolate;
+    font-family:'Inter',Arial,sans-serif;
+    box-shadow:inset 4px 0 0 0 var(--gold-soft),0 2px 6px rgba(10,20,35,.2),0 14px 30px rgba(10,20,35,.32);
   }
-  .id-card .school-row{display:flex;align-items:center;gap:8px;margin-bottom:10px;}
-  .id-card .school-row img.logo{width:28px;height:28px;border-radius:50%;object-fit:cover;background:#fff;}
-  .id-card .school-row .sname{font-size:12px;font-weight:700;letter-spacing:.03em;color:var(--gold);}
-  .id-card .school-row .tag{margin-left:auto;font-size:9px;background:var(--gold);color:var(--navy);padding:2px 7px;border-radius:999px;font-weight:700;letter-spacing:.04em;}
-  .id-card .body{display:flex;gap:12px;}
-  .id-card .photo{width:70px;height:80px;border-radius:6px;background:#33475A;object-fit:cover;flex-shrink:0;border:2px solid var(--gold);}
-  .id-card .info{font-size:11px;line-height:1.5;}
-  .id-card .info b{color:#fff;}
-  .id-card .info .lbl{opacity:.65;display:inline-block;width:66px;}
-  .id-card .qr{position:absolute;right:12px;bottom:12px;background:#fff;padding:3px;border-radius:4px;}
-  .id-card .qr img,.id-card .qr canvas{display:block;width:44px;height:44px;}
+  .id-card::before{
+    content:'';position:absolute;inset:0;
+    background-image:repeating-linear-gradient(135deg,rgba(255,255,255,.045) 0 2px,transparent 2px 26px);
+    pointer-events:none;
+  }
+  .id-card::after{
+    content:'';position:absolute;right:-40px;bottom:-46px;width:190px;height:190px;border-radius:50%;
+    background:radial-gradient(circle,rgba(255,255,255,.08),transparent 70%);pointer-events:none;
+  }
+  .id-card .notch{position:absolute;top:0;left:50%;transform:translate(-50%,-50%);width:26px;height:26px;border-radius:50%;background:var(--page);z-index:2;}
 
-  .btn{background:var(--navy);color:#fff;border:none;padding:10px 20px;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;}
+  .card-top{display:flex;align-items:center;gap:9px;padding:15px 16px 9px;position:relative;z-index:1;}
+  .card-top .logo-ring{width:32px;height:32px;border-radius:50%;background:#fff;padding:2px;box-shadow:0 0 0 1.5px var(--gold-soft);flex-shrink:0;}
+  .card-top .logo-ring img{width:100%;height:100%;border-radius:50%;object-fit:cover;display:block;}
+  .card-top .brand-text{min-width:0;}
+  .card-top .sname{font-family:'Fraunces',serif;font-weight:600;font-size:12.5px;line-height:1.15;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .card-top .tagline{font-size:8px;letter-spacing:.13em;color:var(--gold-soft);margin-top:2px;font-weight:600;text-transform:uppercase;}
+  .card-top .role-tag{margin-left:auto;background:var(--gold);color:var(--navy-deep);font-size:8.5px;font-weight:800;letter-spacing:.07em;padding:3px 9px;border-radius:999px;flex-shrink:0;text-transform:uppercase;}
+
+  .card-rule{height:1px;margin:0 16px;background:linear-gradient(90deg,var(--gold-soft),transparent 85%);opacity:.55;position:relative;z-index:1;}
+
+  .card-body{display:flex;gap:12px;padding:11px 16px 0;position:relative;z-index:1;}
+  .id-card .photo{width:72px;height:86px;border-radius:8px;object-fit:cover;flex-shrink:0;display:block;background:#233246;border:2px solid var(--gold-soft);box-shadow:0 3px 10px rgba(0,0,0,.3);}
+  .card-main{min-width:0;flex:1;padding-top:1px;}
+  .card-main .cname{font-family:'Fraunces',serif;font-weight:600;font-size:14.5px;color:#fff;line-height:1.2;margin-bottom:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .info-grid{display:grid;grid-template-columns:1fr 1fr;gap:5px 10px;font-size:10.5px;}
+  .info-grid .full{grid-column:1/-1;}
+  .info-grid .lbl{display:block;opacity:.55;font-size:8px;letter-spacing:.05em;text-transform:uppercase;margin-bottom:1px;}
+  .info-grid b{color:#fff;font-weight:600;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+
+  .card-footer{position:absolute;left:16px;right:16px;bottom:11px;display:flex;align-items:flex-end;justify-content:space-between;z-index:1;}
+  .card-footer .valid{font-size:8px;color:rgba(255,255,255,.62);line-height:1.5;}
+  .card-footer .valid b{color:var(--gold-soft);font-size:9.5px;display:block;font-weight:700;}
+  .card-footer .qr-wrap{text-align:center;}
+  .card-footer .qr-box{background:#fff;padding:3px;border-radius:6px;box-shadow:0 2px 6px rgba(0,0,0,.25);}
+  .card-footer .qr-box canvas,.card-footer .qr-box img{display:block;width:40px;height:40px;}
+  .card-footer .qr-cap{font-size:6px;letter-spacing:.08em;color:rgba(255,255,255,.5);margin-top:3px;text-transform:uppercase;}
+
+  .btn{background:var(--navy);color:var(--gold-soft);border:none;padding:11px 22px;border-radius:9px;font-size:14px;font-weight:600;cursor:pointer;box-shadow:0 2px 8px rgba(15,39,64,.3);}
   .btn:active{transform:scale(.97);}
   .file-btn{font-size:12px;}
+  .hint{font-size:11px;color:#8892A0;margin-top:2px;}
 
   @media print{
+    @page{ size:85.6mm 54mm; margin:0; }
+    body{background:#fff;padding:0;}
     body *{visibility:hidden;}
     .id-card,.id-card *{visibility:visible;}
-    .id-card{position:absolute;top:0;left:0;box-shadow:none;}
+    .id-card{position:absolute;top:0;left:0;width:85.6mm;height:54mm;border-radius:0;box-shadow:none;}
+    .id-card .notch{background:#fff;}
   }
 </style>
 </head>
@@ -50,18 +92,20 @@
 
 <div class="wrap">
   <div class="form-col">
+    <div class="kicker">Identity Documents</div>
     <h2>Teacher ID Card Generator</h2>
+
+    <div class="group" id="brandingBlock">
+      <div class="group-title">Branding</div>
+      <label>School Logo</label>
+      <input type="file" id="schoolLogo" class="file-btn" accept="image/*">
+      <label>School Name</label>
+      <input type="text" id="schoolName" placeholder="e.g. Islamia School & College" value="Islamia School & College">
+      <p class="hint">Card colour is drawn automatically from the logo.</p>
+    </div>
 
     <label>Teacher Photo</label>
     <input type="file" id="teacherPhoto" class="file-btn" accept="image/*">
-
-    <div id="brandingBlock">
-      <label>School Logo</label>
-      <input type="file" id="schoolLogo" class="file-btn" accept="image/*">
-
-      <label>School Name</label>
-      <input type="text" id="schoolName" placeholder="e.g. Islamia School & College" value="Islamia School & College">
-    </div>
 
     <label>Name</label>
     <input type="text" id="name" placeholder="Full name">
@@ -81,22 +125,35 @@
 
   <div class="card-col">
     <div class="id-card" id="idCard">
-      <div class="school-row">
-        <img class="logo" id="cardLogo" src="https://placehold.co/40x40/ffffff/0F2740?text=S">
-        <div class="sname" id="cardSchool">Islamia School &amp; College</div>
-        <div class="tag">STAFF</div>
+      <span class="notch"></span>
+      <div class="card-top">
+        <div class="logo-ring"><img id="cardLogo" src="https://placehold.co/40x40/ffffff/0F2740?text=S"></div>
+        <div class="brand-text">
+          <div class="sname" id="cardSchool">Islamia School &amp; College</div>
+          <div class="tagline">Staff Identity Card</div>
+        </div>
+        <div class="role-tag">Staff</div>
       </div>
-      <div class="body">
+      <div class="card-rule"></div>
+      <div class="card-body">
         <img class="photo" id="cardPhoto" src="https://placehold.co/70x80/33475A/ffffff?text=Photo">
-        <div class="info">
-          <div><span class="lbl">Name</span><b id="cardName">—</b></div>
-          <div><span class="lbl">Qualification</span><b id="cardQual">—</b></div>
-          <div><span class="lbl">Designation</span><b id="cardDesig">—</b></div>
-          <div><span class="lbl">Joined</span><b id="cardJoining">—</b></div>
-          <div><span class="lbl">Contact</span><b id="cardContact">—</b></div>
+        <div class="card-main">
+          <div class="cname" id="cardName">Teacher Name</div>
+          <div class="info-grid">
+            <div class="full"><span class="lbl">Qualification</span><b id="cardQual">—</b></div>
+            <div><span class="lbl">Designation</span><b id="cardDesig">—</b></div>
+            <div><span class="lbl">Joined</span><b id="cardJoining">—</b></div>
+            <div class="full"><span class="lbl">Contact</span><b id="cardContact">—</b></div>
+          </div>
         </div>
       </div>
-      <div class="qr" id="qrBox"></div>
+      <div class="card-footer">
+        <div class="valid">Session<b id="cardSession">—</b></div>
+        <div class="qr-wrap">
+          <div class="qr-box" id="qrBox"></div>
+          <div class="qr-cap">Scan to verify</div>
+        </div>
+      </div>
     </div>
 
     <button class="btn" onclick="window.print()">Print / Save as PDF</button>
@@ -203,9 +260,18 @@
     qr.makeCode(data || 'teacher');
   }
 
+  // Academic session label (e.g. "2026–27"), computed automatically so
+  // no extra input is needed; assumes an April–March school year.
+  function sessionLabel(){
+    const d = new Date();
+    const startY = (d.getMonth() + 1) >= 4 ? d.getFullYear() : d.getFullYear() - 1;
+    return startY + '–' + String(startY + 1).slice(-2);
+  }
+  $('cardSession').textContent = sessionLabel();
+
   ['name','qualification','designation','joining','contact','schoolName'].forEach(id=>{
     $(id).addEventListener('input', () => {
-      $('cardName').textContent = $('name').value || '—';
+      $('cardName').textContent = $('name').value || 'Teacher Name';
       $('cardQual').textContent = $('qualification').value || '—';
       $('cardDesig').textContent = $('designation').value || '—';
       $('cardJoining').textContent = fmtDate($('joining').value);
