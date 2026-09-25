@@ -3076,6 +3076,14 @@ async function submitAddWhitelist() {
 
 
 // ---------------- Settings (school name, password, logout) ----------------
+// Opens an ID card generator tool inside the app's own modal (iframe),
+// instead of a separate full browser tab — keeps the user inside the app.
+function openIdCardTool(file, title) {
+  showModal(title, `
+    <iframe src="${file}" style="width:100%;height:75vh;border:none;border-radius:10px;background:#fff;"></iframe>
+  `);
+}
+
 function openSettings() {
   showModal(t.settings, `
     <label><span>${esc(t.changeSchoolName)}</span><input id="set-school" value="${esc(CURRENT_PROFILE.school_name||'')}"></label>
@@ -3106,8 +3114,8 @@ function openSettings() {
     </div>
     <div style="margin-top:18px;padding-top:16px;border-top:1px solid var(--line);">
       <p style="font-size:11px;opacity:.6;margin:0 0 8px;">${LANG==='ur' ? 'آئی ڈی کارڈز پرنٹ کریں' : 'Print ID Cards'}</p>
-      <button class="btn-ghost" style="width:100%;margin-bottom:8px;" onclick="window.open('id-card-generator.html','_blank')">🪪 ${LANG==='ur' ? 'طالب علم آئی ڈی کارڈ' : 'Student ID Card Generator'}</button>
-      <button class="btn-ghost" style="width:100%;" onclick="window.open('teacher-id-card-generator.html','_blank')">🪪 ${LANG==='ur' ? 'اساتذہ آئی ڈی کارڈ' : 'Teacher ID Card Generator'}</button>
+      <button class="btn-ghost" style="width:100%;margin-bottom:8px;" onclick="openIdCardTool('id-card-generator.html', ${LANG==='ur' ? "'طالب علم آئی ڈی کارڈ'" : "'Student ID Card Generator'"})">🪪 ${LANG==='ur' ? 'طالب علم آئی ڈی کارڈ' : 'Student ID Card Generator'}</button>
+      <button class="btn-ghost" style="width:100%;" onclick="openIdCardTool('teacher-id-card-generator.html', ${LANG==='ur' ? "'اساتذہ آئی ڈی کارڈ'" : "'Teacher ID Card Generator'"})">🪪 ${LANG==='ur' ? 'اساتذہ آئی ڈی کارڈ' : 'Teacher ID Card Generator'}</button>
     </div>
     <div style="margin-top:18px;padding-top:16px;border-top:1px solid var(--line);">
       <p style="font-size:11px;opacity:.6;margin:0 0 8px;">${LANG==='ur' ? 'آف لائن مسئلے کی تشخیص کے لیے (جیسے ڈیش بورڈ 0 دکھانا)' : 'For diagnosing offline issues (e.g. dashboard showing 0)'}</p>
