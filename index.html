@@ -3105,6 +3105,11 @@ function openSettings() {
       <button class="btn-ghost" style="width:100%;" onclick="exportBackup()">⬇ ${esc(t.exportBackup)}</button>
     </div>
     <div style="margin-top:18px;padding-top:16px;border-top:1px solid var(--line);">
+      <p style="font-size:11px;opacity:.6;margin:0 0 8px;">${LANG==='ur' ? 'آئی ڈی کارڈز پرنٹ کریں' : 'Print ID Cards'}</p>
+      <button class="btn-ghost" style="width:100%;margin-bottom:8px;" onclick="window.open('id-card-generator.html','_blank')">🪪 ${LANG==='ur' ? 'طالب علم آئی ڈی کارڈ' : 'Student ID Card Generator'}</button>
+      <button class="btn-ghost" style="width:100%;" onclick="window.open('teacher-id-card-generator.html','_blank')">🪪 ${LANG==='ur' ? 'اساتذہ آئی ڈی کارڈ' : 'Teacher ID Card Generator'}</button>
+    </div>
+    <div style="margin-top:18px;padding-top:16px;border-top:1px solid var(--line);">
       <p style="font-size:11px;opacity:.6;margin:0 0 8px;">${LANG==='ur' ? 'آف لائن مسئلے کی تشخیص کے لیے (جیسے ڈیش بورڈ 0 دکھانا)' : 'For diagnosing offline issues (e.g. dashboard showing 0)'}</p>
       <button class="btn-ghost" style="width:100%;" onclick="showStorageDiagnostics()">🔍 ${LANG==='ur' ? 'اسٹوریج کی تشخیص' : 'Storage Diagnostics'}</button>
     </div>
