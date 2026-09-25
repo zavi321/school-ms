@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Teacher ID Card Generator</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<style>
+  :root{ --navy:#0F2740; --gold:#C9A227; --line:#E2E2E2; }
+  *{box-sizing:border-box;}
+  body{font-family:Arial,sans-serif;background:#F4F4F4;margin:0;padding:20px;}
+  .wrap{max-width:900px;margin:0 auto;display:flex;gap:24px;flex-wrap:wrap;}
+  .form-col{flex:1;min-width:280px;background:#fff;border-radius:10px;padding:18px;box-shadow:0 2px 8px rgba(0,0,0,.08);}
+  .form-col h2{margin-top:0;font-size:18px;color:var(--navy);}
+  label{display:block;font-size:13px;font-weight:600;margin:10px 0 4px;color:#333;}
+  input{width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:6px;font-size:14px;}
+  .card-col{flex:0 0 340px;display:flex;flex-direction:column;align-items:center;gap:16px;}
+
+  /* ---- ID CARD ---- */
+  .id-card{
+    width:320px;height:200px;border-radius:14px;background:linear-gradient(135deg,var(--navy),#173A5E);
+    color:#fff;padding:14px;position:relative;overflow:hidden;box-shadow:0 6px 18px rgba(0,0,0,.25);
+    font-family:Arial,sans-serif;
+  }
+  .id-card .school-row{display:flex;align-items:center;gap:8px;margin-bottom:10px;}
+  .id-card .school-row img.logo{width:28px;height:28px;border-radius:50%;object-fit:cover;background:#fff;}
+  .id-card .school-row .sname{font-size:12px;font-weight:700;letter-spacing:.03em;color:var(--gold);}
+  .id-card .school-row .tag{margin-left:auto;font-size:9px;background:var(--gold);color:var(--navy);padding:2px 7px;border-radius:999px;font-weight:700;letter-spacing:.04em;}
+  .id-card .body{display:flex;gap:12px;}
+  .id-card .photo{width:70px;height:80px;border-radius:6px;background:#33475A;object-fit:cover;flex-shrink:0;border:2px solid var(--gold);}
+  .id-card .info{font-size:11px;line-height:1.5;}
+  .id-card .info b{color:#fff;}
+  .id-card .info .lbl{opacity:.65;display:inline-block;width:66px;}
+  .id-card .qr{position:absolute;right:12px;bottom:12px;background:#fff;padding:3px;border-radius:4px;}
+  .id-card .qr img,.id-card .qr canvas{display:block;width:44px;height:44px;}
+
+  .btn{background:var(--navy);color:#fff;border:none;padding:10px 20px;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;}
+  .btn:active{transform:scale(.97);}
+  .file-btn{font-size:12px;}
+
+  @media print{
+    body *{visibility:hidden;}
+    .id-card,.id-card *{visibility:visible;}
+    .id-card{position:absolute;top:0;left:0;box-shadow:none;}
+  }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <div class="form-col">
+    <h2>Teacher ID Card Generator</h2>
+
+    <label>Teacher Photo</label>
+    <input type="file" id="teacherPhoto" class="file-btn" accept="image/*">
+
+    <div id="brandingBlock">
+      <label>School Logo</label>
+      <input type="file" id="schoolLogo" class="file-btn" accept="image/*">
+
+      <label>School Name</label>
+      <input type="text" id="schoolName" placeholder="e.g. Islamia School & College" value="Islamia School & College">
+    </div>
+
+    <label>Name</label>
+    <input type="text" id="name" placeholder="Full name">
+
+    <label>Qualification</label>
+    <input type="text" id="qualification" placeholder="e.g. M.Ed, B.Sc">
+
+    <label>Designation</label>
+    <input type="text" id="designation" placeholder="e.g. Senior Teacher">
+
+    <label>Joining Date</label>
+    <input type="date" id="joining">
+
+    <label>Contact</label>
+    <input type="text" id="contact" placeholder="e.g. 03001234567">
+  </div>
+
+  <div class="card-col">
+    <div class="id-card" id="idCard">
+      <div class="school-row">
+        <img class="logo" id="cardLogo" src="https://placehold.co/40x40/ffffff/0F2740?text=S">
+        <div class="sname" id="cardSchool">Islamia School &amp; College</div>
+        <div class="tag">STAFF</div>
+      </div>
+      <div class="body">
+        <img class="photo" id="cardPhoto" src="https://placehold.co/70x80/33475A/ffffff?text=Photo">
+        <div class="info">
+          <div><span class="lbl">Name</span><b id="cardName">—</b></div>
+          <div><span class="lbl">Qualification</span><b id="cardQual">—</b></div>
+          <div><span class="lbl">Designation</span><b id="cardDesig">—</b></div>
+          <div><span class="lbl">Joined</span><b id="cardJoining">—</b></div>
+          <div><span class="lbl">Contact</span><b id="cardContact">—</b></div>
+        </div>
+      </div>
+      <div class="qr" id="qrBox"></div>
+    </div>
+
+    <button class="btn" onclick="window.print()">Print / Save as PDF</button>
+  </div>
+</div>
+
+<script>
+  // ---- PER-CLIENT SCHOOL CONFIG ----
+  // Same convention as the student ID card generator — set once per deployed
+  // school (inject from Supabase school_settings, or hardcode per client copy).
+  // window.SCHOOL_CONFIG = { name: 'Islamia School & College', logo: 'https://.../logo.png' };
+
+  const $ = id => document.getElementById(id);
+  let qr = new QRCode($('qrBox'), { text: 'teacher', width: 44, height: 44 });
+
+  (function applySchoolConfig(){
+    const cfg = window.SCHOOL_CONFIG;
+    if (!cfg) return;
+    if (cfg.name) { $('schoolName').value = cfg.name; $('cardSchool').textContent = cfg.name; }
+    if (cfg.logo) { $('cardLogo').src = cfg.logo; }
+    $('schoolName').readOnly = true;
+    $('schoolLogo').disabled = true;
+    document.getElementById('brandingBlock').style.opacity = '.6';
+  })();
+
+  function readImage(inputEl, targetImgEl){
+    inputEl.addEventListener('change', e => {
+      const file = e.target.files[0];
+      if(!file) return;
+      const reader = new FileReader();
+      reader.onload = ev => { targetImgEl.src = ev.target.result; };
+      reader.readAsDataURL(file);
+    });
+  }
+  readImage($('teacherPhoto'), $('cardPhoto'));
+  readImage($('schoolLogo'), $('cardLogo'));
+
+  function fmtDate(v){
+    if(!v) return '—';
+    const d = new Date(v);
+    if (isNaN(d)) return v;
+    return String(d.getDate()).padStart(2,'0') + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + d.getFullYear();
+  }
+
+  function updateQR(){
+    const data = [
+      $('name').value, $('qualification').value, $('designation').value,
+      fmtDate($('joining').value), $('contact').value, $('schoolName').value
+    ].join(' | ');
+    qr.clear();
+    qr.makeCode(data || 'teacher');
+  }
+
+  ['name','qualification','designation','joining','contact','schoolName'].forEach(id=>{
+    $(id).addEventListener('input', () => {
+      $('cardName').textContent = $('name').value || '—';
+      $('cardQual').textContent = $('qualification').value || '—';
+      $('cardDesig').textContent = $('designation').value || '—';
+      $('cardJoining').textContent = fmtDate($('joining').value);
+      $('cardContact').textContent = $('contact').value || '—';
+      $('cardSchool').textContent = $('schoolName').value || '—';
+      updateQR();
+    });
+  });
+</script>
+</body>
+</html>
