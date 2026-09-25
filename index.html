@@ -116,28 +116,6 @@ html, body{overscroll-behavior:none;}
   nav.bottom button.active{background:rgba(201,162,39,.18);color:var(--gold-soft);}
   nav.bottom button svg{width:18px;height:18px;}
 
-  /* ---- Sidebar drawer (replaces the bottom nav) ---- */
-  .sb-overlay{position:fixed;inset:0;background:rgba(10,20,35,.5);z-index:59;opacity:0;pointer-events:none;transition:opacity .25s ease;}
-  .sb-overlay.open{opacity:1;pointer-events:auto;}
-  .sb-drawer{position:fixed;top:0;bottom:0;left:0;width:80%;max-width:300px;background:var(--navy);z-index:60;transform:translateX(-105%);transition:transform .28s cubic-bezier(.4,0,.2,1);display:flex;flex-direction:column;padding:6px 0 max(14px,env(safe-area-inset-bottom,0px));box-shadow:6px 0 28px rgba(0,0,0,.3);overflow-y:auto;}
-  .sb-drawer.open{transform:translateX(0);}
-  body.ur .sb-drawer{left:auto;right:0;transform:translateX(105%);}
-  body.ur .sb-drawer.open{transform:translateX(0);}
-  .sb-drawer .sb-head{padding:calc(18px + env(safe-area-inset-top,0px)) 18px 16px;border-bottom:1px solid rgba(255,255,255,.12);margin-bottom:6px;}
-  .sb-drawer .sb-school{color:var(--gold-soft);font-size:11px;letter-spacing:.05em;}
-  .sb-drawer .sb-app{color:#fff;font-family:Fraunces,serif;font-size:19px;margin-top:2px;}
-  .sb-drawer button{display:flex;align-items:center;gap:13px;width:100%;background:transparent;border:none;color:#B8C6D6;padding:13px 18px;font-size:14px;font-weight:500;text-align:left;}
-  body.ur .sb-drawer button{text-align:right;}
-  .sb-drawer button.active{background:rgba(201,162,39,.16);color:var(--gold-soft);}
-  .sb-drawer button svg{width:19px;height:19px;flex-shrink:0;}
-  .sb-drawer .sb-spacer{flex:1;min-height:8px;}
-  .sb-drawer .sb-logout{border-top:1px solid rgba(255,255,255,.12);margin-top:6px;padding-top:14px;color:#E0937E;}
-  .sb-hamburger{background:transparent;border:none;color:var(--navy);width:22px;height:18px;position:relative;flex-shrink:0;padding:0;}
-  .sb-hamburger span{position:absolute;left:0;right:0;height:2px;background:currentColor;border-radius:2px;}
-  .sb-hamburger span:nth-child(1){top:0;}
-  .sb-hamburger span:nth-child(2){top:8px;}
-  .sb-hamburger span:nth-child(3){top:16px;}
-
   .stat-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:16px;}
   .stat-card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;box-shadow:var(--shadow-sm);}
   .stat-card .lbl{font-size:11px;opacity:.65;margin:6px 0 2px;}
@@ -608,7 +586,7 @@ function openFatherWhatsapp(mobileRaw, message) {
 const T = {
   en: {
     appName:'School Finance & Records', tagline:'For school administration',
-    dashboard:'Dashboard', students:'Students', teachers:'Teachers', finance:'Fees', reports:'Reports', dmc:'DMC / Certificates', marksSheet:'Exams & Marks',
+    dashboard:'Dashboard', students:'Students', teachers:'Teachers', finance:'Finance', reports:'Reports', dmc:'Certificates', marksSheet:'Marks Sheet',
     thisMonth:'This Month',
     totalStudents:'Active Students', feesCollected:'Fees Collected (this month)', feesDue:'Fees Due (this month)',
     salaryPaid:'Salaries Paid (this month)', expensesThisMonth:'Expenses (this month)', otherFeeStandalone:'Other Fees (Hostel/Transport) — held separately, not part of school totals', netBalance:'Net Balance (all-time)', totalDuesAllTime:'Total Dues (all-time)', recentActivity:'Recent Activity',
@@ -795,13 +773,10 @@ const T = {
     parentPortalSwitchStudent:'View a different child', parentPortalOfflineNoCache:'You are offline and no saved data is available yet. Please connect to the internet once to load your child\'s info.',
     diaryPasswordHint:'One password for the whole school — any teacher uses this on the Diary device to write entries.',
     diaryPasswordRequired:'Please enter a diary password.',
-    attendance:'Attendance', attendanceSummaryDesc:'Read-only monthly summary — teachers mark attendance from the Class Portal.',
-    attendanceSelectClass:'Select Class', attendanceSelectMonth:'Month', attendanceNoRecords:'No attendance records for this class/month yet.',
-    attendancePct:'%', navSettings:'Settings', navLogout:'Log Out', admissionRegisterOpen:'Admission Register', viewInsights:'View Insights & Tips',
   },
   ur: {
     appName:'مالیاتی و ریکارڈ سسٹم', tagline:'اسکول انتظامیہ کے لیے',
-    dashboard:'ڈیش بورڈ', students:'طلبہ', teachers:'اساتذہ', finance:'فیس', reports:'رپورٹس', dmc:'ڈی ایم سی / سرٹیفکیٹس', marksSheet:'امتحانات و نمبرات',
+    dashboard:'ڈیش بورڈ', students:'طلبہ', teachers:'اساتذہ', finance:'مالیات', reports:'رپورٹس', dmc:'سرٹیفکیٹس', marksSheet:'نتائج کی فہرست',
     thisMonth:'اس ماہ',
     totalStudents:'فعال طلبہ', feesCollected:'وصول شدہ فیس (اس ماہ)', feesDue:'واجب الادا فیس (اس ماہ)',
     salaryPaid:'ادا شدہ تنخواہ (اس ماہ)', expensesThisMonth:'اخراجات (اس ماہ)', otherFeeStandalone:'دیگر فیس (ہاسٹل/ٹرانسپورٹ) — الگ رکھی گئی، اسکول کی کل رقم میں شامل نہیں', netBalance:'کل بیلنس', totalDuesAllTime:'کل واجب الادا (تمام وقت)', recentActivity:'حالیہ سرگرمی',
@@ -984,9 +959,6 @@ const T = {
     parentPortalSwitchStudent:'دوسرا بچہ دیکھیں', parentPortalOfflineNoCache:'آپ آف لائن ہیں اور ابھی تک کوئی محفوظ ڈیٹا دستیاب نہیں۔ براہ کرم ایک بار انٹرنیٹ سے جڑیں۔',
     diaryPasswordHint:'پورے اسکول کے لیے ایک پاس ورڈ — کوئی بھی استاد ڈائری ڈیوائس پر یہی استعمال کرے گا۔',
     diaryPasswordRequired:'براہ کرم ڈائری پاس ورڈ درج کریں۔',
-    attendance:'حاضری', attendanceSummaryDesc:'صرف دیکھنے کے لیے ماہانہ خلاصہ — حاضری اساتذہ کلاس پورٹل سے لگاتے ہیں۔',
-    attendanceSelectClass:'کلاس منتخب کریں', attendanceSelectMonth:'مہینہ', attendanceNoRecords:'اس کلاس/مہینے کے لیے ابھی کوئی حاضری ریکارڈ نہیں۔',
-    attendancePct:'فیصد', navSettings:'ترتیبات', navLogout:'لاگ آؤٹ', admissionRegisterOpen:'داخلہ رجسٹر', viewInsights:'تجاویز دیکھیں',
   }
 };
 
@@ -2283,22 +2255,19 @@ function renderApp() {
     <header class="top">
       <div class="glow"></div>
       <div class="top-row">
-        <div style="display:flex;align-items:center;gap:12px;">
-          <button class="sb-hamburger" onclick="openSidebar()" aria-label="Menu"><span></span><span></span><span></span></button>
-          <div>
-            <div class="eyebrow">${esc(CURRENT_PROFILE.school_name || 'My School')}</div>
-            <div class="title">${esc(t.appName)}</div>
-          </div>
+        <div>
+          <div class="eyebrow">${esc(CURRENT_PROFILE.school_name || 'My School')}</div>
+          <div class="title">${esc(t.appName)}</div>
         </div>
         <div class="top-actions">
           <button class="pill-btn lock" onclick="openGlobalSearch()" title="${esc(t.globalSearch)}">🔍</button>
           <button class="pill-btn lang" onclick="toggleLangApp()">${esc(t.langToggle)}</button>
+          <button class="pill-btn lock" onclick="openSettings()">⚙</button>
         </div>
       </div>
     </header>
     <main id="main"></main>
-    <div class="sb-overlay" id="sb-overlay" onclick="closeSidebar()"></div>
-    <nav class="sb-drawer" id="sb-drawer"></nav>
+    <nav class="bottom"><div class="bar" id="navbar"></div></nav>
     <div id="modal-root"></div>
   `;
   renderNav();
@@ -2317,59 +2286,26 @@ const NAV_ICONS = {
   dashboard: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/></svg>`,
   students: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 10v6M2 10l10-5 10 5-10 5z"/><path d="M6 12v5c3 3 9 3 12 0v-5"/></svg>`,
   teachers: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="7" r="4"/><path d="M2 21v-2a4 4 0 014-4h6a4 4 0 014 4v2"/><circle cx="17" cy="7" r="3"/></svg>`,
-  attendance: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/><path d="M9 15l2 2 4-4"/></svg>`,
   finance: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2"/></svg>`,
-  marksSheet: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="18" rx="2"/><path d="M9 8h6M3 13h18M3 18h18"/></svg>`,
-  dmc: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 5c0-1 0-2 1-2h16c1 0 1 1 1 2v14c0 1 0 2-1 2H4c-1 0-1-1-1-2V5z"/><path d="M7 10h10M7 14h8M7 18h6"/></svg>`,
   reports: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>`,
+  dmc: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 5c0-1 0-2 1-2h16c1 0 1 1 1 2v14c0 1 0 2-1 2H4c-1 0-1-1-1-2V5z"/><path d="M7 10h10M7 14h8M7 18h6"/></svg>`,
+  marksSheet: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="18" rx="2"/><path d="M9 8h6M3 13h18M3 18h18"/></svg>`,
   admissionRegister: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 016.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"/><path d="M9 7h7M9 11h7"/></svg>`,
   admin: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l8 4v6c0 5-3.5 8.5-8 10-4.5-1.5-8-5-8-10V6l8-4z"/></svg>`,
   suggestions: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18h6M10 22h4M12 2a6 6 0 00-4 10.5c.6.6 1 1.4 1 2.5h6c0-1.1.4-1.9 1-2.5A6 6 0 0012 2z"/></svg>`,
-  navSettings: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09a1.65 1.65 0 00-1-1.51 1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09a1.65 1.65 0 001.51-1 1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>`,
-  navLogout: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><path d="M16 17l5-5-5-5"/><path d="M21 12H9"/></svg>`,
 };
 
-// The sidebar drawer replaced the old scrollable bottom nav — same TAB
-// system underneath, just a different list of items and a different
-// container. Admission Register / Class Logins / Teacher Register / AI
-// Insights are intentionally left out of this list (per the school's
-// request) and are instead reachable from buttons inside the relevant
-// tabs (Students → Admission Register, Dashboard → View Insights & Tips).
 function renderNav() {
-  const tabs = ['dashboard','students','teachers','attendance','finance','marksSheet','dmc','reports'];
+  const tabs = ['dashboard','students','teachers','finance','reports','dmc','marksSheet','admissionRegister','suggestions'];
   if (CURRENT_PROFILE && CURRENT_PROFILE.is_admin) tabs.push('admin');
-  const drawer = document.getElementById('sb-drawer');
-  if (!drawer) return;
-  drawer.innerHTML = `
-    <div class="sb-head">
-      <div class="sb-school">${esc(CURRENT_PROFILE.school_name || 'My School')}</div>
-      <div class="sb-app">${esc(t.appName)}</div>
-    </div>
-    ${tabs.map(k => `
-      <button class="${TAB===k?'active':''}" onclick="setTab('${k}')">
-        ${NAV_ICONS[k]}<span>${esc(t[k] || t.admin)}</span>
-      </button>`).join('')}
-    <div class="sb-spacer"></div>
-    <button onclick="closeSidebar(); openSettings();">${NAV_ICONS.navSettings}<span>${esc(t.navSettings)}</span></button>
-    <button class="sb-logout" onclick="confirmSidebarLogout()">${NAV_ICONS.navLogout}<span>${esc(t.navLogout)}</span></button>
-  `;
-}
-
-function openSidebar() {
-  document.getElementById('sb-overlay').classList.add('open');
-  document.getElementById('sb-drawer').classList.add('open');
-}
-function closeSidebar() {
-  document.getElementById('sb-overlay').classList.remove('open');
-  document.getElementById('sb-drawer').classList.remove('open');
-}
-function confirmSidebarLogout() {
-  closeSidebar();
-  if (confirm(t.logOut + '?')) logOut();
+  document.getElementById('navbar').innerHTML = tabs.map(k => `
+    <button class="${TAB===k?'active':''}" onclick="setTab('${k}')">
+      ${NAV_ICONS[k]}<span>${esc(t[k] || t.admin)}</span>
+    </button>`).join('');
 }
 
 function setTab(k){
-  TAB = k; closeSidebar(); renderNav(); renderTab();
+  TAB = k; renderNav(); renderTab();
   const main = document.getElementById('main');
   main.classList.remove('tab-fade'); void main.offsetWidth; main.classList.add('tab-fade');
 }
@@ -2632,7 +2568,6 @@ function renderTab() {
   if (TAB==='dashboard') main.innerHTML = tplDashboard();
   else if (TAB==='students') main.innerHTML = tplStudents();
   else if (TAB==='teachers') main.innerHTML = tplTeachers();
-  else if (TAB==='attendance') main.innerHTML = tplAttendanceSummary();
   else if (TAB==='finance') main.innerHTML = tplFinance();
   else if (TAB==='reports') main.innerHTML = tplReports();
   else if (TAB==='dmc') {
@@ -2743,7 +2678,6 @@ function tplSuggestions() {
 
   return `
     <div style="padding-top:16px;">
-      <button class="btn-ghost" style="flex:none;padding:9px 14px;margin-bottom:10px;" onclick="setTab('dashboard')">‹ ${esc(t.back)}</button>
       <div class="section-title" style="margin-top:0;">${esc(t.suggestionsTitle)}</div>
       <p style="font-size:12px;opacity:.65;margin:-4px 0 14px;">${esc(t.suggestionsDesc)}</p>
       ${items}
@@ -3428,10 +3362,6 @@ function tplDashboard() {
         <button class="btn-ghost" style="width:100%;" onclick="subscribeAdminToPush(document.getElementById('admin-notify-row'))">${esc(t.enableNotifications)}</button>
       </div>
 
-      <div style="margin-top:10px;">
-        <button class="btn-ghost" style="width:100%;" onclick="TAB='suggestions'; renderTab();">💡 ${esc(t.viewInsights)}</button>
-      </div>
-
       <div class="section-title">${esc(t.thisMonth)}</div>
       <div class="stat-grid">
         <div class="stat-card"><div class="lbl">${esc(t.feesCollected)}</div><div class="val" style="font-size:18px;">${dv('₨'+fmt(s.feesCollectedThisMonth))}</div></div>
@@ -3571,9 +3501,6 @@ function tplStudents() {
       </div>
       <div class="searchbar">
         <input id="student-search-input" placeholder="${esc(t.search)}" value="${esc(studentSearch)}" oninput="studentSearch=this.value; classPage={}; updateStudentsResults();">
-        <button class="icon-btn" title="${esc(t.admissionRegisterOpen)}" onclick="openAdmissionRegister()">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#E4C765" stroke-width="2.5"><path d="M4 19.5A2.5 2.5 0 016.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"/><path d="M9 7h7M9 11h7"/></svg>
-        </button>
         <button class="icon-btn" onclick="openAddStudent()">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#E4C765" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg>
         </button>
@@ -4306,63 +4233,6 @@ function updateTeachersResults() {
   if (el) el.innerHTML = tplTeachersResults();
 }
 
-// ---------------- Attendance Summary (owner, read-only) ----------------
-// Teachers mark attendance from the Class Portal (see class_attendance_mark
-// in class_attendance_marks_migration.sql) — this tab only reads the same
-// cached DATA.studentAttendance records already loaded for the app, grouped
-// into a monthly per-student summary. No new tables or writes here.
-let attSummaryClass = '';
-let attSummaryMonth = '';
-
-function tplAttendanceSummary() {
-  const classesWithStudents = CLASS_OPTIONS.filter(c => DATA.students.some(s => s.class_name === c && s.status !== 'inactive'));
-  if (!attSummaryClass || !classesWithStudents.includes(attSummaryClass)) attSummaryClass = classesWithStudents[0] || '';
-  if (!attSummaryMonth) attSummaryMonth = monthKey();
-
-  const students = DATA.students.filter(s => s.class_name === attSummaryClass && s.status !== 'inactive');
-  const rows = students.map(s => {
-    const recs = DATA.studentAttendance.filter(r => r.student_id === s.id && (r.date || '').slice(0, 7) === attSummaryMonth);
-    let present = 0, absent = 0, leave = 0, sick = 0;
-    recs.forEach(r => {
-      [r.status_am, r.status_pm].forEach(st => {
-        if (st === 'present') present++;
-        else if (st === 'absent') absent++;
-        else if (st === 'leave') leave++;
-        else if (st === 'sick') sick++;
-      });
-    });
-    const total = present + absent + leave + sick;
-    const pct = total ? Math.round((present / total) * 100) : null;
-    return { name: s.name, present, absent, leave, sick, pct };
-  });
-
-  return `
-    <div style="padding-top:16px;">
-      <p style="font-size:12px;opacity:.65;margin:-4px 0 14px;">${esc(t.attendanceSummaryDesc)}</p>
-      <label><span>${esc(t.attendanceSelectClass)}</span>
-        <select onchange="attSummaryClass=this.value; renderTab();">
-          ${classesWithStudents.map(c => `<option value="${esc(c)}" ${c===attSummaryClass?'selected':''}>${esc(c)}</option>`).join('')}
-        </select>
-      </label>
-      <label><span>${esc(t.attendanceSelectMonth)}</span>
-        <input type="month" value="${esc(attSummaryMonth)}" onchange="attSummaryMonth=this.value; renderTab();">
-      </label>
-      ${rows.length === 0 ? `<div class="empty">${esc(t.attendanceNoRecords)}</div>` : `
-      <div class="list-card" style="margin-top:12px;">
-        ${rows.map(r => `
-          <div class="list-row" style="flex-direction:column;align-items:stretch;">
-            <div style="display:flex;justify-content:space-between;">
-              <div class="nm">${esc(r.name)}</div>
-              <div class="sub">${r.pct===null ? '—' : r.pct + esc(t.attendancePct)}</div>
-            </div>
-            <div class="sub" style="margin-top:4px;">
-              ${esc(t.present)}: ${r.present} · ${esc(t.absent)}: ${r.absent} · ${esc(t.leave)}: ${r.leave} · ${esc(t.sick)}: ${r.sick}
-            </div>
-          </div>`).join('')}
-      </div>`}
-    </div>`;
-}
-
 function tplTeachers() {
   return `
     <div style="padding-top:16px;">
@@ -4618,11 +4488,6 @@ let registerTeacherFilter = 'all';
 
 function openTeacherRegister() {
   TAB = 'teacherRegister';
-  renderTab();
-}
-
-function openAdmissionRegister() {
-  TAB = 'admissionRegister';
   renderTab();
 }
 
@@ -6832,7 +6697,6 @@ function tplAdmissionRegister() {
     </div>`;
   const body = registerSubTab === 'dashboard' ? tplRegisterDashboard() : tplRegisterList();
   return `<div style="padding-top:16px;">
-    <button class="btn-ghost" style="flex:none;padding:9px 14px;margin-bottom:10px;" onclick="setTab('students')">‹ ${esc(t.back)}</button>
     <div class="reg-book">
       <div class="reg-book-title">${NAV_ICONS.admissionRegister}${esc(t.admissionRegister)}</div>
       ${subnav}${body}
