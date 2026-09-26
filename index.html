@@ -367,25 +367,35 @@ html, body{overscroll-behavior:none;}
     .thermal-receipt .tr-row{display:flex;justify-content:space-between;gap:6px;padding:2px 0;}
     .thermal-receipt .tr-dash{border-top:1px dashed #000;margin:5px 0;}
 
-    /* ---- Timetable print ----
-       Deliberately NOT forcing min-height:100vh here — a print page's
-       physical printable area is slightly smaller than 100vh once the
-       browser's own page margins are subtracted, so a box forced to exactly
-       100vh reliably overflowed by a hair and spilled a near-empty second
-       page. Generous padding + the border/background frame still make the
-       card feel like a full, deliberate page instead of a small floating
-       block, without gambling on an exact page height. page-break-inside
-       and -after are set to avoid as extra insurance against a stray
-       second page. */
-    .tt-print{font-family:Inter,sans-serif;width:100%;margin:0;box-sizing:border-box;padding:16mm 14mm;background:var(--cream);border:2px solid var(--gold);page-break-inside:avoid;page-break-after:avoid;}
+    /* ---- Timetable print: rotated 90° onto a portrait page ----
+       .tt-print-page is an explicit-size stand-in for the actual printable
+       area (190mm x 277mm = A4 minus the 10mm @page margin printAsA4 uses on
+       every side) — needed so the percentage-based centering below has
+       something concrete to measure against (percentages on an
+       auto-height ancestor don't resolve). .tt-print-rotate is centered in
+       it and rotated 90° about its OWN center — rotating about center never
+       moves the center point, so this reliably lands the box on the page.
+       Its own size is fixed at 277mm x 190mm — the printable area with
+       width/height swapped, since rotating swaps them back — the same
+       exact-mm, fill-the-whole-page approach already used for the SLC and
+       Character Certificate elsewhere in this file (not the earlier
+       100vh attempt, which overflowed by a hair because a viewport height
+       isn't quite the same as the printable area after page margins). */
+    .tt-print-page{position:relative;width:210mm;height:297mm;}
+    .tt-print-rotate{position:absolute;top:50%;left:50%;width:297mm;height:210mm;transform:translate(-50%,-50%) rotate(90deg);transform-origin:center center;}
+    /* display:flex + flex-direction:column stretches the table to fill
+       whatever room is left between the header and footer, so the card
+       always fills its fixed 277x190mm box edge to edge regardless of how
+       many class rows or periods there are. */
+    .tt-print{font-family:Inter,sans-serif;width:100%;height:100%;margin:0;box-sizing:border-box;padding:8mm;background:var(--cream);border:2px solid var(--gold);display:flex;flex-direction:column;}
     .tt-print[dir="rtl"]{font-family:'Noto Nastaliq Urdu',serif;}
-    .tt-print-head{background:#0F2740;background-image:linear-gradient(135deg,#0F2740 0%,#0A1B2C 100%);border-radius:12px 12px 0 0;padding:20px 24px 16px;position:relative;overflow:hidden;}
+    .tt-print-head{background:#0F2740;background-image:linear-gradient(135deg,#0F2740 0%,#0A1B2C 100%);border-radius:12px 12px 0 0;padding:20px 24px 16px;position:relative;overflow:hidden;flex:0 0 auto;}
     .tt-print-head::after{content:'';position:absolute;right:-30px;top:-30px;width:130px;height:130px;border-radius:999px;background:#C9A227;opacity:.10;}
     .tt-print-head .eyebrow{color:#E4C765;font-size:10px;letter-spacing:.16em;text-transform:uppercase;opacity:.85;margin:0 0 4px;position:relative;}
     .tt-print-head h2{font-family:Fraunces,serif;color:#fff;font-size:20px;margin:0 0 2px;position:relative;}
     .tt-print-head .tt-print-sub{color:#E4C765;opacity:.95;font-size:13px;font-weight:600;position:relative;}
     .tt-print-logo{height:40px;width:40px;object-fit:contain;border-radius:6px;background:#fff;padding:3px;margin-bottom:8px;position:relative;}
-    .tt-print-table{width:100%;border-collapse:collapse;background:#fff;border:1px solid #E7E0CE;border-top:none;}
+    .tt-print-table{width:100%;height:100%;border-collapse:collapse;background:#fff;border:1px solid #E7E0CE;border-top:none;flex:1;}
     .tt-print-table thead th{background:#FAF6EC;color:#0F2740;font-size:10.5px;text-transform:uppercase;letter-spacing:.04em;padding:8px 4px;text-align:center;font-weight:700;border-bottom:2px solid #C9A227;}
     .tt-print-table thead .tt-print-time{display:block;text-transform:none;font-size:8.5px;font-weight:500;color:#8A6200;letter-spacing:0;margin-top:2px;}
     .tt-print-table tbody td{border:1px solid #EFEAD9;padding:12px 4px;text-align:center;font-size:13px;vertical-align:middle;color:#1C2530;}
@@ -396,7 +406,7 @@ html, body{overscroll-behavior:none;}
     .tt-print-empty{color:#C7C0A8;}
     .tt-print-break-th{background:#FBF1DA !important;color:#8A6200;}
     .tt-print-break-td{background:#FCF6E6 !important;font-weight:700;font-size:10px;color:#8A6200;}
-    .tt-print-foot{display:flex;justify-content:space-between;align-items:center;padding:10px 24px;background:#FAF6EC;border:1px solid #E7E0CE;border-top:2px solid #C9A227;border-radius:0 0 12px 12px;font-size:10px;color:#555;margin-top:16px;}
+    .tt-print-foot{display:flex;justify-content:space-between;align-items:center;padding:10px 24px;background:#FAF6EC;border:1px solid #E7E0CE;border-top:2px solid #C9A227;border-radius:0 0 12px 12px;font-size:10px;color:#555;margin-top:16px;flex:0 0 auto;}
     .tt-print-foot .tt-print-brand{font-family:Fraunces,serif;color:#0F2740;font-weight:600;}
 
     /* ---- Fee Card (khoobsurat design) ---- */
@@ -5465,6 +5475,10 @@ function printTimetable() {
     return (times.start_time && times.end_time) ? `<span class="tt-print-time">${esc(times.start_time)} ${LANG === 'ur' ? 'تا' : 'to'} ${esc(times.end_time)}</span>` : '';
   };
   const breakTimeStr = () => (ttBreakStart && ttBreakEnd) ? `<span class="tt-print-time">${esc(ttBreakStart)} ${LANG === 'ur' ? 'تا' : 'to'} ${esc(ttBreakEnd)}</span>` : '';
+  // Back to the original shape (classes as rows, periods as columns —
+  // matches the on-screen editable grid). The whole thing is rotated 90°
+  // in CSS instead (see .tt-print-rotate) so a wide grid still prints on a
+  // portrait A4 page — you turn the printed page sideways to read it.
   const headerRow = `<tr><th>${LANG === 'ur' ? 'جماعت' : 'Class'}</th>${cols.map(c => c.type === 'break'
     ? `<th class="tt-print-break-th">${LANG === 'ur' ? 'وقفہ' : 'Break'}${breakTimeStr()}</th>`
     : `<th>${esc(ttPeriodLabel(c.period))}${periodTimeStr(c.period)}</th>`).join('')}</tr>`;
@@ -5480,6 +5494,7 @@ function printTimetable() {
   }).join('');
   const schoolName = (dmcSchoolName && dmcSchoolName !== 'SCHOOL NAME') ? dmcSchoolName : (CURRENT_PROFILE.school_name || 'School');
   document.getElementById('print-area').innerHTML = `
+    <div class="tt-print-page"><div class="tt-print-rotate">
     <div class="tt-print" dir="${LANG === 'ur' ? 'rtl' : 'ltr'}">
       <div class="tt-print-head">
         ${dmcLogo ? `<img class="tt-print-logo" src="${dmcLogo}">` : ''}
@@ -5494,8 +5509,9 @@ function printTimetable() {
         <span class="tt-print-brand">${esc(schoolName)}</span>
         <span>${LANG === 'ur' ? 'تاریخ اجراء' : 'Printed'}: ${esc(fmtDate(new Date().toISOString()))}</span>
       </div>
-    </div>`;
-  window.print();
+    </div>
+    </div></div>`;
+  printAsA4(0); // explicit portrait A4, 0 margin (full-bleed) — a browser can otherwise remember landscape from the last thing printed (e.g. the Admission Register)
 }
 
 
