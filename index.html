@@ -686,6 +686,11 @@ html, body{overscroll-behavior:none;}
   drop policy if exists "timetable_settings_all_own" on timetable_settings;
   create policy "timetable_settings_all_own" on timetable_settings
     for all using (owner_id = auth.uid()) with check (owner_id = auth.uid());
+
+  -- ---- Quick Admission: new columns on the existing students table ----
+  alter table students add column if not exists admission_number text;
+  alter table students add column if not exists gender text;
+  alter table students add column if not exists dob date;
      ============================================================================ -->
 
 <div id="loading" class="loading">Loading…</div>
@@ -795,6 +800,7 @@ const T = {
     dueThisMonth:'Due (this month)',
     expenses:'Expenses', collectedFees:'Collected Fees', back:'Back', noRecords:'No records yet',
     addStudent:'Add Student', studentName:'Student Name', studentNameUr:'Student Name (Urdu)', fatherName:"Father's Name", fatherNameUr:"Father's Name (Urdu)", casteTribeUr:'Caste/Tribe (Urdu)', residenceUr:'Residence (Urdu)', className:'Class',
+    quickAdmission:'Quick Admission', admissionNo:'Admission No.', dateOfBirth:'Date of Birth',
     groupByClass:'By Class', groupByFee:'By Fee', noFeeCategory:'No Fee', studentsCount:'students',
     admissionDate:'Admission Date', monthlyFee:'Monthly Fee (Rs)', contact:'Contact Number',
     studentType:'Student Type', feePaying:'Fee-Paying', free:'Free', orphan:'Orphan', all:'All',
@@ -991,6 +997,7 @@ const T = {
     dueThisMonth:'واجب الادا (اس ماہ)',
     expenses:'اخراجات', collectedFees:'وصول شدہ فیس', back:'واپس', noRecords:'ابھی کوئی ریکارڈ نہیں',
     addStudent:'طالب علم شامل کریں', studentName:'طالب علم کا نام', studentNameUr:'طالب علم کا نام (اردو)', fatherName:'والد کا نام', fatherNameUr:'والد کا نام (اردو)', casteTribeUr:'ذات/قبیلہ (اردو)', residenceUr:'رہائش (اردو)', className:'جماعت',
+    quickAdmission:'فوری داخلہ', admissionNo:'داخلہ نمبر', dateOfBirth:'تاریخ پیدائش',
     groupByClass:'جماعت کے مطابق', groupByFee:'فیس کے مطابق', noFeeCategory:'بغیر فیس', studentsCount:'طلباء',
     admissionDate:'داخلہ کی تاریخ', monthlyFee:'ماہانہ فیس (روپے)', contact:'رابطہ نمبر',
     studentType:'طالب علم کی قسم', feePaying:'فیس ادا کرنے والا', free:'مفت', orphan:'یتیم', all:'تمام',
@@ -4298,7 +4305,10 @@ function tplStudents() {
       </div>
       <div class="searchbar">
         <input id="student-search-input" placeholder="${esc(t.search)}" value="${esc(studentSearch)}" oninput="studentSearch=this.value; classPage={}; updateStudentsResults();">
-        <button class="icon-btn" onclick="openAddStudent()">
+        <button class="icon-btn" title="${esc(t.quickAdmission)}" onclick="openQuickAdmission()" style="background:var(--gold);">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#0F2740" stroke-width="2.5"><path d="M13 2 3 14h7l-1 8 10-12h-7l1-8z"/></svg>
+        </button>
+        <button class="icon-btn" title="${esc(t.addStudent)}" onclick="openAddStudent()">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#E4C765" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg>
         </button>
       </div>
@@ -4564,6 +4574,73 @@ async function submitAddStudent() {
   closeModal(); if (!queued) await loadAllData(); renderTab();
 }
 
+// Admission number format used across schools here: YEAR-#### (e.g. 2026-0001),
+// resetting the sequence at the start of each calendar year. Sequence is based
+// on the highest existing number for the current year among already-admitted
+// students, so it stays correct even if entries were added out of order.
+function generateAdmissionNumber() {
+  const year = new Date().getFullYear();
+  const prefix = year + '-';
+  let maxSeq = 0;
+  DATA.students.forEach(s => {
+    if (s.admission_number && s.admission_number.startsWith(prefix)) {
+      const seq = parseInt(s.admission_number.slice(prefix.length), 10);
+      if (!isNaN(seq) && seq > maxSeq) maxSeq = seq;
+    }
+  });
+  return prefix + String(maxSeq + 1).padStart(4, '0');
+}
+
+// Quick Admission: a short, separate form (kept apart from the full Add
+// Student form) for fast intake — basic info + class + father/guardian +
+// an auto-generated admission number. On save it opens the new student's
+// full profile (openStudentDetail) right away.
+function openQuickAdmission() {
+  const admissionNo = generateAdmissionNumber();
+  showModal(t.quickAdmission, `
+    <label><span>${esc(t.admissionNo)}</span><input id="q-admission-no" value="${esc(admissionNo)}" readonly style="opacity:.7;"></label>
+    <label><span>${esc(t.studentName)}</span><input id="q-name"></label>
+    <label><span>${esc(t.studentNameUr)}</span><input id="q-name-ur" dir="rtl"></label>
+    <div class="row2">
+      <label style="margin-bottom:0;"><span>${esc(t.gender)}</span><select id="q-gender"><option value="male">${esc(t.male)}</option><option value="female">${esc(t.female)}</option></select></label>
+      <label style="margin-bottom:0;"><span>${esc(t.dateOfBirth)}</span><input id="q-dob" type="date"></label>
+    </div>
+    <label><span>${esc(t.className)}</span><select id="q-class">${CLASS_OPTIONS.map(c=>`<option>${c}</option>`).join('')}</select></label>
+    <label><span>${esc(t.fatherName)}</span><input id="q-father"></label>
+    <label><span>${esc(t.contact)}</span><input id="q-contact" type="tel" placeholder="03XXXXXXXXX"></label>
+    <div class="flexgap">
+      <button class="btn-ghost" onclick="closeModal()">${esc(t.cancel)}</button>
+      <button class="btn-primary" style="flex:1" onclick="guardedSubmit(this, submitQuickAdmission)">${esc(t.save)}</button>
+    </div>
+  `);
+}
+
+async function submitQuickAdmission() {
+  const name = document.getElementById('q-name').value.trim();
+  if (!name) return;
+  const payload = {
+    id: crypto.randomUUID ? crypto.randomUUID() : `local-${Date.now()}`,
+    owner_id: CURRENT_USER.id,
+    admission_number: document.getElementById('q-admission-no').value,
+    name, name_ur: document.getElementById('q-name-ur').value.trim() || null,
+    gender: document.getElementById('q-gender').value,
+    dob: dateVal('q-dob', null),
+    father_name: document.getElementById('q-father').value,
+    class_name: document.getElementById('q-class').value,
+    student_type: 'paying',
+    admission_date: todayISO(),
+    monthly_fee: 0, contact: document.getElementById('q-contact').value, status:'active'
+  };
+  const { queued, error } = await offlineWrite({
+    table: 'students', action: 'insert', payload, id: payload.id, baseRow: null,
+    run: () => sb.from('students').insert(payload),
+    optimisticApply: () => { DATA.students.push(payload); idbPutRow('students', payload); }
+  });
+  if (!queued && reportSaveError(error)) return;
+  closeModal(); if (!queued) await loadAllData(); renderTab();
+  openStudentDetail(payload.id);
+}
+
 // Builds the same 12-month (Feb-Jan academic year) ledger rows used on the physical
 // fee card, so the on-screen ledger and the printed card always match.
 // If overrideStartYear is given, that specific academic year is built instead of
@@ -4662,9 +4739,13 @@ function openStudentDetail(id, viewYear) {
 
   showModal(s.name, `
     <div style="font-size:12px;opacity:.7;margin-bottom:12px;display:flex;flex-wrap:wrap;gap:12px;">
+      ${s.admission_number ? `<span>${esc(t.admissionNo)}: ${esc(s.admission_number)}</span>` : ''}
       <span>${esc(t.className)}: ${esc(s.class_name||'')}</span>
       <span>${esc(t.fatherName)}: ${esc(s.father_name||'')}</span>
       <span>${esc(t.monthlyFee)}: ₨${fmt(s.monthly_fee)}</span>
+      ${s.gender ? `<span>${esc(t.gender)}: ${esc(s.gender===  'female' ? t.female : t.male)}</span>` : ''}
+      ${s.dob ? `<span>${esc(t.dateOfBirth)}: ${esc(fmtDate(s.dob))}</span>` : ''}
+      ${s.contact ? `<span>${esc(t.contact)}: ${esc(s.contact)}</span>` : ''}
     </div>
     <div class="row2" style="align-items:end;margin-bottom:16px;">
       <label style="margin-bottom:0;"><span>${esc(t.studentType)}</span>
