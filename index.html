@@ -151,19 +151,19 @@ html, body{overscroll-behavior:none;}
 
   .stat-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:16px;}
   .stat-card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;box-shadow:var(--shadow-sm);}
-  .stat-card .lbl{font-size:11px;opacity:.65;margin:6px 0 2px;}
+  .stat-card .lbl{font-size:14.5px;font-weight:600;opacity:.8;margin:6px 0 2px;}
   .stat-card .val{font-size:22px;font-weight:600;color:var(--navy);font-family:Fraunces,serif;}
   .balance-card{background:var(--navy);border-radius:14px;padding:16px;margin-top:12px;box-shadow:var(--shadow-md);position:relative;overflow:hidden;}
   .balance-card::after{content:'';position:absolute;right:-20px;bottom:-20px;width:90px;height:90px;border-radius:999px;background:var(--gold);opacity:.08;}
-  .balance-card .lbl{color:var(--gold-soft);opacity:.85;font-size:12px;}
+  .balance-card .lbl{color:var(--gold-soft);opacity:.9;font-size:15px;font-weight:600;}
   .balance-card .val{color:#fff;font-size:30px;font-weight:600;font-family:Fraunces,serif;margin-top:4px;}
   .dues-card{background:var(--rust);border-radius:14px;padding:16px;margin-top:10px;box-shadow:var(--shadow-md);position:relative;overflow:hidden;}
   .dues-card::after{content:'';position:absolute;right:-20px;bottom:-20px;width:90px;height:90px;border-radius:999px;background:#fff;opacity:.08;}
-  .dues-card .lbl{color:#fff;opacity:.85;font-size:12px;}
+  .dues-card .lbl{color:#fff;opacity:.9;font-size:15px;font-weight:600;}
   .dues-card .val{color:#fff;font-size:30px;font-weight:600;font-family:Fraunces,serif;margin-top:4px;}
   .other-fee-card{background:var(--navy-deep);border-radius:14px;padding:14px;margin-top:14px;box-shadow:var(--shadow-md);position:relative;overflow:hidden;}
   .other-fee-card::after{content:'';position:absolute;right:-20px;bottom:-20px;width:90px;height:90px;border-radius:999px;background:var(--gold);opacity:.1;}
-  .other-fee-card .lbl{color:var(--gold-soft);opacity:.85;font-size:11px;font-weight:700;line-height:1.4;position:relative;}
+  .other-fee-card .lbl{color:var(--gold-soft);opacity:.9;font-size:13.5px;font-weight:700;line-height:1.4;position:relative;}
   .other-fee-card .val{color:#fff;font-size:22px;font-weight:900;margin-top:6px;position:relative;}
 
   .section-title{font-size:14px;font-weight:600;color:var(--navy);margin:20px 0 8px;padding-left:9px;border-left:3px solid var(--rust);}
@@ -790,6 +790,9 @@ const T = {
     totalStudents:'Active Students', feesCollected:'Fees Collected (this month)', feesDue:'Fees Due (this month)',
     salaryPaid:'Salaries Paid (this month)', expensesThisMonth:'Expenses (this month)', otherFeeStandalone:'Other Fees (Hostel/Transport) — held separately, not part of school totals', netBalance:'Net Balance (all-time)', totalDuesAllTime:'Total Dues (all-time)', recentActivity:'Recent Activity',
     totalIncome:'Total Income (all-time)', totalExpense:'Total Expenses (all-time)', teacherSalaries:'Teacher Salaries (all-time)',
+    totalTeachers:'Total Teachers', todayAttendance:"Today's Attendance", teacherAttendanceToday:'Teacher Attendance (Today)',
+    notMarkedYet:'Not marked yet', feeCollectionGraphTitle:'Fee Collection (last 6 months)', checkedIn:'Checked In', notCheckedIn:'Not Checked In',
+    dueThisMonth:'Due (this month)',
     expenses:'Expenses', collectedFees:'Collected Fees', back:'Back', noRecords:'No records yet',
     addStudent:'Add Student', studentName:'Student Name', studentNameUr:'Student Name (Urdu)', fatherName:"Father's Name", fatherNameUr:"Father's Name (Urdu)", casteTribeUr:'Caste/Tribe (Urdu)', residenceUr:'Residence (Urdu)', className:'Class',
     groupByClass:'By Class', groupByFee:'By Fee', noFeeCategory:'No Fee', studentsCount:'students',
@@ -983,6 +986,9 @@ const T = {
     totalStudents:'فعال طلبہ', feesCollected:'وصول شدہ فیس (اس ماہ)', feesDue:'واجب الادا فیس (اس ماہ)',
     salaryPaid:'ادا شدہ تنخواہ (اس ماہ)', expensesThisMonth:'اخراجات (اس ماہ)', otherFeeStandalone:'دیگر فیس (ہاسٹل/ٹرانسپورٹ) — الگ رکھی گئی، اسکول کی کل رقم میں شامل نہیں', netBalance:'کل بیلنس', totalDuesAllTime:'کل واجب الادا (تمام وقت)', recentActivity:'حالیہ سرگرمی',
     totalIncome:'کل آمدنی', totalExpense:'کل اخراجات', teacherSalaries:'اساتذہ کی تنخواہیں',
+    totalTeachers:'کل اساتذہ', todayAttendance:'آج کی حاضری', teacherAttendanceToday:'اساتذہ حاضری (آج)',
+    notMarkedYet:'ابھی حاضری نہیں لگی', feeCollectionGraphTitle:'فیس وصولی (پچھلے 6 ماہ)', checkedIn:'حاضر لگی', notCheckedIn:'حاضری نہیں لگی',
+    dueThisMonth:'واجب الادا (اس ماہ)',
     expenses:'اخراجات', collectedFees:'وصول شدہ فیس', back:'واپس', noRecords:'ابھی کوئی ریکارڈ نہیں',
     addStudent:'طالب علم شامل کریں', studentName:'طالب علم کا نام', studentNameUr:'طالب علم کا نام (اردو)', fatherName:'والد کا نام', fatherNameUr:'والد کا نام (اردو)', casteTribeUr:'ذات/قبیلہ (اردو)', residenceUr:'رہائش (اردو)', className:'جماعت',
     groupByClass:'جماعت کے مطابق', groupByFee:'فیس کے مطابق', noFeeCategory:'بغیر فیس', studentsCount:'طلباء',
@@ -3907,6 +3913,211 @@ function setDashActivityView(view, cls) {
   renderTab();
 }
 
+// ---------------- Dashboard drill-down popups (click a stat card → related records) ----------------
+function dashListRow(nm, sub, right, onclick) {
+  return `<div class="list-row" style="cursor:pointer;" onclick="closeModal(); ${onclick}">
+    <div><div class="nm">${esc(nm)}</div>${sub ? `<div class="sub">${esc(sub)}</div>` : ''}</div>
+    ${right ? `<div>${right}</div>` : ''}
+
+  </div>`;
+}
+// Like dashListRow, but drills into another dashboard popup (re-renders the
+// same modal via showModal) instead of closing it — used for class lists.
+function dashDrillRow(nm, sub, right, onclick, isBack) {
+  return `<div class="list-row" style="cursor:pointer;${isBack?'border:none;background:none;':''}" onclick="${onclick}">
+    <div><div class="nm"${isBack?' style="color:var(--navy);"':''}>${esc(nm)}</div>${sub ? `<div class="sub">${esc(sub)}</div>` : ''}</div>
+    ${right ? `<div>${right}</div>` : ''}
+  </div>`;
+}
+function dashEmptyRow() { return `<div style="padding:16px;text-align:center;opacity:.5;font-size:13px;">${esc(t.noRecords)}</div>`; }
+
+function openDashStudentsModal() {
+  const active = DATA.students.filter(s => s.status !== 'inactive').slice().sort((a,b)=> (a.name||'').localeCompare(b.name||''));
+  const body = active.length ? active.map(s => dashListRow(s.name, s.class_name || '', '', `openStudentDetail('${s.id}')`)).join('') : dashEmptyRow();
+  showModal(t.totalStudents, `<div class="list-card">${body}</div>`);
+}
+function openDashTeachersModal() {
+  const list = DATA.teachers.slice().sort((a,b)=> (a.name||'').localeCompare(b.name||''));
+  const body = list.length ? list.map(tc => dashListRow(tc.name, tc.subject || '', '', `openTeacherDetail('${tc.id}')`)).join('') : dashEmptyRow();
+  showModal(t.totalTeachers, `<div class="list-card">${body}</div>`);
+}
+function openDashTeacherSalariesModal() {
+  const list = DATA.teachers.slice().sort((a,b)=> (a.name||'').localeCompare(b.name||''));
+  const body = list.length ? list.map(tc => {
+    const paid = teacherPayments(tc.id).reduce((a,b)=>a+Number(b.amount||0),0);
+    return dashListRow(tc.name, tc.subject || '', `₨${fmt(paid)}`, `openTeacherDetail('${tc.id}')`);
+  }).join('') : dashEmptyRow();
+  showModal(t.teacherSalaries, `<div class="list-card">${body}</div>`);
+}
+function openDashFeesCollectedModal() {
+  const cur = monthKey();
+  const rows = [];
+  DATA.students.forEach(s => studentPayments(s.id).filter(p=>p.month===cur).forEach(p => rows.push({ name: s.name, id: s.id, amount: Number(p.amount||0), date: p.pay_date })));
+  rows.sort((a,b)=> new Date(b.date) - new Date(a.date));
+  const body = rows.length ? rows.map(r => dashListRow(r.name, fmtDate(r.date)||'', `<span class="amt-pos">+₨${fmt(r.amount)}</span>`, `openStudentDetail('${r.id}')`)).join('') : dashEmptyRow();
+  showModal(t.feesCollected, `<div class="list-card">${body}</div>`);
+}
+function openDashFeesDueModal() {
+  const cur = monthKey();
+  const rows = [];
+  DATA.students.filter(s=>s.status!=='inactive' && isFeePaying(s)).forEach(s => {
+    const curEntries = studentPayments(s.id).filter(p=>p.month===cur);
+    const paid = curEntries.reduce((a,b)=>a+Number(b.amount||0),0);
+    const monthCharge = curEntries.reduce((a,e)=>a+Number(e.school_fee||0)+Number(e.sports_fund||0)+Number(e.admission_fee||0)+Number(e.exam_fee||0),0);
+    const due = Math.max(0, monthCharge - paid);
+    if (due > 0) rows.push({ name: s.name, id: s.id, class_name: s.class_name, due });
+  });
+  rows.sort((a,b)=> b.due - a.due);
+  const body = rows.length ? rows.map(r => dashListRow(r.name, r.class_name||'', `<span class="amt-neg">₨${fmt(r.due)}</span>`, `openStudentDetail('${r.id}')`)).join('') : dashEmptyRow();
+  showModal(t.feesDue, `<div class="list-card">${body}</div>`);
+}
+function openDashDuesModal() {
+  const rows = [];
+  DATA.students.filter(s=>s.status!=='inactive' && isFeePaying(s)).forEach(s => {
+    const bal = studentBalance(s.id);
+    if (bal > 0) rows.push({ name: s.name, id: s.id, class_name: s.class_name, bal });
+  });
+  rows.sort((a,b)=> b.bal - a.bal);
+  const body = rows.length ? rows.map(r => dashListRow(r.name, r.class_name||'', `<span class="amt-neg">₨${fmt(r.bal)}</span>`, `openStudentDetail('${r.id}')`)).join('') : dashEmptyRow();
+  showModal(t.totalDuesAllTime, `<div class="list-card">${body}</div>`);
+}
+
+// Uses the 'am' session record as each student's status for the day (falls back
+// to 'pm' if only that was marked). Data comes from the Class Portal attendance
+// feature (DATA.studentAttendance), so a class that hasn't marked yet shows
+// those students as not-marked rather than absent.
+function todayStudentAttendanceStatuses() {
+  const today = todayISO();
+  const map = {};
+  DATA.studentAttendance.filter(r => r.date === today).forEach(r => {
+    if (!map[r.student_id]) map[r.student_id] = {};
+    map[r.student_id][r.session] = r.status;
+  });
+  return map;
+}
+function todayStudentAttendanceSummary() {
+  const map = todayStudentAttendanceStatuses();
+  let marked=0, present=0, absent=0, leave=0, sick=0;
+  DATA.students.filter(s=>s.status!=='inactive').forEach(s => {
+    const rec = map[s.id];
+    if (!rec) return;
+    const st = rec.am || rec.pm;
+    if (!st) return;
+    marked++;
+    if (st==='present') present++; else if (st==='absent') absent++; else if (st==='leave') leave++; else if (st==='sick') sick++;
+  });
+  return { marked, present, absent, leave, sick };
+}
+function classGroupsOf(list) {
+  const groups = {};
+  list.forEach(s => { const c = s.class_name || '—'; (groups[c] = groups[c] || []).push(s); });
+  return [...CLASS_OPTIONS.filter(c => groups[c]), ...Object.keys(groups).filter(c => !CLASS_OPTIONS.includes(c))].map(c => ({ cls: c, students: groups[c] }));
+}
+function openDashTodayAttendanceModal(cls) {
+  const map = todayStudentAttendanceStatuses();
+  const statusLabel = st => st==='present'?t.present : st==='absent'?t.absent : st==='leave'?t.leave : st==='sick'?t.sick : t.notMarkedYet;
+  const statusColor = st => st==='present'?'var(--sage)' : st==='absent'?'var(--rust)' : st==='leave'?'var(--gold)' : st==='sick'?'#3B6FA0' : 'inherit';
+  const active = DATA.students.filter(s=>s.status!=='inactive');
+
+  if (!cls) {
+    const groups = classGroupsOf(active);
+    const rows = groups.map(g => {
+      let marked=0, present=0, absent=0;
+      g.students.forEach(s => { const rec=map[s.id]; const st=rec?(rec.am||rec.pm):null; if (st) { marked++; if (st==='present') present++; else if (st==='absent') absent++; } });
+      return dashDrillRow(`${t.className}: ${g.cls}`, `${marked}/${g.students.length} ${t.totalStudents}`,
+        `<span style="font-size:12px;">${esc(t.present)}: ${present} · ${esc(t.absent)}: ${absent}</span>`,
+        `openDashTodayAttendanceModal('${esc(g.cls)}')`);
+    }).join('');
+    showModal(t.todayAttendance, `<div class="list-card">${rows || dashEmptyRow()}</div>`);
+    return;
+  }
+
+  const students = active.filter(s => (s.class_name||'—') === cls).slice().sort((a,b)=> (a.name||'').localeCompare(b.name||''));
+  const back = dashDrillRow(`‹ ${t.todayAttendance}`, '', '', `openDashTodayAttendanceModal()`, true);
+  const rows = students.map(s => {
+    const rec = map[s.id]; const st = rec ? (rec.am || rec.pm) : null;
+    return dashListRow(s.name, '', `<span style="color:${statusColor(st)};font-weight:600;">${esc(statusLabel(st))}</span>`, `openStudentDetail('${s.id}')`);
+  }).join('');
+  showModal(cls, `<div class="list-card">${back}${rows || dashEmptyRow()}</div>`);
+}
+
+function todayTeacherAttendanceSummary() {
+  const today = todayISO();
+  let checkedIn = 0;
+  DATA.teachers.forEach(tc => {
+    const rec = DATA.teacherAttendance.find(a => a.teacher_id === tc.id && a.date === today);
+    if (rec && (rec.checked_in_at_am || rec.checked_in_at_pm || rec.checked_in_at)) checkedIn++;
+  });
+  return { checkedIn };
+}
+function openDashTeacherAttendanceModal() {
+  const today = todayISO();
+  const list = DATA.teachers.slice().sort((a,b)=> (a.name||'').localeCompare(b.name||''));
+  const rows = list.map(tc => {
+    const rec = DATA.teacherAttendance.find(a => a.teacher_id === tc.id && a.date === today);
+    const checkedIn = rec && (rec.checked_in_at_am || rec.checked_in_at_pm || rec.checked_in_at);
+    return dashListRow(tc.name, tc.subject||'', `<span style="color:${checkedIn?'var(--sage)':'var(--rust)'};font-weight:600;">${esc(checkedIn?t.checkedIn:t.notCheckedIn)}</span>`, `openTeacherDetail('${tc.id}')`);
+  }).join('');
+  showModal(t.teacherAttendanceToday, `<div class="list-card">${rows || dashEmptyRow()}</div>`);
+}
+
+function openDashIncomeExpenseModal() {
+  showModal(t.monthlyChartTitle, tplIncomeExpenseChart() || `<div style="padding:16px;text-align:center;opacity:.5;font-size:13px;">${esc(t.noRecords)}</div>`);
+}
+
+// Last 6 months of total fee collected — across all students for the small
+// dashboard preview, or scoped to one class for the drill-down popup.
+function feeCollectionSeries(n, cls) {
+  n = n || 6;
+  const now = new Date();
+  const months = [];
+  for (let i = n - 1; i >= 0; i--) { const d = new Date(now.getFullYear(), now.getMonth() - i, 1); months.push(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`); }
+  const students = cls ? DATA.students.filter(s => (s.class_name||'—') === cls) : DATA.students;
+  return months.map(mk => {
+    let total = 0;
+    students.forEach(s => { total += studentPayments(s.id).filter(p=>p.month===mk).reduce((a,b)=>a+Number(b.amount||0),0); });
+    return { month: mk, total };
+  });
+}
+function tplFeeCollectionMiniChart() {
+  const series = feeCollectionSeries(6);
+  const max = Math.max(1, ...series.map(s=>s.total));
+  const chartH = 60, barW = 16, gap = 10;
+  const chartW = series.length * (barW + gap);
+  const bars = series.map((s,i) => {
+    const h = Math.round((s.total / max) * chartH);
+    return `<rect x="${i*(barW+gap)}" y="${chartH-h}" width="${barW}" height="${Math.max(h,1)}" rx="3" fill="var(--sage)"/>`;
+  }).join('');
+  return `<svg viewBox="0 0 ${chartW} ${chartH}" style="width:100%;height:60px;display:block;">${bars}</svg>`;
+}
+function tplFeeCollectionChartSvg(cls) {
+  const series = feeCollectionSeries(6, cls);
+  const max = Math.max(1, ...series.map(s=>s.total));
+  const chartH = 130, barW = 24, gap = 18;
+  const chartW = series.length * (barW + gap);
+  const bars = series.map((s,i) => {
+    const h = Math.round((s.total / max) * chartH);
+    return `<g>
+      <rect x="${i*(barW+gap)}" y="${chartH-h}" width="${barW}" height="${Math.max(h,1)}" rx="3" fill="var(--sage)"/>
+      <text x="${i*(barW+gap)+barW/2}" y="${chartH+16}" text-anchor="middle" font-size="9" fill="var(--ink)" opacity=".65">${esc(monthLabel(s.month))}</text>
+    </g>`;
+  }).join('');
+  return `<svg viewBox="0 0 ${chartW} ${chartH+28}" style="width:100%;height:auto;display:block;margin-top:6px;">${bars}</svg>`;
+}
+function openDashFeeCollectionGraphModal(cls) {
+  if (!cls) {
+    const groups = classGroupsOf(DATA.students.filter(s=>s.status!=='inactive'));
+    const rows = groups.map(g => {
+      const total = feeCollectionSeries(6, g.cls).reduce((a,b)=>a+b.total,0);
+      return dashDrillRow(`${t.className}: ${g.cls}`, `${g.students.length} ${t.totalStudents}`, `₨${fmt(total)}`, `openDashFeeCollectionGraphModal('${esc(g.cls)}')`);
+    }).join('');
+    showModal(t.feeCollectionGraphTitle, `<div class="list-card">${rows || dashEmptyRow()}</div>`);
+    return;
+  }
+  const back = dashDrillRow(`‹ ${t.feeCollectionGraphTitle}`, '', '', `openDashFeeCollectionGraphModal()`, true);
+  showModal(cls, `${back}${tplFeeCollectionChartSvg(cls)}`);
+}
+
 function tplDashboard() {
   const s = computeStats();
 
@@ -3921,13 +4132,23 @@ function tplDashboard() {
         <span style="font-size:12px;opacity:.8;">${esc(LANG==='ur' ? 'دیکھیں ›' : 'View ›')}</span>
       </div>` : ''}
       <div class="stat-grid">
-        <div class="stat-card"><div class="lbl">${esc(t.totalStudents)}</div><div class="val">${dv(s.activeCount)}</div></div>
-        <div class="stat-card"><div class="lbl">${esc(t.totalIncome)}</div><div class="val" style="color:var(--sage);">${dv('₨'+fmt(s.totalIncomeAllTime))}</div></div>
-        <div class="stat-card"><div class="lbl">${esc(t.totalExpense)}</div><div class="val" style="color:var(--rust);">${dv('₨'+fmt(s.totalExpenseAllTime))}</div></div>
-        <div class="stat-card"><div class="lbl">${esc(t.teacherSalaries)}</div><div class="val">${dv('₨'+fmt(s.totalSalariesAllTime))}</div></div>
+        <div class="stat-card" style="cursor:pointer;" onclick="openDashStudentsModal()"><div class="lbl">👨‍🎓 ${esc(t.totalStudents)}</div><div class="val">${dv(s.activeCount)}</div></div>
+        <div class="stat-card" style="cursor:pointer;" onclick="openDashTeachersModal()"><div class="lbl">👨‍🏫 ${esc(t.totalTeachers)}</div><div class="val">${dv(DATA.teachers.length)}</div></div>
+        <div class="stat-card" style="cursor:pointer;" onclick="openDashIncomeExpenseModal()"><div class="lbl">💵 ${esc(t.totalIncome)}</div><div class="val" style="color:var(--sage);">${dv('₨'+fmt(s.totalIncomeAllTime))}</div></div>
+        <div class="stat-card" style="cursor:pointer;" onclick="openDashIncomeExpenseModal()"><div class="lbl">💸 ${esc(t.totalExpense)}</div><div class="val" style="color:var(--rust);">${dv('₨'+fmt(s.totalExpenseAllTime))}</div></div>
+        <div class="stat-card" style="cursor:pointer;" onclick="openDashTeacherSalariesModal()"><div class="lbl">💰 ${esc(t.teacherSalaries)}</div><div class="val">${dv('₨'+fmt(s.totalSalariesAllTime))}</div></div>
       </div>
-      <div class="balance-card"><div class="lbl">${esc(t.netBalance)}</div><div class="val">${dv('₨'+fmt(s.netBalance))}</div></div>
-      <div class="dues-card"><div class="lbl">${esc(t.totalDuesAllTime)}</div><div class="val">${dv('₨'+fmt(s.totalDuesAllTime))}</div></div>
+      <div class="balance-card" style="cursor:pointer;" onclick="openDashIncomeExpenseModal()"><div class="lbl">💵 ${esc(t.netBalance)}</div><div class="val">${dv('₨'+fmt(s.netBalance))}</div></div>
+      <div class="dues-card" style="cursor:pointer;" onclick="openDashDuesModal()"><div class="lbl">⚠️ ${esc(t.totalDuesAllTime)}</div><div class="val">${dv('₨'+fmt(s.totalDuesAllTime))}</div></div>
+
+      <div class="section-title">📅 ${esc(t.todayAttendance)}</div>
+      <div class="stat-grid" style="grid-template-columns:1fr 1fr;">
+        <div class="stat-card" style="cursor:pointer;" onclick="openDashTodayAttendanceModal()"><div class="lbl">📅 ${esc(t.todayAttendance)}</div><div class="val" style="font-size:18px;">${dv(todayStudentAttendanceSummary().marked+'/'+s.activeCount)}</div></div>
+        <div class="stat-card" style="cursor:pointer;" onclick="openDashTeacherAttendanceModal()"><div class="lbl">🧑‍🏫 ${esc(t.teacherAttendanceToday)}</div><div class="val" style="font-size:18px;">${dv(todayTeacherAttendanceSummary().checkedIn+'/'+DATA.teachers.length)}</div></div>
+      </div>
+
+      <div class="section-title">📊 ${esc(t.feeCollectionGraphTitle)}</div>
+      <div class="stat-card" style="cursor:pointer;padding:10px 14px;" onclick="openDashFeeCollectionGraphModal()">${tplFeeCollectionMiniChart()}</div>
 
       <div class="other-fee-card">
         <div class="lbl">${esc(t.otherFeeStandalone)}</div>
@@ -3940,10 +4161,10 @@ function tplDashboard() {
 
       <div class="section-title">${esc(t.thisMonth)}</div>
       <div class="stat-grid">
-        <div class="stat-card"><div class="lbl">${esc(t.feesCollected)}</div><div class="val" style="font-size:18px;">${dv('₨'+fmt(s.feesCollectedThisMonth))}</div></div>
-        <div class="stat-card"><div class="lbl">${esc(t.feesDue)}</div><div class="val" style="font-size:18px;">${dv('₨'+fmt(s.feesDueThisMonth))}</div></div>
-        <div class="stat-card"><div class="lbl">${esc(t.salaryPaid)}</div><div class="val" style="font-size:18px;">${dv('₨'+fmt(s.salaryPaidThisMonth))}</div></div>
-        <div class="stat-card"><div class="lbl">${esc(t.expensesThisMonth)}</div><div class="val" style="font-size:18px;color:var(--rust);">${dv('₨'+fmt(s.totalExpenseThisMonth))}</div></div>
+        <div class="stat-card" style="cursor:pointer;" onclick="openDashFeesCollectedModal()"><div class="lbl">💰 ${esc(t.feesCollected)}</div><div class="val" style="font-size:18px;">${dv('₨'+fmt(s.feesCollectedThisMonth))}</div></div>
+        <div class="stat-card" style="cursor:pointer;" onclick="openDashFeesDueModal()"><div class="lbl">⚠️ ${esc(t.feesDue)}</div><div class="val" style="font-size:18px;">${dv('₨'+fmt(s.feesDueThisMonth))}</div></div>
+        <div class="stat-card" style="cursor:pointer;" onclick="openDashTeacherSalariesModal()"><div class="lbl">💵 ${esc(t.salaryPaid)}</div><div class="val" style="font-size:18px;">${dv('₨'+fmt(s.salaryPaidThisMonth))}</div></div>
+        <div class="stat-card" style="cursor:pointer;" onclick="setTab('finance')"><div class="lbl">💸 ${esc(t.expensesThisMonth)}</div><div class="val" style="font-size:18px;color:var(--rust);">${dv('₨'+fmt(s.totalExpenseThisMonth))}</div></div>
       </div>
 
       <div class="section-title">${esc(t.studentType)}</div>
