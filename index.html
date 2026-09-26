@@ -801,6 +801,7 @@ const T = {
     expenses:'Expenses', collectedFees:'Collected Fees', back:'Back', noRecords:'No records yet',
     addStudent:'Add Student', studentName:'Student Name', studentNameUr:'Student Name (Urdu)', fatherName:"Father's Name", fatherNameUr:"Father's Name (Urdu)", casteTribeUr:'Caste/Tribe (Urdu)', residenceUr:'Residence (Urdu)', className:'Class',
     quickAdmission:'Quick Admission', admissionNo:'Admission No.', dateOfBirth:'Date of Birth',
+    printSelected:'Print Selected', clear:'Clear',
     groupByClass:'By Class', groupByFee:'By Fee', noFeeCategory:'No Fee', studentsCount:'students',
     admissionDate:'Admission Date', monthlyFee:'Monthly Fee (Rs)', contact:'Contact Number',
     studentType:'Student Type', feePaying:'Fee-Paying', free:'Free', orphan:'Orphan', all:'All',
@@ -998,6 +999,7 @@ const T = {
     expenses:'اخراجات', collectedFees:'وصول شدہ فیس', back:'واپس', noRecords:'ابھی کوئی ریکارڈ نہیں',
     addStudent:'طالب علم شامل کریں', studentName:'طالب علم کا نام', studentNameUr:'طالب علم کا نام (اردو)', fatherName:'والد کا نام', fatherNameUr:'والد کا نام (اردو)', casteTribeUr:'ذات/قبیلہ (اردو)', residenceUr:'رہائش (اردو)', className:'جماعت',
     quickAdmission:'فوری داخلہ', admissionNo:'داخلہ نمبر', dateOfBirth:'تاریخ پیدائش',
+    printSelected:'منتخب پرنٹ کریں', clear:'صاف کریں',
     groupByClass:'جماعت کے مطابق', groupByFee:'فیس کے مطابق', noFeeCategory:'بغیر فیس', studentsCount:'طلباء',
     admissionDate:'داخلہ کی تاریخ', monthlyFee:'ماہانہ فیس (روپے)', contact:'رابطہ نمبر',
     studentType:'طالب علم کی قسم', feePaying:'فیس ادا کرنے والا', free:'مفت', orphan:'یتیم', all:'تمام',
@@ -6736,6 +6738,15 @@ let registerSearch = '';
 let registerPage = 1;
 let registerSubTab = 'dashboard'; // 'dashboard' | 'admitted' | 'slc'
 const REGISTER_PAGE_SIZE = 20;
+// Tracks which Admission Register rows are checked for print, by id — kept as a
+// Set so selections survive across pages and search filtering (a school might
+// search, tick a few, clear the search, and tick a few more before printing).
+let REGISTER_SELECTED = new Set();
+function toggleRegisterSelect(id) {
+  if (REGISTER_SELECTED.has(id)) REGISTER_SELECTED.delete(id); else REGISTER_SELECTED.add(id);
+  renderTab();
+}
+function clearRegisterSelection() { REGISTER_SELECTED.clear(); renderTab(); }
 function setRegisterSearch(v) { registerSearch = v; registerPage = 1; reFocusAfterRender('register-search-input'); }
 function setRegisterPage(p) { registerPage = p; renderTab(); }
 function setRegisterSubTab(k) { registerSubTab = k; registerSearch = ''; registerPage = 1; renderTab(); }
@@ -7990,7 +8001,14 @@ function tplRegisterDashboard() {
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#E4C765" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg>
       </button>
     </div>
-    ${registerLedgerTableHtml(allSorted)}`;
+    ${registerLedgerTableHtml(allSorted)}
+    ${REGISTER_SELECTED.size > 0 ? `
+    <div class="flexgap" style="margin-top:10px;">
+      <button class="btn-primary" style="flex:1;background:var(--sage);" onclick="printSelectedAdmissionEntries()">
+        🖨️ ${esc(t.printSelected||'Print Selected')} (${REGISTER_SELECTED.size})
+      </button>
+      <button class="btn-ghost" onclick="clearRegisterSelection()">✕ ${esc(t.clear||'Clear')}</button>
+    </div>` : ''}`;
 }
 
 // Shared ledger-book table renderer: same column order as the physical bound
@@ -8003,14 +8021,15 @@ function registerLedgerTableHtml(rows) {
     return parts.length ? esc(parts.join(' — ')) : '—';
   };
   const headCols = [
-    t.admissionDate, t.serialNo, t.studentName, t.dobLabel, t.fatherName,
+    '', t.admissionDate, t.serialNo, t.studentName, t.dobLabel, t.fatherName,
     t.casteTribe, t.occupation, t.residence, t.classAdmitted, t.arrearsDue,
     t.classWithdrawn, t.withdrawalDate, t.remarks, ''
   ];
-  const SPINE_AFTER = 4; // after Father's Name column, matching the book's fold
+  const SPINE_AFTER = 5; // after Father's Name column, matching the book's fold
 
   const dataRow = r => `
     <tr onclick="openEditAdmissionEntry('${r.id}')">
+      <td class="act" onclick="event.stopPropagation();"><input type="checkbox" ${REGISTER_SELECTED.has(r.id)?'checked':''} onchange="toggleRegisterSelect('${r.id}')"></td>
       <td>${esc(fmtDate(r.admission_date)||'—')}</td>
       <td>${esc(r.serial_no||'—')}</td>
       <td class="mo">${esc(r.student_name||'—')}</td>
@@ -8256,7 +8275,14 @@ function tplRegisterList() {
     </div>
     <button class="btn-primary" style="width:100%;margin-top:10px;" onclick="printAdmissionRegisterPage(${registerPage})">
       🖨️ ${esc(t.printThisPage||'Print this page')} (${list.length})
-    </button>`;
+    </button>
+    ${REGISTER_SELECTED.size > 0 ? `
+    <div class="flexgap" style="margin-top:10px;">
+      <button class="btn-primary" style="flex:1;background:var(--sage);" onclick="printSelectedAdmissionEntries()">
+        🖨️ ${esc(t.printSelected||'Print Selected')} (${REGISTER_SELECTED.size})
+      </button>
+      <button class="btn-ghost" onclick="clearRegisterSelection()">✕ ${esc(t.clear||'Clear')}</button>
+    </div>` : ''}`;
 
   return `
     <div class="searchbar">
@@ -8279,7 +8305,27 @@ function printAdmissionRegisterPage(page) {
   const start = (page - 1) * REGISTER_PAGE_SIZE;
   const rows = full.slice(start, start + REGISTER_PAGE_SIZE);
   if (rows.length === 0) return;
+  printAdmissionEntriesLedger(rows, `Page ${page}`, true);
+}
 
+// Prints exactly the rows the user has ticked in the Admission Register, in any
+// combination and regardless of which search/page they were checked on — sorted
+// by serial number so the printed sheet still reads in register order.
+function printSelectedAdmissionEntries() {
+  if (REGISTER_SELECTED.size === 0) return;
+  const rows = DATA.admissionRegister
+    .filter(r => REGISTER_SELECTED.has(r.id))
+    .sort((a,b) => Number(a.serial_no||0) - Number(b.serial_no||0));
+  if (rows.length === 0) return;
+  printAdmissionEntriesLedger(rows, `${t.printSelected||'Selected'} (${rows.length})`, false);
+}
+
+// Shared ledger-style print builder used by both the page print and the
+// selected-rows print. padToPageSize adds blank ruled rows up to
+// REGISTER_PAGE_SIZE (matching the physical book's page), which only makes
+// sense for a single register page — a selected-rows printout is left
+// unpadded since it isn't one physical page.
+function printAdmissionEntriesLedger(rows, subtitle, padToPageSize) {
   const headCols = [
     t.admissionDate, t.serialNo, t.studentName, t.dobLabel, t.fatherName,
     t.casteTribe, t.occupation, t.residence, t.classAdmitted, t.arrearsDue,
@@ -8309,7 +8355,7 @@ function printAdmissionRegisterPage(page) {
       <td>${esc(r.remarks||'—')}</td>
     </tr>`;
   const blankRow = `<tr>${headCols.map((_,i)=>`<td${i===SPINE_AFTER?' class="rb-spine"':''}>&nbsp;</td>`).join('')}</tr>`;
-  const bodyRows = rows.map(dataRow).join('') + blankRow.repeat(Math.max(0, REGISTER_PAGE_SIZE - rows.length));
+  const bodyRows = rows.map(dataRow).join('') + (padToPageSize ? blankRow.repeat(Math.max(0, REGISTER_PAGE_SIZE - rows.length)) : '');
 
   document.getElementById('print-area').innerHTML = `
     <div class="regbook-print">
@@ -8318,7 +8364,7 @@ function printAdmissionRegisterPage(page) {
         <span class="rb-of">${LANG==='ur' ? 'کے' : 'of the'}</span>
         <span class="rb-school">${esc(CURRENT_PROFILE.school_name || 'School')}</span>
       </div>
-      <div class="rb-meta">Page ${page} &nbsp;·&nbsp; ${esc(fmtDate(todayISO()))}</div>
+      <div class="rb-meta">${esc(subtitle)} &nbsp;·&nbsp; ${esc(fmtDate(todayISO()))}</div>
       <table>
         <thead><tr>${headerHtml}</tr></thead>
         <tbody>${bodyRows}</tbody>
