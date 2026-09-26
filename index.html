@@ -86,6 +86,7 @@ html, body{overscroll-behavior:none;}
   @keyframes skel-shimmer{0%{background-position:200% 0;}100%{background-position:-200% 0;}}
   .btn-ghost.danger{background:#FBEAE5;color:var(--rust);}
   .lang-mini{background:#F0EAD6;color:var(--navy);border:none;border-radius:999px;padding:5px 12px;font-size:12px;font-weight:600;}
+  #alerts-bell-badge{display:none;position:absolute;top:-4px;right:-4px;min-width:16px;height:16px;padding:0 3px;background:var(--rust);color:#fff;border-radius:999px;font-size:10px;font-weight:700;align-items:center;justify-content:center;line-height:1;}
 
   #app{padding-bottom:90px;}
   /* On wider screens (laptop/desktop) keep the phone-style layout centered
@@ -2528,6 +2529,7 @@ function renderApp() {
             <div class="title">${esc(t.appName)}</div>
           </div>
           <div class="top-actions">
+            <button class="pill-btn lock" id="alerts-bell-btn" onclick="openAlertsModal()" title="${esc(LANG==='ur' ? 'اہم الرٹس' : 'Important Alerts')}" style="position:relative;">🔔<span id="alerts-bell-badge"></span></button>
             <button class="pill-btn lock" onclick="openGlobalSearch()" title="${esc(t.globalSearch)}">🔍</button>
             <button class="pill-btn lang" onclick="toggleLangApp()">${esc(t.langToggle)}</button>
             <button class="pill-btn lock" onclick="openSettings()">⚙</button>
@@ -2945,6 +2947,17 @@ function renderTab() {
   else if (TAB==='admin') { main.innerHTML = tplAdmin(); loadAdminLists(); return; }
   main.insertAdjacentHTML('beforeend', `<div class="notice">${esc(t.sharedNotice)}</div>`);
   main.insertAdjacentHTML('beforeend', `<div class="notice" style="margin-top:8px;font-size:10px;">${esc(t.copyrightNotice)}</div>`);
+  updateAlertsBadge();
+}
+
+// Keeps the 🔔 badge count in sync; safe to call anytime (no-ops if the
+// bell isn't in the DOM yet, e.g. before login).
+function updateAlertsBadge() {
+  const badge = document.getElementById('alerts-bell-badge');
+  if (!badge) return;
+  const n = generateAlerts().length;
+  badge.textContent = n > 0 ? (n > 9 ? '9+' : String(n)) : '';
+  badge.style.display = n > 0 ? 'flex' : 'none';
 }
 
 // ---------------- Suggestions (for the school owner) ----------------
@@ -3011,6 +3024,68 @@ function generateSuggestions() {
   }
 
   return list;
+}
+
+// ---------------- Important Alerts (Fee dues + Teacher check-in misses) ----------------
+// Purely additive: only reads from existing DATA/computeStats/monthsOverdue,
+// writes nothing anywhere, and does not modify any existing function above.
+// Surfaced via the 🔔 bell in the header and a banner on the Dashboard.
+function generateAlerts() {
+  const list = [];
+  const today = todayISO();
+  const now = new Date();
+
+  // Fee alerts: every active fee-paying student currently overdue.
+  const active = DATA.students.filter(x => x.status !== 'inactive');
+  active.filter(s => isFeePaying(s)).forEach(s => {
+    // Only alert if the LATEST recorded month's running balance is still due.
+    // If earlier months had dues but the student has since caught up (their
+    // most recent entry brings the running balance to 0 or below), this is
+    // not overdue anymore — don't alert, even though older rows show old dues.
+    const latestBalance = studentBalance(s.id);
+    if (latestBalance <= 0) return;
+    const m = monthsOverdue(s);
+    if (m >= 1) {
+      list.push({
+        severity: m >= 2 ? 'high' : 'medium', icon: m >= 2 ? '🔴' : '🟠',
+        en: `${s.name} — ${m} month${m > 1 ? 's' : ''} of fees overdue`,
+        ur: `${s.name} — فیس ${m} ماہ سے واجب الادا ہے`,
+        onclick: `openStudentDetail('${s.id}')`
+      });
+    }
+  });
+
+  // Teacher check-in alerts: no attendance record for today yet, after a
+  // 9 AM grace period (matches the 7 AM–2 PM QR check-in window already
+  // shown to teachers, so this doesn't fire before they'd reasonably scan).
+  if (now.getHours() >= 9) {
+    DATA.teachers.forEach(tc => {
+      const rec = DATA.teacherAttendance.find(a => a.teacher_id === tc.id && a.date === today);
+      const checkedIn = rec && (rec.checked_in_at_am || rec.checked_in_at_pm || rec.checked_in_at);
+      if (!checkedIn) {
+        list.push({
+          severity: 'medium', icon: '🕐',
+          en: `${tc.name} has not checked in today`,
+          ur: `${tc.name} نے آج حاضری نہیں لگائی`,
+          onclick: `openTeacherDetail('${tc.id}')`
+        });
+      }
+    });
+  }
+
+  list.sort((a, b) => (b.severity === 'high') - (a.severity === 'high'));
+  return list;
+}
+
+function openAlertsModal() {
+  const list = generateAlerts();
+  const body = list.length
+    ? list.map(a => `
+        <div class="list-row" style="cursor:pointer;" onclick="closeModal(); ${a.onclick}">
+          <div class="nm">${a.icon} ${esc(LANG === 'ur' ? a.ur : a.en)}</div>
+        </div>`).join('')
+    : `<div class="empty">${esc(LANG === 'ur' ? 'فی الحال کوئی اہم الرٹ نہیں۔' : 'No important alerts right now.')}</div>`;
+  showModal(LANG === 'ur' ? 'اہم الرٹس' : 'Important Alerts', `<div class="list-card">${body}</div>`);
 }
 
 function tplSuggestions() {
@@ -3835,11 +3910,16 @@ function setDashActivityView(view, cls) {
 function tplDashboard() {
   const s = computeStats();
 
+  const alerts = generateAlerts();
   return `
     <div style="padding-top:16px;">
       ${CACHE_UNAVAILABLE ? `<div style="background:#B00020;color:#fff;font-size:12px;font-weight:600;text-align:center;padding:8px 10px;border-radius:10px;margin-bottom:12px;">${esc(LANG==='ur'
         ? '⚠️ اس ڈیوائس پر کوئی محفوظ ڈیٹا موجود نہیں۔ نیچے دیے گئے اعداد اصل نہیں — انٹرنیٹ سے جوڑیں۔'
         : '⚠️ No cached data on this device yet. Figures below are placeholders, not real balances — please connect to the internet once.')}${OFFLINE_DEBUG_INFO ? `<div style="font-weight:400;opacity:.85;margin-top:4px;font-size:11px;">${esc(OFFLINE_DEBUG_INFO)}</div>` : ''}</div>` : ''}
+      ${alerts.length ? `<div onclick="openAlertsModal()" style="cursor:pointer;background:#FBEAE5;color:var(--rust);font-size:13px;font-weight:600;padding:10px 14px;border-radius:12px;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;">
+        <span>🔔 ${esc(LANG==='ur' ? `${alerts.length} اہم الرٹس` : `${alerts.length} Important Alert${alerts.length>1?'s':''}`)}</span>
+        <span style="font-size:12px;opacity:.8;">${esc(LANG==='ur' ? 'دیکھیں ›' : 'View ›')}</span>
+      </div>` : ''}
       <div class="stat-grid">
         <div class="stat-card"><div class="lbl">${esc(t.totalStudents)}</div><div class="val">${dv(s.activeCount)}</div></div>
         <div class="stat-card"><div class="lbl">${esc(t.totalIncome)}</div><div class="val" style="color:var(--sage);">${dv('₨'+fmt(s.totalIncomeAllTime))}</div></div>
