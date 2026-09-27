@@ -271,28 +271,41 @@ html, body{overscroll-behavior:none;}
   .qpaper-print{display:none;}
   @media print{
     .qpaper-print{display:block;font-family:'Noto Nastaliq Urdu',Inter,serif;color:#111;}
-    .qp-head{text-align:center;border-bottom:2px solid #111;padding-bottom:8px;margin-bottom:16px;}
+    .qpaper-print, .qpaper-print *{line-height:1.2;}
+    /* Noto Nastaliq Urdu needs noticeably more vertical room than Latin text —
+       its diagonal stroke shape means tight (1.2) line-height makes adjacent
+       lines' loops and dots overlap. Only loosen it for Urdu-language papers;
+       the English paper already looks right at 1.2, so leave it untouched. */
+    body.ur .qpaper-print, body.ur .qpaper-print *{line-height:2;}
+    .qp-head{text-align:center;padding-bottom:3px;margin-bottom:5px;}
     .qp-head-row{display:flex;align-items:flex-start;justify-content:space-between;gap:8px;}
-    .qp-side{font-size:12px;font-weight:600;white-space:nowrap;flex-shrink:0;padding-top:4px;}
+    .qp-side{font-size:13px;font-weight:600;white-space:nowrap;flex-shrink:0;padding-top:2px;}
     .qp-center{flex:1;}
-    .qp-school{font-size:20px;font-weight:700;}
-    .qp-examname{font-size:14px;font-weight:600;margin-top:3px;}
-    .qp-subject{font-size:13px;margin-top:2px;}
-    .qp-classline{font-size:12px;margin-top:2px;}
-    .qp-title{font-size:15px;margin-top:2px;}
-    .qp-meta{display:flex;justify-content:center;gap:18px;font-size:12px;margin-top:6px;}
-    .qp-name-line{font-size:12px;margin-top:10px;text-align:left;}
+    .qp-school{font-size:21px;font-weight:700;}
+    .qp-examname{font-size:15px;font-weight:600;margin-top:1px;}
+    .qp-subject{font-size:14px;margin-top:1px;}
+    .qp-classline{font-size:13px;margin-top:1px;}
+    .qp-title{font-size:15px;margin-top:1px;}
+    .qp-meta{display:flex;justify-content:center;gap:18px;font-size:13px;margin-top:3px;}
+    .qp-name-line{font-size:13px;margin-top:3px;text-align:left;}
     .pq-section{margin-top:16px;}
-    .pq-section-title{font-weight:700;font-size:13px;border-bottom:1px solid #111;padding-bottom:4px;margin-bottom:8px;}
-    .pq-sub{margin-bottom:12px;}
-    .pq-sub-title{font-weight:600;font-size:12px;text-decoration:underline;margin-bottom:6px;}
-    .pq-marks{font-weight:400;font-size:11px;opacity:.75;}
-    .pq-q{font-size:13px;margin-bottom:10px;}
-    .pq-options{display:flex;flex-wrap:nowrap;gap:4px 16px;margin:4px 0 0 18px;font-size:12px;}
-    .pq-options span{white-space:nowrap;}
-    .pq-tf{font-size:12px;opacity:.8;}
-    .pq-match{display:grid;grid-template-columns:1fr 1fr;gap:6px 20px;font-size:13px;}
-    .qp-logo{height:52px;width:52px;object-fit:contain;display:block;margin:0 auto 6px;}
+    .pq-section-title{font-weight:700;font-size:14px;padding-bottom:1px;margin-bottom:3px;page-break-after:avoid;break-after:avoid;text-align:center;}
+    .pq-sub{margin-bottom:16px;}
+    .pq-sub-title{font-weight:600;font-size:13px;text-decoration:underline;margin-bottom:2px;}
+    .pq-instruction{font-size:13px;font-style:italic;font-weight:800;opacity:1;margin:-1px 0 3px;}
+    .pq-marks{font-weight:400;font-size:12px;opacity:.75;}
+    .pq-q{font-size:14px;margin-bottom:2px;page-break-inside:avoid;break-inside:avoid;display:flex;flex-wrap:wrap;align-items:baseline;column-gap:14px;row-gap:0;}
+    .pq-options{white-space:nowrap;font-size:13px;}
+    .pq-options span{margin-inline-end:14px;}
+    .pq-options span:last-child{margin-inline-end:0;}
+    .pq-tf{font-size:13px;opacity:.8;white-space:nowrap;}
+    .pq-match{display:grid;grid-template-columns:1fr 1fr;gap:5px 20px;font-size:14px;}
+    .pq-2col{display:grid;grid-template-columns:1fr 1fr;gap:4px 20px;}
+    .qp-logo{height:44px;width:44px;object-fit:contain;display:block;margin:0 auto 4px;}
+    .pq-img-wrap{margin:3px 0 3px 18px;}
+    .pq-img{max-width:55mm;max-height:40mm;object-fit:contain;border:1px solid #999;display:block;}
+    .pq-end-img-wrap{margin-top:18px;text-align:center;}
+    .pq-end-img{max-width:110mm;max-height:75mm;object-fit:contain;border:1px solid #999;display:inline-block;}
   }
   .type-toggle{display:flex;gap:8px;margin-bottom:14px;}
   .type-toggle button{flex:1;border:none;border-radius:10px;padding:9px;font-size:13px;font-weight:600;background:#F0EBDA;color:var(--navy);}
@@ -835,6 +848,9 @@ const T = {
     paperTime:'Time Allowed', mcqSection:'Section A — Objective Questions', shortSection:'Section B — Short Questions',
     longSection:'Section C — Long Questions', marksEach:'Marks (each)', addQuestion:'+ Add Question', marks:'Marks',
     mcqType:'Multiple Choice Questions (MCQs)', blanksType:'Fill in the Blanks', tfType:'True / False', matchType:'Matching Column',
+    instructionLabel:'Instruction (optional)', instructionPh:'e.g. Choose the correct option',
+    paperEndImageLabel:'Diagram / Image (optional)', paperEndImageHint:'Printed once at the end of the paper — e.g. for Science subjects',
+    addImage:'+ Add Image', removeImage:'Remove Image',
     logo:'Logo', paperExamName:'Exam Name',
     paperPreviewNote:'Fill in the questions below, then print. Blank option/answer boxes are left empty on the printed paper.',
     groupByClass:'By Class', groupByFee:'By Fee', noFeeCategory:'No Fee', studentsCount:'students',
@@ -1039,6 +1055,9 @@ const T = {
     paperTime:'وقت', mcqSection:'حصہ اول — معروضی سوالات', shortSection:'حصہ دوم — مختصر سوالات',
     longSection:'حصہ سوم — تفصیلی سوالات', marksEach:'نمبر (فی سوال)', addQuestion:'+ سوال شامل کریں', marks:'نمبر',
     mcqType:'معروضی سوالات (MCQs)', blanksType:'خالی جگہ پر کریں', tfType:'درست / غلط', matchType:'مطابقت کریں',
+    instructionLabel:'ہدایت (اختیاری)', instructionPh:'مثلاً درست جواب منتخب کریں',
+    paperEndImageLabel:'خاکہ/تصویر (اختیاری)', paperEndImageHint:'پرچے کے آخر میں ایک بار پرنٹ ہو گی — مثلاً سائنس کے مضامین کیلئے',
+    addImage:'+ تصویر شامل کریں', removeImage:'تصویر ہٹائیں',
     logo:'لوگو', paperExamName:'امتحان کا نام',
     paperPreviewNote:'نیچے سوالات بھریں، پھر پرنٹ کریں۔',
     groupByClass:'جماعت کے مطابق', groupByFee:'فیس کے مطابق', noFeeCategory:'بغیر فیس', studentsCount:'طلباء',
@@ -1273,6 +1292,26 @@ const fmtDate = (iso) => {
   return `${m[3]}-${m[2]}-${m[1]}`;
 };
 const esc = s => (s==null?'':String(s)).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+// Wraps free-typed text (question wording, MCQ options, matching entries...)
+// in a <bdi> element so it gets its own bidi-isolated run: the browser reads
+// its first strong character to pick left-to-right or right-to-left on its
+// own, independent of the English (LTR) paragraph/labels around it. This is
+// what keeps an Urdu sentence typed inside an otherwise-English question
+// paper displaying right-to-left, while any digits inside that sentence
+// (or the separate question-number prefix outside the <bdi>) stay exactly
+// where they were typed instead of being dragged around by the surrounding
+// direction.
+const bidi = s => `<bdi>${esc(s)}</bdi>`;
+
+// Used only for the printed Question Paper (see printQuestionPaper): decides
+// a line's direction from its own text rather than relying on the browser's
+// dir="auto" heuristic, which fails when an MCQ's options are plain digits
+// (e.g. "1971") — digits carry no strong bidi character, so dir="auto" on
+// the options row alone would default to ltr even for an Urdu question. Here
+// the question's own wording decides, and that same direction is applied to
+// its options row too, so the options always follow the question's language.
+const RTL_CHAR_RE = /[\u0590-\u08FF\uFB1D-\uFDFF\uFE70-\uFEFF]/;
+const qDir = s => RTL_CHAR_RE.test(s) ? 'rtl' : 'ltr';
 
 // Prevents double-submission (e.g. from impatient repeated tapping on a slow
 // connection): disables the clicked button for the duration of the async submit
@@ -8440,6 +8479,14 @@ let paperMatchA = [ '', '' ];
 let paperMatchB = [ '', '' ];
 let paperShort = [ { no:1, q:'', marks:'' } ];
 let paperLong = [ { no:1, q:'', marks:'' } ];
+// Free-typed instruction line shown under each section's title on the
+// printed paper (e.g. "Choose the correct option" for MCQs). Optional —
+// left blank the section just prints without one.
+let paperInstructions = { mcq:'', blanks:'', tf:'', match:'', short:'', long:'' };
+// A single optional diagram/image printed once at the very end of the whole
+// paper (not per-question) — mainly for Science papers that need one figure
+// to label or refer to.
+let paperEndImage = null;
 
 function ensurePaperMetaDefaults() {
   if (!paperMeta.school_name) paperMeta.school_name = dmcSchoolName || (CURRENT_PROFILE && CURRENT_PROFILE.school_name) || '';
@@ -8465,6 +8512,58 @@ function addPaperShort() { paperShort.push({ no:paperShort.length+1, q:'', marks
 function removePaperShort(i) { paperShort.splice(i,1); if (!paperShort.length) paperShort.push({no:1,q:'',marks:''}); renderTab(); }
 function addPaperLong() { paperLong.push({ no:paperLong.length+1, q:'', marks:'' }); renderTab(); }
 function removePaperLong(i) { paperLong.splice(i,1); if (!paperLong.length) paperLong.push({no:1,q:'',marks:''}); renderTab(); }
+// Shared handler for the single end-of-paper image — reads the file as a
+// data URL, strips its background (see removeImageBackground below), then
+// embeds it directly in the printed paper with no server/storage round trip.
+function handlePaperEndImageUpload(file) {
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    removeImageBackground(e.target.result, processed => { paperEndImage = processed; renderTab(); });
+  };
+  reader.readAsDataURL(file);
+}
+function removePaperEndImage() { paperEndImage = null; renderTab(); }
+// Automatic background removal for uploaded diagrams: most textbook/scanned
+// diagrams sit on a plain white (or near-white) page, so this samples the
+// four corners of the image to find that background shade, then makes every
+// pixel close to it fully transparent by editing the canvas alpha channel.
+// This is a plain-canvas heuristic (no ML model, no network call — keeping
+// the app fully self-contained/offline), so it works well for line diagrams
+// and scanned pages on a plain background, but won't cleanly separate a
+// busy or photographic background the way an AI cutout tool would.
+function removeImageBackground(dataUrl, callback) {
+  const img = new Image();
+  img.onload = () => {
+    try {
+      const canvas = document.createElement('canvas');
+      canvas.width = img.naturalWidth; canvas.height = img.naturalHeight;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0);
+      const { width: w, height: h } = canvas;
+      const imgData = ctx.getImageData(0, 0, w, h);
+      const d = imgData.data;
+      // Sample the four corners to estimate the background color.
+      const corners = [0, (w-1)*4, (h-1)*w*4, ((h-1)*w + (w-1))*4];
+      let br=0, bg=0, bb=0;
+      corners.forEach(c => { br += d[c]; bg += d[c+1]; bb += d[c+2]; });
+      br/=4; bg/=4; bb/=4;
+      const threshold = 32; // max per-channel distance from the sampled background to treat as background
+      for (let p = 0; p < d.length; p += 4) {
+        const dr = d[p]-br, dg = d[p+1]-bg, db = d[p+2]-bb;
+        if (Math.abs(dr) < threshold && Math.abs(dg) < threshold && Math.abs(db) < threshold) {
+          d[p+3] = 0;
+        }
+      }
+      ctx.putImageData(imgData, 0, 0);
+      callback(canvas.toDataURL('image/png'));
+    } catch (e) {
+      callback(dataUrl); // e.g. a tainted/cross-origin canvas — fall back to the original image
+    }
+  };
+  img.onerror = () => callback(dataUrl);
+  img.src = dataUrl;
+}
 
 function tplPapers() {
   ensurePaperMetaDefaults();
@@ -8481,19 +8580,28 @@ function tplPapers() {
       </div>
     </div>`).join('');
 
-  const simpleRows = (list, addFn, delFn, ph) => list.map((it,i) => `
-    <div class="flexgap paper-q-row" style="align-items:flex-start;">
-      <input type="number" value="${esc(it.no)}" oninput="${(delFn.startsWith('removePaperBlank')?'paperBlanks':'paperTF')}[${i}].no=this.value" style="width:40px;flex-shrink:0;padding:6px;">
-      <textarea rows="1" style="flex:1;" placeholder="${esc(ph)}..." oninput="${(delFn.startsWith('removePaperBlank')?'paperBlanks':'paperTF')}[${i}].q=this.value">${esc(it.q)}</textarea>
-      <button class="btn-ghost" style="padding:6px 10px;" onclick="${delFn}(${i})">✕</button>
-    </div>`).join('');
-
-  const marksRows = (list, arrName) => list.map((it,i) => `
+  const simpleRows = (list, addFn, delFn, ph) => list.map((it,i) => {
+    const arrName = delFn.startsWith('removePaperBlank') ? 'paperBlanks' : 'paperTF';
+    return `
     <div class="flexgap paper-q-row" style="align-items:flex-start;">
       <input type="number" value="${esc(it.no)}" oninput="${arrName}[${i}].no=this.value" style="width:40px;flex-shrink:0;padding:6px;">
-      <textarea rows="1" style="flex:1;" placeholder="${esc(t.paperSubject)}..." oninput="${arrName}[${i}].q=this.value">${esc(it.q)}</textarea>
-      <input style="width:70px;" type="number" placeholder="${esc(t.marks)}" value="${esc(it.marks)}" oninput="${arrName}[${i}].marks=this.value">
-      <button class="btn-ghost" style="padding:6px 10px;" onclick="removePaper${arrName==='paperShort'?'Short':'Long'}(${i})">✕</button>
+      <textarea rows="1" style="flex:1;" placeholder="${esc(ph)}..." oninput="${arrName}[${i}].q=this.value">${esc(it.q)}</textarea>
+      <button class="btn-ghost" style="padding:6px 10px;" onclick="${delFn}(${i})">✕</button>
+    </div>`;
+  }).join('');
+
+  // Long Questions no longer carries a per-question image — a single
+  // optional image is attached once, at the very end of the whole paper
+  // (see the "end image" card below), since a diagram is rarely needed and
+  // only for some subjects (e.g. Science).
+  const marksRows = (list, arrName) => list.map((it,i) => `
+    <div class="paper-q-row">
+      <div class="flexgap" style="align-items:flex-start;">
+        <input type="number" value="${esc(it.no)}" oninput="${arrName}[${i}].no=this.value" style="width:40px;flex-shrink:0;padding:6px;">
+        <textarea rows="1" style="flex:1;" placeholder="${esc(t.paperSubject)}..." oninput="${arrName}[${i}].q=this.value">${esc(it.q)}</textarea>
+        <input style="width:70px;" type="number" placeholder="${esc(t.marks)}" value="${esc(it.marks)}" oninput="${arrName}[${i}].marks=this.value">
+        <button class="btn-ghost" style="padding:6px 10px;" onclick="removePaper${arrName==='paperShort'?'Short':'Long'}(${i})">✕</button>
+      </div>
     </div>`).join('');
 
   const matchRows = (list, letterStyle, addFn, removeFn) => list.map((v,i) => `
@@ -8543,24 +8651,28 @@ function tplPapers() {
         <b style="font-size:13px;">${esc(t.mcqType)}</b>
         <label style="margin:0;display:flex;align-items:center;gap:6px;font-size:12px;"><span>${esc(t.marksEach)}</span><input type="number" style="width:60px;" value="${paperMcqMarksEach}" oninput="paperMcqMarksEach=this.value"></label>
       </div>
+      <input dir="auto" style="width:100%;font-size:12px;font-style:italic;margin-bottom:8px;" placeholder="${esc(t.instructionPh)}" value="${esc(paperInstructions.mcq)}" oninput="paperInstructions.mcq=this.value">
       ${mcqRows}
       <button class="btn-ghost" style="margin-top:6px;" onclick="addPaperMcq()">${esc(t.addQuestion)}</button>
     </div>
 
     <div class="card" style="margin-bottom:14px;">
       <b style="font-size:13px;display:block;margin-bottom:8px;">${esc(t.blanksType)}</b>
+      <input dir="auto" style="width:100%;font-size:12px;font-style:italic;margin-bottom:8px;" placeholder="${esc(t.instructionPh)}" value="${esc(paperInstructions.blanks)}" oninput="paperInstructions.blanks=this.value">
       ${simpleRows(paperBlanks, 'addPaperBlank', 'removePaperBlank', t.blanksType)}
       <button class="btn-ghost" style="margin-top:6px;" onclick="addPaperBlank()">${esc(t.addQuestion)}</button>
     </div>
 
     <div class="card" style="margin-bottom:14px;">
       <b style="font-size:13px;display:block;margin-bottom:8px;">${esc(t.tfType)}</b>
+      <input dir="auto" style="width:100%;font-size:12px;font-style:italic;margin-bottom:8px;" placeholder="${esc(t.instructionPh)}" value="${esc(paperInstructions.tf)}" oninput="paperInstructions.tf=this.value">
       ${simpleRows(paperTF, 'addPaperTF', 'removePaperTF', t.tfType)}
       <button class="btn-ghost" style="margin-top:6px;" onclick="addPaperTF()">${esc(t.addQuestion)}</button>
     </div>
 
     <div class="card" style="margin-bottom:14px;">
       <b style="font-size:13px;display:block;margin-bottom:8px;">${esc(t.matchType)}</b>
+      <input dir="auto" style="width:100%;font-size:12px;font-style:italic;margin-bottom:8px;" placeholder="${esc(t.instructionPh)}" value="${esc(paperInstructions.match)}" oninput="paperInstructions.match=this.value">
       <div class="row2">
         <div>
           <div style="font-size:11px;opacity:.6;margin-bottom:4px;">Column A</div>
@@ -8577,14 +8689,26 @@ function tplPapers() {
 
     <div class="card" style="margin-bottom:14px;">
       <b style="font-size:13px;display:block;margin-bottom:8px;">${esc(t.shortSection)}</b>
+      <input dir="auto" style="width:100%;font-size:12px;font-style:italic;margin-bottom:8px;" placeholder="${esc(t.instructionPh)}" value="${esc(paperInstructions.short)}" oninput="paperInstructions.short=this.value">
       ${marksRows(paperShort, 'paperShort')}
       <button class="btn-ghost" style="margin-top:6px;" onclick="addPaperShort()">${esc(t.addQuestion)}</button>
     </div>
 
     <div class="card" style="margin-bottom:14px;">
       <b style="font-size:13px;display:block;margin-bottom:8px;">${esc(t.longSection)}</b>
+      <input dir="auto" style="width:100%;font-size:12px;font-style:italic;margin-bottom:8px;" placeholder="${esc(t.instructionPh)}" value="${esc(paperInstructions.long)}" oninput="paperInstructions.long=this.value">
       ${marksRows(paperLong, 'paperLong')}
       <button class="btn-ghost" style="margin-top:6px;" onclick="addPaperLong()">${esc(t.addQuestion)}</button>
+    </div>
+
+    <div class="card" style="margin-bottom:14px;">
+      <b style="font-size:13px;display:block;margin-bottom:4px;">${esc(t.paperEndImageLabel)}</b>
+      <div style="font-size:11px;opacity:.6;margin-bottom:8px;">${esc(t.paperEndImageHint)}</div>
+      <div class="flexgap" style="align-items:center;">
+        ${paperEndImage ? `<img src="${paperEndImage}" style="width:44px;height:44px;object-fit:cover;border-radius:6px;border:1px solid var(--line);background:repeating-conic-gradient(#ddd 0% 25%, #fff 0% 50%) 50%/10px 10px;">` : ''}
+        <label class="btn-ghost" style="cursor:pointer;font-size:12px;padding:6px 10px;">${esc(t.addImage)}<input type="file" accept="image/*" style="display:none;" onchange="handlePaperEndImageUpload(this.files[0])"></label>
+        ${paperEndImage ? `<button class="btn-ghost" style="font-size:12px;padding:6px 10px;" onclick="removePaperEndImage()">${esc(t.removeImage)}</button>` : ''}
+      </div>
     </div>
 
     <button class="btn-primary" style="width:100%;" onclick="printQuestionPaper()">🖨️ ${esc(t.print)}</button>
@@ -8603,42 +8727,43 @@ function printQuestionPaper() {
 
   const mcqHtml = validMcqs.length ? `
     <div class="pq-sub">
-      <div class="pq-sub-title">${esc(t.mcqType)} <span class="pq-marks">(${paperMcqMarksEach} ${LANG==='ur'?'نمبر فی سوال':'mark(s) each'})</span></div>
-      ${validMcqs.map((m,i) => `
-        <div class="pq-q">
-          <div class="pq-q-text"><b>${esc(m.no||i+1)}.</b> ${esc(m.q)}</div>
-          <div class="pq-options">${m.options.map((o,oi)=> o.trim() ? `<span>(${letters[oi]}) ${esc(o)}</span>` : '').join('')}</div>
-        </div>`).join('')}
+      <div class="pq-marks" style="margin-bottom:6px;">(${paperMcqMarksEach} ${LANG==='ur'?'نمبر فی سوال':'mark(s) each'})</div>
+      ${paperInstructions.mcq.trim() ? `<div class="pq-instruction" dir="auto">${esc(paperInstructions.mcq)}</div>` : ''}
+      ${validMcqs.map((m,i) => { const d = qDir(m.q); const opts = m.options.map((o,oi)=> o.trim() ? `<span>(${letters[oi]}) ${esc(o)}</span>` : '').join(''); return `
+        <div class="pq-q" dir="${d}">
+          <div class="pq-q-text"><b>${esc(m.no||i+1)}.</b> ${esc(m.q)}</div>${opts ? `<div class="pq-options">${opts}</div>` : ''}
+        </div>`; }).join('')}
     </div>` : '';
 
   const blanksHtml = validBlanks.length ? `
     <div class="pq-sub">
-      <div class="pq-sub-title">${esc(t.blanksType)}</div>
-      ${validBlanks.map((b,i) => `<div class="pq-q"><div class="pq-q-text"><b>${esc(b.no||i+1)}.</b> ${esc(b.q)}</div></div>`).join('')}
+      ${paperInstructions.blanks.trim() ? `<div class="pq-instruction" dir="auto">${esc(paperInstructions.blanks)}</div>` : ''}
+      <div class="pq-2col">${validBlanks.map((b,i) => `<div class="pq-q"><div class="pq-q-text" dir="auto"><b>${esc(b.no||i+1)}.</b> ${esc(b.q)}</div></div>`).join('')}</div>
     </div>` : '';
 
   const tfHtml = validTF.length ? `
     <div class="pq-sub">
-      <div class="pq-sub-title">${esc(t.tfType)}</div>
-      ${validTF.map((x,i) => `<div class="pq-q"><div class="pq-q-text"><b>${esc(x.no||i+1)}.</b> ${esc(x.q)} <span class="pq-tf">( &nbsp;True&nbsp; / &nbsp;False&nbsp; )</span></div></div>`).join('')}
+      ${paperInstructions.tf.trim() ? `<div class="pq-instruction" dir="auto">${esc(paperInstructions.tf)}</div>` : ''}
+      ${validTF.map((x,i) => `<div class="pq-q"><div class="pq-q-text" dir="auto"><b>${esc(x.no||i+1)}.</b> ${esc(x.q)} <span class="pq-tf">( &nbsp;True&nbsp; / &nbsp;False&nbsp; )</span></div></div>`).join('')}
     </div>` : '';
 
   const matchHtml = (validMatchA.length && validMatchB.length) ? `
     <div class="pq-sub">
-      <div class="pq-sub-title">${esc(t.matchType)}</div>
+      ${paperInstructions.match.trim() ? `<div class="pq-instruction" dir="auto">${esc(paperInstructions.match)}</div>` : ''}
       <div class="pq-match">
-        <div class="pq-match-col">${validMatchA.map((v,i) => `<div>${i+1}. ${esc(v)}</div>`).join('')}</div>
-        <div class="pq-match-col">${validMatchB.map((v,i) => `<div>${String.fromCharCode(97+i)}) ${esc(v)}</div>`).join('')}</div>
+        <div class="pq-match-col">${validMatchA.map((v,i) => `<div dir="auto">${i+1}. ${esc(v)}</div>`).join('')}</div>
+        <div class="pq-match-col">${validMatchB.map((v,i) => `<div dir="auto">${String.fromCharCode(97+i)}) ${esc(v)}</div>`).join('')}</div>
       </div>
     </div>` : '';
 
-  const section = (title, list) => list.length ? `
+  const section = (title, list, instruction) => list.length ? `
     <div class="pq-section">
       <div class="pq-section-title">${esc(title)}</div>
-      ${list.map((it,i) => `
+      ${instruction && instruction.trim() ? `<div class="pq-instruction" dir="auto">${esc(instruction)}</div>` : ''}
+      <div class="pq-2col">${list.map((it,i) => `
         <div class="pq-q">
-          <div class="pq-q-text"><b>${esc(it.no||i+1)}.</b> ${esc(it.q)} ${it.marks ? `<span class="pq-marks">[${esc(it.marks)}]</span>` : ''}</div>
-        </div>`).join('')}
+          <div class="pq-q-text" dir="auto"><b>${esc(it.no||i+1)}.</b> ${esc(it.q)} ${it.marks ? `<span class="pq-marks">[${esc(it.marks)}]</span>` : ''}</div>
+        </div>`).join('')}</div>
     </div>` : '';
 
   const sectionAHtml = (mcqHtml || blanksHtml || tfHtml || matchHtml) ? `
@@ -8664,11 +8789,19 @@ function printQuestionPaper() {
         <div class="qp-name-line">${esc(t.studentNameLbl||'Name')}: ______________________&nbsp;&nbsp;&nbsp; ${LANG==='ur'?'رول نمبر':'Roll No.'}: __________</div>
       </div>
       ${sectionAHtml}
-      ${section(t.shortSection, validShort)}
-      ${section(t.longSection, validLong)}
+      ${section(t.shortSection, validShort, paperInstructions.short)}
+      ${section(t.longSection, validLong, paperInstructions.long)}
+      ${paperEndImage ? `<div class="pq-end-img-wrap"><img src="${paperEndImage}" class="pq-end-img"></div>` : ''}
     </div>`;
-  fitElementToOnePage('qpaper-print-el');
-  printWithOrientation('portrait');
+  // The paper is forced onto exactly one A4 page via fitElementToOnePage,
+  // which shrinks it with CSS `zoom` (not `transform` — see that function's
+  // comment for why transform doesn't work here).
+  const printEl = document.getElementById('qpaper-print-el');
+  const imgs = printEl ? Array.from(printEl.querySelectorAll('img')) : [];
+  Promise.all(imgs.map(img => img.complete ? Promise.resolve() : new Promise(res => { img.onload = res; img.onerror = res; }))).then(() => {
+    fitElementToOnePage('qpaper-print-el', 8);
+    printAsA4(8);
+  });
 }
 
 // Shrinks the whole printed paper (via CSS transform, not font-size — most of
@@ -8702,21 +8835,25 @@ function fitElementToOnePage(elId, marginMm) {
 
   const prevElDisplay = el.style.display;
   el.style.display = 'block';
-  el.style.transform = 'none';
+  el.style.zoom = 1;
   el.style.height = 'auto';
   const naturalHeight = el.scrollHeight;
-  // No lower floor on the shrink factor: however long the paper is, it must
-  // still fit on exactly one page, even if that means very small text.
-  const scale = naturalHeight > limitPx ? (limitPx / naturalHeight) : 1;
+  // The paper is kept to one page mainly by the print CSS's margins/gaps,
+  // not by shrinking text. This scale is only a safety net for papers with
+  // a lot of content that still don't quite fit after that — 0.9 keeps text
+  // clearly readable (nowhere near the earlier "needs a microscope" level)
+  // while still reliably closing the gap to one page.
+  const MIN_SCALE = 0.9;
+  const rawScale = naturalHeight > limitPx ? (limitPx / naturalHeight) : 1;
+  const scale = Math.max(rawScale, MIN_SCALE);
 
-  if (scale < 1) {
-    el.style.transformOrigin = 'top center';
-    el.style.transform = `scale(${scale})`;
-    el.style.height = (naturalHeight * scale) + 'px';
-  } else {
-    el.style.transform = 'none';
-    el.style.height = 'auto';
-  }
+  // `zoom` is used deliberately instead of `transform: scale()`. transform
+  // only changes paint, not the box's contribution to layout, so the print
+  // engine's page-break calculation still sees the full, un-shrunk height
+  // and spills the content onto a 2nd page even though it visually looks
+  // smaller. `zoom` actually shrinks the box in layout terms, so pagination
+  // sees the smaller size and the paper genuinely fits on one page.
+  el.style.zoom = scale < 1 ? scale : 1;
   el.style.display = prevElDisplay;
 
   container.style.display = prev.display;
@@ -8724,8 +8861,8 @@ function fitElementToOnePage(elId, marginMm) {
   container.style.left = prev.left;
   container.style.top = prev.top;
   container.style.width = prev.width;
-  // el.style.transform/height are intentionally left in place — that's what
-  // makes the shrink apply when @media print later shows this element for real.
+  // el.style.zoom is intentionally left in place — that's what makes the
+  // shrink apply when @media print later shows this element for real.
 }
 
 
