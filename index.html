@@ -29,6 +29,8 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,500;0,9..144,600;0,9..144,700;1,9..144,500;1,9..144,600;1,9..144,700&family=Berkshire+Swash&family=Aref+Ruqaa:wght@400;700&family=Inter:wght@400;500;600;700&family=Noto+Nastaliq+Urdu:wght@600;700&family=Noto+Sans+Urdu:wght@400;500;600&display=swap">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.4/dist/umd/supabase.js" integrity="sha384-ysv13JVP3fufiEXfjML9OdCa/rRbMJvUBOWyor82wfuK8INNZAvmbxHgKIHi+oqz" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js" integrity="sha384-vtjasyidUo0kW94K5MXDXntzOJpQgBKXmE7e2Ga4LG0skTTLeBi97eFAXsqewJjw" crossorigin="anonymous"></script>
+<!-- pdf.js: only used by the "Generate with AI" card in Question Papers, to read text out of an uploaded book PDF before sending it to the AI. Nothing else in the app depends on this. -->
+<script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js" crossorigin="anonymous"></script>
 <style>
   :root{
     --navy:#0F2740; --navy-deep:#0A1B2C; --gold:#C9A227; --gold-soft:#E4C765;
@@ -844,6 +846,12 @@ const T = {
     addStudent:'Add Student', studentName:'Student Name', studentNameUr:'Student Name (Urdu)', fatherName:"Father's Name", fatherNameUr:"Father's Name (Urdu)", casteTribeUr:'Caste/Tribe (Urdu)', residenceUr:'Residence (Urdu)', className:'Class',
     quickAdmission:'Quick Admission', admissionNo:'Admission No.', dateOfBirth:'Date of Birth',
     printSelected:'Print Selected', clear:'Clear',
+    aiPaperTitle:'Generate with AI (from a book PDF)', aiPaperDesc:'Upload the textbook PDF, pick the chapter\'s page range, and AI will draft questions for you to review and edit before printing. Nothing here is saved to the database.',
+    aiUploadPdf:'Upload Book PDF', aiPageFrom:'From Page', aiPageTo:'To Page',
+    aiCountMcq:'MCQs to generate', aiCountBlanks:'Fill-in-the-Blanks to generate', aiCountTf:'True/False to generate', aiCountShort:'Short Questions to generate', aiCountLong:'Long Questions to generate',
+    aiGenerateBtn:'✨ Generate Questions', aiGenerating:'Reading the chapter and generating questions…',
+    aiErrorGeneric:'Could not generate questions. Please check the page range and try again.', aiErrorNoPdf:'Please upload a PDF first.',
+    aiSuccessNote:'Questions generated below — review, edit, or delete any of them before printing.',
     papers:'Question Papers', paperClass:'Class', paperSubject:'Subject', paperTotalMarks:'Total Marks',
     paperTime:'Time Allowed', mcqSection:'Section A — Objective Questions', shortSection:'Section B — Short Questions',
     longSection:'Section C — Long Questions', marksEach:'Marks (each)', addQuestion:'+ Add Question', marks:'Marks',
@@ -1051,6 +1059,12 @@ const T = {
     addStudent:'طالب علم شامل کریں', studentName:'طالب علم کا نام', studentNameUr:'طالب علم کا نام (اردو)', fatherName:'والد کا نام', fatherNameUr:'والد کا نام (اردو)', casteTribeUr:'ذات/قبیلہ (اردو)', residenceUr:'رہائش (اردو)', className:'جماعت',
     quickAdmission:'فوری داخلہ', admissionNo:'داخلہ نمبر', dateOfBirth:'تاریخ پیدائش',
     printSelected:'منتخب پرنٹ کریں', clear:'صاف کریں',
+    aiPaperTitle:'AI سے بنائیں (کتاب کے PDF سے)', aiPaperDesc:'کتاب کا PDF اپلوڈ کریں، چیپٹر کے صفحات کی رینج بتائیں — AI سوالات بنا دے گا جنہیں آپ پرنٹ سے پہلے دیکھ اور تبدیل کر سکتے ہیں۔ یہ ڈیٹا بیس میں محفوظ نہیں ہوتا۔',
+    aiUploadPdf:'کتاب کا PDF اپلوڈ کریں', aiPageFrom:'صفحہ نمبر (شروع)', aiPageTo:'صفحہ نمبر (آخر)',
+    aiCountMcq:'MCQs کی تعداد', aiCountBlanks:'خانہ پری کی تعداد', aiCountTf:'درست/غلط کی تعداد', aiCountShort:'مختصر سوالات کی تعداد', aiCountLong:'تفصیلی سوالات کی تعداد',
+    aiGenerateBtn:'✨ سوالات بنائیں', aiGenerating:'چیپٹر پڑھا جا رہا ہے اور سوالات بنائے جا رہے ہیں…',
+    aiErrorGeneric:'سوالات نہیں بن سکے۔ صفحات کی رینج چیک کر کے دوبارہ کوشش کریں۔', aiErrorNoPdf:'پہلے PDF اپلوڈ کریں۔',
+    aiSuccessNote:'نیچے سوالات بن چکے ہیں — پرنٹ سے پہلے دیکھ لیں، ترمیم یا حذف کر سکتے ہیں۔',
     papers:'سوالیہ پرچہ جات', paperClass:'جماعت', paperSubject:'مضمون', paperTotalMarks:'کل نمبر',
     paperTime:'وقت', mcqSection:'حصہ اول — معروضی سوالات', shortSection:'حصہ دوم — مختصر سوالات',
     longSection:'حصہ سوم — تفصیلی سوالات', marksEach:'نمبر (فی سوال)', addQuestion:'+ سوال شامل کریں', marks:'نمبر',
@@ -8524,6 +8538,89 @@ function handlePaperEndImageUpload(file) {
   reader.readAsDataURL(file);
 }
 function removePaperEndImage() { paperEndImage = null; renderTab(); }
+
+// ---------------------------------------------------------------------------
+// "Generate with AI" — reads a page range out of an uploaded textbook PDF
+// (client-side, via pdf.js — the PDF itself is never uploaded anywhere),
+// sends just that extracted text to a Supabase Edge Function, and pours the
+// AI's suggested questions into the SAME paperMcqs/paperBlanks/paperTF/
+// paperMatchA/paperMatchB/paperShort/paperLong arrays the manual builder
+// above already uses. Nothing about this is saved to the database — exactly
+// like manual entry, it only lives in the browser until printed. This is
+// purely additive: manual entry keeps working exactly as before, untouched.
+// ---------------------------------------------------------------------------
+let aiPdfFile = null;
+let aiPageFrom = '';
+let aiPageTo = '';
+let aiCounts = { mcq:5, blanks:5, tf:5, short:5, long:5 };
+let aiBusy = false;
+let aiError = '';
+
+function handleAiPdfUpload(file) {
+  aiPdfFile = file || null;
+  aiError = '';
+  renderTab();
+}
+
+// Extracts plain text from the given inclusive page range of aiPdfFile.
+async function extractPdfChapterText(file, fromPage, toPage) {
+  const buf = await file.arrayBuffer();
+  if (!window.pdfjsLib) throw new Error('pdf.js not loaded');
+  pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js';
+  const doc = await pdfjsLib.getDocument({ data: buf }).promise;
+  const start = Math.max(1, parseInt(fromPage) || 1);
+  const end = Math.min(doc.numPages, parseInt(toPage) || doc.numPages);
+  let text = '';
+  for (let p = start; p <= end; p++) {
+    const page = await doc.getPage(p);
+    const content = await page.getTextContent();
+    text += content.items.map(it => it.str).join(' ') + '\n\n';
+  }
+  return text.trim();
+}
+
+async function generatePaperWithAI() {
+  if (aiBusy) return;
+  if (!aiPdfFile) { aiError = t.aiErrorNoPdf; renderTab(); return; }
+  aiBusy = true; aiError = ''; renderTab();
+  try {
+    const chapterText = await extractPdfChapterText(aiPdfFile, aiPageFrom, aiPageTo);
+    // The Edge Function ("generate-paper-questions") holds the Gemini API
+    // key server-side and returns structured JSON — see
+    // supabase/functions/generate-paper-questions for its source.
+    const { data, error } = await sb.functions.invoke('clever-responder', {
+      body: {
+        chapterText,
+        language: LANG,
+        subject: paperMeta.subject || '',
+        className: paperMeta.class_name || '',
+        counts: aiCounts
+      }
+    });
+    if (error || !data) throw new Error((error && error.message) || 'empty response');
+
+    if (Array.isArray(data.mcqs) && data.mcqs.length) {
+      paperMcqs = data.mcqs.map((m,i) => ({ no:i+1, q:m.q||'', options:[m.a||'',m.b||'',m.c||'',m.d||''] }));
+    }
+    if (Array.isArray(data.blanks) && data.blanks.length) {
+      paperBlanks = data.blanks.map((q,i) => ({ no:i+1, q:q||'' }));
+    }
+    if (Array.isArray(data.tf) && data.tf.length) {
+      paperTF = data.tf.map((q,i) => ({ no:i+1, q:q||'' }));
+    }
+    if (Array.isArray(data.short) && data.short.length) {
+      paperShort = data.short.map((q,i) => ({ no:i+1, q:q||'', marks:'' }));
+    }
+    if (Array.isArray(data.long) && data.long.length) {
+      paperLong = data.long.map((q,i) => ({ no:i+1, q:q||'', marks:'' }));
+    }
+  } catch (e) {
+    console.error('AI paper generation failed:', e);
+    aiError = t.aiErrorGeneric;
+  } finally {
+    aiBusy = false; renderTab();
+  }
+}
 // Automatic background removal for uploaded diagrams: most textbook/scanned
 // diagrams sit on a plain white (or near-white) page, so this samples the
 // four corners of the image to find that background shade, then makes every
@@ -8642,6 +8739,35 @@ function tplPapers() {
       <div class="row2">
         <label><span>${esc(t.paperTime)}</span><input placeholder="e.g. 2 hours" value="${esc(paperMeta.time_allowed)}" oninput="paperMeta.time_allowed=this.value"></label>
       </div>
+    </div>
+
+    <div class="card" style="margin-bottom:14px;border:1px solid var(--gold);">
+      <b style="font-size:13px;display:block;margin-bottom:4px;">${esc(t.aiPaperTitle)}</b>
+      <div style="font-size:11px;opacity:.7;margin-bottom:10px;">${esc(t.aiPaperDesc)}</div>
+      <label class="btn-ghost" style="cursor:pointer;font-size:12px;padding:8px 10px;display:block;text-align:center;margin-bottom:10px;">
+        ${aiPdfFile ? '📄 ' + esc(aiPdfFile.name) : '📄 ' + esc(t.aiUploadPdf)}
+        <input type="file" accept="application/pdf" style="display:none;" onchange="handleAiPdfUpload(this.files[0])">
+      </label>
+      <div class="row2">
+        <label><span>${esc(t.aiPageFrom)}</span><input type="number" min="1" value="${esc(aiPageFrom)}" oninput="aiPageFrom=this.value"></label>
+        <label><span>${esc(t.aiPageTo)}</span><input type="number" min="1" value="${esc(aiPageTo)}" oninput="aiPageTo=this.value"></label>
+      </div>
+      <div class="row2">
+        <label><span>${esc(t.aiCountMcq)}</span><input type="number" min="0" value="${esc(aiCounts.mcq)}" oninput="aiCounts.mcq=this.value"></label>
+        <label><span>${esc(t.aiCountBlanks)}</span><input type="number" min="0" value="${esc(aiCounts.blanks)}" oninput="aiCounts.blanks=this.value"></label>
+      </div>
+      <div class="row2">
+        <label><span>${esc(t.aiCountTf)}</span><input type="number" min="0" value="${esc(aiCounts.tf)}" oninput="aiCounts.tf=this.value"></label>
+        <label><span>${esc(t.aiCountShort)}</span><input type="number" min="0" value="${esc(aiCounts.short)}" oninput="aiCounts.short=this.value"></label>
+      </div>
+      <div class="row2">
+        <label><span>${esc(t.aiCountLong)}</span><input type="number" min="0" value="${esc(aiCounts.long)}" oninput="aiCounts.long=this.value"></label>
+        <div></div>
+      </div>
+      ${aiError ? `<div class="err">${esc(aiError)}</div>` : ''}
+      <button class="btn-primary" style="width:100%;margin-top:4px;" ${aiBusy?'disabled':''} onclick="generatePaperWithAI()">
+        ${aiBusy ? '⏳ ' + esc(t.aiGenerating) : esc(t.aiGenerateBtn)}
+      </button>
     </div>
 
     <div class="section-title" style="font-size:14px;margin-bottom:8px;">${esc(t.mcqSection)}</div>
