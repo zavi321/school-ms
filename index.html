@@ -8588,7 +8588,7 @@ async function generatePaperWithAI() {
     // The Edge Function ("generate-paper-questions") holds the Gemini API
     // key server-side and returns structured JSON — see
     // supabase/functions/generate-paper-questions for its source.
-    const { data, error } = await sb.functions.invoke('clever-responder', {
+    const { data, error } = await sb.functions.invoke('generate-paper-questions', {
       body: {
         chapterText,
         language: LANG,
