@@ -265,6 +265,35 @@ html, body{overscroll-behavior:none;}
   .modal-head button{background:none;border:none;font-size:20px;color:var(--ink);}
   .row2{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
   .flexgap{display:flex;gap:8px;margin-top:14px;}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;box-shadow:var(--shadow-sm);}
+  .paper-q-row{margin-bottom:12px;padding-bottom:10px;border-bottom:1px dashed var(--line);}
+  .paper-q-row textarea{width:100%;font-family:inherit;padding:8px;border-radius:8px;border:1px solid var(--line);resize:vertical;}
+  .qpaper-print{display:none;}
+  @media print{
+    .qpaper-print{display:block;font-family:'Noto Nastaliq Urdu',Inter,serif;color:#111;}
+    .qp-head{text-align:center;border-bottom:2px solid #111;padding-bottom:8px;margin-bottom:16px;}
+    .qp-head-row{display:flex;align-items:flex-start;justify-content:space-between;gap:8px;}
+    .qp-side{font-size:12px;font-weight:600;white-space:nowrap;flex-shrink:0;padding-top:4px;}
+    .qp-center{flex:1;}
+    .qp-school{font-size:20px;font-weight:700;}
+    .qp-examname{font-size:14px;font-weight:600;margin-top:3px;}
+    .qp-subject{font-size:13px;margin-top:2px;}
+    .qp-classline{font-size:12px;margin-top:2px;}
+    .qp-title{font-size:15px;margin-top:2px;}
+    .qp-meta{display:flex;justify-content:center;gap:18px;font-size:12px;margin-top:6px;}
+    .qp-name-line{font-size:12px;margin-top:10px;text-align:left;}
+    .pq-section{margin-top:16px;}
+    .pq-section-title{font-weight:700;font-size:13px;border-bottom:1px solid #111;padding-bottom:4px;margin-bottom:8px;}
+    .pq-sub{margin-bottom:12px;}
+    .pq-sub-title{font-weight:600;font-size:12px;text-decoration:underline;margin-bottom:6px;}
+    .pq-marks{font-weight:400;font-size:11px;opacity:.75;}
+    .pq-q{font-size:13px;margin-bottom:10px;}
+    .pq-options{display:flex;flex-wrap:nowrap;gap:4px 16px;margin:4px 0 0 18px;font-size:12px;}
+    .pq-options span{white-space:nowrap;}
+    .pq-tf{font-size:12px;opacity:.8;}
+    .pq-match{display:grid;grid-template-columns:1fr 1fr;gap:6px 20px;font-size:13px;}
+    .qp-logo{height:52px;width:52px;object-fit:contain;display:block;margin:0 auto 6px;}
+  }
   .type-toggle{display:flex;gap:8px;margin-bottom:14px;}
   .type-toggle button{flex:1;border:none;border-radius:10px;padding:9px;font-size:13px;font-weight:600;background:#F0EBDA;color:var(--navy);}
   .type-toggle button.on-income{background:var(--sage);color:#fff;}
@@ -802,6 +831,12 @@ const T = {
     addStudent:'Add Student', studentName:'Student Name', studentNameUr:'Student Name (Urdu)', fatherName:"Father's Name", fatherNameUr:"Father's Name (Urdu)", casteTribeUr:'Caste/Tribe (Urdu)', residenceUr:'Residence (Urdu)', className:'Class',
     quickAdmission:'Quick Admission', admissionNo:'Admission No.', dateOfBirth:'Date of Birth',
     printSelected:'Print Selected', clear:'Clear',
+    papers:'Question Papers', paperClass:'Class', paperSubject:'Subject', paperTotalMarks:'Total Marks',
+    paperTime:'Time Allowed', mcqSection:'Section A — Objective Questions', shortSection:'Section B — Short Questions',
+    longSection:'Section C — Long Questions', marksEach:'Marks (each)', addQuestion:'+ Add Question', marks:'Marks',
+    mcqType:'Multiple Choice Questions (MCQs)', blanksType:'Fill in the Blanks', tfType:'True / False', matchType:'Matching Column',
+    logo:'Logo', paperExamName:'Exam Name',
+    paperPreviewNote:'Fill in the questions below, then print. Blank option/answer boxes are left empty on the printed paper.',
     groupByClass:'By Class', groupByFee:'By Fee', noFeeCategory:'No Fee', studentsCount:'students',
     admissionDate:'Admission Date', monthlyFee:'Monthly Fee (Rs)', contact:'Contact Number',
     studentType:'Student Type', feePaying:'Fee-Paying', free:'Free', orphan:'Orphan', all:'All',
@@ -1000,6 +1035,12 @@ const T = {
     addStudent:'طالب علم شامل کریں', studentName:'طالب علم کا نام', studentNameUr:'طالب علم کا نام (اردو)', fatherName:'والد کا نام', fatherNameUr:'والد کا نام (اردو)', casteTribeUr:'ذات/قبیلہ (اردو)', residenceUr:'رہائش (اردو)', className:'جماعت',
     quickAdmission:'فوری داخلہ', admissionNo:'داخلہ نمبر', dateOfBirth:'تاریخ پیدائش',
     printSelected:'منتخب پرنٹ کریں', clear:'صاف کریں',
+    papers:'سوالیہ پرچہ جات', paperClass:'جماعت', paperSubject:'مضمون', paperTotalMarks:'کل نمبر',
+    paperTime:'وقت', mcqSection:'حصہ اول — معروضی سوالات', shortSection:'حصہ دوم — مختصر سوالات',
+    longSection:'حصہ سوم — تفصیلی سوالات', marksEach:'نمبر (فی سوال)', addQuestion:'+ سوال شامل کریں', marks:'نمبر',
+    mcqType:'معروضی سوالات (MCQs)', blanksType:'خالی جگہ پر کریں', tfType:'درست / غلط', matchType:'مطابقت کریں',
+    logo:'لوگو', paperExamName:'امتحان کا نام',
+    paperPreviewNote:'نیچے سوالات بھریں، پھر پرنٹ کریں۔',
     groupByClass:'جماعت کے مطابق', groupByFee:'فیس کے مطابق', noFeeCategory:'بغیر فیس', studentsCount:'طلباء',
     admissionDate:'داخلہ کی تاریخ', monthlyFee:'ماہانہ فیس (روپے)', contact:'رابطہ نمبر',
     studentType:'طالب علم کی قسم', feePaying:'فیس ادا کرنے والا', free:'مفت', orphan:'یتیم', all:'تمام',
@@ -2581,6 +2622,7 @@ const NAV_ICONS = {
   timetable: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M3 9h18M9 4v18"/></svg>`,
   admin: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l8 4v6c0 5-3.5 8.5-8 10-4.5-1.5-8-5-8-10V6l8-4z"/></svg>`,
   suggestions: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18h6M10 22h4M12 2a6 6 0 00-4 10.5c.6.6 1 1.4 1 2.5h6c0-1.1.4-1.9 1-2.5A6 6 0 0012 2z"/></svg>`,
+  papers: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/><path d="M9 13h1M9 17h1M14 13h1M14 17h1"/></svg>`,
 };
 
 // Icons used only in the desktop sidebar (attendance hub, settings, logout —
@@ -2618,6 +2660,7 @@ function renderSidebar() {
 
   const moreLinks = [
     link('admissionRegister', t.admissionRegister, NAV_ICONS.admissionRegister, "setTab('admissionRegister')", 'admissionRegister'),
+    link('papers', t.papers, NAV_ICONS.papers, "setTab('papers')", 'papers'),
     link('timetable', LANG==='ur' ? 'ٹائم ٹیبل' : 'Timetable', NAV_ICONS.timetable, "setTab('timetable')", 'timetable'),
     (CURRENT_PROFILE && CURRENT_PROFILE.is_admin) ? link('admin', t.admin, NAV_ICONS.admin, "setTab('admin')", 'admin') : '',
   ].join('');
@@ -2656,7 +2699,7 @@ function confirmSidebarLogout() {
 }
 
 function renderNav() {
-  const tabs = ['dashboard','students','teachers','finance','reports','dmc','marksSheet','admissionRegister','timetable'];
+  const tabs = ['dashboard','students','teachers','finance','reports','dmc','marksSheet','admissionRegister','papers','timetable'];
   if (CURRENT_PROFILE && CURRENT_PROFILE.is_admin) tabs.push('admin');
   document.getElementById('navbar').innerHTML = tabs.map(k => `
     <button class="${TAB===k?'active':''}" onclick="setTab('${k}')">
@@ -2952,6 +2995,7 @@ function renderTab() {
   }
   else if (TAB==='marksSheet') main.innerHTML = tplMarksSheet();
   else if (TAB==='admissionRegister') { main.innerHTML = tplAdmissionRegister(); initRegBookScroll(); _regBookRestoreScroll(); }
+  else if (TAB==='papers') main.innerHTML = tplPapers();
   else if (TAB==='teacherRegister') { main.innerHTML = tplTeacherRegister(); initRegBookScroll(); _regBookRestoreScroll(); }
   else if (TAB==='classLogins') main.innerHTML = tplClassLogins();
   else if (TAB==='timetable') {
@@ -8376,6 +8420,315 @@ function printAdmissionEntriesLedger(rows, subtitle, padToPageSize) {
     </div>`;
   printWithOrientation('landscape');
 }
+
+// --------- Question Paper Generator ---------
+// A manual builder for exam/test papers: fill in the header (class, subject,
+// marks, time), add as many questions as needed across Section A's four
+// question types plus Section B/C, then print. Questions are typed in fresh
+// each time (or pasted in from content prepared elsewhere, e.g. from a
+// textbook) — this tool only formats and prints, it does not store a
+// reusable question bank.
+// School name/logo default to the same dmcSchoolName/dmcLogo already set in
+// Certificates, but are kept separately editable here (paperMeta) so a paper
+// can use a different heading without touching the certificate settings.
+let paperMeta = { school_name: '', logo: null, exam_name: '', class_name: '', subject: '', total_marks: '', time_allowed: '' };
+let paperMcqMarksEach = 1;
+let paperMcqs = [ { no:1, q:'', options:['','','',''] } ];
+let paperBlanks = [ { no:1, q:'' } ];
+let paperTF = [ { no:1, q:'' } ];
+let paperMatchA = [ '', '' ];
+let paperMatchB = [ '', '' ];
+let paperShort = [ { no:1, q:'', marks:'' } ];
+let paperLong = [ { no:1, q:'', marks:'' } ];
+
+function ensurePaperMetaDefaults() {
+  if (!paperMeta.school_name) paperMeta.school_name = dmcSchoolName || (CURRENT_PROFILE && CURRENT_PROFILE.school_name) || '';
+  if (!paperMeta.logo) paperMeta.logo = dmcLogo || null;
+}
+function handlePaperLogoUpload(file) {
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => { paperMeta.logo = e.target.result; renderTab(); };
+  reader.readAsDataURL(file);
+}
+function addPaperMcq() { paperMcqs.push({ no:paperMcqs.length+1, q:'', options:['','','',''] }); renderTab(); }
+function removePaperMcq(i) { paperMcqs.splice(i,1); if (!paperMcqs.length) paperMcqs.push({no:1,q:'',options:['','','','']}); renderTab(); }
+function addPaperBlank() { paperBlanks.push({ no:paperBlanks.length+1, q:'' }); renderTab(); }
+function removePaperBlank(i) { paperBlanks.splice(i,1); if (!paperBlanks.length) paperBlanks.push({no:1,q:''}); renderTab(); }
+function addPaperTF() { paperTF.push({ no:paperTF.length+1, q:'' }); renderTab(); }
+function removePaperTF(i) { paperTF.splice(i,1); if (!paperTF.length) paperTF.push({no:1,q:''}); renderTab(); }
+function addMatchA() { paperMatchA.push(''); renderTab(); }
+function removeMatchA(i) { paperMatchA.splice(i,1); renderTab(); }
+function addMatchB() { paperMatchB.push(''); renderTab(); }
+function removeMatchB(i) { paperMatchB.splice(i,1); renderTab(); }
+function addPaperShort() { paperShort.push({ no:paperShort.length+1, q:'', marks:'' }); renderTab(); }
+function removePaperShort(i) { paperShort.splice(i,1); if (!paperShort.length) paperShort.push({no:1,q:'',marks:''}); renderTab(); }
+function addPaperLong() { paperLong.push({ no:paperLong.length+1, q:'', marks:'' }); renderTab(); }
+function removePaperLong(i) { paperLong.splice(i,1); if (!paperLong.length) paperLong.push({no:1,q:'',marks:''}); renderTab(); }
+
+function tplPapers() {
+  ensurePaperMetaDefaults();
+
+  const mcqRows = paperMcqs.map((m,i) => `
+    <div class="paper-q-row">
+      <div class="flexgap" style="align-items:flex-start;">
+        <input type="number" value="${esc(m.no)}" oninput="paperMcqs[${i}].no=this.value" style="width:40px;flex-shrink:0;padding:6px;">
+        <textarea rows="1" style="flex:1;" placeholder="${esc(t.mcqType)}..." oninput="paperMcqs[${i}].q=this.value">${esc(m.q)}</textarea>
+        <button class="btn-ghost" style="padding:6px 10px;" onclick="removePaperMcq(${i})">✕</button>
+      </div>
+      <div class="row2" style="margin-top:6px;">
+        ${m.options.map((o,oi) => `<input placeholder="${String.fromCharCode(97+oi)}) option" value="${esc(o)}" oninput="paperMcqs[${i}].options[${oi}]=this.value">`).join('')}
+      </div>
+    </div>`).join('');
+
+  const simpleRows = (list, addFn, delFn, ph) => list.map((it,i) => `
+    <div class="flexgap paper-q-row" style="align-items:flex-start;">
+      <input type="number" value="${esc(it.no)}" oninput="${(delFn.startsWith('removePaperBlank')?'paperBlanks':'paperTF')}[${i}].no=this.value" style="width:40px;flex-shrink:0;padding:6px;">
+      <textarea rows="1" style="flex:1;" placeholder="${esc(ph)}..." oninput="${(delFn.startsWith('removePaperBlank')?'paperBlanks':'paperTF')}[${i}].q=this.value">${esc(it.q)}</textarea>
+      <button class="btn-ghost" style="padding:6px 10px;" onclick="${delFn}(${i})">✕</button>
+    </div>`).join('');
+
+  const marksRows = (list, arrName) => list.map((it,i) => `
+    <div class="flexgap paper-q-row" style="align-items:flex-start;">
+      <input type="number" value="${esc(it.no)}" oninput="${arrName}[${i}].no=this.value" style="width:40px;flex-shrink:0;padding:6px;">
+      <textarea rows="1" style="flex:1;" placeholder="${esc(t.paperSubject)}..." oninput="${arrName}[${i}].q=this.value">${esc(it.q)}</textarea>
+      <input style="width:70px;" type="number" placeholder="${esc(t.marks)}" value="${esc(it.marks)}" oninput="${arrName}[${i}].marks=this.value">
+      <button class="btn-ghost" style="padding:6px 10px;" onclick="removePaper${arrName==='paperShort'?'Short':'Long'}(${i})">✕</button>
+    </div>`).join('');
+
+  const matchRows = (list, letterStyle, addFn, removeFn) => list.map((v,i) => `
+    <div class="flexgap paper-q-row" style="align-items:center;">
+      <span style="font-size:12px;opacity:.6;width:18px;">${letterStyle==='num' ? (i+1)+'.' : String.fromCharCode(97+i)+')'}</span>
+      <input style="flex:1;" value="${esc(v)}" oninput="paperMatch${letterStyle==='num'?'A':'B'}[${i}]=this.value">
+      <button class="btn-ghost" style="padding:6px 10px;" onclick="${removeFn}(${i})">✕</button>
+    </div>`).join('');
+
+  return `<div style="padding-top:16px;">
+    <div class="section-title">${NAV_ICONS.papers}${esc(t.papers)}</div>
+    <div class="notice" style="margin-bottom:12px;">${esc(t.paperPreviewNote)}</div>
+
+    <div class="card" style="margin-bottom:14px;">
+      <div class="flexgap" style="align-items:center;margin-top:0;">
+        <label style="cursor:pointer;flex-shrink:0;">
+          ${paperMeta.logo ? `<img src="${paperMeta.logo}" style="width:48px;height:48px;object-fit:contain;border-radius:8px;border:1px solid var(--line);">` : `<div style="width:48px;height:48px;border-radius:8px;border:1px dashed var(--line);display:flex;align-items:center;justify-content:center;font-size:10px;opacity:.6;text-align:center;">${esc(t.logo||'Logo')}</div>`}
+          <input type="file" accept="image/*" style="display:none;" onchange="handlePaperLogoUpload(this.files[0])">
+        </label>
+        <input style="flex:1;font-weight:600;" value="${esc(paperMeta.school_name)}" oninput="paperMeta.school_name=this.value">
+      </div>
+      <div class="row2" style="margin-top:10px;">
+        <label><span>${esc(t.paperExamName)}</span>
+          <input list="paper-exam-name-list" value="${esc(paperMeta.exam_name)}" oninput="paperMeta.exam_name=this.value" placeholder="${esc(t.paperExamName)}">
+          <datalist id="paper-exam-name-list">
+            <option value="Monthly Test">
+            <option value="1st Term Exam">
+            <option value="Mid Term Exam">
+            <option value="Final Term Exam">
+          </datalist>
+        </label>
+        <label><span>${esc(t.paperClass)}</span><input value="${esc(paperMeta.class_name)}" oninput="paperMeta.class_name=this.value"></label>
+      </div>
+      <div class="row2">
+        <label><span>${esc(t.paperSubject)}</span><input value="${esc(paperMeta.subject)}" oninput="paperMeta.subject=this.value"></label>
+        <label><span>${esc(t.paperTotalMarks)}</span><input type="number" value="${esc(paperMeta.total_marks)}" oninput="paperMeta.total_marks=this.value"></label>
+      </div>
+      <div class="row2">
+        <label><span>${esc(t.paperTime)}</span><input placeholder="e.g. 2 hours" value="${esc(paperMeta.time_allowed)}" oninput="paperMeta.time_allowed=this.value"></label>
+      </div>
+    </div>
+
+    <div class="section-title" style="font-size:14px;margin-bottom:8px;">${esc(t.mcqSection)}</div>
+
+    <div class="card" style="margin-bottom:14px;">
+      <div class="flexgap" style="justify-content:space-between;align-items:center;margin-bottom:8px;">
+        <b style="font-size:13px;">${esc(t.mcqType)}</b>
+        <label style="margin:0;display:flex;align-items:center;gap:6px;font-size:12px;"><span>${esc(t.marksEach)}</span><input type="number" style="width:60px;" value="${paperMcqMarksEach}" oninput="paperMcqMarksEach=this.value"></label>
+      </div>
+      ${mcqRows}
+      <button class="btn-ghost" style="margin-top:6px;" onclick="addPaperMcq()">${esc(t.addQuestion)}</button>
+    </div>
+
+    <div class="card" style="margin-bottom:14px;">
+      <b style="font-size:13px;display:block;margin-bottom:8px;">${esc(t.blanksType)}</b>
+      ${simpleRows(paperBlanks, 'addPaperBlank', 'removePaperBlank', t.blanksType)}
+      <button class="btn-ghost" style="margin-top:6px;" onclick="addPaperBlank()">${esc(t.addQuestion)}</button>
+    </div>
+
+    <div class="card" style="margin-bottom:14px;">
+      <b style="font-size:13px;display:block;margin-bottom:8px;">${esc(t.tfType)}</b>
+      ${simpleRows(paperTF, 'addPaperTF', 'removePaperTF', t.tfType)}
+      <button class="btn-ghost" style="margin-top:6px;" onclick="addPaperTF()">${esc(t.addQuestion)}</button>
+    </div>
+
+    <div class="card" style="margin-bottom:14px;">
+      <b style="font-size:13px;display:block;margin-bottom:8px;">${esc(t.matchType)}</b>
+      <div class="row2">
+        <div>
+          <div style="font-size:11px;opacity:.6;margin-bottom:4px;">Column A</div>
+          ${matchRows(paperMatchA, 'num', 'addMatchA', 'removeMatchA')}
+          <button class="btn-ghost" style="margin-top:4px;" onclick="addMatchA()">${esc(t.addQuestion)}</button>
+        </div>
+        <div>
+          <div style="font-size:11px;opacity:.6;margin-bottom:4px;">Column B</div>
+          ${matchRows(paperMatchB, 'alpha', 'addMatchB', 'removeMatchB')}
+          <button class="btn-ghost" style="margin-top:4px;" onclick="addMatchB()">${esc(t.addQuestion)}</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-bottom:14px;">
+      <b style="font-size:13px;display:block;margin-bottom:8px;">${esc(t.shortSection)}</b>
+      ${marksRows(paperShort, 'paperShort')}
+      <button class="btn-ghost" style="margin-top:6px;" onclick="addPaperShort()">${esc(t.addQuestion)}</button>
+    </div>
+
+    <div class="card" style="margin-bottom:14px;">
+      <b style="font-size:13px;display:block;margin-bottom:8px;">${esc(t.longSection)}</b>
+      ${marksRows(paperLong, 'paperLong')}
+      <button class="btn-ghost" style="margin-top:6px;" onclick="addPaperLong()">${esc(t.addQuestion)}</button>
+    </div>
+
+    <button class="btn-primary" style="width:100%;" onclick="printQuestionPaper()">🖨️ ${esc(t.print)}</button>
+  </div>`;
+}
+
+function printQuestionPaper() {
+  const validMcqs = paperMcqs.filter(m => m.q.trim());
+  const validBlanks = paperBlanks.filter(b => b.q.trim());
+  const validTF = paperTF.filter(x => x.q.trim());
+  const validMatchA = paperMatchA.filter(v => v.trim());
+  const validMatchB = paperMatchB.filter(v => v.trim());
+  const validShort = paperShort.filter(s => s.q.trim());
+  const validLong = paperLong.filter(l => l.q.trim());
+  const letters = ['a','b','c','d'];
+
+  const mcqHtml = validMcqs.length ? `
+    <div class="pq-sub">
+      <div class="pq-sub-title">${esc(t.mcqType)} <span class="pq-marks">(${paperMcqMarksEach} ${LANG==='ur'?'نمبر فی سوال':'mark(s) each'})</span></div>
+      ${validMcqs.map((m,i) => `
+        <div class="pq-q">
+          <div class="pq-q-text"><b>${esc(m.no||i+1)}.</b> ${esc(m.q)}</div>
+          <div class="pq-options">${m.options.map((o,oi)=> o.trim() ? `<span>(${letters[oi]}) ${esc(o)}</span>` : '').join('')}</div>
+        </div>`).join('')}
+    </div>` : '';
+
+  const blanksHtml = validBlanks.length ? `
+    <div class="pq-sub">
+      <div class="pq-sub-title">${esc(t.blanksType)}</div>
+      ${validBlanks.map((b,i) => `<div class="pq-q"><div class="pq-q-text"><b>${esc(b.no||i+1)}.</b> ${esc(b.q)}</div></div>`).join('')}
+    </div>` : '';
+
+  const tfHtml = validTF.length ? `
+    <div class="pq-sub">
+      <div class="pq-sub-title">${esc(t.tfType)}</div>
+      ${validTF.map((x,i) => `<div class="pq-q"><div class="pq-q-text"><b>${esc(x.no||i+1)}.</b> ${esc(x.q)} <span class="pq-tf">( &nbsp;True&nbsp; / &nbsp;False&nbsp; )</span></div></div>`).join('')}
+    </div>` : '';
+
+  const matchHtml = (validMatchA.length && validMatchB.length) ? `
+    <div class="pq-sub">
+      <div class="pq-sub-title">${esc(t.matchType)}</div>
+      <div class="pq-match">
+        <div class="pq-match-col">${validMatchA.map((v,i) => `<div>${i+1}. ${esc(v)}</div>`).join('')}</div>
+        <div class="pq-match-col">${validMatchB.map((v,i) => `<div>${String.fromCharCode(97+i)}) ${esc(v)}</div>`).join('')}</div>
+      </div>
+    </div>` : '';
+
+  const section = (title, list) => list.length ? `
+    <div class="pq-section">
+      <div class="pq-section-title">${esc(title)}</div>
+      ${list.map((it,i) => `
+        <div class="pq-q">
+          <div class="pq-q-text"><b>${esc(it.no||i+1)}.</b> ${esc(it.q)} ${it.marks ? `<span class="pq-marks">[${esc(it.marks)}]</span>` : ''}</div>
+        </div>`).join('')}
+    </div>` : '';
+
+  const sectionAHtml = (mcqHtml || blanksHtml || tfHtml || matchHtml) ? `
+    <div class="pq-section">
+      <div class="pq-section-title">${esc(t.mcqSection)}</div>
+      ${mcqHtml}${blanksHtml}${tfHtml}${matchHtml}
+    </div>` : '';
+
+  document.getElementById('print-area').innerHTML = `
+    <div class="qpaper-print" id="qpaper-print-el">
+      <div class="qp-head">
+        <div class="qp-head-row">
+          <div class="qp-side qp-side-left">${esc(t.paperTime)}: ${esc(paperMeta.time_allowed||'—')}</div>
+          <div class="qp-center">
+            ${paperMeta.logo ? `<img src="${paperMeta.logo}" class="qp-logo">` : ''}
+            <div class="qp-school">${esc(paperMeta.school_name || 'School')}</div>
+            <div class="qp-examname">${esc(paperMeta.exam_name || (LANG==='ur'?'سوالیہ پرچہ':'Question Paper'))}</div>
+            <div class="qp-subject">${esc(paperMeta.subject||'')}</div>
+            <div class="qp-classline">${esc(t.paperClass)}: ${esc(paperMeta.class_name||'—')}</div>
+          </div>
+          <div class="qp-side qp-side-right">${esc(t.paperTotalMarks)}: ${esc(paperMeta.total_marks||'—')}</div>
+        </div>
+        <div class="qp-name-line">${esc(t.studentNameLbl||'Name')}: ______________________&nbsp;&nbsp;&nbsp; ${LANG==='ur'?'رول نمبر':'Roll No.'}: __________</div>
+      </div>
+      ${sectionAHtml}
+      ${section(t.shortSection, validShort)}
+      ${section(t.longSection, validLong)}
+    </div>`;
+  fitElementToOnePage('qpaper-print-el');
+  printWithOrientation('portrait');
+}
+
+// Shrinks the whole printed paper (via CSS transform, not font-size — most of
+// its text uses fixed px sizes that wouldn't respond to a font-size change on
+// the wrapper) until it fits within one A4 page, so a long paper prints
+// smaller rather than spilling onto a 2nd page. The element sits inside
+// #print-area, which is normally display:none (only shown under @media
+// print) — both are briefly forced visible off-screen here to measure the
+// real rendered height, then handed back to the print CSS to display for real.
+function fitElementToOnePage(elId, marginMm) {
+  const el = document.getElementById(elId);
+  const container = document.getElementById('print-area');
+  if (!el || !container) return;
+  marginMm = marginMm == null ? 8 : marginMm;
+  const usableWidthMm = 210 - marginMm * 2;
+  const usableHeightMm = 297 - marginMm * 2;
+
+  // Probe real px-per-mm on this device/zoom level using a throwaway element.
+  const probe = document.createElement('div');
+  probe.style.cssText = `position:fixed;visibility:hidden;height:${usableHeightMm}mm;width:0;`;
+  document.body.appendChild(probe);
+  const limitPx = probe.getBoundingClientRect().height;
+  probe.remove();
+
+  const prev = { display: container.style.display, position: container.style.position, left: container.style.left, top: container.style.top, width: container.style.width };
+  container.style.display = 'block';
+  container.style.position = 'fixed';
+  container.style.left = '-99999px';
+  container.style.top = '0';
+  container.style.width = usableWidthMm + 'mm';
+
+  const prevElDisplay = el.style.display;
+  el.style.display = 'block';
+  el.style.transform = 'none';
+  el.style.height = 'auto';
+  const naturalHeight = el.scrollHeight;
+  // No lower floor on the shrink factor: however long the paper is, it must
+  // still fit on exactly one page, even if that means very small text.
+  const scale = naturalHeight > limitPx ? (limitPx / naturalHeight) : 1;
+
+  if (scale < 1) {
+    el.style.transformOrigin = 'top center';
+    el.style.transform = `scale(${scale})`;
+    el.style.height = (naturalHeight * scale) + 'px';
+  } else {
+    el.style.transform = 'none';
+    el.style.height = 'auto';
+  }
+  el.style.display = prevElDisplay;
+
+  container.style.display = prev.display;
+  container.style.position = prev.position;
+  container.style.left = prev.left;
+  container.style.top = prev.top;
+  container.style.width = prev.width;
+  // el.style.transform/height are intentionally left in place — that's what
+  // makes the shrink apply when @media print later shows this element for real.
+}
+
+
 
 // Temporarily overrides the page orientation for a single print job (the wide
 // ledger table needs landscape while every other print — receipts, SLC,
