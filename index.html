@@ -8983,8 +8983,12 @@ function printQuestionPaper() {
     });
   };
   imgsReady.then(warmFonts).then(() => {
-    fitAndSpacePaper('qpaper-print-el', 8);
-    fitAndSpacePaper('qpaper-print-el', 8); // second pass = refine once fonts/layout have settled
+    // 0.93 = aim for 93% of the page height, never 100%: the print engine's
+    // own page break can differ from the on-screen measurement by a few px,
+    // and filling the sheet exactly is what pushed the last question onto a
+    // 2nd page.
+    fitAndSpacePaper('qpaper-print-el', 8, 0.93);
+    fitAndSpacePaper('qpaper-print-el', 8, 0.93); // second pass = refine once fonts/layout have settled
     printAsA4(8);
   });
 }
@@ -9003,7 +9007,7 @@ function printQuestionPaper() {
 // shown under @media print) — both are briefly forced visible off-screen
 // here to measure the real rendered height, then handed back to the print
 // CSS to display for real.
-function fitAndSpacePaper(elId, marginMm) {
+function fitAndSpacePaper(elId, marginMm, safety) {
   const el = document.getElementById(elId);
   const container = document.getElementById('print-area');
   if (!el || !container) return;
@@ -9015,7 +9019,7 @@ function fitAndSpacePaper(elId, marginMm) {
   const probe = document.createElement('div');
   probe.style.cssText = `position:fixed;visibility:hidden;height:${usableHeightMm}mm;width:0;`;
   document.body.appendChild(probe);
-  const limitPx = probe.getBoundingClientRect().height;
+  const limitPx = probe.getBoundingClientRect().height * (safety && safety > 0 && safety <= 1 ? safety : 1);
   probe.remove();
 
   const prev = { display: container.style.display, position: container.style.position, left: container.style.left, top: container.style.top, width: container.style.width };
@@ -9055,7 +9059,7 @@ function fitAndSpacePaper(elId, marginMm) {
   // gets a small zoom-out on top, same as before — just now only kicking in
   // after spacing has already done most of the work.
   const finalHeight = el.scrollHeight;
-  const MIN_ZOOM = 0.6;
+  const MIN_ZOOM = 0.45;
   const zoomScale = finalHeight > limitPx ? Math.max(MIN_ZOOM, limitPx / finalHeight) : 1;
   el.style.zoom = zoomScale < 1 ? zoomScale : 1;
 
