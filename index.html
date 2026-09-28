@@ -8505,6 +8505,121 @@ let paperInstructions = { mcq:'', blanks:'', tf:'', match:'', short:'', long:'' 
 // to label or refer to.
 let paperEndImage = null;
 
+// ---- Question Paper draft auto-save (this device only, never Supabase) ----
+// Every keystroke/change in the Papers tab is copied into localStorage, and
+// the draft is restored on the next app start, so a refresh, a phone lock or
+// a closed browser never loses a half-written paper. It is purely additive:
+// it only reads/writes the paper* variables above and touches nothing else.
+const PQ_DRAFT_KEY = 'pqDraft_v1';
+let pqSaveTimer = null, pqReady = false;
+function pqSnapshot(withImages) {
+  const meta = Object.assign({}, paperMeta);
+  if (!withImages || (typeof dmcLogo !== 'undefined' && meta.logo === dmcLogo)) meta.logo = null; // default logo is refilled automatically
+  return { v:1, t:Date.now(), paperMeta:meta, paperMcqMarksEach, paperMcqs, paperBlanks, paperTF,
+           paperMatchA, paperMatchB, paperShort, paperLong, paperInstructions,
+           paperEndImage: withImages ? paperEndImage : null };
+}
+function savePaperDraft() {
+  if (!pqReady) return;
+  try { localStorage.setItem(PQ_DRAFT_KEY, JSON.stringify(pqSnapshot(true))); }
+  catch (e) { try { localStorage.setItem(PQ_DRAFT_KEY, JSON.stringify(pqSnapshot(false))); } catch (e2) {} } // storage full: keep the text at least
+}
+function pqScheduleSave() { clearTimeout(pqSaveTimer); pqSaveTimer = setTimeout(savePaperDraft, 300); }
+function pqFlush() { clearTimeout(pqSaveTimer); savePaperDraft(); }
+function loadPaperDraft() {
+  let raw = null;
+  try { raw = localStorage.getItem(PQ_DRAFT_KEY); } catch (e) {}
+  if (!raw) { pqReady = true; return; }
+  try {
+    const d = JSON.parse(raw);
+    const arr = (v, def) => (Array.isArray(v) && v.length ? v : def);
+    if (d.paperMeta) paperMeta = Object.assign(paperMeta, d.paperMeta);
+    if (d.paperMcqMarksEach != null) paperMcqMarksEach = d.paperMcqMarksEach;
+    paperMcqs = arr(d.paperMcqs, paperMcqs);
+    paperBlanks = arr(d.paperBlanks, paperBlanks);
+    paperTF = arr(d.paperTF, paperTF);
+    paperMatchA = arr(d.paperMatchA, paperMatchA);
+    paperMatchB = arr(d.paperMatchB, paperMatchB);
+    paperShort = arr(d.paperShort, paperShort);
+    paperLong = arr(d.paperLong, paperLong);
+    if (d.paperInstructions) paperInstructions = Object.assign(paperInstructions, d.paperInstructions);
+    if (d.paperEndImage) paperEndImage = d.paperEndImage;
+    pqReady = true;
+  } catch (e) {
+    // unreadable draft: keep a copy instead of overwriting it
+    try { localStorage.setItem(PQ_DRAFT_KEY + '_corrupt', raw); } catch (e2) {}
+    pqReady = true;
+  }
+}
+loadPaperDraft();
+
+// ---- New Paper / restore previous paper ----
+const PQ_BACKUP_KEY = 'pqBackup_v1';
+function pqHasContent() {
+  const m = paperMeta;
+  return !!(m.exam_name || m.class_name || m.subject || m.total_marks || m.time_allowed || paperEndImage ||
+    paperMcqs.some(x => x.q || (x.options||[]).some(Boolean)) || paperBlanks.some(x => x.q) || paperTF.some(x => x.q) ||
+    paperMatchA.some(Boolean) || paperMatchB.some(Boolean) || paperShort.some(x => x.q) || paperLong.some(x => x.q) ||
+    Object.values(paperInstructions).some(Boolean));
+}
+function pqStoreBackup() {
+  try { localStorage.setItem(PQ_BACKUP_KEY, JSON.stringify(pqSnapshot(true))); }
+  catch (e) { try { localStorage.setItem(PQ_BACKUP_KEY, JSON.stringify(pqSnapshot(false))); } catch (e2) {} }
+}
+function pqHasBackup() { try { return !!localStorage.getItem(PQ_BACKUP_KEY); } catch (e) { return false; } }
+function pqResetPaper() {
+  paperMeta = { school_name: paperMeta.school_name, logo: paperMeta.logo, exam_name: '', class_name: '', subject: '', total_marks: '', time_allowed: '', exam_date: '' };
+  paperMcqMarksEach = 1;
+  paperMcqs = [ { no:1, q:'', options:['','','',''] } ];
+  paperBlanks = [ { no:1, q:'' } ];
+  paperTF = [ { no:1, q:'' } ];
+  paperMatchA = [ '', '' ];
+  paperMatchB = [ '', '' ];
+  paperShort = [ { no:1, q:'', marks:'' } ];
+  paperLong = [ { no:1, q:'', marks:'' } ];
+  paperInstructions = { mcq:'', blanks:'', tf:'', match:'', short:'', long:'' };
+  paperEndImage = null;
+}
+function newPaper() {
+  const ur = LANG === 'ur';
+  if (pqHasContent()) {
+    if (!confirm(ur ? 'سب کچھ صاف کر کے نیا پرچہ شروع کریں؟ موجودہ پرچہ محفوظ رہے گا، آپ اسے واپس لا سکتے ہیں۔'
+                    : 'Clear everything and start a new paper? The current paper is kept, so you can restore it.')) return;
+    pqStoreBackup();
+  }
+  pqResetPaper();
+  pqFlush();
+  renderTab();
+}
+function restorePreviousPaper() {
+  const ur = LANG === 'ur';
+  let raw = null;
+  try { raw = localStorage.getItem(PQ_BACKUP_KEY); } catch (e) {}
+  if (!raw) return;
+  if (pqHasContent() && !confirm(ur ? 'پچھلا پرچہ واپس لائیں؟ موجودہ پرچہ اس کی جگہ محفوظ ہو جائے گا۔'
+                                    : 'Restore the previous paper? The current paper will be kept in its place.')) return;
+  let d; try { d = JSON.parse(raw); } catch (e) { return; }
+  const current = pqHasContent() ? JSON.stringify(pqSnapshot(true)) : null;
+  pqResetPaper();
+  const arr = (v, def) => (Array.isArray(v) && v.length ? v : def);
+  if (d.paperMeta) paperMeta = Object.assign(paperMeta, d.paperMeta);
+  if (d.paperMcqMarksEach != null) paperMcqMarksEach = d.paperMcqMarksEach;
+  paperMcqs = arr(d.paperMcqs, paperMcqs); paperBlanks = arr(d.paperBlanks, paperBlanks); paperTF = arr(d.paperTF, paperTF);
+  paperMatchA = arr(d.paperMatchA, paperMatchA); paperMatchB = arr(d.paperMatchB, paperMatchB);
+  paperShort = arr(d.paperShort, paperShort); paperLong = arr(d.paperLong, paperLong);
+  if (d.paperInstructions) paperInstructions = Object.assign(paperInstructions, d.paperInstructions);
+  paperEndImage = d.paperEndImage || null;
+  try { if (current) localStorage.setItem(PQ_BACKUP_KEY, current); else localStorage.removeItem(PQ_BACKUP_KEY); } catch (e) {}
+  pqFlush();
+  renderTab();
+}
+document.addEventListener('input', () => { try { if (TAB === 'papers') pqScheduleSave(); } catch (e) {} }, true);
+document.addEventListener('change', () => { try { if (TAB === 'papers') pqScheduleSave(); } catch (e) {} }, true);
+document.addEventListener('click', () => { try { if (TAB === 'papers') pqScheduleSave(); } catch (e) {} }, true); // add/remove question, image buttons
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') pqFlush(); });
+window.addEventListener('pagehide', pqFlush);
+window.addEventListener('beforeunload', pqFlush);
+
 function ensurePaperMetaDefaults() {
   if (!paperMeta.school_name) paperMeta.school_name = dmcSchoolName || (CURRENT_PROFILE && CURRENT_PROFILE.school_name) || '';
   if (!paperMeta.logo) paperMeta.logo = dmcLogo || null;
@@ -8732,6 +8847,10 @@ function tplPapers() {
     </div>
 
     <button class="btn-primary" style="width:100%;" onclick="printQuestionPaper()">🖨️ ${esc(t.print)}</button>
+    <div class="flexgap" style="margin-top:10px;">
+      <button class="btn-ghost" style="flex:1;" onclick="newPaper()">🆕 ${LANG==='ur' ? 'نیا پرچہ' : 'New Paper'}</button>
+      ${pqHasBackup() ? `<button class="btn-ghost" style="flex:1;" onclick="restorePreviousPaper()">↩️ ${LANG==='ur' ? 'پچھلا پرچہ' : 'Previous Paper'}</button>` : ''}
+    </div>
   </div>`;
 }
 
