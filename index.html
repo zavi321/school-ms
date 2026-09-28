@@ -868,7 +868,7 @@ const T = {
     paperEndImageLabel:'Diagram / Image (optional)', paperEndImageHint:'Printed once at the end of the paper — e.g. for Science subjects',
     addImage:'+ Add Image', removeImage:'Remove Image',
     logo:'Logo', paperExamName:'Exam Name',
-    paperPreviewNote:'Fill in the questions below, then print. Blank option/answer boxes are left empty on the printed paper.',
+    paperPreviewNote:'Fill in the questions below, then print. Blank option/answer boxes are left empty on the printed paper. To underline a word, type it inside double brackets, e.g. [[word]].',
     groupByClass:'By Class', groupByFee:'By Fee', noFeeCategory:'No Fee', studentsCount:'students',
     admissionDate:'Admission Date', monthlyFee:'Monthly Fee (Rs)', contact:'Contact Number',
     studentType:'Student Type', feePaying:'Fee-Paying', free:'Free', orphan:'Orphan', all:'All',
@@ -1076,7 +1076,7 @@ const T = {
     paperEndImageLabel:'خاکہ/تصویر (اختیاری)', paperEndImageHint:'پرچے کے آخر میں ایک بار پرنٹ ہو گی — مثلاً سائنس کے مضامین کیلئے',
     addImage:'+ تصویر شامل کریں', removeImage:'تصویر ہٹائیں',
     logo:'لوگو', paperExamName:'امتحان کا نام',
-    paperPreviewNote:'نیچے سوالات بھریں، پھر پرنٹ کریں۔',
+    paperPreviewNote:'نیچے سوالات بھریں، پھر پرنٹ کریں۔ کسی لفظ کے نیچے لکیر کیلئے اسے دہرے بریکٹ میں لکھیں، مثلاً [[لفظ]]۔',
     groupByClass:'جماعت کے مطابق', groupByFee:'فیس کے مطابق', noFeeCategory:'بغیر فیس', studentsCount:'طلباء',
     admissionDate:'داخلہ کی تاریخ', monthlyFee:'ماہانہ فیس (روپے)', contact:'رابطہ نمبر',
     studentType:'طالب علم کی قسم', feePaying:'فیس ادا کرنے والا', free:'مفت', orphan:'یتیم', all:'تمام',
@@ -8870,7 +8870,9 @@ function formatPaperDate(isoDate) {
 const PQ_SUP = {'⁰':'0','¹':'1','²':'2','³':'3','⁴':'4','⁵':'5','⁶':'6','⁷':'7','⁸':'8','⁹':'9','⁻':'\u2212','⁺':'+'};
 const pqEsc = s => esc(s)
   .replace(/[⁰¹²³⁴⁵⁶⁷⁸⁹⁻⁺]+/g, m => '<sup>' + Array.from(m).map(c => PQ_SUP[c]).join('') + '</sup>')
-  .replace(/\^([-\u2212+]?\d+)/g, (m, d) => '<sup>' + d.replace('-', '\u2212') + '</sup>');
+  .replace(/\^([-\u2212+]?\d+)/g, (m, d) => '<sup>' + d.replace('-', '\u2212') + '</sup>')
+  // [[word]] -> underlined word (for "underline the word" style questions)
+  .replace(/\[\[(.+?)\]\]/g, '<u>$1</u>');
 
 function printQuestionPaper() {
   const validMcqs = paperMcqs.filter(m => m.q.trim());
