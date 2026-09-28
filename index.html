@@ -29,8 +29,6 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,500;0,9..144,600;0,9..144,700;1,9..144,500;1,9..144,600;1,9..144,700&family=Berkshire+Swash&family=Aref+Ruqaa:wght@400;700&family=Inter:wght@400;500;600;700&family=Noto+Nastaliq+Urdu:wght@600;700&family=Noto+Sans+Urdu:wght@400;500;600&display=swap">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.4/dist/umd/supabase.js" integrity="sha384-ysv13JVP3fufiEXfjML9OdCa/rRbMJvUBOWyor82wfuK8INNZAvmbxHgKIHi+oqz" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js" integrity="sha384-vtjasyidUo0kW94K5MXDXntzOJpQgBKXmE7e2Ga4LG0skTTLeBi97eFAXsqewJjw" crossorigin="anonymous"></script>
-<!-- pdf.js: only used by the "Generate with AI" card in Question Papers, to read text out of an uploaded book PDF before sending it to the AI. Nothing else in the app depends on this. -->
-<script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js" crossorigin="anonymous"></script>
 <style>
   :root{
     --navy:#0F2740; --navy-deep:#0A1B2C; --gold:#C9A227; --gold-soft:#E4C765;
@@ -272,13 +270,17 @@ html, body{overscroll-behavior:none;}
   .paper-q-row textarea{width:100%;font-family:inherit;padding:8px;border-radius:8px;border:1px solid var(--line);resize:vertical;}
   .qpaper-print{display:none;}
   @media print{
-    .qpaper-print{display:block;font-family:'Noto Nastaliq Urdu',Inter,serif;color:#111;}
-    .qpaper-print, .qpaper-print *{line-height:1.2;}
+    /* --pq-space is set from JS (see fitAndSpacePaper) to how much this
+       paper's line-height and section spacing should stretch or shrink: 1
+       is the normal amount below, >1 spreads a short paper out to fill the
+       whole sheet, <1 tightens a long one so it still fits on one page. */
+    .qpaper-print{display:block;font-family:'Noto Nastaliq Urdu',Inter,serif;color:#111;--pq-space:1;}
+    .qpaper-print, .qpaper-print *{line-height:calc(1.2 * var(--pq-space,1));}
     /* Noto Nastaliq Urdu needs noticeably more vertical room than Latin text —
        its diagonal stroke shape means tight (1.2) line-height makes adjacent
        lines' loops and dots overlap. Only loosen it for Urdu-language papers;
        the English paper already looks right at 1.2, so leave it untouched. */
-    body.ur .qpaper-print, body.ur .qpaper-print *{line-height:2;}
+    body.ur .qpaper-print, body.ur .qpaper-print *{line-height:calc(2 * var(--pq-space,1));}
     .qp-head{text-align:center;padding-bottom:3px;margin-bottom:5px;}
     .qp-head-row{display:flex;align-items:flex-start;justify-content:space-between;gap:8px;}
     .qp-side{font-size:13px;font-weight:600;white-space:nowrap;flex-shrink:0;padding-top:2px;}
@@ -290,19 +292,23 @@ html, body{overscroll-behavior:none;}
     .qp-title{font-size:15px;margin-top:1px;}
     .qp-meta{display:flex;justify-content:center;gap:18px;font-size:13px;margin-top:3px;}
     .qp-name-line{font-size:13px;margin-top:3px;text-align:left;}
-    .pq-section{margin-top:16px;}
+    .pq-section{margin-top:calc(16px * var(--pq-space,1));}
     .pq-section-title{font-weight:700;font-size:14px;padding-bottom:1px;margin-bottom:3px;page-break-after:avoid;break-after:avoid;text-align:center;}
-    .pq-sub{margin-bottom:16px;}
+    .pq-sub{margin-bottom:calc(16px * var(--pq-space,1));}
     .pq-sub-title{font-weight:600;font-size:13px;text-decoration:underline;margin-bottom:2px;}
     .pq-instruction{font-size:13px;font-style:italic;font-weight:800;opacity:1;margin:-1px 0 3px;}
     .pq-marks{font-weight:400;font-size:12px;opacity:.75;}
-    .pq-q{font-size:14px;margin-bottom:2px;page-break-inside:avoid;break-inside:avoid;display:flex;flex-wrap:wrap;align-items:baseline;column-gap:14px;row-gap:0;}
-    .pq-options{white-space:nowrap;font-size:13px;}
+    .pq-q{font-size:14px;margin-bottom:calc(4px * var(--pq-space,1));page-break-inside:avoid;break-inside:avoid;display:flex;flex-wrap:wrap;align-items:baseline;column-gap:14px;row-gap:0;}
+    /* flex-basis:100% forces this onto its own row below the question text
+       every time — regardless of whether the question + options together
+       would otherwise have fit on one line — so options always start on the
+       next line for both short and long MCQs. */
+    .pq-options{white-space:nowrap;font-size:13px;flex-basis:100%;margin-top:1px;}
     .pq-options span{margin-inline-end:14px;}
     .pq-options span:last-child{margin-inline-end:0;}
     .pq-tf{font-size:13px;opacity:.8;white-space:nowrap;}
     .pq-match{display:grid;grid-template-columns:1fr 1fr;gap:5px 20px;font-size:14px;}
-    .pq-2col{display:grid;grid-template-columns:1fr 1fr;gap:4px 20px;}
+    .pq-2col{display:grid;grid-template-columns:1fr 1fr;gap:calc(4px * var(--pq-space,1)) 20px;}
     .qp-logo{height:44px;width:44px;object-fit:contain;display:block;margin:0 auto 4px;}
     .pq-img-wrap{margin:3px 0 3px 18px;}
     .pq-img{max-width:55mm;max-height:40mm;object-fit:contain;border:1px solid #999;display:block;}
@@ -846,11 +852,6 @@ const T = {
     addStudent:'Add Student', studentName:'Student Name', studentNameUr:'Student Name (Urdu)', fatherName:"Father's Name", fatherNameUr:"Father's Name (Urdu)", casteTribeUr:'Caste/Tribe (Urdu)', residenceUr:'Residence (Urdu)', className:'Class',
     quickAdmission:'Quick Admission', admissionNo:'Admission No.', dateOfBirth:'Date of Birth',
     printSelected:'Print Selected', clear:'Clear',
-    aiPaperTitle:'Generate with AI (from a book PDF)', aiPaperDesc:'Upload the textbook PDF, pick the chapter\'s page range, and AI will draft questions for you to review and edit before printing. Nothing here is saved to the database.',
-    aiUploadPdf:'Upload Book PDF', aiPageFrom:'From Page', aiPageTo:'To Page',
-    aiCountMcq:'MCQs to generate', aiCountBlanks:'Fill-in-the-Blanks to generate', aiCountTf:'True/False to generate', aiCountShort:'Short Questions to generate', aiCountLong:'Long Questions to generate',
-    aiGenerateBtn:'✨ Generate Questions', aiGenerating:'Reading the chapter and generating questions…',
-    aiErrorGeneric:'Could not generate questions. Please check the page range and try again.', aiErrorNoPdf:'Please upload a PDF first.',
     aiSuccessNote:'Questions generated below — review, edit, or delete any of them before printing.',
     papers:'Question Papers', paperClass:'Class', paperSubject:'Subject', paperTotalMarks:'Total Marks',
     paperTime:'Time Allowed', mcqSection:'Section A — Objective Questions', shortSection:'Section B — Short Questions',
@@ -1059,11 +1060,6 @@ const T = {
     addStudent:'طالب علم شامل کریں', studentName:'طالب علم کا نام', studentNameUr:'طالب علم کا نام (اردو)', fatherName:'والد کا نام', fatherNameUr:'والد کا نام (اردو)', casteTribeUr:'ذات/قبیلہ (اردو)', residenceUr:'رہائش (اردو)', className:'جماعت',
     quickAdmission:'فوری داخلہ', admissionNo:'داخلہ نمبر', dateOfBirth:'تاریخ پیدائش',
     printSelected:'منتخب پرنٹ کریں', clear:'صاف کریں',
-    aiPaperTitle:'AI سے بنائیں (کتاب کے PDF سے)', aiPaperDesc:'کتاب کا PDF اپلوڈ کریں، چیپٹر کے صفحات کی رینج بتائیں — AI سوالات بنا دے گا جنہیں آپ پرنٹ سے پہلے دیکھ اور تبدیل کر سکتے ہیں۔ یہ ڈیٹا بیس میں محفوظ نہیں ہوتا۔',
-    aiUploadPdf:'کتاب کا PDF اپلوڈ کریں', aiPageFrom:'صفحہ نمبر (شروع)', aiPageTo:'صفحہ نمبر (آخر)',
-    aiCountMcq:'MCQs کی تعداد', aiCountBlanks:'خانہ پری کی تعداد', aiCountTf:'درست/غلط کی تعداد', aiCountShort:'مختصر سوالات کی تعداد', aiCountLong:'تفصیلی سوالات کی تعداد',
-    aiGenerateBtn:'✨ سوالات بنائیں', aiGenerating:'چیپٹر پڑھا جا رہا ہے اور سوالات بنائے جا رہے ہیں…',
-    aiErrorGeneric:'سوالات نہیں بن سکے۔ صفحات کی رینج چیک کر کے دوبارہ کوشش کریں۔', aiErrorNoPdf:'پہلے PDF اپلوڈ کریں۔',
     aiSuccessNote:'نیچے سوالات بن چکے ہیں — پرنٹ سے پہلے دیکھ لیں، ترمیم یا حذف کر سکتے ہیں۔',
     papers:'سوالیہ پرچہ جات', paperClass:'جماعت', paperSubject:'مضمون', paperTotalMarks:'کل نمبر',
     paperTime:'وقت', mcqSection:'حصہ اول — معروضی سوالات', shortSection:'حصہ دوم — مختصر سوالات',
@@ -8539,88 +8535,6 @@ function handlePaperEndImageUpload(file) {
 }
 function removePaperEndImage() { paperEndImage = null; renderTab(); }
 
-// ---------------------------------------------------------------------------
-// "Generate with AI" — reads a page range out of an uploaded textbook PDF
-// (client-side, via pdf.js — the PDF itself is never uploaded anywhere),
-// sends just that extracted text to a Supabase Edge Function, and pours the
-// AI's suggested questions into the SAME paperMcqs/paperBlanks/paperTF/
-// paperMatchA/paperMatchB/paperShort/paperLong arrays the manual builder
-// above already uses. Nothing about this is saved to the database — exactly
-// like manual entry, it only lives in the browser until printed. This is
-// purely additive: manual entry keeps working exactly as before, untouched.
-// ---------------------------------------------------------------------------
-let aiPdfFile = null;
-let aiPageFrom = '';
-let aiPageTo = '';
-let aiCounts = { mcq:5, blanks:5, tf:5, short:5, long:5 };
-let aiBusy = false;
-let aiError = '';
-
-function handleAiPdfUpload(file) {
-  aiPdfFile = file || null;
-  aiError = '';
-  renderTab();
-}
-
-// Extracts plain text from the given inclusive page range of aiPdfFile.
-async function extractPdfChapterText(file, fromPage, toPage) {
-  const buf = await file.arrayBuffer();
-  if (!window.pdfjsLib) throw new Error('pdf.js not loaded');
-  pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js';
-  const doc = await pdfjsLib.getDocument({ data: buf }).promise;
-  const start = Math.max(1, parseInt(fromPage) || 1);
-  const end = Math.min(doc.numPages, parseInt(toPage) || doc.numPages);
-  let text = '';
-  for (let p = start; p <= end; p++) {
-    const page = await doc.getPage(p);
-    const content = await page.getTextContent();
-    text += content.items.map(it => it.str).join(' ') + '\n\n';
-  }
-  return text.trim();
-}
-
-async function generatePaperWithAI() {
-  if (aiBusy) return;
-  if (!aiPdfFile) { aiError = t.aiErrorNoPdf; renderTab(); return; }
-  aiBusy = true; aiError = ''; renderTab();
-  try {
-    const chapterText = await extractPdfChapterText(aiPdfFile, aiPageFrom, aiPageTo);
-    // The Edge Function ("generate-paper-questions") holds the Gemini API
-    // key server-side and returns structured JSON — see
-    // supabase/functions/generate-paper-questions for its source.
-    const { data, error } = await sb.functions.invoke('generate-paper-questions', {
-      body: {
-        chapterText,
-        language: LANG,
-        subject: paperMeta.subject || '',
-        className: paperMeta.class_name || '',
-        counts: aiCounts
-      }
-    });
-    if (error || !data) throw new Error((error && error.message) || 'empty response');
-
-    if (Array.isArray(data.mcqs) && data.mcqs.length) {
-      paperMcqs = data.mcqs.map((m,i) => ({ no:i+1, q:m.q||'', options:[m.a||'',m.b||'',m.c||'',m.d||''] }));
-    }
-    if (Array.isArray(data.blanks) && data.blanks.length) {
-      paperBlanks = data.blanks.map((q,i) => ({ no:i+1, q:q||'' }));
-    }
-    if (Array.isArray(data.tf) && data.tf.length) {
-      paperTF = data.tf.map((q,i) => ({ no:i+1, q:q||'' }));
-    }
-    if (Array.isArray(data.short) && data.short.length) {
-      paperShort = data.short.map((q,i) => ({ no:i+1, q:q||'', marks:'' }));
-    }
-    if (Array.isArray(data.long) && data.long.length) {
-      paperLong = data.long.map((q,i) => ({ no:i+1, q:q||'', marks:'' }));
-    }
-  } catch (e) {
-    console.error('AI paper generation failed:', e);
-    aiError = t.aiErrorGeneric;
-  } finally {
-    aiBusy = false; renderTab();
-  }
-}
 // Automatic background removal for uploaded diagrams: most textbook/scanned
 // diagrams sit on a plain white (or near-white) page, so this samples the
 // four corners of the image to find that background shade, then makes every
@@ -8739,35 +8653,6 @@ function tplPapers() {
       <div class="row2">
         <label><span>${esc(t.paperTime)}</span><input placeholder="e.g. 2 hours" value="${esc(paperMeta.time_allowed)}" oninput="paperMeta.time_allowed=this.value"></label>
       </div>
-    </div>
-
-    <div class="card" style="margin-bottom:14px;border:1px solid var(--gold);">
-      <b style="font-size:13px;display:block;margin-bottom:4px;">${esc(t.aiPaperTitle)}</b>
-      <div style="font-size:11px;opacity:.7;margin-bottom:10px;">${esc(t.aiPaperDesc)}</div>
-      <label class="btn-ghost" style="cursor:pointer;font-size:12px;padding:8px 10px;display:block;text-align:center;margin-bottom:10px;">
-        ${aiPdfFile ? '📄 ' + esc(aiPdfFile.name) : '📄 ' + esc(t.aiUploadPdf)}
-        <input type="file" accept="application/pdf" style="display:none;" onchange="handleAiPdfUpload(this.files[0])">
-      </label>
-      <div class="row2">
-        <label><span>${esc(t.aiPageFrom)}</span><input type="number" min="1" value="${esc(aiPageFrom)}" oninput="aiPageFrom=this.value"></label>
-        <label><span>${esc(t.aiPageTo)}</span><input type="number" min="1" value="${esc(aiPageTo)}" oninput="aiPageTo=this.value"></label>
-      </div>
-      <div class="row2">
-        <label><span>${esc(t.aiCountMcq)}</span><input type="number" min="0" value="${esc(aiCounts.mcq)}" oninput="aiCounts.mcq=this.value"></label>
-        <label><span>${esc(t.aiCountBlanks)}</span><input type="number" min="0" value="${esc(aiCounts.blanks)}" oninput="aiCounts.blanks=this.value"></label>
-      </div>
-      <div class="row2">
-        <label><span>${esc(t.aiCountTf)}</span><input type="number" min="0" value="${esc(aiCounts.tf)}" oninput="aiCounts.tf=this.value"></label>
-        <label><span>${esc(t.aiCountShort)}</span><input type="number" min="0" value="${esc(aiCounts.short)}" oninput="aiCounts.short=this.value"></label>
-      </div>
-      <div class="row2">
-        <label><span>${esc(t.aiCountLong)}</span><input type="number" min="0" value="${esc(aiCounts.long)}" oninput="aiCounts.long=this.value"></label>
-        <div></div>
-      </div>
-      ${aiError ? `<div class="err">${esc(aiError)}</div>` : ''}
-      <button class="btn-primary" style="width:100%;margin-top:4px;" ${aiBusy?'disabled':''} onclick="generatePaperWithAI()">
-        ${aiBusy ? '⏳ ' + esc(t.aiGenerating) : esc(t.aiGenerateBtn)}
-      </button>
     </div>
 
     <div class="section-title" style="font-size:14px;margin-bottom:8px;">${esc(t.mcqSection)}</div>
@@ -8919,25 +8804,35 @@ function printQuestionPaper() {
       ${section(t.longSection, validLong, paperInstructions.long)}
       ${paperEndImage ? `<div class="pq-end-img-wrap"><img src="${paperEndImage}" class="pq-end-img"></div>` : ''}
     </div>`;
-  // The paper is forced onto exactly one A4 page via fitElementToOnePage,
-  // which shrinks it with CSS `zoom` (not `transform` — see that function's
-  // comment for why transform doesn't work here).
+  // The paper is forced onto exactly one A4 page via fitAndSpacePaper, which
+  // first stretches or tightens the line/section spacing (a short paper gets
+  // spread out to cover the sheet, a long one gets tightened to fit) and
+  // only falls back to shrinking with CSS `zoom` (not `transform` — see that
+  // function's comment for why transform doesn't work here) if it's still
+  // too tall even at minimum spacing.
   const printEl = document.getElementById('qpaper-print-el');
   const imgs = printEl ? Array.from(printEl.querySelectorAll('img')) : [];
   Promise.all(imgs.map(img => img.complete ? Promise.resolve() : new Promise(res => { img.onload = res; img.onerror = res; }))).then(() => {
-    fitElementToOnePage('qpaper-print-el', 8);
+    fitAndSpacePaper('qpaper-print-el', 8);
     printAsA4(8);
   });
 }
 
-// Shrinks the whole printed paper (via CSS transform, not font-size — most of
-// its text uses fixed px sizes that wouldn't respond to a font-size change on
-// the wrapper) until it fits within one A4 page, so a long paper prints
-// smaller rather than spilling onto a 2nd page. The element sits inside
-// #print-area, which is normally display:none (only shown under @media
-// print) — both are briefly forced visible off-screen here to measure the
-// real rendered height, then handed back to the print CSS to display for real.
-function fitElementToOnePage(elId, marginMm) {
+// Adjusts the printed paper's spacing so a short paper stretches to cover the
+// whole A4 sheet and a long one tightens up to still fit on one page — done
+// via a --pq-space CSS variable (see the .qpaper-print rules) that scales
+// line-height and the gaps between sections/questions, NOT font-size, so
+// text stays fully readable either way. Only if a paper is so long that
+// even the minimum spacing still overflows does this fall back to a small
+// CSS `zoom` shrink (not `transform` — transform only changes paint, not the
+// box's contribution to layout, so the print engine's page-break calculation
+// would still see the full height and spill onto a 2nd page even though it
+// looks smaller; `zoom` actually shrinks the box in layout terms). The
+// element sits inside #print-area, which is normally display:none (only
+// shown under @media print) — both are briefly forced visible off-screen
+// here to measure the real rendered height, then handed back to the print
+// CSS to display for real.
+function fitAndSpacePaper(elId, marginMm) {
   const el = document.getElementById(elId);
   const container = document.getElementById('print-area');
   if (!el || !container) return;
@@ -8962,24 +8857,37 @@ function fitElementToOnePage(elId, marginMm) {
   const prevElDisplay = el.style.display;
   el.style.display = 'block';
   el.style.zoom = 1;
+  el.style.setProperty('--pq-space', 1);
   el.style.height = 'auto';
-  const naturalHeight = el.scrollHeight;
-  // The paper is kept to one page mainly by the print CSS's margins/gaps,
-  // not by shrinking text. This scale is only a safety net for papers with
-  // a lot of content that still don't quite fit after that — 0.9 keeps text
-  // clearly readable (nowhere near the earlier "needs a microscope" level)
-  // while still reliably closing the gap to one page.
-  const MIN_SCALE = 0.9;
-  const rawScale = naturalHeight > limitPx ? (limitPx / naturalHeight) : 1;
-  const scale = Math.max(rawScale, MIN_SCALE);
 
-  // `zoom` is used deliberately instead of `transform: scale()`. transform
-  // only changes paint, not the box's contribution to layout, so the print
-  // engine's page-break calculation still sees the full, un-shrunk height
-  // and spills the content onto a 2nd page even though it visually looks
-  // smaller. `zoom` actually shrinks the box in layout terms, so pagination
-  // sees the smaller size and the paper genuinely fits on one page.
-  el.style.zoom = scale < 1 ? scale : 1;
+  const baselineHeight = el.scrollHeight;
+
+  // How far spacing can stretch (short paper, fill the sheet) or shrink
+  // (long paper, help it fit) before it starts looking wrong.
+  const MIN_SPACE = 0.55;
+  const MAX_SPACE = 2.4;
+  let space = baselineHeight > 0 ? (limitPx / baselineHeight) : 1;
+  space = Math.max(MIN_SPACE, Math.min(MAX_SPACE, space));
+  el.style.setProperty('--pq-space', space);
+
+  // Spacing isn't perfectly linear with height (the header/logo/images don't
+  // scale with --pq-space), so nudge once more toward the target if the
+  // first pass landed noticeably off.
+  const afterFirstPass = el.scrollHeight;
+  if (afterFirstPass > 0 && Math.abs(afterFirstPass - limitPx) > limitPx * 0.03) {
+    const nudged = space * (limitPx / afterFirstPass);
+    space = Math.max(MIN_SPACE, Math.min(MAX_SPACE, nudged));
+    el.style.setProperty('--pq-space', space);
+  }
+
+  // Safety net: a paper so long that even MIN_SPACE still overflows the page
+  // gets a small zoom-out on top, same as before — just now only kicking in
+  // after spacing has already done most of the work.
+  const finalHeight = el.scrollHeight;
+  const MIN_ZOOM = 0.9;
+  const zoomScale = finalHeight > limitPx ? Math.max(MIN_ZOOM, limitPx / finalHeight) : 1;
+  el.style.zoom = zoomScale < 1 ? zoomScale : 1;
+
   el.style.display = prevElDisplay;
 
   container.style.display = prev.display;
@@ -8987,8 +8895,9 @@ function fitElementToOnePage(elId, marginMm) {
   container.style.left = prev.left;
   container.style.top = prev.top;
   container.style.width = prev.width;
-  // el.style.zoom is intentionally left in place — that's what makes the
-  // shrink apply when @media print later shows this element for real.
+  // Both el.style.zoom and the --pq-space custom property are intentionally
+  // left in place — that's what makes them apply when @media print later
+  // shows this element for real.
 }
 
 
