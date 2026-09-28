@@ -316,6 +316,11 @@ html, body{overscroll-behavior:none;}
     .pq-tf{font-size:13px;opacity:.8;white-space:nowrap;}
     .pq-match{display:grid;grid-template-columns:1fr 1fr;gap:5px 20px;font-size:14px;}
     .pq-2col{display:grid;grid-template-columns:1fr 1fr;gap:calc(4px * var(--pq-space,1)) 20px;}
+    /* Optional divider line a user can type after every 5th question in a
+       section (see paperBreaks). grid-column:1/-1 makes it span the full
+       width even inside a .pq-2col two-column grid; printed only when the
+       user actually typed something in that group's box. */
+    .pq-break{grid-column:1/-1;text-align:center;font-weight:600;font-size:13px;margin:calc(3px * var(--pq-space,1)) 0;}
     .qpaper-print sup{font-size:.7em;line-height:0;vertical-align:super;}
     .qp-logo{height:44px;width:44px;object-fit:contain;display:block;margin:0 auto 4px;}
     .pq-img-wrap{margin:3px 0 3px 18px;}
@@ -869,6 +874,7 @@ const T = {
     addImage:'+ Add Image', removeImage:'Remove Image',
     logo:'Logo', paperExamName:'Exam Name',
     paperPreviewNote:'Fill in the questions below, then print. Blank option/answer boxes are left empty on the printed paper. To underline a word, type it inside double brackets, e.g. [[word]].',
+    paperBreakPh:'Optional line after every 5 questions (e.g. OR) — leave blank to skip',
     groupByClass:'By Class', groupByFee:'By Fee', noFeeCategory:'No Fee', studentsCount:'students',
     admissionDate:'Admission Date', monthlyFee:'Monthly Fee (Rs)', contact:'Contact Number',
     studentType:'Student Type', feePaying:'Fee-Paying', free:'Free', orphan:'Orphan', all:'All',
@@ -1077,6 +1083,7 @@ const T = {
     addImage:'+ تصویر شامل کریں', removeImage:'تصویر ہٹائیں',
     logo:'لوگو', paperExamName:'امتحان کا نام',
     paperPreviewNote:'نیچے سوالات بھریں، پھر پرنٹ کریں۔ کسی لفظ کے نیچے لکیر کیلئے اسے دہرے بریکٹ میں لکھیں، مثلاً [[لفظ]]۔',
+    paperBreakPh:'ہر 5 سوالات کے بعد اختیاری لائن (مثلاً OR) — خالی چھوڑ دیں تو کچھ نہیں چھپے گا',
     groupByClass:'جماعت کے مطابق', groupByFee:'فیس کے مطابق', noFeeCategory:'بغیر فیس', studentsCount:'طلباء',
     admissionDate:'داخلہ کی تاریخ', monthlyFee:'ماہانہ فیس (روپے)', contact:'رابطہ نمبر',
     studentType:'طالب علم کی قسم', feePaying:'فیس ادا کرنے والا', free:'مفت', orphan:'یتیم', all:'تمام',
@@ -8500,6 +8507,18 @@ let paperLong = [ { no:1, q:'', marks:'' } ];
 // printed paper (e.g. "Choose the correct option" for MCQs). Optional —
 // left blank the section just prints without one.
 let paperInstructions = { mcq:'', blanks:'', tf:'', match:'', short:'', long:'' };
+// Editable titles for Section A / B / C. Left blank they fall back to the
+// default titles ("Section A — Objective Questions" etc.).
+let paperSectionTitles = { a:'', b:'', c:'' };
+const pqTitle = (k, def) => (paperSectionTitles[k] || '').trim() || def;
+// Optional divider line after every 5th question in a list-based section
+// (MCQs, Blanks, True/False, Short, Long). Keyed by section, then by group
+// number (0 = the box after question 5, 1 = after question 10, ...). Left
+// blank it prints nothing; typed, it prints as its own centered line.
+let paperBreaks = { mcq:[], blanks:[], tf:[], short:[], long:[] };
+// How many break boxes a list of this length has earned (one per completed
+// group of 5): 7 items -> 1 box (after #5), 10 items -> 2 boxes, etc.
+const pqBreakCount = list => Math.floor(list.length / 5);
 // A single optional diagram/image printed once at the very end of the whole
 // paper (not per-question) — mainly for Science papers that need one figure
 // to label or refer to.
@@ -8516,7 +8535,7 @@ function pqSnapshot(withImages) {
   const meta = Object.assign({}, paperMeta);
   if (!withImages || (typeof dmcLogo !== 'undefined' && meta.logo === dmcLogo)) meta.logo = null; // default logo is refilled automatically
   return { v:1, t:Date.now(), paperMeta:meta, paperMcqMarksEach, paperMcqs, paperBlanks, paperTF,
-           paperMatchA, paperMatchB, paperShort, paperLong, paperInstructions,
+           paperMatchA, paperMatchB, paperShort, paperLong, paperInstructions, paperSectionTitles, paperBreaks,
            paperEndImage: withImages ? paperEndImage : null };
 }
 function savePaperDraft() {
@@ -8543,6 +8562,8 @@ function loadPaperDraft() {
     paperShort = arr(d.paperShort, paperShort);
     paperLong = arr(d.paperLong, paperLong);
     if (d.paperInstructions) paperInstructions = Object.assign(paperInstructions, d.paperInstructions);
+    if (d.paperSectionTitles) paperSectionTitles = Object.assign(paperSectionTitles, d.paperSectionTitles);
+    if (d.paperBreaks) paperBreaks = Object.assign(paperBreaks, d.paperBreaks);
     if (d.paperEndImage) paperEndImage = d.paperEndImage;
     pqReady = true;
   } catch (e) {
@@ -8560,7 +8581,8 @@ function pqHasContent() {
   return !!(m.exam_name || m.class_name || m.subject || m.total_marks || m.time_allowed || paperEndImage ||
     paperMcqs.some(x => x.q || (x.options||[]).some(Boolean)) || paperBlanks.some(x => x.q) || paperTF.some(x => x.q) ||
     paperMatchA.some(Boolean) || paperMatchB.some(Boolean) || paperShort.some(x => x.q) || paperLong.some(x => x.q) ||
-    Object.values(paperInstructions).some(Boolean));
+    Object.values(paperInstructions).some(Boolean) || Object.values(paperSectionTitles).some(Boolean) ||
+    Object.values(paperBreaks).some(arr => (arr||[]).some(Boolean)));
 }
 function pqStoreBackup() {
   try { localStorage.setItem(PQ_BACKUP_KEY, JSON.stringify(pqSnapshot(true))); }
@@ -8578,6 +8600,8 @@ function pqResetPaper() {
   paperShort = [ { no:1, q:'', marks:'' } ];
   paperLong = [ { no:1, q:'', marks:'' } ];
   paperInstructions = { mcq:'', blanks:'', tf:'', match:'', short:'', long:'' };
+  paperSectionTitles = { a:'', b:'', c:'' };
+  paperBreaks = { mcq:[], blanks:[], tf:[], short:[], long:[] };
   paperEndImage = null;
 }
 function newPaper() {
@@ -8608,6 +8632,8 @@ function restorePreviousPaper() {
   paperMatchA = arr(d.paperMatchA, paperMatchA); paperMatchB = arr(d.paperMatchB, paperMatchB);
   paperShort = arr(d.paperShort, paperShort); paperLong = arr(d.paperLong, paperLong);
   if (d.paperInstructions) paperInstructions = Object.assign(paperInstructions, d.paperInstructions);
+  if (d.paperSectionTitles) paperSectionTitles = Object.assign(paperSectionTitles, d.paperSectionTitles);
+  if (d.paperBreaks) paperBreaks = Object.assign(paperBreaks, d.paperBreaks);
   paperEndImage = d.paperEndImage || null;
   try { if (current) localStorage.setItem(PQ_BACKUP_KEY, current); else localStorage.removeItem(PQ_BACKUP_KEY); } catch (e) {}
   pqFlush();
@@ -8699,6 +8725,24 @@ function removeImageBackground(dataUrl, callback) {
   img.src = dataUrl;
 }
 
+// Renders the optional break/divider box after the 5th, 10th, 15th... row of
+// a section's list (see paperBreaks). Returns '' everywhere else, so it's
+// safe to append to every row's markup unconditionally.
+function pqBreakBox(section, i) {
+  if ((i + 1) % 5 !== 0) return '';
+  const grp = Math.floor(i / 5);
+  const val = (paperBreaks[section] && paperBreaks[section][grp]) || '';
+  return `
+    <div class="flexgap paper-q-row" style="align-items:center;background:#F3EEDD;border-radius:8px;padding:8px 10px;">
+      <input dir="auto" style="flex:1;text-align:center;font-style:italic;background:transparent;border:1px dashed var(--line);" placeholder="${esc(t.paperBreakPh)}" value="${esc(val)}" oninput="pqSetBreak('${section}',${grp},this.value)">
+    </div>`;
+}
+function pqSetBreak(section, grp, val) {
+  if (!paperBreaks[section]) paperBreaks[section] = [];
+  paperBreaks[section][grp] = val;
+  pqScheduleSave();
+}
+
 function tplPapers() {
   ensurePaperMetaDefaults();
 
@@ -8712,16 +8756,17 @@ function tplPapers() {
       <div class="row2" style="margin-top:6px;">
         ${m.options.map((o,oi) => `<input placeholder="${String.fromCharCode(97+oi)}) option" value="${esc(o)}" oninput="paperMcqs[${i}].options[${oi}]=this.value">`).join('')}
       </div>
-    </div>`).join('');
+    </div>${pqBreakBox('mcq', i)}`).join('');
 
   const simpleRows = (list, addFn, delFn, ph) => list.map((it,i) => {
     const arrName = delFn.startsWith('removePaperBlank') ? 'paperBlanks' : 'paperTF';
+    const section = arrName === 'paperBlanks' ? 'blanks' : 'tf';
     return `
     <div class="flexgap paper-q-row" style="align-items:flex-start;">
       <input type="number" value="${esc(it.no)}" oninput="${arrName}[${i}].no=this.value" style="width:40px;flex-shrink:0;padding:6px;">
       <textarea rows="1" style="flex:1;" placeholder="${esc(ph)}..." oninput="${arrName}[${i}].q=this.value">${esc(it.q)}</textarea>
       <button class="btn-ghost" style="padding:6px 10px;" onclick="${delFn}(${i})">✕</button>
-    </div>`;
+    </div>${pqBreakBox(section, i)}`;
   }).join('');
 
   // Long Questions no longer carries a per-question image — a single
@@ -8736,7 +8781,7 @@ function tplPapers() {
         <input style="width:70px;" type="number" placeholder="${esc(t.marks)}" value="${esc(it.marks)}" oninput="${arrName}[${i}].marks=this.value">
         <button class="btn-ghost" style="padding:6px 10px;" onclick="removePaper${arrName==='paperShort'?'Short':'Long'}(${i})">✕</button>
       </div>
-    </div>`).join('');
+    </div>${pqBreakBox(arrName==='paperShort'?'short':'long', i)}`).join('');
 
   const matchRows = (list, letterStyle, addFn, removeFn) => list.map((v,i) => `
     <div class="flexgap paper-q-row" style="align-items:center;">
@@ -8779,7 +8824,7 @@ function tplPapers() {
       </div>
     </div>
 
-    <div class="section-title" style="font-size:14px;margin-bottom:8px;">${esc(t.mcqSection)}</div>
+    <div class="section-title" style="font-size:14px;margin-bottom:8px;"><input dir="auto" style="width:100%;font-size:14px;font-weight:600;" placeholder="${esc(t.mcqSection)}" value="${esc(paperSectionTitles.a)}" oninput="paperSectionTitles.a=this.value"></div>
 
     <div class="card" style="margin-bottom:14px;">
       <div class="flexgap" style="justify-content:space-between;align-items:center;margin-bottom:8px;">
@@ -8823,14 +8868,14 @@ function tplPapers() {
     </div>
 
     <div class="card" style="margin-bottom:14px;">
-      <b style="font-size:13px;display:block;margin-bottom:8px;">${esc(t.shortSection)}</b>
+      <div style="margin-bottom:8px;"><input dir="auto" style="width:100%;font-size:14px;font-weight:600;" placeholder="${esc(t.shortSection)}" value="${esc(paperSectionTitles.b)}" oninput="paperSectionTitles.b=this.value"></div>
       <input dir="auto" style="width:100%;font-size:12px;font-style:italic;margin-bottom:8px;" placeholder="${esc(t.instructionPh)}" value="${esc(paperInstructions.short)}" oninput="paperInstructions.short=this.value">
       ${marksRows(paperShort, 'paperShort')}
       <button class="btn-ghost" style="margin-top:6px;" onclick="addPaperShort()">${esc(t.addQuestion)}</button>
     </div>
 
     <div class="card" style="margin-bottom:14px;">
-      <b style="font-size:13px;display:block;margin-bottom:8px;">${esc(t.longSection)}</b>
+      <div style="margin-bottom:8px;"><input dir="auto" style="width:100%;font-size:14px;font-weight:600;" placeholder="${esc(t.longSection)}" value="${esc(paperSectionTitles.c)}" oninput="paperSectionTitles.c=this.value"></div>
       <input dir="auto" style="width:100%;font-size:12px;font-style:italic;margin-bottom:8px;" placeholder="${esc(t.instructionPh)}" value="${esc(paperInstructions.long)}" oninput="paperInstructions.long=this.value">
       ${marksRows(paperLong, 'paperLong')}
       <button class="btn-ghost" style="margin-top:6px;" onclick="addPaperLong()">${esc(t.addQuestion)}</button>
@@ -8884,6 +8929,15 @@ function printQuestionPaper() {
   const validLong = paperLong.filter(l => l.q.trim());
   const letters = ['a','b','c','d'];
 
+  // The same optional divider a user can type after every 5th question in
+  // the builder (see pqBreakBox / paperBreaks) — printed only when filled.
+  const pqBreakLine = (section, i) => {
+    if ((i + 1) % 5 !== 0) return '';
+    const grp = Math.floor(i / 5);
+    const val = ((paperBreaks[section] || [])[grp] || '').trim();
+    return val ? `<div class="pq-break" dir="auto">${pqEsc(val)}</div>` : '';
+  };
+
   const mcqHtml = validMcqs.length ? `
     <div class="pq-sub">
       <div class="pq-marks" style="margin-bottom:6px;">(${paperMcqMarksEach} ${LANG==='ur'?'نمبر فی سوال':'mark(s) each'})</div>
@@ -8891,19 +8945,19 @@ function printQuestionPaper() {
       ${validMcqs.map((m,i) => { const d = qDir(m.q); const opts = m.options.map((o,oi)=> o.trim() ? `<span>(${letters[oi]}) ${pqEsc(o)}</span>` : '').join(''); return `
         <div class="pq-q" dir="${d}">
           <div class="pq-q-text"><b>${esc(m.no||i+1)}.</b> ${pqEsc(m.q)}</div>${opts ? `<div class="pq-options">${opts}</div>` : ''}
-        </div>`; }).join('')}
+        </div>${pqBreakLine('mcq', i)}`; }).join('')}
     </div>` : '';
 
   const blanksHtml = validBlanks.length ? `
     <div class="pq-sub">
       ${paperInstructions.blanks.trim() ? `<div class="pq-instruction" dir="auto">${esc(paperInstructions.blanks)}</div>` : ''}
-      <div class="pq-2col">${validBlanks.map((b,i) => `<div class="pq-q"><div class="pq-q-text" dir="auto"><b>${esc(b.no||i+1)}.</b> ${pqEsc(b.q)}</div></div>`).join('')}</div>
+      <div class="pq-2col">${validBlanks.map((b,i) => `<div class="pq-q"><div class="pq-q-text" dir="auto"><b>${esc(b.no||i+1)}.</b> ${pqEsc(b.q)}</div></div>${pqBreakLine('blanks', i)}`).join('')}</div>
     </div>` : '';
 
   const tfHtml = validTF.length ? `
     <div class="pq-sub">
       ${paperInstructions.tf.trim() ? `<div class="pq-instruction" dir="auto">${esc(paperInstructions.tf)}</div>` : ''}
-      ${validTF.map((x,i) => `<div class="pq-q"><div class="pq-q-text" dir="auto"><b>${esc(x.no||i+1)}.</b> ${pqEsc(x.q)} <span class="pq-tf">( &nbsp;True&nbsp; / &nbsp;False&nbsp; )</span></div></div>`).join('')}
+      ${validTF.map((x,i) => `<div class="pq-q"><div class="pq-q-text" dir="auto"><b>${esc(x.no||i+1)}.</b> ${pqEsc(x.q)} <span class="pq-tf">( &nbsp;True&nbsp; / &nbsp;False&nbsp; )</span></div></div>${pqBreakLine('tf', i)}`).join('')}
     </div>` : '';
 
   const matchHtml = (validMatchA.length && validMatchB.length) ? `
@@ -8915,19 +8969,19 @@ function printQuestionPaper() {
       </div>
     </div>` : '';
 
-  const section = (title, list, instruction) => list.length ? `
+  const section = (title, list, instruction, key) => list.length ? `
     <div class="pq-section">
       <div class="pq-section-title">${esc(title)}</div>
       ${instruction && instruction.trim() ? `<div class="pq-instruction" dir="auto">${esc(instruction)}</div>` : ''}
       <div class="pq-2col">${list.map((it,i) => `
         <div class="pq-q">
           <div class="pq-q-text" dir="auto"><b>${esc(it.no||i+1)}.</b> ${pqEsc(it.q)} ${it.marks ? `<span class="pq-marks">[${esc(it.marks)}]</span>` : ''}</div>
-        </div>`).join('')}</div>
+        </div>${key ? pqBreakLine(key, i) : ''}`).join('')}</div>
     </div>` : '';
 
   const sectionAHtml = (mcqHtml || blanksHtml || tfHtml || matchHtml) ? `
     <div class="pq-section">
-      <div class="pq-section-title">${esc(t.mcqSection)}</div>
+      <div class="pq-section-title">${esc(pqTitle('a', t.mcqSection))}</div>
       ${mcqHtml}${blanksHtml}${tfHtml}${matchHtml}
     </div>` : '';
 
@@ -8948,8 +9002,8 @@ function printQuestionPaper() {
         <div class="qp-name-line">${esc(t.studentNameLbl||'Name')}: ______________________&nbsp;&nbsp;&nbsp; ${LANG==='ur'?'رول نمبر':'Roll No.'}: __________</div>
       </div>
       ${sectionAHtml}
-      ${section(t.shortSection, validShort, paperInstructions.short)}
-      ${section(t.longSection, validLong, paperInstructions.long)}
+      ${section(pqTitle('b', t.shortSection), validShort, paperInstructions.short, 'short')}
+      ${section(pqTitle('c', t.longSection), validLong, paperInstructions.long, 'long')}
       ${paperEndImage ? `<div class="pq-end-img-wrap"><img src="${paperEndImage}" class="pq-end-img"></div>` : ''}
     </div>`;
   // The paper is forced onto exactly one A4 page via fitAndSpacePaper, which
