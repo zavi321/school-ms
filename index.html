@@ -651,6 +651,26 @@ html, body{overscroll-behavior:none;}
     .cc-foot .box.seal .line{border-bottom-style:dashed;}
   }
 </style>
+<style>
+.qpaper-print .kg-trace{font-size:34px;letter-spacing:.35em;font-weight:700;color:transparent;-webkit-text-stroke:1.2px #444;margin:6px 0;font-family:Inter,sans-serif;}
+.qpaper-print .kg-missing{display:flex;flex-wrap:wrap;gap:10px 40px;font-size:28px;font-weight:700;font-family:Inter,sans-serif;letter-spacing:.2em;margin:6px 0;}
+.qpaper-print .kg-gap{display:inline-block;width:1.1em;height:1.1em;border:2px solid #444;border-radius:6px;vertical-align:-.2em;margin:0 .1em;}
+.qpaper-print .kg-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px 18px;margin:6px 0;}
+.qpaper-print .kg-cell{text-align:center;}
+.qpaper-print .kg-pic{height:64px;max-width:100%;object-fit:contain;}
+.qpaper-print .kg-pic-big{height:150px;max-width:100%;object-fit:contain;}
+.qpaper-print .kg-pic-sm{height:30px;margin:2px;}
+.qpaper-print .kg-emptybox{display:inline-block;width:64px;height:64px;border:1px dashed #999;border-radius:8px;}
+.qpaper-print .kg-grid.kg-big{grid-template-columns:repeat(2,1fr);}
+.qpaper-print .kg-line{border-bottom:2px solid #444;height:22px;margin:0 10px;}
+.qpaper-print .kg-count{display:flex;align-items:center;flex-wrap:wrap;margin:4px 0;}
+.qpaper-print .kg-eq{font-size:22px;margin-left:14px;font-weight:700;}
+.qpaper-print .kg-match{margin:6px 0;}
+.qpaper-print .kg-mrow{display:flex;align-items:center;justify-content:space-between;margin:6px 0;}
+.qpaper-print .kg-mid{flex:1;}
+.qpaper-print .kg-dot{display:inline-block;width:12px;height:12px;border-radius:50%;background:#222;margin:0 6px;}
+.qpaper-print .kg-mname{width:34%;font-size:26px;font-weight:700;font-family:Inter,sans-serif;text-align:left;}
+</style>
 </head>
 <body>
 
@@ -8534,7 +8554,7 @@ function pqSnapshot(withImages) {
   if (!withImages || (typeof dmcLogo !== 'undefined' && meta.logo === dmcLogo)) meta.logo = null; // default logo is refilled automatically
   return { v:1, t:Date.now(), paperMeta:meta, paperMcqMarksEach, paperMcqs, paperBlanks, paperTF,
            paperMatchA, paperMatchB, paperShort, paperLong, paperInstructions, paperSectionTitles, paperBreaks,
-           paperEndImage: withImages ? paperEndImage : null };
+           paperEndImage: withImages ? paperEndImage : null, paperMode, kgBlocks: withImages ? kgBlocks : [] };
 }
 function savePaperDraft() {
   if (!pqReady) return;
@@ -8563,6 +8583,8 @@ function loadPaperDraft() {
     if (d.paperSectionTitles) paperSectionTitles = Object.assign(paperSectionTitles, d.paperSectionTitles);
     if (d.paperBreaks) paperBreaks = Object.assign(paperBreaks, d.paperBreaks);
     if (d.paperEndImage) paperEndImage = d.paperEndImage;
+    if (d.paperMode) paperMode = d.paperMode;
+    if (Array.isArray(d.kgBlocks)) kgBlocks = d.kgBlocks;
     pqReady = true;
   } catch (e) {
     // unreadable draft: keep a copy instead of overwriting it
@@ -8745,7 +8767,94 @@ function pqSetBreak(section, grp, val) {
   pqScheduleSave();
 }
 
+
+// ---------- Nursery / KG paper mode ----------
+let paperMode = 'std';
+let kgBlocks = [];
+const KG_TYPES = { trace:'✏️ Trace letters / numbers', missing:'🔤 Missing letters', picname:'🖼️ Write picture name', match:'🔗 Match pictures & names', count:'🔢 Count & write', colour:'🎨 Colour the picture' };
+function setPaperMode(m) {
+  paperMode = m;
+  if (m === 'kg' && !kgBlocks.length) {
+    kgBlocks = [
+      { type:'trace', title:'Trace the letters', items:[{txt:'A B C D E F'}] },
+      { type:'missing', title:'Fill in the missing letters', items:[{txt:'A _ C'},{txt:'_ E F'}] },
+      { type:'picname', title:'Write the name of the picture', items:[{img:null,txt:''},{img:null,txt:''},{img:null,txt:''}] },
+      { type:'match', title:'Match the pictures with names', items:[{img:null,txt:''},{img:null,txt:''},{img:null,txt:''}] }
+    ];
+  }
+  renderTab();
+}
+function kgAddBlock(sel) { const ty = sel.value; if (!ty) return;
+  kgBlocks.push({ type:ty, title:'', items: (ty==='trace'||ty==='missing') ? [{txt:''}] : [{img:null,txt:''},{img:null,txt:''}] }); renderTab(); }
+function kgDelBlock(i) { kgBlocks.splice(i,1); renderTab(); }
+function kgMoveBlock(i,d) { const j=i+d; if (j<0||j>=kgBlocks.length) return; [kgBlocks[i],kgBlocks[j]]=[kgBlocks[j],kgBlocks[i]]; renderTab(); }
+function kgAddItem(i) { kgBlocks[i].items.push({img:null,txt:''}); renderTab(); }
+function kgDelItem(i,j) { kgBlocks[i].items.splice(j,1); renderTab(); }
+function kgItemImg(i,j,file) {
+  if (!file) return;
+  const r = new FileReader();
+  r.onload = e => { const im = new Image(); im.onload = () => {
+    const k = Math.min(1, 320/Math.max(im.width, im.height)); const c = document.createElement('canvas');
+    c.width = Math.round(im.width*k); c.height = Math.round(im.height*k);
+    c.getContext('2d').drawImage(im,0,0,c.width,c.height);
+    kgBlocks[i].items[j].img = c.toDataURL('image/png'); renderTab(); }; im.src = e.target.result; };
+  r.readAsDataURL(file);
+}
+function tplKgBuilder() {
+  const blocks = kgBlocks.map((b,i) => {
+    const txtOnly = b.type==='trace' || b.type==='missing';
+    const ph = { trace:'e.g. A B C D E F', missing:'e.g. A _ C', picname:'answer (optional)', match:'name (e.g. Apple)', count:'number (e.g. 3)', colour:'' }[b.type];
+    let body;
+    if (txtOnly) {
+      body = `<textarea rows="3" style="width:100%;" placeholder="${ph} — one line per row" oninput="kgBlocks[${i}].items=this.value.split('\\n').map(x=>({txt:x}))">${esc(b.items.map(x=>x.txt).join('\n'))}</textarea>`;
+    } else {
+      body = b.items.map((it,j) => `<div class="flexgap paper-q-row" style="align-items:center;">
+        <label style="cursor:pointer;flex-shrink:0;">${it.img ? `<img src="${it.img}" style="width:48px;height:48px;object-fit:contain;border:1px solid var(--line);border-radius:8px;">` : `<div style="width:48px;height:48px;border:1px dashed var(--line);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:20px;">📷</div>`}
+          <input type="file" accept="image/*" style="display:none;" onchange="kgItemImg(${i},${j},this.files[0])"></label>
+        ${b.type==='colour' ? '<span style="flex:1;font-size:12px;opacity:.6;">picture</span>' : `<input style="flex:1;" placeholder="${ph}" value="${esc(it.txt||'')}" oninput="kgBlocks[${i}].items[${j}].txt=this.value">`}
+        <button class="btn-ghost" style="padding:6px 10px;" onclick="kgDelItem(${i},${j})">✕</button></div>`).join('')
+        + `<button class="btn-ghost" style="margin-top:6px;" onclick="kgAddItem(${i})">＋ Add</button>`;
+    }
+    return `<div class="card" style="margin-bottom:14px;">
+      <div class="flexgap" style="align-items:center;margin-bottom:8px;">
+        <b style="font-size:12px;flex:1;">${esc(KG_TYPES[b.type])}</b>
+        <button class="btn-ghost" style="padding:4px 8px;" onclick="kgMoveBlock(${i},-1)">↑</button>
+        <button class="btn-ghost" style="padding:4px 8px;" onclick="kgMoveBlock(${i},1)">↓</button>
+        <button class="btn-ghost" style="padding:4px 8px;" onclick="kgDelBlock(${i})">✕</button></div>
+      <input dir="auto" style="width:100%;font-weight:600;margin-bottom:8px;" placeholder="Question heading" value="${esc(b.title)}" oninput="kgBlocks[${i}].title=this.value">
+      ${body}</div>`;
+  }).join('');
+  return blocks + `<div class="card" style="margin-bottom:14px;"><select style="width:100%;padding:8px;" onchange="kgAddBlock(this)"><option value="">＋ Add a new question type…</option>${Object.keys(KG_TYPES).map(k=>`<option value="${k}">${esc(KG_TYPES[k])}</option>`).join('')}</select></div>
+    <button class="btn-primary" style="width:100%;" onclick="printQuestionPaper()">🖨️ ${esc(t.print)}</button>`;
+}
 function tplPapers() {
+  const html = tplPapersStd();
+  const tg = `<div style="padding-top:16px;"><div class="flexgap">
+    <button class="${paperMode==='std'?'btn-primary':'btn-ghost'}" style="flex:1;" onclick="setPaperMode('std')">📝 Standard</button>
+    <button class="${paperMode==='kg'?'btn-primary':'btn-ghost'}" style="flex:1;" onclick="setPaperMode('kg')">🧸 Nursery / KG</button></div></div>`;
+  if (paperMode !== 'kg') return tg + html;
+  return tg + html.split('<!--PQ_HDR_END-->')[0] + tplKgBuilder() + '</div>';
+}
+function kgBodyHtml() {
+  const kimg = (src, cls) => src ? `<img src="${src}" class="${cls}">` : `<span class="${cls} kg-emptybox"></span>`;
+  return kgBlocks.map((b,n) => {
+    const its = b.items.filter(x => (b.type==='trace'||b.type==='missing') ? (x.txt||'').trim() : true);
+    if (!its.length) return '';
+    let body = '';
+    if (b.type==='trace') body = its.map(x => `<div class="kg-trace">${pqEsc(x.txt)}</div>`).join('');
+    else if (b.type==='missing') body = `<div class="kg-missing">${its.map(x => `<span>${pqEsc(x.txt).replace(/_+/g,'<i class="kg-gap"></i>')}</span>`).join('')}</div>`;
+    else if (b.type==='picname') body = `<div class="kg-grid">${its.map(x => `<div class="kg-cell">${kimg(x.img,'kg-pic')}<div class="kg-line"></div></div>`).join('')}</div>`;
+    else if (b.type==='colour') body = `<div class="kg-grid kg-big">${its.map(x => kimg(x.img,'kg-pic-big')).join('')}</div>`;
+    else if (b.type==='count') body = its.map(x => { const c = Math.max(0, Math.min(10, parseInt(x.txt)||0)); return `<div class="kg-count">${Array(c||3).fill(kimg(x.img,'kg-pic-sm')).join('')}<span class="kg-eq">= ____</span></div>`; }).join('');
+    else if (b.type==='match') {
+      const m = its.length, right = its.map((x,i) => its[(i+1)%m]);
+      body = `<div class="kg-match">${its.map((x,i) => `<div class="kg-mrow"><div>${kimg(x.img,'kg-pic')}</div><i class="kg-dot"></i><span class="kg-mid"></span><i class="kg-dot"></i><div class="kg-mname">${pqEsc(right[i].txt||'')}</div></div>`).join('')}</div>`;
+    }
+    return `<div class="pq-section"><div class="pq-section-title" dir="auto">Q${n+1}. ${pqEsc(b.title)}</div>${body}</div>`;
+  }).join('');
+}
+
+function tplPapersStd() {
   ensurePaperMetaDefaults();
 
   const mcqRows = paperMcqs.map((m,i) => `
@@ -8828,6 +8937,7 @@ function tplPapers() {
       </div>
     </div>
 
+    <!--PQ_HDR_END-->
     <div class="section-title" style="font-size:14px;margin-bottom:8px;"><input dir="auto" style="width:100%;font-size:14px;font-weight:600;" placeholder="${esc(t.mcqSection)}" value="${esc(paperSectionTitles.a)}" oninput="paperSectionTitles.a=this.value"></div>
 
     <div class="card" style="margin-bottom:14px;">
@@ -9006,9 +9116,9 @@ function printQuestionPaper() {
         </div>
         <div class="qp-name-line">${esc(t.studentNameLbl||'Name')}: ______________________&nbsp;&nbsp;&nbsp; ${LANG==='ur'?'رول نمبر':'Roll No.'}: __________</div>
       </div>
-      ${sectionAHtml}
+      ${paperMode==='kg' ? kgBodyHtml() : `${sectionAHtml}
       ${section(pqTitle('b', t.shortSection), validShort, paperInstructions.short, 'b')}
-      ${section(pqTitle('c', t.longSection), validLong, paperInstructions.long, 'c')}
+      ${section(pqTitle('c', t.longSection), validLong, paperInstructions.long, 'c')}`}
       ${paperEndImage ? `<div class="pq-end-img-wrap"><img src="${paperEndImage}" class="pq-end-img"></div>` : ''}
     </div>`;
   // The paper is forced onto exactly one A4 page via fitAndSpacePaper, which
