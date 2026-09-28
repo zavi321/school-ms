@@ -269,12 +269,17 @@ html, body{overscroll-behavior:none;}
   .paper-q-row{margin-bottom:12px;padding-bottom:10px;border-bottom:1px dashed var(--line);}
   .paper-q-row textarea{width:100%;font-family:inherit;padding:8px;border-radius:8px;border:1px solid var(--line);resize:vertical;}
   .qpaper-print{display:none;}
-  @media print{
+  @media print{ .qpaper-print{display:block;} }
+  /* Paper layout rules live OUTSIDE @media print on purpose: fitAndSpacePaper()
+     measures the paper on screen, so it must see the exact same fonts, flex
+     layout and spacing that the printed page will use. If they were print-only,
+     the on-screen measurement came out far too tall, --pq-space got clamped to
+     its minimum, and the printed lines overlapped each other. */
     /* --pq-space is set from JS (see fitAndSpacePaper) to how much this
        paper's line-height and section spacing should stretch or shrink: 1
        is the normal amount below, >1 spreads a short paper out to fill the
        whole sheet, <1 tightens a long one so it still fits on one page. */
-    .qpaper-print{display:block;font-family:'Noto Nastaliq Urdu',Inter,serif;color:#111;--pq-space:1;}
+    .qpaper-print{font-family:'Noto Nastaliq Urdu',Inter,serif;color:#111;--pq-space:1;}
     .qpaper-print, .qpaper-print *{line-height:calc(1.2 * var(--pq-space,1));}
     /* Noto Nastaliq Urdu needs noticeably more vertical room than Latin text —
        its diagonal stroke shape means tight (1.2) line-height makes adjacent
@@ -309,12 +314,12 @@ html, body{overscroll-behavior:none;}
     .pq-tf{font-size:13px;opacity:.8;white-space:nowrap;}
     .pq-match{display:grid;grid-template-columns:1fr 1fr;gap:5px 20px;font-size:14px;}
     .pq-2col{display:grid;grid-template-columns:1fr 1fr;gap:calc(4px * var(--pq-space,1)) 20px;}
+    .qpaper-print sup{font-size:.7em;line-height:0;vertical-align:super;}
     .qp-logo{height:44px;width:44px;object-fit:contain;display:block;margin:0 auto 4px;}
     .pq-img-wrap{margin:3px 0 3px 18px;}
     .pq-img{max-width:55mm;max-height:40mm;object-fit:contain;border:1px solid #999;display:block;}
     .pq-end-img-wrap{margin-top:18px;text-align:center;}
     .pq-end-img{max-width:110mm;max-height:75mm;object-fit:contain;border:1px solid #999;display:inline-block;}
-  }
   .type-toggle{display:flex;gap:8px;margin-bottom:14px;}
   .type-toggle button{flex:1;border:none;border-radius:10px;padding:9px;font-size:13px;font-weight:600;background:#F0EBDA;color:var(--navy);}
   .type-toggle button.on-income{background:var(--sage);color:#fff;}
@@ -8738,6 +8743,14 @@ function formatPaperDate(isoDate) {
   return new Date(y, m - 1, d).toLocaleDateString(LANG === 'ur' ? 'ur-PK' : 'en-GB', { day:'numeric', month:'short', year:'numeric' });
 }
 
+// Printed-paper text: like esc(), but turns superscript characters (10⁻¹⁹) and
+// ^ notation (10^-19) into real <sup> so the exponent never shows as an empty
+// box when the print font has no glyph for the superscript minus sign.
+const PQ_SUP = {'⁰':'0','¹':'1','²':'2','³':'3','⁴':'4','⁵':'5','⁶':'6','⁷':'7','⁸':'8','⁹':'9','⁻':'\u2212','⁺':'+'};
+const pqEsc = s => esc(s)
+  .replace(/[⁰¹²³⁴⁵⁶⁷⁸⁹⁻⁺]+/g, m => '<sup>' + Array.from(m).map(c => PQ_SUP[c]).join('') + '</sup>')
+  .replace(/\^([-\u2212+]?\d+)/g, (m, d) => '<sup>' + d.replace('-', '\u2212') + '</sup>');
+
 function printQuestionPaper() {
   const validMcqs = paperMcqs.filter(m => m.q.trim());
   const validBlanks = paperBlanks.filter(b => b.q.trim());
@@ -8752,30 +8765,30 @@ function printQuestionPaper() {
     <div class="pq-sub">
       <div class="pq-marks" style="margin-bottom:6px;">(${paperMcqMarksEach} ${LANG==='ur'?'نمبر فی سوال':'mark(s) each'})</div>
       ${paperInstructions.mcq.trim() ? `<div class="pq-instruction" dir="auto">${esc(paperInstructions.mcq)}</div>` : ''}
-      ${validMcqs.map((m,i) => { const d = qDir(m.q); const opts = m.options.map((o,oi)=> o.trim() ? `<span>(${letters[oi]}) ${esc(o)}</span>` : '').join(''); return `
+      ${validMcqs.map((m,i) => { const d = qDir(m.q); const opts = m.options.map((o,oi)=> o.trim() ? `<span>(${letters[oi]}) ${pqEsc(o)}</span>` : '').join(''); return `
         <div class="pq-q" dir="${d}">
-          <div class="pq-q-text"><b>${esc(m.no||i+1)}.</b> ${esc(m.q)}</div>${opts ? `<div class="pq-options">${opts}</div>` : ''}
+          <div class="pq-q-text"><b>${esc(m.no||i+1)}.</b> ${pqEsc(m.q)}</div>${opts ? `<div class="pq-options">${opts}</div>` : ''}
         </div>`; }).join('')}
     </div>` : '';
 
   const blanksHtml = validBlanks.length ? `
     <div class="pq-sub">
       ${paperInstructions.blanks.trim() ? `<div class="pq-instruction" dir="auto">${esc(paperInstructions.blanks)}</div>` : ''}
-      <div class="pq-2col">${validBlanks.map((b,i) => `<div class="pq-q"><div class="pq-q-text" dir="auto"><b>${esc(b.no||i+1)}.</b> ${esc(b.q)}</div></div>`).join('')}</div>
+      <div class="pq-2col">${validBlanks.map((b,i) => `<div class="pq-q"><div class="pq-q-text" dir="auto"><b>${esc(b.no||i+1)}.</b> ${pqEsc(b.q)}</div></div>`).join('')}</div>
     </div>` : '';
 
   const tfHtml = validTF.length ? `
     <div class="pq-sub">
       ${paperInstructions.tf.trim() ? `<div class="pq-instruction" dir="auto">${esc(paperInstructions.tf)}</div>` : ''}
-      ${validTF.map((x,i) => `<div class="pq-q"><div class="pq-q-text" dir="auto"><b>${esc(x.no||i+1)}.</b> ${esc(x.q)} <span class="pq-tf">( &nbsp;True&nbsp; / &nbsp;False&nbsp; )</span></div></div>`).join('')}
+      ${validTF.map((x,i) => `<div class="pq-q"><div class="pq-q-text" dir="auto"><b>${esc(x.no||i+1)}.</b> ${pqEsc(x.q)} <span class="pq-tf">( &nbsp;True&nbsp; / &nbsp;False&nbsp; )</span></div></div>`).join('')}
     </div>` : '';
 
   const matchHtml = (validMatchA.length && validMatchB.length) ? `
     <div class="pq-sub">
       ${paperInstructions.match.trim() ? `<div class="pq-instruction" dir="auto">${esc(paperInstructions.match)}</div>` : ''}
       <div class="pq-match">
-        <div class="pq-match-col">${validMatchA.map((v,i) => `<div dir="auto">${i+1}. ${esc(v)}</div>`).join('')}</div>
-        <div class="pq-match-col">${validMatchB.map((v,i) => `<div dir="auto">${String.fromCharCode(97+i)}) ${esc(v)}</div>`).join('')}</div>
+        <div class="pq-match-col">${validMatchA.map((v,i) => `<div dir="auto">${i+1}. ${pqEsc(v)}</div>`).join('')}</div>
+        <div class="pq-match-col">${validMatchB.map((v,i) => `<div dir="auto">${String.fromCharCode(97+i)}) ${pqEsc(v)}</div>`).join('')}</div>
       </div>
     </div>` : '';
 
@@ -8785,7 +8798,7 @@ function printQuestionPaper() {
       ${instruction && instruction.trim() ? `<div class="pq-instruction" dir="auto">${esc(instruction)}</div>` : ''}
       <div class="pq-2col">${list.map((it,i) => `
         <div class="pq-q">
-          <div class="pq-q-text" dir="auto"><b>${esc(it.no||i+1)}.</b> ${esc(it.q)} ${it.marks ? `<span class="pq-marks">[${esc(it.marks)}]</span>` : ''}</div>
+          <div class="pq-q-text" dir="auto"><b>${esc(it.no||i+1)}.</b> ${pqEsc(it.q)} ${it.marks ? `<span class="pq-marks">[${esc(it.marks)}]</span>` : ''}</div>
         </div>`).join('')}</div>
     </div>` : '';
 
@@ -8876,7 +8889,7 @@ function fitAndSpacePaper(elId, marginMm) {
 
   // How far spacing can stretch (short paper, fill the sheet) or shrink
   // (long paper, help it fit) before it starts looking wrong.
-  const MIN_SPACE = 0.55;
+  const MIN_SPACE = 0.9;
   const MAX_SPACE = 2.4;
   let space = baselineHeight > 0 ? (limitPx / baselineHeight) : 1;
   space = Math.max(MIN_SPACE, Math.min(MAX_SPACE, space));
@@ -8896,7 +8909,7 @@ function fitAndSpacePaper(elId, marginMm) {
   // gets a small zoom-out on top, same as before — just now only kicking in
   // after spacing has already done most of the work.
   const finalHeight = el.scrollHeight;
-  const MIN_ZOOM = 0.9;
+  const MIN_ZOOM = 0.75;
   const zoomScale = finalHeight > limitPx ? Math.max(MIN_ZOOM, limitPx / finalHeight) : 1;
   el.style.zoom = zoomScale < 1 ? zoomScale : 1;
 
