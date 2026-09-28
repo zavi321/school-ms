@@ -279,13 +279,15 @@ html, body{overscroll-behavior:none;}
        paper's line-height and section spacing should stretch or shrink: 1
        is the normal amount below, >1 spreads a short paper out to fill the
        whole sheet, <1 tightens a long one so it still fits on one page. */
-    .qpaper-print{font-family:'Noto Nastaliq Urdu',Inter,serif;color:#111;--pq-space:1;}
+    .qpaper-print{font-family:'Noto Nastaliq Urdu',Inter,serif;color:#111;--pq-space:1;-webkit-text-size-adjust:100%;text-size-adjust:100%;}
     .qpaper-print, .qpaper-print *{line-height:calc(1.2 * var(--pq-space,1));}
     /* Noto Nastaliq Urdu needs noticeably more vertical room than Latin text —
        its diagonal stroke shape means tight (1.2) line-height makes adjacent
        lines' loops and dots overlap. Only loosen it for Urdu-language papers;
        the English paper already looks right at 1.2, so leave it untouched. */
     body.ur .qpaper-print, body.ur .qpaper-print *{line-height:calc(2 * var(--pq-space,1));}
+    /* Urdu-script questions (dir=rtl) need Nastaliq line-height even when the app UI is English */
+    .qpaper-print .pq-q[dir=rtl], .qpaper-print .pq-q[dir=rtl] *{line-height:calc(2 * var(--pq-space,1));}
     .qp-head{text-align:center;padding-bottom:3px;margin-bottom:5px;}
     .qp-head-row{display:flex;align-items:flex-start;justify-content:space-between;gap:8px;}
     .qp-side{font-size:13px;font-weight:600;white-space:nowrap;flex-shrink:0;padding-top:2px;}
@@ -8837,8 +8839,33 @@ function printQuestionPaper() {
   // too tall even at minimum spacing.
   const printEl = document.getElementById('qpaper-print-el');
   const imgs = printEl ? Array.from(printEl.querySelectorAll('img')) : [];
-  Promise.all(imgs.map(img => img.complete ? Promise.resolve() : new Promise(res => { img.onload = res; img.onerror = res; }))).then(() => {
+  const imgsReady = Promise.all(imgs.map(img => img.complete ? Promise.resolve() : new Promise(res => { img.onload = res; img.onerror = res; })));
+  // Web fonts (Noto Nastaliq Urdu / Inter) only start downloading once the text
+  // is actually laid out, and #print-area is display:none until print. So show
+  // it off-screen first, force-load the fonts, wait for them, and only THEN
+  // measure — otherwise the height is measured with fallback fonts and the
+  // spacing comes out wrong (squashed lines / half-empty page).
+  const warmFonts = () => {
+    const box = document.getElementById('print-area');
+    const keep = box.getAttribute('style');
+    box.style.cssText = 'display:block;position:fixed;left:-99999px;top:0;width:194mm;';
+    const sample = printEl ? printEl.textContent.slice(0, 400) : '';
+    const loads = (document.fonts && document.fonts.load) ? [
+      document.fonts.load('16px "Noto Nastaliq Urdu"', sample),
+      document.fonts.load('700 16px "Noto Nastaliq Urdu"', sample),
+      document.fonts.load('16px Inter', sample),
+      document.fonts.load('700 16px Inter', sample)
+    ].map(p => p.catch(()=>{})) : [];
+    const fontsReady = (document.fonts && document.fonts.ready) ? document.fonts.ready.catch(()=>{}) : Promise.resolve();
+    const timeout = new Promise(res => setTimeout(res, 4000)); // never hang if offline
+    return Promise.race([Promise.all([...loads, fontsReady]), timeout]).then(() => {
+      if (keep == null) box.removeAttribute('style'); else box.setAttribute('style', keep);
+      return new Promise(res => requestAnimationFrame(() => res()));
+    });
+  };
+  imgsReady.then(warmFonts).then(() => {
     fitAndSpacePaper('qpaper-print-el', 8);
+    fitAndSpacePaper('qpaper-print-el', 8); // second pass = refine once fonts/layout have settled
     printAsA4(8);
   });
 }
@@ -8889,7 +8916,7 @@ function fitAndSpacePaper(elId, marginMm) {
 
   // How far spacing can stretch (short paper, fill the sheet) or shrink
   // (long paper, help it fit) before it starts looking wrong.
-  const MIN_SPACE = 0.9;
+  const MIN_SPACE = 1;
   const MAX_SPACE = 2.4;
   let space = baselineHeight > 0 ? (limitPx / baselineHeight) : 1;
   space = Math.max(MIN_SPACE, Math.min(MAX_SPACE, space));
@@ -8909,7 +8936,7 @@ function fitAndSpacePaper(elId, marginMm) {
   // gets a small zoom-out on top, same as before — just now only kicking in
   // after spacing has already done most of the work.
   const finalHeight = el.scrollHeight;
-  const MIN_ZOOM = 0.75;
+  const MIN_ZOOM = 0.6;
   const zoomScale = finalHeight > limitPx ? Math.max(MIN_ZOOM, limitPx / finalHeight) : 1;
   el.style.zoom = zoomScale < 1 ? zoomScale : 1;
 
