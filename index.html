@@ -854,7 +854,7 @@ const T = {
     printSelected:'Print Selected', clear:'Clear',
     aiSuccessNote:'Questions generated below — review, edit, or delete any of them before printing.',
     papers:'Question Papers', paperClass:'Class', paperSubject:'Subject', paperTotalMarks:'Total Marks',
-    paperTime:'Time Allowed', mcqSection:'Section A — Objective Questions', shortSection:'Section B — Short Questions',
+    paperTime:'Time Allowed', paperDate:'Date', mcqSection:'Section A — Objective Questions', shortSection:'Section B — Short Questions',
     longSection:'Section C — Long Questions', marksEach:'Marks (each)', addQuestion:'+ Add Question', marks:'Marks',
     mcqType:'Multiple Choice Questions (MCQs)', blanksType:'Fill in the Blanks', tfType:'True / False', matchType:'Matching Column',
     instructionLabel:'Instruction (optional)', instructionPh:'e.g. Choose the correct option',
@@ -1062,7 +1062,7 @@ const T = {
     printSelected:'منتخب پرنٹ کریں', clear:'صاف کریں',
     aiSuccessNote:'نیچے سوالات بن چکے ہیں — پرنٹ سے پہلے دیکھ لیں، ترمیم یا حذف کر سکتے ہیں۔',
     papers:'سوالیہ پرچہ جات', paperClass:'جماعت', paperSubject:'مضمون', paperTotalMarks:'کل نمبر',
-    paperTime:'وقت', mcqSection:'حصہ اول — معروضی سوالات', shortSection:'حصہ دوم — مختصر سوالات',
+    paperTime:'وقت', paperDate:'تاریخ', mcqSection:'حصہ اول — معروضی سوالات', shortSection:'حصہ دوم — مختصر سوالات',
     longSection:'حصہ سوم — تفصیلی سوالات', marksEach:'نمبر (فی سوال)', addQuestion:'+ سوال شامل کریں', marks:'نمبر',
     mcqType:'معروضی سوالات (MCQs)', blanksType:'خالی جگہ پر کریں', tfType:'درست / غلط', matchType:'مطابقت کریں',
     instructionLabel:'ہدایت (اختیاری)', instructionPh:'مثلاً درست جواب منتخب کریں',
@@ -8480,7 +8480,7 @@ function printAdmissionEntriesLedger(rows, subtitle, padToPageSize) {
 // School name/logo default to the same dmcSchoolName/dmcLogo already set in
 // Certificates, but are kept separately editable here (paperMeta) so a paper
 // can use a different heading without touching the certificate settings.
-let paperMeta = { school_name: '', logo: null, exam_name: '', class_name: '', subject: '', total_marks: '', time_allowed: '' };
+let paperMeta = { school_name: '', logo: null, exam_name: '', class_name: '', subject: '', total_marks: '', time_allowed: '', exam_date: '' };
 let paperMcqMarksEach = 1;
 let paperMcqs = [ { no:1, q:'', options:['','','',''] } ];
 let paperBlanks = [ { no:1, q:'' } ];
@@ -8501,6 +8501,7 @@ let paperEndImage = null;
 function ensurePaperMetaDefaults() {
   if (!paperMeta.school_name) paperMeta.school_name = dmcSchoolName || (CURRENT_PROFILE && CURRENT_PROFILE.school_name) || '';
   if (!paperMeta.logo) paperMeta.logo = dmcLogo || null;
+  if (!paperMeta.exam_date) paperMeta.exam_date = todayISO();
 }
 function handlePaperLogoUpload(file) {
   if (!file) return;
@@ -8652,6 +8653,7 @@ function tplPapers() {
       </div>
       <div class="row2">
         <label><span>${esc(t.paperTime)}</span><input placeholder="e.g. 2 hours" value="${esc(paperMeta.time_allowed)}" oninput="paperMeta.time_allowed=this.value"></label>
+        <label><span>${esc(t.paperDate)}</span><input type="date" value="${esc(paperMeta.exam_date)}" oninput="paperMeta.exam_date=this.value"></label>
       </div>
     </div>
 
@@ -8726,6 +8728,16 @@ function tplPapers() {
   </div>`;
 }
 
+// Formats paperMeta.exam_date (stored as plain YYYY-MM-DD from the <input
+// type="date">) into a readable printed date, e.g. "28 Sep 2026". Falls back
+// to an em dash if no date is set, same convention as the other paper fields.
+function formatPaperDate(isoDate) {
+  if (!isoDate) return '—';
+  const [y, m, d] = isoDate.split('-').map(Number);
+  if (!y || !m || !d) return '—';
+  return new Date(y, m - 1, d).toLocaleDateString(LANG === 'ur' ? 'ur-PK' : 'en-GB', { day:'numeric', month:'short', year:'numeric' });
+}
+
 function printQuestionPaper() {
   const validMcqs = paperMcqs.filter(m => m.q.trim());
   const validBlanks = paperBlanks.filter(b => b.q.trim());
@@ -8787,7 +8799,7 @@ function printQuestionPaper() {
     <div class="qpaper-print" id="qpaper-print-el">
       <div class="qp-head">
         <div class="qp-head-row">
-          <div class="qp-side qp-side-left">${esc(t.paperTime)}: ${esc(paperMeta.time_allowed||'—')}</div>
+          <div class="qp-side qp-side-left">${esc(t.paperTime)}: ${esc(paperMeta.time_allowed||'—')}<br>${esc(t.paperDate)}: ${esc(formatPaperDate(paperMeta.exam_date))}</div>
           <div class="qp-center">
             ${paperMeta.logo ? `<img src="${paperMeta.logo}" class="qp-logo">` : ''}
             <div class="qp-school">${esc(paperMeta.school_name || 'School')}</div>
