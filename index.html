@@ -682,6 +682,30 @@ body:not(.ur) .qpaper-print .pq-instruction::before{counter-increment:pqq;conten
 .qpaper-print .pq-q{font-size:15px;}
 .qpaper-print .pq-options{font-size:14px;padding-inline-start:20px;}
 </style>
+<style>
+.qpaper-print .pq-table{width:100%;border-collapse:collapse;margin:6px 0 10px;page-break-inside:avoid;}
+.qpaper-print .pq-table th,.qpaper-print .pq-table td{border:1.2px solid #222;padding:4px 8px;height:30px;font-size:14px;text-align:center;}
+.qpaper-print .pq-table th{font-weight:700;background:#eee;-webkit-print-color-adjust:exact;print-color-adjust:exact;}
+.qpaper-print .pq-table .pq-no{width:34px;}
+</style>
+<style>
+#symBar .symtabs{display:flex;align-items:center;gap:6px;padding:10px 10px 6px;background:linear-gradient(180deg,rgba(0,0,0,.035),transparent);}
+#symBar .symtab{flex:1;border:0;border-radius:12px;padding:8px 6px;font-size:14px;font-weight:700;background:transparent;color:inherit;opacity:.65;}
+#symBar .symtab.ur{font-family:'PaperUrdu','Noto Nastaliq Urdu',serif;font-size:17px;line-height:1.9;padding:2px 6px;}
+#symBar .symtab.on{background:#14284b;color:#fff;opacity:1;box-shadow:0 2px 8px rgba(20,40,75,.35);}
+#symBar .symx{border:0;background:transparent;font-size:16px;opacity:.55;padding:6px 8px;color:inherit;}
+#symBar #symHint{font-size:11px;opacity:.65;padding:0 14px 6px;}
+#symBar .symbody{max-height:46vh;overflow:auto;padding:2px 12px 14px;}
+#symBar .symgt{font-size:11px;font-weight:700;letter-spacing:.04em;opacity:.55;margin:10px 2px 5px;text-transform:uppercase;}
+#symBar .symgt.ur{font-family:'PaperUrdu','Noto Nastaliq Urdu',serif;font-size:14px;text-align:right;text-transform:none;letter-spacing:0;line-height:2;}
+#symBar .symrow{display:flex;flex-wrap:wrap;gap:6px;}
+#symBar .symrow.rtl{direction:rtl;}
+#symBar .symchip{min-width:40px;height:40px;padding:0 8px;border-radius:11px;border:1px solid var(--line,#ddd5c2);background:rgba(20,40,75,.05);color:inherit;font-size:19px;line-height:1;}
+#symBar .symchip:active{background:#14284b;color:#fff;transform:scale(.95);}
+#symBar .symchip.ur{font-family:'PaperUrdu','Noto Nastaliq Urdu',serif;font-size:20px;line-height:2;}
+#symBar .symchip.wide{height:auto;min-height:44px;padding:2px 12px;font-size:17px;line-height:2.1;}
+#symBar .symchip.mk{min-width:56px;height:52px;font-size:34px;line-height:1.6;padding:0 10px;}
+</style>
 </head>
 <body>
 
@@ -8529,6 +8553,7 @@ let paperBreaks = { a:[], b:[], c:[] };
 // paper (not per-question) — mainly for Science papers that need one figure
 // to label or refer to.
 let paperEndImage = null;
+let paperTables = [];
 
 // ---- Question Paper draft auto-save (this device only, never Supabase) ----
 // Every keystroke/change in the Papers tab is copied into localStorage, and
@@ -8542,7 +8567,7 @@ function pqSnapshot(withImages) {
   if (!withImages || (typeof dmcLogo !== 'undefined' && meta.logo === dmcLogo)) meta.logo = null; // default logo is refilled automatically
   return { v:1, t:Date.now(), paperMeta:meta, paperMcqMarksEach, paperMcqs, paperBlanks, paperTF,
            paperMatchA, paperMatchB, paperShort, paperLong, paperInstructions, paperSectionTitles, paperBreaks,
-           paperEndImage: withImages ? paperEndImage : null, paperMode, kgBlocks: withImages ? kgBlocks : [] };
+           paperEndImage: withImages ? paperEndImage : null, paperMode, kgBlocks: withImages ? kgBlocks : [], paperTables };
 }
 function savePaperDraft() {
   if (!pqReady) return;
@@ -8573,6 +8598,7 @@ function loadPaperDraft() {
     if (d.paperEndImage) paperEndImage = d.paperEndImage;
     if (d.paperMode) paperMode = d.paperMode;
     if (Array.isArray(d.kgBlocks)) kgBlocks = d.kgBlocks;
+    if (Array.isArray(d.paperTables)) paperTables = d.paperTables;
     pqReady = true;
   } catch (e) {
     // unreadable draft: keep a copy instead of overwriting it
@@ -8611,6 +8637,7 @@ function pqResetPaper() {
   paperSectionTitles = { a:'', b:'', c:'' };
   paperBreaks = { a:[], b:[], c:[] };
   paperEndImage = null;
+  paperTables = [];
 }
 function newPaper() {
   const ur = LANG === 'ur';
@@ -8818,19 +8845,38 @@ function tplKgBuilder() {
 
 // ---------- Math symbols palette ----------
 let symTarget = null;
-const SYM_GROUPS = [
-  ['Basic','× ÷ ± ≠ ≤ ≥ ≈ ∞ ° % ‰'],
-  ['Powers','² ³ √ ∛ π'],
-  ['Power letters','ᵃ ᵇ ᶜ ᵈ ᵉ ᶠ ᵍ ʰ ⁱ ʲ ᵏ ˡ ᵐ ⁿ ᵒ ᵖ ʳ ˢ ᵗ ᵘ ᵛ ʷ ˣ ʸ ᶻ'],
-  ['Power numbers','⁰ ¹ ² ³ ⁴ ⁵ ⁶ ⁷ ⁸ ⁹ ⁺ ⁻ ⁽ ⁾'],
-  ['Subscript','₀ ₁ ₂ ₃ ₄ ₅ ₆ ₇ ₈ ₉ ₐ ₙ ₘ ₓ'],
-  ['Fractions','½ ⅓ ¼ ¾ ⅔ ⅕ ⅛'],
-  ['Geometry','∠ △ □ ⊥ ∥ ≅ ∼ ∴ ∵ ⌒'],
-  ['Sets','∈ ∉ ∪ ∩ ⊂ ⊆ ∅ ℕ ℤ ℚ ℝ'],
-  ['Greek (small)','α β γ δ ε ζ η θ ι κ λ μ ν ξ ο π ρ σ τ υ φ χ ψ ω'],
-  ['Greek (capital)','Γ Δ Θ Λ Ξ Π Σ Φ Ψ Ω'],
-  ['Arrows','→ ← ↔ ⇒ ⇔ ↑ ↓']
+const TT='\u0640'; // tatweel: gives a base letter to show a lone diacritic on a button
+const SYM_TABS = [
+  { id:'math', label:'Σ  Math', groups:[
+    ['Basic','× ÷ ± ≠ ≤ ≥ ≈ ∞ ° % ‰'],
+    ['Powers','² ³ √ ∛ π'],
+    ['Power letters','ᵃ ᵇ ᶜ ᵈ ᵉ ᶠ ᵍ ʰ ⁱ ʲ ᵏ ˡ ᵐ ⁿ ᵒ ᵖ ʳ ˢ ᵗ ᵘ ᵛ ʷ ˣ ʸ ᶻ'],
+    ['Power numbers','⁰ ¹ ² ³ ⁴ ⁵ ⁶ ⁷ ⁸ ⁹ ⁺ ⁻ ⁽ ⁾'],
+    ['Subscript','₀ ₁ ₂ ₃ ₄ ₅ ₆ ₇ ₈ ₉ ₐ ₙ ₘ ₓ'],
+    ['Fractions','½ ⅓ ¼ ¾ ⅔ ⅕ ⅛'],
+    ['Geometry','∠ △ □ ⊥ ∥ ≅ ∼ ∴ ∵ ⌒'],
+    ['Sets','∈ ∉ ∪ ∩ ⊂ ⊆ ∅ ℕ ℤ ℚ ℝ'],
+    ['Greek (small)','α β γ δ ε ζ η θ ι κ λ μ ν ξ ο π ρ σ τ υ φ χ ψ ω'],
+    ['Greek (capital)','Γ Δ Θ Λ Ξ Π Σ Φ Ψ Ω'],
+    ['Arrows','→ ← ↔ ⇒ ⇔ ↑ ↓']
+  ]},
+  { id:'aerab', label:'اعراب', ur:true, groups:[
+    ['زبر، زیر، پیش', [TT+'\u064E',TT+'\u0650',TT+'\u064F'], 'mark'],
+    ['تشدید، جزم', [TT+'\u0651',TT+'\u0652'], 'mark'],
+    ['تنوین', [TT+'\u064B',TT+'\u064D',TT+'\u064C'], 'mark'],
+    ['تشدید کے ساتھ', [TT+'\u0651\u064E',TT+'\u0651\u0650',TT+'\u0651\u064F'], 'mark'],
+    ['کھڑی زبر، کھڑا زیر، الٹا پیش', [TT+'\u0670',TT+'\u0656',TT+'\u0657'], 'mark'],
+    ['مد، ہمزہ', [TT+'\u0653',TT+'\u0654',TT+'\u0655'], 'mark'],
+    ['قرآنی علامات', ['\u06D6','\u06D7','\u06DA','\u06D8','\u06D9','\u06DB','\u06DC','\u06E2','\u06E3','\u06DE','\u06E9','\uFD3E','\uFD3F'], 'plain']
+  ]},
+  { id:'urdu', label:'اردو', ur:true, groups:[
+    ['دعائیہ کلمات', ['ﷺ','صلی اللہ علیہ وسلم','رضی اللہ عنہ','رضی اللہ عنہا','رضی اللہ عنہم','رضی اللہ عنہما','علیہ السلام','علیہا السلام','علیہم السلام','رحمۃ اللہ علیہ','رحمہا اللہ','جل جلالہ','عز و جل','سبحانہ و تعالیٰ','ﷲ','﷽'], 'phrase'],
+    ['علامات', ['۔','،','؟','؛','«','»','٪','٫','ـ'], 'plain'],
+    ['خاص حروف', ['ے','ں','ھ','ٹ','ڈ','ڑ','گ','چ','پ','ژ','ۃ','ء','ئ','ؤ','أ','آ','إ','ۓ','ۂ','ۃ'], 'plain'],
+    ['ہندسے', ['۰','۱','۲','۳','۴','۵','۶','۷','۸','۹'], 'plain']
+  ]}
 ];
+let symTab = 'math';
 document.addEventListener('focusin', e => {
   const el = e.target;
   if ((el.tagName === 'TEXTAREA' || (el.tagName === 'INPUT' && (!el.type || el.type === 'text'))) && !el.closest('#symBar')) symTarget = el;
@@ -8843,23 +8889,35 @@ function symSync() {
 }
 { const _rt = renderTab; renderTab = function () { const r = _rt.apply(this, arguments); try { symSync(); } catch (e) {} return r; }; }
 function symToggle() { const b = document.getElementById('symBox'); if (b) b.style.display = b.style.display === 'none' ? 'block' : 'none'; }
-function symInsert(ch) {
+function symInsert(ch, phrase) {
   const hint = document.getElementById('symHint');
   const el = symTarget;
   if (!el || !document.body.contains(el)) { if (hint) hint.style.color = '#d33'; return; }
   if (hint) hint.style.color = '';
   const a = el.selectionStart ?? el.value.length, b = el.selectionEnd ?? a;
+  if (phrase) { const prev = el.value.slice(0, a).slice(-1); ch = (prev && !/\s/.test(prev) ? ' ' : '') + ch + ' '; }
   el.value = el.value.slice(0, a) + ch + el.value.slice(b);
   el.focus(); el.selectionStart = el.selectionEnd = a + ch.length;
   el.dispatchEvent(new Event('input', { bubbles: true }));
 }
+function symTabSet(id) {
+  symTab = id;
+  document.querySelectorAll('#symBar [data-tab]').forEach(e => e.classList.toggle('on', e.dataset.tab === id));
+  document.querySelectorAll('#symBar [data-pane]').forEach(e => e.style.display = e.dataset.pane === id ? 'block' : 'none');
+}
 function symBarHtml() {
+  const chip = (c, kind, ur) => `<button type="button" class="symchip${kind==='phrase'?' wide':''}${kind==='mark'?' mk':''}${ur?' ur':''}" data-c="${c}" onclick="symInsert(this.dataset.c,${kind==='phrase'})">${c}</button>`;
+  const panes = SYM_TABS.map(tb => `<div data-pane="${tb.id}" style="display:${tb.id===symTab?'block':'none'};">${tb.groups.map(g => {
+    const items = Array.isArray(g[1]) ? g[1] : g[1].split(' ');
+    return `<div class="symgt${tb.ur?' ur':''}">${g[0]}</div><div class="symrow${tb.ur?' rtl':''}">${items.map(c => chip(c, g[2], tb.ur)).join('')}</div>`;
+  }).join('')}</div>`).join('');
   return `<div style="position:fixed;right:12px;bottom:84px;z-index:50;max-width:calc(100vw - 24px);" onmousedown="event.preventDefault()">
-    <div id="symBox" style="display:none;background:var(--card,#fff);color:inherit;border:1px solid var(--line,#ccc);border-radius:14px;padding:10px;margin-bottom:8px;box-shadow:0 6px 24px rgba(0,0,0,.2);max-height:48vh;overflow:auto;width:300px;max-width:100%;">
-      <div id="symHint" style="font-size:11px;opacity:.75;margin-bottom:6px;">Pehle question box par tap karein, phir symbol chunein</div>
-      ${SYM_GROUPS.map(g => `<div style="font-size:11px;opacity:.6;margin:6px 0 2px;">${g[0]}</div><div style="display:flex;flex-wrap:wrap;gap:4px;">${g[1].split(' ').map(c => `<button type="button" class="btn-ghost" style="min-width:36px;height:36px;padding:0;font-size:18px;" onclick="symInsert('${c}')">${c}</button>`).join('')}</div>`).join('')}
+    <div id="symBox" style="display:none;margin-bottom:10px;width:318px;max-width:100%;background:var(--card,#fff);border:1px solid var(--line,#d9d2c0);border-radius:20px;box-shadow:0 14px 40px rgba(20,30,50,.28);overflow:hidden;">
+      <div class="symtabs">${SYM_TABS.map(tb => `<button type="button" data-tab="${tb.id}" class="symtab${tb.id===symTab?' on':''}${tb.ur?' ur':''}" onclick="symTabSet('${tb.id}')">${tb.label}</button>`).join('')}<button type="button" class="symx" onclick="symToggle()">✕</button></div>
+      <div id="symHint">Pehle question box par tap karein, phir chunein</div>
+      <div class="symbody">${panes}</div>
     </div>
-    <div style="text-align:right;"><button type="button" class="btn-primary" style="border-radius:50%;width:48px;height:48px;font-size:20px;padding:0;box-shadow:0 4px 14px rgba(0,0,0,.3);" onclick="symToggle()">Σ</button></div>
+    <div style="text-align:right;"><button type="button" class="btn-primary" style="border-radius:50%;width:52px;height:52px;font-size:22px;padding:0;box-shadow:0 6px 18px rgba(0,0,0,.3);" onclick="symToggle()">Σ</button></div>
   </div>`;
 }
 
@@ -8887,6 +8945,55 @@ function kgBodyHtml() {
       body = `<div class="kg-match">${its.map((x,i) => `<div class="kg-mrow"><div>${kimg(x.img,'kg-pic')}</div><i class="kg-dot"></i><span class="kg-mid"></span><i class="kg-dot"></i><div class="kg-mname">${pqEsc(right[i].txt||'')}</div></div>`).join('')}</div>`;
     }
     return `<div class="pq-section"><div class="pq-section-title" dir="auto">Q${n+1}. ${pqEsc(b.title)}</div>${body}</div>`;
+  }).join('');
+}
+
+
+// ---------- Tables (word meanings, opposites, singular/plural, ...) ----------
+function pqTouch() { try { pqScheduleSave(); } catch (e) {} }
+const PQ_POS = { top:'Before the objective section (MCQs…)', preShort:'Before Short Questions', postShort:'After Short Questions (before Long)', end:'After Long Questions (end)' };
+function pqAddTable() {
+  paperTables.push({ title:'', pos:'end', nums:true, cols:['',''], rows:[0,1,2,3,4].map(() => ['','']) });
+  pqTouch(); renderTab();
+}
+function pqDupTable(i) { paperTables.splice(i+1, 0, JSON.parse(JSON.stringify(paperTables[i]))); pqTouch(); renderTab(); }
+function pqDelTable(i) { paperTables.splice(i,1); pqTouch(); renderTab(); }
+function pqAddRow(i) { const tb = paperTables[i]; tb.rows.push(tb.cols.map(() => '')); pqTouch(); renderTab(); }
+function pqDelRow(i,r) { paperTables[i].rows.splice(r,1); pqTouch(); renderTab(); }
+function pqAddCol(i) { const tb = paperTables[i]; if (tb.cols.length >= 6) return; tb.cols.push(''); tb.rows.forEach(r => r.push('')); pqTouch(); renderTab(); }
+function pqDelCol(i) { const tb = paperTables[i]; if (tb.cols.length <= 1) return; tb.cols.pop(); tb.rows.forEach(r => r.pop()); pqTouch(); renderTab(); }
+function tplPqTables() {
+  const cards = paperTables.map((tb,i) => {
+    const g = `display:grid;grid-template-columns:repeat(${tb.cols.length},1fr) 34px;gap:6px;margin-bottom:6px;`;
+    return `<div style="border:1px solid var(--line,#ddd);border-radius:12px;padding:10px;margin-bottom:10px;">
+      <div style="font-size:11px;font-weight:700;opacity:.6;margin-bottom:4px;">Table ${i+1}</div>
+      <input dir="auto" style="width:100%;font-weight:600;margin-bottom:8px;" placeholder="Question heading (optional)" value="${esc(tb.title)}" oninput="paperTables[${i}].title=this.value">
+      <select style="width:100%;padding:8px;margin-bottom:8px;" onchange="paperTables[${i}].pos=this.value">${Object.keys(PQ_POS).map(k => `<option value="${k}"${(tb.pos||'end')===k?' selected':''}>📍 ${PQ_POS[k]}</option>`).join('')}</select>
+      <div style="${g}">${tb.cols.map((c,k) => `<input dir="auto" style="font-weight:700;" placeholder="Column heading" value="${esc(c)}" oninput="paperTables[${i}].cols[${k}]=this.value">`).join('')}<span></span></div>
+      ${tb.rows.map((r,ri) => `<div style="${g}">${r.map((c,k) => `<input dir="auto" placeholder="blank = student writes" value="${esc(c)}" oninput="paperTables[${i}].rows[${ri}][${k}]=this.value">`).join('')}<button class="btn-ghost" style="padding:0;" onclick="pqDelRow(${i},${ri})">✕</button></div>`).join('')}
+      <label style="display:flex;align-items:center;gap:6px;font-size:12px;margin:6px 0;"><input type="checkbox" ${tb.nums===false?'':'checked'} onchange="paperTables[${i}].nums=this.checked"> Row numbers (1, 2, 3…)</label>
+      <div class="flexgap" style="flex-wrap:wrap;">
+        <button class="btn-ghost" onclick="pqAddRow(${i})">＋ Row</button>
+        <button class="btn-ghost" onclick="pqAddCol(${i})">＋ Column</button>
+        <button class="btn-ghost" onclick="pqDelCol(${i})">－ Column</button>
+        <button class="btn-ghost" onclick="pqDupTable(${i})">⧉ Duplicate</button>
+        <button class="btn-ghost" onclick="pqDelTable(${i})">🗑️ Delete</button>
+      </div></div>`;
+  }).join('');
+  return `<div class="card" style="margin-bottom:14px;">
+    <b style="font-size:13px;display:block;margin-bottom:4px;">Tables</b>
+    <div style="font-size:11px;opacity:.6;margin-bottom:8px;">Make any table you need and name it yourself. Fill the cells you want printed; leave a cell empty for the student to write. Choose where it prints.</div>
+    ${cards}
+    <button class="btn-ghost" style="width:100%;" onclick="pqAddTable()">＋ Add Table</button></div>`;
+}
+function pqTablesHtml(pos) {
+  return paperTables.filter(tb => (tb.pos || 'end') === pos).map(tb => {
+    const rows = tb.rows.filter(r => r.some(c => (c || '').trim()));
+    if (!rows.length) return '';
+    const nums = tb.nums !== false, hasHead = tb.cols.some(c => (c || '').trim());
+    return `<div class="pq-section">${(tb.title||'').trim() ? `<div class="pq-instruction" dir="auto">${esc(tb.title)}</div>` : ''}
+      <table class="pq-table">${hasHead ? `<thead><tr>${nums ? '<th class="pq-no">#</th>' : ''}${tb.cols.map(c => `<th dir="auto">${esc(c||'')}</th>`).join('')}</tr></thead>` : ''}
+      <tbody>${rows.map((r,i) => `<tr>${nums ? `<td class="pq-no">${i+1}</td>` : ''}${r.map(c => `<td dir="auto">${esc(c||'')}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
   }).join('');
 }
 
@@ -9031,6 +9138,7 @@ function tplPapersStd() {
       <button class="btn-ghost" style="margin-top:6px;" onclick="addPaperLong()">${esc(t.addQuestion)}</button>
     </div>
 
+    ${tplPqTables()}
     <div class="card" style="margin-bottom:14px;">
       <b style="font-size:13px;display:block;margin-bottom:4px;">${esc(t.paperEndImageLabel)}</b>
       <div style="font-size:11px;opacity:.6;margin-bottom:8px;">${esc(t.paperEndImageHint)}</div>
@@ -9152,9 +9260,10 @@ function printQuestionPaper() {
         </div>
         <div class="qp-name-line">${esc(t.studentNameLbl||'Name')}: ______________________&nbsp;&nbsp;&nbsp; ${LANG==='ur'?'رول نمبر':'Roll No.'}: __________</div>
       </div>
-      ${paperMode==='kg' ? kgBodyHtml() : `${sectionAHtml}
-      ${section(pqTitle('b', t.shortSection), validShort, paperInstructions.short, 'b')}
-      ${section(pqTitle('c', t.longSection), validLong, paperInstructions.long, 'c')}`}
+      ${paperMode==='kg' ? kgBodyHtml() : `${pqTablesHtml('top')}${sectionAHtml}
+      ${pqTablesHtml('preShort')}${section(pqTitle('b', t.shortSection), validShort, paperInstructions.short, 'b')}
+      ${pqTablesHtml('postShort')}${section(pqTitle('c', t.longSection), validLong, paperInstructions.long, 'c')}
+      ${pqTablesHtml('end')}`}
       ${paperEndImage ? `<div class="pq-end-img-wrap"><img src="${paperEndImage}" class="pq-end-img"></div>` : ''}
     </div>`;
   // The paper is forced onto exactly one A4 page via fitAndSpacePaper, which
