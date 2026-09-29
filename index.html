@@ -5729,53 +5729,39 @@ function ttColumns() {
   return cols;
 }
 
+// Timetable data lives ONLY in this phone/browser (localStorage) — never sent to Supabase.
+// Clearing the browser/app data erases it completely.
+function ttLocalKey() { return 'tt_local_v1_' + (CURRENT_USER ? CURRENT_USER.id : 'guest'); }
+function ttLocalWrite() {
+  try {
+    localStorage.setItem(ttLocalKey(), JSON.stringify({
+      rows: ttRows, times: ttPeriodTimes,
+      settings: { classes: ttClasses, periods_count: ttPeriods, break_after: ttBreakAfter, break_start: ttBreakStart, break_end: ttBreakEnd }
+    }));
+  } catch (e) { alert((LANG === 'ur' ? 'محفوظ نہیں ہوا: ' : 'Could not save: ') + e.message); }
+}
 async function loadTimetableGrid() {
-  ttStatus = 'loading';
-  renderTab();
-  const [gridRes, timesRes, settingsRes] = await Promise.all([
-    sb.from('timetable').select('*').eq('owner_id', CURRENT_USER.id),
-    sb.from('timetable_periods').select('*').eq('owner_id', CURRENT_USER.id),
-    sb.from('timetable_settings').select('*').eq('owner_id', CURRENT_USER.id).maybeSingle(),
-  ]);
-  if (gridRes.error) { ttStatus = 'missing_table'; ttRows = []; }
-  else {
-    ttRows = gridRes.data || [];
-    ttPeriodTimes = {};
-    (timesRes.data || []).forEach(r => { ttPeriodTimes[r.period] = { start_time: r.start_time, end_time: r.end_time }; });
-    const settings = (settingsRes && settingsRes.data) || null;
-    if (settings) {
-      ttPeriods = settings.periods_count || 7;
-      ttClasses = Array.isArray(settings.classes) ? settings.classes : null;
-      ttBreakAfter = settings.break_after || 0;
-      ttBreakStart = settings.break_start || '';
-      ttBreakEnd = settings.break_end || '';
-    } else {
-      // No saved settings yet (schools that were already using the timetable
-      // before this feature existed) — fall back to the old auto-detect
-      // behaviour so their existing grid still shows exactly as before.
-      ttPeriods = Math.max(7, ...ttRows.map(r => r.period), 0);
-      ttClasses = null;
-      ttBreakAfter = 0;
-      ttBreakStart = ''; ttBreakEnd = '';
-    }
-    ttStatus = 'ready';
+  let d = {};
+  try { d = JSON.parse(localStorage.getItem(ttLocalKey())) || {}; } catch (e) { d = {}; }
+  ttRows = Array.isArray(d.rows) ? d.rows : [];
+  ttPeriodTimes = d.times || {};
+  const st = d.settings || null;
+  if (st) {
+    ttPeriods = st.periods_count || 7;
+    ttClasses = Array.isArray(st.classes) ? st.classes : null;
+    ttBreakAfter = st.break_after || 0;
+    ttBreakStart = st.break_start || '';
+    ttBreakEnd = st.break_end || '';
+  } else {
+    ttPeriods = Math.max(7, ...ttRows.map(r => r.period), 0);
+    ttClasses = null; ttBreakAfter = 0; ttBreakStart = ''; ttBreakEnd = '';
   }
+  ttStatus = 'ready';
   await loadDMCConfig(); // pulls the editable school logo/name shown at the top of the timetable
   if (TAB === 'timetable') renderTab();
 }
 
-async function saveTimetableSettings() {
-  const payload = {
-    owner_id: CURRENT_USER.id,
-    classes: ttClasses,
-    periods_count: ttPeriods,
-    break_after: ttBreakAfter,
-    break_start: ttBreakStart || null,
-    break_end: ttBreakEnd || null,
-  };
-  const { error } = await sb.from('timetable_settings').upsert(payload, { onConflict: 'owner_id' });
-  if (error) alert((LANG === 'ur' ? 'محفوظ نہیں ہوا: ' : 'Could not save: ') + error.message);
-}
+async function saveTimetableSettings() { ttLocalWrite(); }
 
 function ttAddPeriod() { ttPeriods += 1; saveTimetableSettings(); renderTab(); }
 function ttRemovePeriod() {
@@ -5834,30 +5820,21 @@ function submitManageTtClasses() {
 }
 
 async function saveTimetableCell(className, period, field, value) {
-  const existing = ttRows.find(r => r.class_name === className && r.period === period);
-  const payload = {
-    owner_id: CURRENT_USER.id, class_name: className, day_of_week: 'ALL', period,
+  const idx = ttRows.findIndex(r => r.class_name === className && r.period === period);
+  const existing = idx >= 0 ? ttRows[idx] : null;
+  const row = {
+    id: existing ? existing.id : 'local_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7),
+    class_name: className, day_of_week: 'ALL', period,
     subject: field === 'subject' ? (value || null) : (existing ? existing.subject : null),
     teacher_id: field === 'teacher_id' ? (value || null) : (existing ? existing.teacher_id : null),
   };
-  const { data, error } = await sb.from('timetable')
-    .upsert(payload, { onConflict: 'owner_id,class_name,day_of_week,period' })
-    .select().maybeSingle();
-  if (error) { alert((LANG === 'ur' ? 'محفوظ نہیں ہوا: ' : 'Could not save: ') + error.message); return; }
-  const idx = ttRows.findIndex(r => r.class_name === className && r.period === period);
-  if (idx >= 0) ttRows[idx] = data; else ttRows.push(data);
-  logCustomActivity(`Updated timetable: ${className} — period ${period}`, 'update');
+  if (idx >= 0) ttRows[idx] = row; else ttRows.push(row);
+  ttLocalWrite();
 }
 
 async function savePeriodTime(period, field, value) {
   ttPeriodTimes[period] = { ...(ttPeriodTimes[period] || {}), [field]: value };
-  const payload = {
-    owner_id: CURRENT_USER.id, period,
-    start_time: ttPeriodTimes[period].start_time || null,
-    end_time: ttPeriodTimes[period].end_time || null,
-  };
-  const { error } = await sb.from('timetable_periods').upsert(payload, { onConflict: 'owner_id,period' });
-  if (error) alert((LANG === 'ur' ? 'محفوظ نہیں ہوا: ' : 'Could not save: ') + error.message);
+  ttLocalWrite();
 }
 
 // Lightweight logo upload for the Timetable header — reuses the same school
@@ -8843,6 +8820,13 @@ document.addEventListener('focusin', e => {
   const el = e.target;
   if ((el.tagName === 'TEXTAREA' || (el.tagName === 'INPUT' && (!el.type || el.type === 'text'))) && !el.closest('#symBar')) symTarget = el;
 });
+// The palette lives outside #main so re-renders of the tab can never close it.
+function symSync() {
+  let bar = document.getElementById('symBar');
+  if (!bar) { bar = document.createElement('div'); bar.id = 'symBar'; bar.innerHTML = symBarHtml(); document.body.appendChild(bar); }
+  bar.style.display = (typeof TAB !== 'undefined' && TAB === 'papers') ? '' : 'none';
+}
+{ const _rt = renderTab; renderTab = function () { const r = _rt.apply(this, arguments); try { symSync(); } catch (e) {} return r; }; }
 function symToggle() { const b = document.getElementById('symBox'); if (b) b.style.display = b.style.display === 'none' ? 'block' : 'none'; }
 function symInsert(ch) {
   const hint = document.getElementById('symHint');
@@ -8855,7 +8839,7 @@ function symInsert(ch) {
   el.dispatchEvent(new Event('input', { bubbles: true }));
 }
 function symBarHtml() {
-  return `<div id="symBar" style="position:fixed;right:12px;bottom:84px;z-index:50;max-width:calc(100vw - 24px);">
+  return `<div style="position:fixed;right:12px;bottom:84px;z-index:50;max-width:calc(100vw - 24px);" onmousedown="event.preventDefault()">
     <div id="symBox" style="display:none;background:var(--card,#fff);color:inherit;border:1px solid var(--line,#ccc);border-radius:14px;padding:10px;margin-bottom:8px;box-shadow:0 6px 24px rgba(0,0,0,.2);max-height:48vh;overflow:auto;width:300px;max-width:100%;">
       <div id="symHint" style="font-size:11px;opacity:.75;margin-bottom:6px;">Pehle question box par tap karein, phir symbol chunein</div>
       ${SYM_GROUPS.map(g => `<div style="font-size:11px;opacity:.6;margin:6px 0 2px;">${g[0]}</div><div style="display:flex;flex-wrap:wrap;gap:4px;">${g[1].split(' ').map(c => `<button type="button" class="btn-ghost" style="min-width:36px;height:36px;padding:0;font-size:18px;" onclick="symInsert('${c}')">${c}</button>`).join('')}</div>`).join('')}
@@ -8869,8 +8853,8 @@ function tplPapers() {
   const tg = `<div style="padding-top:16px;"><div class="flexgap">
     <button class="${paperMode==='std'?'btn-primary':'btn-ghost'}" style="flex:1;" onclick="setPaperMode('std')">📝 Standard</button>
     <button class="${paperMode==='kg'?'btn-primary':'btn-ghost'}" style="flex:1;" onclick="setPaperMode('kg')">🧸 Nursery / KG</button></div></div>`;
-  if (paperMode !== 'kg') return tg + html + symBarHtml();
-  return tg + html.split('<!--PQ_HDR_END-->')[0] + tplKgBuilder() + '</div>' + symBarHtml();
+  if (paperMode !== 'kg') return tg + html;
+  return tg + html.split('<!--PQ_HDR_END-->')[0] + tplKgBuilder() + '</div>';
 }
 function kgBodyHtml() {
   const kimg = (src, cls) => src ? `<img src="${src}" class="${cls}">` : `<span class="${cls} kg-emptybox"></span>`;
