@@ -279,7 +279,10 @@ html, body{overscroll-behavior:none;}
        paper's line-height and section spacing should stretch or shrink: 1
        is the normal amount below, >1 spreads a short paper out to fill the
        whole sheet, <1 tightens a long one so it still fits on one page. */
-    .qpaper-print{font-family:'Noto Nastaliq Urdu',Inter,serif;color:#111;--pq-space:1;-webkit-text-size-adjust:100%;text-size-adjust:100%;}
+    /* Urdu (Arabic-script) letters in question papers use Jameel Noori Nastaleeq when it is
+       installed on the device; if not, Noto Nastaliq Urdu is used. English text stays Inter. */
+    @font-face{font-family:'PaperUrdu';src:local('Jameel Noori Nastaleeq'),local('JameelNooriNastaleeq'),local('Jameel Noori Nastaliq'),local('Jameel Noori Nastaleeq Kasheeda');unicode-range:U+0600-06FF,U+0750-077F,U+08A0-08FF,U+FB50-FDFF,U+FE70-FEFF;}
+    .qpaper-print{font-family:'PaperUrdu','Noto Nastaliq Urdu',Inter,serif;color:#111;--pq-space:1;-webkit-text-size-adjust:100%;text-size-adjust:100%;}
     .qpaper-print, .qpaper-print *{line-height:calc(1.2 * var(--pq-space,1));}
     /* Noto Nastaliq Urdu needs noticeably more vertical room than Latin text —
        its diagonal stroke shape means tight (1.2) line-height makes adjacent
