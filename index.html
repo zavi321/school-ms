@@ -8827,13 +8827,50 @@ function tplKgBuilder() {
   return blocks + `<div class="card" style="margin-bottom:14px;"><select style="width:100%;padding:8px;" onchange="kgAddBlock(this)"><option value="">＋ Add a new question type…</option>${Object.keys(KG_TYPES).map(k=>`<option value="${k}">${esc(KG_TYPES[k])}</option>`).join('')}</select></div>
     <button class="btn-primary" style="width:100%;" onclick="printQuestionPaper()">🖨️ ${esc(t.print)}</button>`;
 }
+
+// ---------- Math symbols palette ----------
+let symTarget = null;
+const SYM_GROUPS = [
+  ['Basic','× ÷ ± ≠ ≤ ≥ ≈ ∞ ° % ‰'],
+  ['Powers','² ³ ⁴ ⁿ √ ∛ π ₀ ₁ ₂ ₃'],
+  ['Fractions','½ ⅓ ¼ ¾ ⅔ ⅕ ⅛'],
+  ['Geometry','∠ △ □ ⊥ ∥ ≅ ∼ ∴ ∵ ⌒'],
+  ['Sets','∈ ∉ ∪ ∩ ⊂ ⊆ ∅ ℕ ℤ ℚ ℝ'],
+  ['Greek','α β γ θ λ μ σ Σ Δ Ω φ'],
+  ['Arrows','→ ← ↔ ⇒ ⇔ ↑ ↓']
+];
+document.addEventListener('focusin', e => {
+  const el = e.target;
+  if ((el.tagName === 'TEXTAREA' || (el.tagName === 'INPUT' && (!el.type || el.type === 'text'))) && !el.closest('#symBar')) symTarget = el;
+});
+function symToggle() { const b = document.getElementById('symBox'); if (b) b.style.display = b.style.display === 'none' ? 'block' : 'none'; }
+function symInsert(ch) {
+  const hint = document.getElementById('symHint');
+  const el = symTarget;
+  if (!el || !document.body.contains(el)) { if (hint) hint.style.color = '#d33'; return; }
+  if (hint) hint.style.color = '';
+  const a = el.selectionStart ?? el.value.length, b = el.selectionEnd ?? a;
+  el.value = el.value.slice(0, a) + ch + el.value.slice(b);
+  el.focus(); el.selectionStart = el.selectionEnd = a + ch.length;
+  el.dispatchEvent(new Event('input', { bubbles: true }));
+}
+function symBarHtml() {
+  return `<div id="symBar" style="position:fixed;right:12px;bottom:84px;z-index:50;max-width:calc(100vw - 24px);">
+    <div id="symBox" style="display:none;background:var(--card,#fff);color:inherit;border:1px solid var(--line,#ccc);border-radius:14px;padding:10px;margin-bottom:8px;box-shadow:0 6px 24px rgba(0,0,0,.2);max-height:48vh;overflow:auto;width:300px;max-width:100%;">
+      <div id="symHint" style="font-size:11px;opacity:.75;margin-bottom:6px;">Pehle question box par tap karein, phir symbol chunein</div>
+      ${SYM_GROUPS.map(g => `<div style="font-size:11px;opacity:.6;margin:6px 0 2px;">${g[0]}</div><div style="display:flex;flex-wrap:wrap;gap:4px;">${g[1].split(' ').map(c => `<button type="button" class="btn-ghost" style="min-width:36px;height:36px;padding:0;font-size:18px;" onclick="symInsert('${c}')">${c}</button>`).join('')}</div>`).join('')}
+    </div>
+    <div style="text-align:right;"><button type="button" class="btn-primary" style="border-radius:50%;width:48px;height:48px;font-size:20px;padding:0;box-shadow:0 4px 14px rgba(0,0,0,.3);" onclick="symToggle()">Σ</button></div>
+  </div>`;
+}
+
 function tplPapers() {
   const html = tplPapersStd();
   const tg = `<div style="padding-top:16px;"><div class="flexgap">
     <button class="${paperMode==='std'?'btn-primary':'btn-ghost'}" style="flex:1;" onclick="setPaperMode('std')">📝 Standard</button>
     <button class="${paperMode==='kg'?'btn-primary':'btn-ghost'}" style="flex:1;" onclick="setPaperMode('kg')">🧸 Nursery / KG</button></div></div>`;
-  if (paperMode !== 'kg') return tg + html;
-  return tg + html.split('<!--PQ_HDR_END-->')[0] + tplKgBuilder() + '</div>';
+  if (paperMode !== 'kg') return tg + html + symBarHtml();
+  return tg + html.split('<!--PQ_HDR_END-->')[0] + tplKgBuilder() + '</div>' + symBarHtml();
 }
 function kgBodyHtml() {
   const kimg = (src, cls) => src ? `<img src="${src}" class="${cls}">` : `<span class="${cls} kg-emptybox"></span>`;
