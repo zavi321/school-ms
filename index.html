@@ -675,11 +675,8 @@ html, body{overscroll-behavior:none;}
 .qpaper-print .kg-mname{width:34%;font-size:26px;font-weight:700;font-family:Inter,sans-serif;text-align:left;}
 </style>
 <style>
-.qpaper-print .qp-school{font-size:22px;font-weight:700;}
-.qpaper-print .qp-examname{font-size:17px;font-weight:700;margin-top:2px;}
-.qpaper-print .qp-infoline{font-size:14px;font-weight:700;margin-top:4px;}
-.qpaper-print .qp-name-line{font-size:14px;margin-top:8px;}
 .qpaper-print{counter-reset:pqq;}
+.qpaper-print .qp-head, .qpaper-print .qp-head *{font-family:'PaperUrdu','Noto Nastaliq Urdu',Inter,serif;}
 body:not(.ur) .qpaper-print .pq-instruction{font-style:normal;font-weight:700;font-size:15px;margin:6px 0 4px;}
 body:not(.ur) .qpaper-print .pq-instruction::before{counter-increment:pqq;content:"Q" counter(pqq) ". ";}
 .qpaper-print .pq-q{font-size:15px;}
@@ -9142,16 +9139,17 @@ function printQuestionPaper() {
   document.getElementById('print-area').innerHTML = `
     <div class="qpaper-print" id="qpaper-print-el">
       <div class="qp-head">
-        ${paperMeta.logo ? `<img src="${paperMeta.logo}" class="qp-logo">` : ''}
-        <div class="qp-school">${esc(paperMeta.school_name || 'School')}</div>
-        <div class="qp-examname">${esc(paperMeta.exam_name || (LANG==='ur'?'سوالیہ پرچہ':'Question Paper'))}</div>
-        <div class="qp-infoline">${[
-          `${esc(t.paperClass)}: ${esc(paperMeta.class_name||'—')}`,
-          paperMeta.subject ? `${LANG==='ur'?'مضمون':'Subject'}: ${esc(paperMeta.subject)}` : '',
-          `${esc(t.paperTime)}: ${esc(paperMeta.time_allowed||'—')}`,
-          `${esc(t.paperTotalMarks)}: ${esc(paperMeta.total_marks||'—')}`,
-          paperMeta.exam_date ? `${esc(t.paperDate)}: ${esc(formatPaperDate(paperMeta.exam_date))}` : ''
-        ].filter(Boolean).join(' &nbsp;|&nbsp; ')}</div>
+        <div class="qp-head-row">
+          <div class="qp-side qp-side-left">${esc(t.paperTime)}: ${esc(paperMeta.time_allowed||'—')}<br>${esc(t.paperDate)}: ${esc(formatPaperDate(paperMeta.exam_date))}</div>
+          <div class="qp-center">
+            ${paperMeta.logo ? `<img src="${paperMeta.logo}" class="qp-logo">` : ''}
+            <div class="qp-school">${esc(paperMeta.school_name || 'School')}</div>
+            <div class="qp-examname">${esc(paperMeta.exam_name || (LANG==='ur'?'سوالیہ پرچہ':'Question Paper'))}</div>
+            <div class="qp-subject">${esc(paperMeta.subject||'')}</div>
+            <div class="qp-classline">${esc(t.paperClass)}: ${esc(paperMeta.class_name||'—')}</div>
+          </div>
+          <div class="qp-side qp-side-right">${esc(t.paperTotalMarks)}: ${esc(paperMeta.total_marks||'—')}</div>
+        </div>
         <div class="qp-name-line">${esc(t.studentNameLbl||'Name')}: ______________________&nbsp;&nbsp;&nbsp; ${LANG==='ur'?'رول نمبر':'Roll No.'}: __________</div>
       </div>
       ${paperMode==='kg' ? kgBodyHtml() : `${sectionAHtml}
