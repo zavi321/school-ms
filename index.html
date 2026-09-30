@@ -3124,12 +3124,14 @@ function renderTab() {
   try { const m0 = document.getElementById('main'); keep = paperMode === 'kg' && TAB === 'papers' && !!(m0 && m0.querySelector('.paper-q-row, #kgLib, .card')); } catch (e) {}
   const lib = document.getElementById('kgLib'), ls = lib ? lib.scrollTop : 0, ws = window.scrollY || 0;
   const mEl = document.getElementById('main'), ms = mEl ? mEl.scrollTop : 0, aEl = document.getElementById('app'), as = aEl ? aEl.scrollTop : 0;
+  if (keep && mEl) mEl.style.minHeight = mEl.offsetHeight + 'px';
   _renderTabInner();
   if (!keep) return;
+  try { pqScheduleSave(); } catch (e) {}
   const fix = () => { const l = document.getElementById('kgLib'); if (l && lib) l.scrollTop = ls;
     const m = document.getElementById('main'); if (m) m.scrollTop = ms; const a = document.getElementById('app'); if (a) a.scrollTop = as;
     window.scrollTo({ top: ws, left: 0, behavior: 'instant' }); };
-  fix(); requestAnimationFrame(fix);
+  fix(); requestAnimationFrame(fix); setTimeout(() => { const m = document.getElementById('main'); if (m) m.style.minHeight = ''; }, 250);
 }
 function _renderTabInner() {
   const main = document.getElementById('main');
@@ -8615,12 +8617,13 @@ function pqSnapshot(withImages) {
   if (!withImages || (typeof dmcLogo !== 'undefined' && meta.logo === dmcLogo)) meta.logo = null; // default logo is refilled automatically
   return { v:1, t:Date.now(), paperMeta:meta, paperMcqMarksEach, paperMcqs, paperBlanks, paperTF,
            paperMatchA, paperMatchB, paperShort, paperLong, paperInstructions, paperSectionTitles, paperBreaks,
-           paperEndImage: withImages ? paperEndImage : null, paperMode, kgBlocks: withImages ? kgBlocks : [], paperTables };
+           paperEndImage: withImages ? paperEndImage : null, paperMode, kgBlocks: [], paperTables };
 }
 function savePaperDraft() {
   if (!pqReady) return;
   try { localStorage.setItem(PQ_DRAFT_KEY, JSON.stringify(pqSnapshot(true))); }
   catch (e) { try { localStorage.setItem(PQ_DRAFT_KEY, JSON.stringify(pqSnapshot(false))); } catch (e2) {} } // storage full: keep the text at least
+  try { kgIdbSave(); } catch (e3) {}
 }
 function pqScheduleSave() { clearTimeout(pqSaveTimer); pqSaveTimer = setTimeout(savePaperDraft, 300); }
 function pqFlush() { clearTimeout(pqSaveTimer); savePaperDraft(); }
@@ -8937,18 +8940,18 @@ function kpic(it, cls, fit) {
   return `<span class="${cls} kg-emptybox"></span>`;
 }
 function kgSize(i, j, k, v) { const it = kgBlocks[i].items[j], d = kgDef(kgBlocks[i].type); it.w = it.w || d; it.h = it.h || d; it[k] = +v; try { pqScheduleSave(); } catch (e) {} }
-function kgPreset(i, j, f) { const it = kgBlocks[i].items[j], d = kgDef(kgBlocks[i].type); it.w = Math.round(d * f); it.h = Math.round(d * f); renderTab(); }
+function kgPreset(i, j, f) { const it = kgBlocks[i].items[j], d = kgDef(kgBlocks[i].type); it.w = Math.round(d * f); it.h = Math.round(d * f); kgRefreshBlock(i); }
 
 const kgSk = (s, k) => s === 'R' ? k + '2' : k;
 function kgZoom(i, j, s, f) { const it = kgBlocks[i].items[j], d = kgDef(kgBlocks[i].type), a = kgSk(s,'w'), b = kgSk(s,'h');
   it[a] = Math.max(20, Math.min(400, Math.round((it[a] || d) * f))); it[b] = Math.max(20, Math.min(400, Math.round((it[b] || d) * f)));
-  try { pqScheduleSave(); } catch (e) {} renderTab(); }
+  kgRefreshBlock(i); }
 function kgSideSize(i, j, s, k, v) { const it = kgBlocks[i].items[j], a = kgSk(s,'w'), b = kgSk(s,'h'); it[a] = it[a] || 64; it[b] = it[b] || 64; it[kgSk(s,k)] = +v; try { pqScheduleSave(); } catch (e) {} }
 function kgSideClear(i, j, s) { const it = kgBlocks[i].items[j]; it[kgSk(s,'img')] = null; it[kgSk(s,'em')] = null; try { pqScheduleSave(); } catch (e) {} renderTab(); }
 let kgCmpT = null;
 function kgCmpPick(cat, idx) { const t = kgCmpT; if (!t) return; const [code] = kgEntry(KG_LIB[cat][1][idx]), it = kgBlocks[t.i].items[t.j];
   it[kgSk(t.s,'em')] = code; it[kgSk(t.s,'img')] = null; if (!it[kgSk(t.s,'w')]) it[kgSk(t.s,'w')] = it[kgSk(t.s,'h')] = 64;
-  kgCmpT = t.s === 'L' ? { i: t.i, j: t.j, s: 'R' } : null; try { pqScheduleSave(); } catch (e) {} renderTab(); }
+  kgCmpT = t.s === 'L' ? { i: t.i, j: t.j, s: 'R' } : null; kgRefreshBlock(t.i); }
 function kgPairEditor(i, j, it) {
   const side = (s, lab) => { const sx = s === 'R' ? '2' : '', cw = it['w' + sx] || 64, ch = it['h' + sx] || 64, has = it['img' + sx] || it['em' + sx], on = kgCmpT && kgCmpT.i === i && kgCmpT.j === j && kgCmpT.s === s;
     return `<div style="flex:1;min-width:0;border:1px solid var(--line,#ddd);border-radius:10px;padding:6px;">
@@ -8966,6 +8969,55 @@ function kgPairEditor(i, j, it) {
   return `<div class="paper-q-row" style="margin-bottom:10px;padding-bottom:10px;border-bottom:1px dashed var(--line,#ddd);">
     <div style="display:flex;gap:8px;align-items:flex-start;">${side('L', '⬅ Left picture')}${side('R', 'Right picture ➡')}<button class="btn-ghost" style="padding:6px 10px;" onclick="kgDelItem(${i},${j})">✕</button></div>
     ${kgCmpT && kgCmpT.i === i && kgCmpT.j === j ? `<div style="font-size:12px;margin-top:8px;">Picking for: <b>${kgCmpT.s === 'L' ? 'Left' : 'Right'}</b> <button class="btn-ghost" style="padding:2px 8px;" onclick="kgCmpT=null;renderTab()">Close</button></div>` + kgLibHtml(i, 'cmp') : ''}</div>`; }
+
+// ---- Nursery/KG: phone storage (IndexedDB), New Paper, Previous Paper ----
+const KG_DB = 'kgPapers', KG_ST = 'kv';
+function kgDb() { return new Promise((res, rej) => { try { const r = indexedDB.open(KG_DB, 1); r.onupgradeneeded = () => r.result.createObjectStore(KG_ST); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); } catch (e) { rej(e); } }); }
+function kgKvSet(k, v) { return kgDb().then(db => new Promise((res, rej) => { const tx = db.transaction(KG_ST, 'readwrite'); tx.objectStore(KG_ST).put(v, k); tx.oncomplete = () => res(true); tx.onerror = () => rej(tx.error); }))
+  .catch(() => { try { localStorage.setItem('kgkv_' + k, JSON.stringify(v)); return true; } catch (e) { return false; } }); }
+function kgKvGet(k) { return kgDb().then(db => new Promise((res, rej) => { const q = db.transaction(KG_ST).objectStore(KG_ST).get(k); q.onsuccess = () => res(q.result === undefined ? null : q.result); q.onerror = () => rej(q.error); }))
+  .catch(() => { try { const r = localStorage.getItem('kgkv_' + k); return r ? JSON.parse(r) : null; } catch (e) { return null; } }); }
+function kgKvDel(k) { return kgDb().then(db => new Promise((res) => { const tx = db.transaction(KG_ST, 'readwrite'); tx.objectStore(KG_ST).delete(k); tx.oncomplete = () => res(true); tx.onerror = () => res(false); }))
+  .catch(() => { try { localStorage.removeItem('kgkv_' + k); } catch (e) {} return false; }); }
+let kgReady = false, kgHasBackup = false;
+const kgSnap = () => ({ t: Date.now(), paperMeta: Object.assign({}, paperMeta), kgBlocks: kgBlocks });
+function kgIdbSave() { if (!kgReady || paperMode !== 'kg') return; return kgKvSet('draft', kgSnap()); }
+Promise.all([kgKvGet('draft'), kgKvGet('backup')]).then(([d, b]) => {
+  if (d && Array.isArray(d.kgBlocks) && d.kgBlocks.length) kgBlocks = d.kgBlocks;
+  kgHasBackup = !!b; kgReady = true;
+  try { if (TAB === 'papers' && paperMode === 'kg') renderTab(); } catch (e) {} });
+window.addEventListener('pagehide', () => { try { pqFlush(); } catch (e) {} });
+const kgItemHas = x => !!((x.txt || '').trim() || (x.txt2 || '').trim() || x.img || x.img2 || x.em || x.em2 || (x.qp || []).length || (x.op || []).some(a => a && a.length) || (x.o || []).some(Boolean));
+function kgHasContent() { return kgBlocks.some(b => (b.title || '').trim() || b.items.some(kgItemHas)) || !!(paperMeta.exam_name || paperMeta.class_name || paperMeta.subject); }
+function kgStarter() { return [
+  { type:'trace', title:'Trace the letters', items:[{txt:'A B C D E F'}] },
+  { type:'missing', title:'Fill in the missing letters', items:[{txt:'A _ C'},{txt:'_ E F'}] },
+  { type:'picname', title:'Write the name of the picture', items:[{img:null,txt:''},{img:null,txt:''},{img:null,txt:''}] },
+  { type:'match', title:'Match the pictures with names', items:[{img:null,txt:''},{img:null,txt:''},{img:null,txt:''}] } ]; }
+async function kgNewPaper() {
+  const ur = LANG === 'ur';
+  if (kgHasContent()) {
+    if (!confirm(ur ? 'سب کچھ صاف کر کے نیا پرچہ شروع کریں؟ موجودہ پرچہ محفوظ رہے گا، آپ اسے واپس لا سکتے ہیں۔' : 'Clear everything and start a new paper? The current paper is kept, so you can restore it.')) return;
+    await kgKvSet('backup', kgSnap()); kgHasBackup = true;
+  }
+  kgBlocks = kgStarter(); kgLibOpen = -1; kgLibT = null; kgCmpT = null;
+  paperMeta = { school_name: paperMeta.school_name, logo: paperMeta.logo, exam_name: '', class_name: '', subject: '', total_marks: '', time_allowed: '', exam_date: '' };
+  pqFlush(); renderTab(); }
+async function kgRestorePrevious() {
+  const ur = LANG === 'ur', b = await kgKvGet('backup'); if (!b || !Array.isArray(b.kgBlocks)) return;
+  if (kgHasContent() && !confirm(ur ? 'پچھلا پرچہ واپس لائیں؟ موجودہ پرچہ اس کی جگہ محفوظ ہو جائے گا۔' : 'Restore the previous paper? The current paper will be kept in its place.')) return;
+  const cur = kgHasContent() ? kgSnap() : null;
+  kgBlocks = b.kgBlocks; if (b.paperMeta) paperMeta = Object.assign({}, paperMeta, b.paperMeta);
+  kgLibOpen = -1; kgLibT = null; kgCmpT = null;
+  if (cur) { await kgKvSet('backup', cur); kgHasBackup = true; } else { await kgKvDel('backup'); kgHasBackup = false; }
+  pqFlush(); renderTab(); }
+// re-draw only one question block (keeps the page and library exactly where they are)
+function kgRefreshBlock(i) { const el = document.getElementById('kgb-' + i); if (!el || !kgBlocks[i]) { renderTab(); return; }
+  const lib = document.getElementById('kgLib'), st = lib ? lib.scrollTop : 0, ws = window.scrollY || 0;
+  el.innerHTML = kgBlockHtml(kgBlocks[i], i);
+  const l2 = document.getElementById('kgLib'); if (l2) l2.scrollTop = st;
+  window.scrollTo({ top: ws, left: 0, behavior: 'instant' });
+  try { pqScheduleSave(); } catch (e) {} }
 const KG_SETS = { cap:'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split(''), low:'abcdefghijklmnopqrstuvwxyz'.split(''),
   ur:'ا ب پ ت ٹ ث ج چ ح خ د ڈ ذ ر ڑ ز ژ س ش ص ض ط ظ ع غ ف ق ک گ ل م ن و ہ ھ ء ی ے'.split(' '),
   num:Array.from({length:20}, (_, k) => '' + (k + 1)), urnum:'۱ ۲ ۳ ۴ ۵ ۶ ۷ ۸ ۹ ۱۰ ۱۱ ۱۲ ۱۳ ۱۴ ۱۵ ۱۶ ۱۷ ۱۸ ۱۹ ۲۰'.split(' ') };
@@ -8983,8 +9035,7 @@ function kgSlot(i, j, s) { const it = kgBlocks[i].items[j];
 function kgMcqPick(cat, idx) { const t = kgLibT; if (!t) return; const [code] = kgEntry(KG_LIB[cat][1][idx]), b = t.s === 'q' ? 64 : 48;
   kgSlot(t.i, t.j, t.s).push({ em: code, w: b, h: b });
   const pn = document.getElementById('kgLib'), st = pn ? pn.scrollTop : 0;
-  try { pqScheduleSave(); } catch (e) {} renderTab();
-  const p2 = document.getElementById('kgLib'); if (p2) p2.scrollTop = st; }
+  try { pqScheduleSave(); } catch (e) {} kgRefreshBlock(t.i); }
 function kgPicSz(i, j, s, k, f, base) { const pp = kgSlot(i, j, s)[k]; pp.w = pp.h = Math.round(base * f); try { pqScheduleSave(); } catch (e) {} }
 function kgPicDel(i, j, s, k) { kgSlot(i, j, s).splice(k, 1); renderTab(); }
 function kgSlotImg(i, j, s, files) { const b = s === 'q' ? 64 : 48;
@@ -9010,14 +9061,12 @@ function kgLibPick(i, cat, idx) {
   if (!it) { it = { img: null, txt: '' }; b.items.push(it); }
   it.em = code; if (b.type === 'match') it.txt = name;
   try { pqScheduleSave(); } catch (e) {}
-  renderTab();
-  const p2 = document.getElementById('kgLib'); if (p2) p2.scrollTop = st;
+  kgRefreshBlock(i);
 }
 function kgLibHtml(i, t) {
   return `<div id="kgLib" style="border:1px solid var(--line,#ddd);border-radius:12px;padding:8px;margin-top:8px;max-height:340px;overflow:auto;">${Object.keys(KG_LIB).map(c => `<div style="font-size:12px;font-weight:700;margin:8px 0 4px;">${KG_LIB[c][0]}</div><div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;">${KG_LIB[c][1].map((str, idx) => { const [code, name] = kgEntry(str); return `<button class="btn-ghost" style="padding:6px 2px;display:flex;flex-direction:column;align-items:center;gap:2px;" onclick="${t === 'cmp' ? `kgCmpPick('${c}',${idx})` : t ? `kgMcqPick('${c}',${idx})` : `kgLibPick(${i},'${c}',${idx})`}"><span style="display:block;width:38px;height:38px;">${kpic({ em: code, w: 38, h: 38 }, '')}</span><span style="font-size:9px;line-height:1.1;">${name}</span></button>`; }).join('')}</div>`).join('')}</div>`;
 }
-function tplKgBuilder() {
-  const blocks = kgBlocks.map((b,i) => {
+function kgBlockHtml(b,i) {
     const txtOnly = b.type==='trace' || b.type==='missing';
     const ph = { trace:'e.g. A B C D E F', missing:'e.g. A _ C', picname:'answer (optional)', match:'name (e.g. Apple)', count:'number (e.g. 3)', colour:'', compare:'label (e.g. Big) — optional', mcq:'Question' }[b.type];
     let body;
@@ -9045,9 +9094,12 @@ function tplKgBuilder() {
         <button class="btn-ghost" style="padding:4px 8px;" onclick="kgDelBlock(${i})">✕</button></div>
       <input dir="auto" style="width:100%;font-weight:600;margin-bottom:8px;" placeholder="Question heading" value="${esc(b.title)}" oninput="kgBlocks[${i}].title=this.value">
       ${body}</div>`;
-  }).join('');
+}
+function tplKgBuilder() {
+  const blocks = kgBlocks.map((b,i) => `<div id="kgb-${i}">${kgBlockHtml(b,i)}</div>`).join('');
   return blocks + `<div class="card" style="margin-bottom:14px;"><select style="width:100%;padding:8px;" onchange="kgAddBlock(this)"><option value="">＋ Add a new question type…</option>${Object.keys(KG_TYPES).map(k=>`<option value="${k}">${esc(KG_TYPES[k])}</option>`).join('')}</select></div>
-    <button class="btn-primary" style="width:100%;" onclick="printQuestionPaper()">🖨️ ${esc(t.print)}</button>`;
+    <button class="btn-primary" style="width:100%;" onclick="printQuestionPaper()">🖨️ ${esc(t.print)}</button>
+    <div class="flexgap" style="margin-top:10px;"><button class="btn-ghost" style="flex:1;" onclick="kgNewPaper()">🆕 ${LANG==='ur' ? 'نیا پرچہ' : 'New Paper'}</button>${kgHasBackup ? `<button class="btn-ghost" style="flex:1;" onclick="kgRestorePrevious()">↩️ ${LANG==='ur' ? 'پچھلا پرچہ' : 'Previous Paper'}</button>` : ''}</div>`;
 }
 
 // ---------- Math symbols palette ----------
