@@ -706,6 +706,14 @@ body:not(.ur) .qpaper-print .pq-instruction::before{counter-increment:pqq;conten
 #symBar .symchip.wide{height:auto;min-height:44px;padding:2px 12px;font-size:17px;line-height:2.1;}
 #symBar .symchip.mk{min-width:56px;height:52px;font-size:34px;line-height:1.6;padding:0 10px;}
 </style>
+<style>
+.pq-col{display:inline-block;vertical-align:top;margin:4px 18px 4px 6px;font-family:'Courier New','Liberation Mono',monospace;font-size:19px;line-height:1.35;min-width:74px;color:#111;}
+.pq-col .r{display:block;text-align:right;position:relative;padding-left:22px;white-space:pre;}
+.pq-col .r i{position:absolute;left:0;font-style:normal;}
+.pq-col .ln{display:block;border-top:2px solid #111;margin-top:2px;}
+.pq-col .ans{min-height:1.9em;}
+#symBar .symtab{padding:8px 3px;font-size:13px;}
+</style>
 </head>
 <body>
 
@@ -8860,6 +8868,7 @@ const SYM_TABS = [
     ['Greek (capital)','Γ Δ Θ Λ Ξ Π Σ Φ Ψ Ω'],
     ['Arrows','→ ← ↔ ⇒ ⇔ ↑ ↓']
   ]},
+  { id:'sum', label:'▦ Sum', custom:true, groups:[] },
   { id:'aerab', label:'اعراب', ur:true, groups:[
     ['زبر، زیر، پیش', [TT+'\u064E',TT+'\u0650',TT+'\u064F'], 'mark'],
     ['تشدید، جزم', [TT+'\u0651',TT+'\u0652'], 'mark'],
@@ -8907,11 +8916,11 @@ function symTabSet(id) {
 }
 function symBarHtml() {
   const chip = (c, kind, ur) => `<button type="button" class="symchip${kind==='phrase'?' wide':''}${kind==='mark'?' mk':''}${ur?' ur':''}" data-c="${c}" onclick="symInsert(this.dataset.c,${kind==='phrase'})">${c}</button>`;
-  const panes = SYM_TABS.map(tb => `<div data-pane="${tb.id}" style="display:${tb.id===symTab?'block':'none'};">${tb.groups.map(g => {
+  const panes = SYM_TABS.map(tb => `<div data-pane="${tb.id}" style="display:${tb.id===symTab?'block':'none'};">${tb.custom ? symSumHtml() : ''}${tb.groups.map(g => {
     const items = Array.isArray(g[1]) ? g[1] : g[1].split(' ');
     return `<div class="symgt${tb.ur?' ur':''}">${g[0]}</div><div class="symrow${tb.ur?' rtl':''}">${items.map(c => chip(c, g[2], tb.ur)).join('')}</div>`;
   }).join('')}</div>`).join('');
-  return `<div style="position:fixed;right:12px;bottom:84px;z-index:50;max-width:calc(100vw - 24px);" onmousedown="event.preventDefault()">
+  return `<div style="position:fixed;right:12px;bottom:84px;z-index:50;max-width:calc(100vw - 24px);" onmousedown="if(!event.target.closest('input,select'))event.preventDefault()">
     <div id="symBox" style="display:none;margin-bottom:10px;width:318px;max-width:100%;background:var(--card,#fff);border:1px solid var(--line,#d9d2c0);border-radius:20px;box-shadow:0 14px 40px rgba(20,30,50,.28);overflow:hidden;">
       <div class="symtabs">${SYM_TABS.map(tb => `<button type="button" data-tab="${tb.id}" class="symtab${tb.id===symTab?' on':''}${tb.ur?' ur':''}" onclick="symTabSet('${tb.id}')">${tb.label}</button>`).join('')}<button type="button" class="symx" onclick="symToggle()">✕</button></div>
       <div id="symHint">Pehle question box par tap karein, phir chunein</div>
@@ -8993,8 +9002,47 @@ function pqTablesHtml(pos) {
     const nums = tb.nums !== false, hasHead = tb.cols.some(c => (c || '').trim());
     return `<div class="pq-section">${(tb.title||'').trim() ? `<div class="pq-instruction" dir="auto">${esc(tb.title)}</div>` : ''}
       <table class="pq-table">${hasHead ? `<thead><tr>${nums ? '<th class="pq-no">#</th>' : ''}${tb.cols.map(c => `<th dir="auto">${esc(c||'')}</th>`).join('')}</tr></thead>` : ''}
-      <tbody>${rows.map((r,i) => `<tr>${nums ? `<td class="pq-no">${i+1}</td>` : ''}${r.map(c => `<td dir="auto">${esc(c||'')}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
+      <tbody>${rows.map((r,i) => `<tr>${nums ? `<td class="pq-no">${i+1}</td>` : ''}${r.map(c => `<td dir="auto">${pqEsc(c||'')}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
   }).join('');
+}
+
+
+// ---------- Column sums: {{345+128}} prints as a vertical addition/subtraction/multiplication ----------
+function pqColSumHtml(expr) {
+  let ans = '', e = String(expr);
+  const eq = e.indexOf('=');
+  if (eq >= 0) { ans = e.slice(eq + 1).trim(); e = e.slice(0, eq); }
+  const parts = e.split(/([+\u2212\u00d7*]|-)/);
+  const nums = [], ops = [];
+  parts.forEach((x, i) => { if (i % 2 === 0) { if (x.trim()) nums.push(x.trim()); } else ops.push(x); });
+  if (nums.length < 2 || !ops.length) return esc('{{' + expr + '}}');
+  const op = ops[0] === '-' ? '\u2212' : (ops[0] === '*' ? '\u00d7' : ops[0]);
+  const clean = v => String(v).replace(/[<>&]/g, '');
+  return `<span class="pq-col" dir="ltr">${nums.map((n, i) => `<span class="r">${i === nums.length - 1 ? `<i>${op}</i>` : ''}${clean(n)}</span>`).join('')}<span class="ln"></span><span class="r ans">${ans ? clean(ans) : '&nbsp;'}</span></span>`;
+}
+function symSumVals() {
+  const g = id => ((document.getElementById(id) || {}).value || '').trim();
+  return { op: g('sumOp') || '+', nums: [g('sumA'), g('sumB'), g('sumC'), g('sumD')].filter(Boolean) };
+}
+function symSumPrev() {
+  const { op, nums } = symSumVals(), el = document.getElementById('sumPrev');
+  if (el) el.innerHTML = nums.length >= 2 ? pqColSumHtml(nums.join(op)) : '<span style="opacity:.5;font-size:12px;">Numbers likhein…</span>';
+}
+function symSumInsert() {
+  const { op, nums } = symSumVals();
+  if (nums.length < 2) return;
+  symInsert('{{' + nums.join(op) + '}}', true);
+}
+function symSumHtml() {
+  const inp = (id, ph) => `<input id="${id}" inputmode="decimal" placeholder="${ph}" oninput="symSumPrev()" style="width:100%;min-width:0;text-align:right;font-family:'Courier New',monospace;font-size:16px;padding:8px;">`;
+  return `<div class="symgt">Column sum (upar neeche jama / minus / zarb)</div>
+    <div style="display:grid;grid-template-columns:1fr 64px;gap:6px;margin-bottom:6px;">
+      <div style="display:grid;gap:6px;">${inp('sumA','1st number, e.g. 345')}${inp('sumB','2nd number, e.g. 128')}${inp('sumC','3rd (optional)')}${inp('sumD','4th (optional)')}</div>
+      <select id="sumOp" onchange="symSumPrev()" style="font-size:24px;text-align:center;border-radius:10px;height:44px;"><option value="+">+</option><option value="\u2212">\u2212</option><option value="\u00d7">\u00d7</option></select>
+    </div>
+    <div id="sumPrev" style="background:#fff;color:#111;border:1px dashed var(--line,#ccc);border-radius:12px;padding:8px 12px;min-height:90px;margin-bottom:8px;"><span style="opacity:.5;font-size:12px;">Numbers likhein…</span></div>
+    <button type="button" class="btn-primary" style="width:100%;" onclick="symSumInsert()">＋ Question me lagayein</button>
+    <div style="font-size:11px;opacity:.65;margin-top:8px;line-height:1.5;">Ye MCQ, True/False, Blanks, Short aur Long sab me chalta hai. Aap seedha <b>{{345+128}}</b> bhi likh sakte hain. Jawab dikhana ho to <b>{{345+128=473}}</b>. Ek line me kai sums likhne par wo saath saath aate hain.</div>`;
 }
 
 function tplPapersStd() {
@@ -9175,7 +9223,9 @@ const pqEsc = s => esc(s)
   .replace(/[⁰¹²³⁴⁵⁶⁷⁸⁹⁻⁺]+/g, m => '<sup>' + Array.from(m).map(c => PQ_SUP[c]).join('') + '</sup>')
   .replace(/\^([-\u2212+]?\d+)/g, (m, d) => '<sup>' + d.replace('-', '\u2212') + '</sup>')
   // [[word]] -> underlined word (for "underline the word" style questions)
-  .replace(/\[\[(.+?)\]\]/g, '<u>$1</u>');
+  .replace(/\[\[(.+?)\]\]/g, '<u>$1</u>')
+  // {{345+128}} -> vertical column sum (works in every question type)
+  .replace(/\{\{([^{}]{1,80})\}\}/g, (m, e) => pqColSumHtml(e));
 
 function printQuestionPaper() {
   const validMcqs = paperMcqs.filter(m => m.q.trim());
