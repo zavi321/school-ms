@@ -687,6 +687,19 @@ html, body{overscroll-behavior:none;}
 .qpaper-print .kg-mopt{display:inline-flex;align-items:center;gap:6px;}
 .qpaper-print .kg-mq{font-size:16px;font-weight:700;}
 .qpaper-print .kg-mo{display:flex;flex-wrap:wrap;gap:6px 28px;font-size:15px;margin-top:4px;}
+/* Nursery/KG: big, extra-bold writing */
+.qpaper-print .kg-sec .pq-section-title{font-size:30px !important;font-weight:900 !important;line-height:1.3;-webkit-text-stroke:.7px #000;margin-bottom:10px;}
+.qpaper-print .kg-trace{font-size:52px;font-weight:900;-webkit-text-stroke:1.8px #000;margin:10px 0;}
+.qpaper-print .kg-missing{font-size:44px;font-weight:900;-webkit-text-stroke:.8px #000;margin:10px 0;}
+.qpaper-print .kg-gap{border-width:3px;}
+.qpaper-print .kg-line{border-bottom-width:3px;height:30px;}
+.qpaper-print .kg-eq{font-size:34px;font-weight:900;-webkit-text-stroke:.8px #000;}
+.qpaper-print .kg-mname{font-size:36px;font-weight:900;-webkit-text-stroke:.8px #000;}
+.qpaper-print .kg-clab{font-size:26px;font-weight:900;-webkit-text-stroke:.6px #000;}
+.qpaper-print .kg-cbox{width:30px;height:30px;border-width:3px;}
+.qpaper-print .kg-mq{font-size:28px;font-weight:900;-webkit-text-stroke:.7px #000;}
+.qpaper-print .kg-mo{font-size:24px;font-weight:800;-webkit-text-stroke:.5px #000;gap:8px 34px;}
+.qpaper-print .kg-dot{width:16px;height:16px;}
 .qpaper-print .qp-head, .qpaper-print .qp-head *{font-family:'PaperUrdu','Noto Nastaliq Urdu',Inter,serif;}
 body:not(.ur) .qpaper-print .pq-instruction{font-style:normal;font-weight:700;font-size:15px;margin:6px 0 4px;}
 body:not(.ur) .qpaper-print .pq-instruction::before{counter-increment:pqq;content:"Q" counter(pqq) ". ";}
@@ -9018,6 +9031,80 @@ function kgRefreshBlock(i) { const el = document.getElementById('kgb-' + i); if 
   const l2 = document.getElementById('kgLib'); if (l2) l2.scrollTop = st;
   window.scrollTo({ top: ws, left: 0, behavior: 'instant' });
   try { pqScheduleSave(); } catch (e) {} }
+
+// ---- Import a paper from a PDF / photo (both paper modes) ----
+const PQ_PDFJS = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js', PQ_PDFJS_W = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js', PQ_TESS = 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js';
+const pqLibP = {};
+function pqLoadScript(src) { return pqLibP[src] || (pqLibP[src] = new Promise((res, rej) => { const e = document.createElement('script'); e.src = src; e.onload = res; e.onerror = () => { delete pqLibP[src]; rej(new Error('Internet needed to load PDF reader')); }; document.head.appendChild(e); })); }
+function pqImpMsg(t, ms) { let d = document.getElementById('pqImpMsg'); if (!d) { d = document.createElement('div'); d.id = 'pqImpMsg'; d.style.cssText = 'position:fixed;left:50%;bottom:90px;transform:translateX(-50%);background:#222;color:#fff;padding:10px 16px;border-radius:12px;z-index:99999;font-size:14px;max-width:90%;text-align:center;'; document.body.appendChild(d); }
+  d.textContent = t; d.style.display = ''; clearTimeout(d._t); if (ms) d._t = setTimeout(() => { d.style.display = 'none'; }, ms); }
+const pqNorm = l => String(l || '').replace(/[٠-٩]/g, c => c.charCodeAt(0) - 0x0660).replace(/[۰-۹]/g, c => c.charCodeAt(0) - 0x06F0).replace(/\s+/g, ' ').trim();
+function pqLines(items) { const rows = []; items.forEach(it => { if (!it.str) return; const y = it.transform[5], x = it.transform[4]; let r = rows.find(r => Math.abs(r.y - y) < 3); if (!r) rows.push(r = { y, it: [] }); r.it.push({ x, s: it.str }); });
+  return rows.sort((a, b) => b.y - a.y).map(r => { const rtl = /[\u0600-\u06FF]/.test(r.it.map(i => i.s).join('')); r.it.sort((a, b) => rtl ? b.x - a.x : a.x - b.x); return r.it.map(i => i.s).join(' '); }); }
+async function pqOcr(canvas, n, total) { await pqLoadScript(PQ_TESS);
+  const r = await Tesseract.recognize(canvas, LANG === 'ur' ? 'eng+urd' : 'eng', { logger: m => { if (m.status === 'recognizing text') pqImpMsg('🔎 Reading page ' + n + '/' + total + ' … ' + Math.round(m.progress * 100) + '%'); } });
+  return r.data.text.split('\n'); }
+async function pqImgCanvas(file) { const url = URL.createObjectURL(file); const im = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = () => rej(new Error('Cannot open image')); i.src = url; });
+  const c = document.createElement('canvas'), k = Math.min(1, 2200 / Math.max(im.width, im.height)); c.width = im.width * k; c.height = im.height * k; c.getContext('2d').drawImage(im, 0, 0, c.width, c.height); URL.revokeObjectURL(url); return c; }
+function pqMeta(lines) { const m = {}, h = lines.slice(0, 14).join('\n'), cl = v => v.replace(/\s*(subject|total|time|date|class|marks?)\b.*$/i, '').trim(), g = re => { const x = h.match(re); return x ? x[1].trim() : ''; };
+  const tm = g(/total\s*marks?\s*[:\-]?\s*(\d+)/i), tl = cl(g(/time(?:\s*allowed)?\s*[:\-]?\s*([^\n]{1,30})/i)), c = cl(g(/class\s*[:\-]?\s*([^\n]{1,20})/i)), sb = cl(g(/subject\s*[:\-]?\s*([^\n]{1,30})/i)), ex = lines.slice(0, 6).find(l => /exam|test|term|paper/i.test(l));
+  if (tm) m.total_marks = tm; if (tl) m.time_allowed = tl; if (c) m.class_name = c; if (sb) m.subject = sb; if (ex) m.exam_name = ex; return m; }
+function pqParseStd(lines) {
+  const o = { mcq: [], blank: [], tf: [], short: [], long: [], meta: pqMeta(lines) };
+  const secOf = l => /true\s*[\/&]?\s*(or)?\s*false/i.test(l) ? 'tf' : /multiple\s*choice|\bmcqs?\b|correct (answer|option)/i.test(l) ? 'mcq' : /blanks?\b/i.test(l) ? 'blank' : /short/i.test(l) ? 'short' : /long|detail/i.test(l) ? 'long' : null;
+  const qRe = /^\s*(?:Q\.?\s*)?(\d{1,3})\s*[.):\-]\s*(.+)/i, mkRe = /\(\s*(\d+)\s*(?:marks?)?\s*\)\s*$/i, tfRe = /\(\s*true\s*\/?\s*false\s*\)/i;
+  let sec = 'mcq', cur = null;
+  const flush = () => { if (!cur) return; const raw = cur.t.replace(/\s+/g, ' ').trim(); cur = null; if (!raw) return;
+    const parts = raw.split(/(?:^|\s)\(?[a-dA-D][.)]\s+/), mk = raw.match(mkRe), t = raw.replace(mkRe, '').trim();
+    if (parts.length >= 3) { const op = parts.slice(1, 5).map(x => x.trim()); while (op.length < 4) op.push(''); o.mcq.push({ q: parts[0].trim(), o: op }); }
+    else if (sec === 'tf' || tfRe.test(raw)) o.tf.push({ q: t.replace(tfRe, '').trim() });
+    else if (sec === 'blank' || /_{2,}|…|\.{4,}/.test(raw)) o.blank.push({ q: t });
+    else (sec === 'long' ? o.long : o.short).push({ q: t, m: mk ? mk[1] : '' }); };
+  lines.forEach(l => { const sc = secOf(l), q = l.match(qRe);
+    if (sc && l.length < 110 && !/_{3,}|\?\s*$/.test(l) && (/^\s*(section|part|q\.?\s*\d)/i.test(l) || !q)) { flush(); sec = sc; return; }
+    if (q) { flush(); cur = { t: q[2] }; } else if (cur) cur.t += ' ' + l; });
+  flush(); return o; }
+function pqParseKg(lines) {
+  const ty = t => /trace/i.test(t) ? 'trace' : /match|join/i.test(t) ? 'match' : /colou?r/i.test(t) ? 'colour' : /count/i.test(t) ? 'count' : /big|small|tall|short|compar|more|less/i.test(t) ? 'compare' : /missing|fill/i.test(t) ? 'missing' : /name|picture/i.test(t) ? 'picname' : /choose|circle|tick|select/i.test(t) ? 'mcq' : 'missing';
+  const hRe = /^\s*(?:Q\.?\s*)?(\d{1,2})\s*[.):\-]\s*(.+)/i, out = []; let cur = null;
+  lines.forEach(l => { const h = l.match(hRe); if (h) { cur = { title: h[2].replace(/\(\s*\d+\s*(?:marks?)?\s*\)\s*$/i, '').trim(), type: ty(h[2]), lines: [] }; out.push(cur); } else if (cur) cur.lines.push(l); });
+  if (!out.length) out.push({ title: 'Imported', type: 'missing', lines: lines.slice() });
+  return out.map(c => { const L = c.lines.filter(x => x.length < 60).slice(0, 12), T = c.type;
+    const items = (T === 'trace' || T === 'missing') ? (L.length ? L.map(x => ({ txt: x })) : [{ txt: '' }])
+      : T === 'compare' ? (L.length ? L : ['']).map(x => ({ pair: true, img: null, img2: null, txt: x, txt2: '' }))
+      : T === 'mcq' ? [{ img: null, txt: '' }, { img: null, txt: '' }]
+      : (L.length ? L : ['', '', '']).map(x => ({ img: null, txt: T === 'count' ? (x.match(/\d+/) || [''])[0] : x }));
+    return { type: T, title: c.title, items }; }); }
+function pqApplyStd(lines) { const o = pqParseStd(lines), arr = (a, d) => a.length ? a : d;
+  paperMcqs = arr(o.mcq.map((x, i) => ({ no: i + 1, q: x.q, options: x.o })), [{ no: 1, q: '', options: ['', '', '', ''] }]);
+  paperBlanks = arr(o.blank.map((x, i) => ({ no: i + 1, q: x.q })), [{ no: 1, q: '' }]);
+  paperTF = arr(o.tf.map((x, i) => ({ no: i + 1, q: x.q })), [{ no: 1, q: '' }]);
+  paperShort = arr(o.short.map((x, i) => ({ no: i + 1, q: x.q, marks: x.m })), [{ no: 1, q: '', marks: '' }]);
+  paperLong = arr(o.long.map((x, i) => ({ no: i + 1, q: x.q, marks: x.m })), [{ no: 1, q: '', marks: '' }]);
+  Object.assign(paperMeta, o.meta); return o.mcq.length + o.blank.length + o.tf.length + o.short.length + o.long.length; }
+function pqApplyKg(lines) { kgBlocks = pqParseKg(lines); kgLibOpen = -1; kgLibT = null; kgCmpT = null; Object.assign(paperMeta, pqMeta(lines)); return kgBlocks.length; }
+async function pqImportFile(file) {
+  if (!file) return;
+  const ur = LANG === 'ur', kg = paperMode === 'kg', has = kg ? kgHasContent() : pqHasContent();
+  if (has && !confirm(ur ? 'موجودہ پرچہ بدل جائے گا (وہ "پچھلا پرچہ" میں محفوظ رہے گا)۔ جاری رکھیں؟' : 'This replaces the current paper (it is kept under Previous Paper). Continue?')) return;
+  try {
+    pqImpMsg('⏳ Opening file…'); let lines = [];
+    if (file.type === 'application/pdf' || /\.pdf$/i.test(file.name)) {
+      await pqLoadScript(PQ_PDFJS); pdfjsLib.GlobalWorkerOptions.workerSrc = PQ_PDFJS_W;
+      const pdf = await pdfjsLib.getDocument({ data: await file.arrayBuffer() }).promise;
+      for (let n = 1; n <= pdf.numPages; n++) { pqImpMsg('📄 Page ' + n + '/' + pdf.numPages);
+        const page = await pdf.getPage(n); let pl = pqLines((await page.getTextContent()).items);
+        if (pl.join('').trim().length < 20) { const vp = page.getViewport({ scale: 2 }), c = document.createElement('canvas'); c.width = vp.width; c.height = vp.height;
+          await page.render({ canvasContext: c.getContext('2d'), viewport: vp }).promise; pl = await pqOcr(c, n, pdf.numPages); }
+        lines = lines.concat(pl); }
+    } else lines = await pqOcr(await pqImgCanvas(file), 1, 1);
+    lines = lines.map(pqNorm).filter(Boolean);
+    if (!lines.length) { pqImpMsg('❌ No text found in the file', 4000); return; }
+    if (has) { if (kg) { await kgKvSet('backup', kgSnap()); kgHasBackup = true; } else pqStoreBackup(); }
+    const n = kg ? pqApplyKg(lines) : pqApplyStd(lines);
+    pqFlush(); renderTab(); pqImpMsg('✅ ' + n + (kg ? ' question blocks' : ' questions') + ' imported — please check and edit', 5000);
+  } catch (e) { pqImpMsg('❌ ' + ((e && e.message) || e), 6000); } }
+const pqImportBtn = () => `<label class="btn-ghost" style="display:block;width:100%;margin-top:10px;text-align:center;cursor:pointer;box-sizing:border-box;">📄 ${LANG==='ur' ? 'PDF / تصویر سے پرچہ لائیں' : 'Import paper from PDF / photo'}<input type="file" accept="application/pdf,image/*" style="display:none;" onchange="pqImportFile(this.files[0]);this.value=''"></label>`;
 const KG_SETS = { cap:'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split(''), low:'abcdefghijklmnopqrstuvwxyz'.split(''),
   ur:'ا ب پ ت ٹ ث ج چ ح خ د ڈ ذ ر ڑ ز ژ س ش ص ض ط ظ ع غ ف ق ک گ ل م ن و ہ ھ ء ی ے'.split(' '),
   num:Array.from({length:20}, (_, k) => '' + (k + 1)), urnum:'۱ ۲ ۳ ۴ ۵ ۶ ۷ ۸ ۹ ۱۰ ۱۱ ۱۲ ۱۳ ۱۴ ۱۵ ۱۶ ۱۷ ۱۸ ۱۹ ۲۰'.split(' ') };
@@ -9099,7 +9186,7 @@ function tplKgBuilder() {
   const blocks = kgBlocks.map((b,i) => `<div id="kgb-${i}">${kgBlockHtml(b,i)}</div>`).join('');
   return blocks + `<div class="card" style="margin-bottom:14px;"><select style="width:100%;padding:8px;" onchange="kgAddBlock(this)"><option value="">＋ Add a new question type…</option>${Object.keys(KG_TYPES).map(k=>`<option value="${k}">${esc(KG_TYPES[k])}</option>`).join('')}</select></div>
     <button class="btn-primary" style="width:100%;" onclick="printQuestionPaper()">🖨️ ${esc(t.print)}</button>
-    <div class="flexgap" style="margin-top:10px;"><button class="btn-ghost" style="flex:1;" onclick="kgNewPaper()">🆕 ${LANG==='ur' ? 'نیا پرچہ' : 'New Paper'}</button>${kgHasBackup ? `<button class="btn-ghost" style="flex:1;" onclick="kgRestorePrevious()">↩️ ${LANG==='ur' ? 'پچھلا پرچہ' : 'Previous Paper'}</button>` : ''}</div>`;
+    ${pqImportBtn()}<div class="flexgap" style="margin-top:10px;"><button class="btn-ghost" style="flex:1;" onclick="kgNewPaper()">🆕 ${LANG==='ur' ? 'نیا پرچہ' : 'New Paper'}</button>${kgHasBackup ? `<button class="btn-ghost" style="flex:1;" onclick="kgRestorePrevious()">↩️ ${LANG==='ur' ? 'پچھلا پرچہ' : 'Previous Paper'}</button>` : ''}</div>`;
 }
 
 // ---------- Math symbols palette ----------
@@ -9211,7 +9298,7 @@ function kgBodyHtml() {
       const m = its.length, right = its.map((x,i) => its[(i+1)%m]);
       body = `<div class="kg-match">${its.map((x,i) => `<div class="kg-mrow"><div>${kimg(x,'kg-pic')}</div><i class="kg-dot"></i><span class="kg-mid"></span><i class="kg-dot"></i><div class="kg-mname">${pqEsc(right[i].txt||'')}</div></div>`).join('')}</div>`;
     }
-    return `<div class="pq-section"><div class="pq-section-title" dir="auto">Q${n+1}. ${pqEsc(b.title)}</div>${body}</div>`;
+    return `<div class="pq-section kg-sec"><div class="pq-section-title" dir="auto">Q${n+1}. ${pqEsc(b.title)}</div>${body}</div>`;
   }).join('');
 }
 
@@ -9498,6 +9585,7 @@ function tplPapersStd() {
     </div>
 
     <button class="btn-primary" style="width:100%;" onclick="printQuestionPaper()">🖨️ ${esc(t.print)}</button>
+    ${pqImportBtn()}
     <div class="flexgap" style="margin-top:10px;">
       <button class="btn-ghost" style="flex:1;" onclick="newPaper()">🆕 ${LANG==='ur' ? 'نیا پرچہ' : 'New Paper'}</button>
       ${pqHasBackup() ? `<button class="btn-ghost" style="flex:1;" onclick="restorePreviousPaper()">↩️ ${LANG==='ur' ? 'پچھلا پرچہ' : 'Previous Paper'}</button>` : ''}
