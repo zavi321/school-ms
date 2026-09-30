@@ -676,6 +676,14 @@ html, body{overscroll-behavior:none;}
 </style>
 <style>
 .qpaper-print{counter-reset:pqq;}
+.qpaper-print .kg-ur{font-family:'PaperUrdu','Noto Nastaliq Urdu',serif;letter-spacing:0;word-spacing:.45em;}
+.qpaper-print .kg-cmp{display:flex;flex-wrap:wrap;align-items:flex-end;gap:14px 34px;margin:8px 0;}
+.qpaper-print .kg-cmpc{display:flex;flex-direction:column;align-items:center;gap:6px;}
+.qpaper-print .kg-cbox{width:22px;height:22px;border:2px solid #444;border-radius:50%;}
+.qpaper-print .kg-clab{font-size:14px;font-weight:700;}
+.qpaper-print .kg-mcq{margin:8px 0;page-break-inside:avoid;}
+.qpaper-print .kg-mq{font-size:16px;font-weight:700;}
+.qpaper-print .kg-mo{display:flex;flex-wrap:wrap;gap:6px 28px;font-size:15px;margin-top:4px;}
 .qpaper-print .qp-head, .qpaper-print .qp-head *{font-family:'PaperUrdu','Noto Nastaliq Urdu',Inter,serif;}
 body:not(.ur) .qpaper-print .pq-instruction{font-style:normal;font-weight:700;font-size:15px;margin:6px 0 4px;}
 body:not(.ur) .qpaper-print .pq-instruction::before{counter-increment:pqq;content:"Q" counter(pqq) ". ";}
@@ -8809,7 +8817,7 @@ function pqSetBreak(section, grp, val) {
 // ---------- Nursery / KG paper mode ----------
 let paperMode = 'std';
 let kgBlocks = [];
-const KG_TYPES = { trace:'✏️ Trace letters / numbers', missing:'🔤 Missing letters', picname:'🖼️ Write picture name', match:'🔗 Match pictures & names', count:'🔢 Count & write', colour:'🎨 Colour the picture' };
+const KG_TYPES = { trace:'✏️ Trace letters / numbers', missing:'🔤 Missing letters', picname:'🖼️ Write picture name', match:'🔗 Match pictures & names', count:'🔢 Count & write', colour:'🎨 Colour the picture', compare:'⚖️ Compare (big/small, long/short…)', mcq:'☑️ MCQs' };
 function setPaperMode(m) {
   paperMode = m;
   if (m === 'kg' && !kgBlocks.length) {
@@ -8838,20 +8846,118 @@ function kgItemImg(i,j,file) {
     kgBlocks[i].items[j].img = c.toDataURL('image/png'); renderTab(); }; im.src = e.target.result; };
   r.readAsDataURL(file);
 }
+// ---------- Nursery / KG picture library + resizable pictures ----------
+const KG_SHAPES = {
+  circle:'<circle cx="50" cy="50" r="44"/>', square:'<rect x="8" y="8" width="84" height="84"/>', rectangle:'<rect x="4" y="22" width="92" height="56"/>',
+  triangle:'<polygon points="50,8 94,90 6,90"/>', oval:'<ellipse cx="50" cy="50" rx="46" ry="30"/>', diamond:'<polygon points="50,4 92,50 50,96 8,50"/>',
+  star:'<polygon points="50,6 61,38 95,38 67,58 78,92 50,71 22,92 33,58 5,38 39,38"/>', pentagon:'<polygon points="50,6 94,38 77,90 23,90 6,38"/>',
+  hexagon:'<polygon points="27,8 73,8 96,50 73,92 27,92 4,50"/>', heart:'<path d="M50 88C10 56 6 30 26 18 40 10 50 22 50 30 50 22 60 10 74 18 94 30 90 56 50 88Z"/>',
+  crescent:'<path d="M70 10A42 42 0 1 0 70 90 32 32 0 1 1 70 10Z"/>', semicircle:'<path d="M6 70A44 44 0 0 1 94 70Z"/>'
+};
+const KG_LIB = {
+  animals:['🐶 Animals',['🐶 Dog','🐱 Cat','🐮 Cow','🐴 Horse','🐑 Sheep','🐐 Goat','🐘 Elephant','🦁 Lion','🐯 Tiger','🐵 Monkey','🐰 Rabbit','🐻 Bear','🦒 Giraffe','🐍 Snake','🐢 Turtle','🐟 Fish','🐦 Bird','🦆 Duck','🐔 Hen','🐫 Camel','🦓 Zebra','🐊 Crocodile','🦋 Butterfly','🐝 Bee']],
+  fruits:['🍎 Fruits',['🍎 Apple','🍌 Banana','🍇 Grapes','🍊 Orange','🍉 Watermelon','🍓 Strawberry','🍍 Pineapple','🥭 Mango','🍐 Pear','🍒 Cherry','🍑 Peach','🍋 Lemon','🥥 Coconut','🍈 Melon','🥝 Kiwi']],
+  veg:['🥕 Vegetables',['🥕 Carrot','🍅 Tomato','🥔 Potato','🧅 Onion','🥒 Cucumber','🌽 Corn','🥦 Broccoli','🍆 Brinjal','🌶️ Chilli','🧄 Garlic','🥬 Cabbage','🫑 Capsicum','🍄 Mushroom']],
+  prof:['👨‍⚕️ Professions',['👨‍⚕️ Doctor','👩‍🏫 Teacher','👮 Police','👨‍🍳 Cook','👨‍🌾 Farmer','👨‍✈️ Pilot','👨‍🚒 Fireman','👷 Builder','👨‍🔧 Mechanic','🧑‍🎨 Artist','👨‍🚀 Astronaut','💂 Soldier','🧑‍⚖️ Judge']],
+  colours:['🎨 Colours',['color:#e53935 Red','color:#1e88e5 Blue','color:#43a047 Green','color:#fdd835 Yellow','color:#fb8c00 Orange','color:#8e24aa Purple','color:#ec407a Pink','color:#6d4c41 Brown','color:#212121 Black','color:#ffffff White','color:#9e9e9e Grey','color:#4fc3f7 Sky blue']],
+  shapes:['◼️ Shapes',Object.keys(KG_SHAPES).map(k => 'shape:' + k + ' ' + k.charAt(0).toUpperCase() + k.slice(1))],
+  dress:['👕 Dresses',['👕 Shirt','👖 Pants','👗 Frock','🧢 Cap','🧦 Socks','👟 Shoes','🧥 Coat','🧣 Scarf','🧤 Gloves','👔 Tie','👒 Hat','🩳 Shorts','👜 Bag','🎒 School bag','🧕 Hijab']],
+  flowers:['🌹 Flowers',['🌹 Rose','🌻 Sunflower','🌷 Tulip','🌼 Daisy','🪷 Lotus','🌺 Hibiscus','💐 Bouquet','🌸 Blossom']],
+  vehicles:['🚗 Vehicles',['🚗 Car','🚌 Bus','🚲 Bicycle','✈️ Aeroplane','🚂 Train','🚢 Ship','🚁 Helicopter','🏍️ Bike','🚜 Tractor','🚑 Ambulance']],
+  school:['✏️ School',['✏️ Pencil','📖 Book','🖊️ Pen','📏 Ruler','✂️ Scissors','🎒 Bag','🖍️ Crayons','🔔 Bell','⚽ Ball','🕌 Masjid']],
+  people:['👨 People',['👨 Man','👩 Woman','👴 Old man','👵 Old woman','👦 Boy','👧 Girl','👶 Baby','🧔 Bearded man','👳 Man (turban)','🧕 Woman (hijab)','👨‍🦱 Curly-hair man','👩‍🦰 Red-hair woman','👨‍🦳 Grey-hair man','👩‍🦳 Grey-hair woman','🧑 Person','👪 Family','👸 Princess','🤴 Prince','🧒 Child','👱 Blond person']],
+  food:['🍦 Food & Drinks',['🍦 Ice cream','🍵 Tea','☕ Coffee','🥛 Milk','🍞 Bread','🥚 Egg','🎂 Cake','🍕 Pizza','🍔 Burger','🍚 Rice','🧀 Cheese','🍯 Honey','🧃 Juice','💧 Water','🍪 Biscuit','🍫 Chocolate','🍬 Candy','🫓 Roti','🍗 Chicken','🍟 Fries','🍩 Doughnut','🥤 Cold drink','🍿 Popcorn','🥜 Peanuts']],
+  home:['🏠 Home',['🏠 House','🪑 Chair','🛏️ Bed','🕐 Clock','💡 Bulb','🚪 Door','🔑 Key','🥄 Spoon','🍴 Fork','🍽️ Plate','🪟 Window','🛋️ Sofa','📺 TV','☎️ Phone','🧹 Broom','🪞 Mirror','🔦 Torch','☂️ Umbrella']],
+  nature:['☀️ Nature',['☀️ Sun','🌙 Moon','⭐ Star','🌳 Tree','☁️ Cloud','🌧️ Rain','⛰️ Mountain','🌈 Rainbow','🔥 Fire','❄️ Snow','🌊 Wave','🍃 Leaf','🌍 Earth','⚡ Lightning']],
+  body:['👁️ Body',['👁️ Eye','👂 Ear','👃 Nose','👄 Mouth','✋ Hand','🦶 Foot','🦷 Tooth','👅 Tongue','🦵 Leg','💪 Arm','🧠 Brain','🦴 Bone']]
+};
+const _st = (x, y, k, f) => `<polygon fill="${f}" transform="translate(${x} ${y}) scale(${k})" points="0,-10 2.9,-4 9.5,-3.1 4.7,1.5 5.9,8.1 0,5 -5.9,8.1 -4.7,1.5 -9.5,-3.1 -2.9,-4"/>`;
+const _h = (a, b, c) => `<rect width="150" height="34" fill="${a}"/><rect y="33" width="150" height="34" fill="${b}"/><rect y="66" width="150" height="34" fill="${c}"/>`;
+const _v = (a, b, c) => `<rect width="50" height="100" fill="${a}"/><rect x="50" width="50" height="100" fill="${b}"/><rect x="100" width="50" height="100" fill="${c}"/>`;
+const KG_FLAGS = {
+  pk:['Pakistan', '<rect width="150" height="100" fill="#01411c"/><rect width="37" height="100" fill="#fff"/><circle cx="95" cy="50" r="27" fill="#fff"/><circle cx="105" cy="44" r="24" fill="#01411c"/>' + _st(112, 38, 1.5, '#fff')],
+  in:['India', _h('#f93', '#fff', '#138808') + '<circle cx="75" cy="50" r="11" fill="none" stroke="#008" stroke-width="2.5"/>'],
+  sa:['Saudi Arabia', '<rect width="150" height="100" fill="#006c35"/><rect x="35" y="34" width="80" height="7" rx="3" fill="#fff"/><rect x="38" y="66" width="74" height="4" fill="#fff"/>'],
+  tr:['Turkey', '<rect width="150" height="100" fill="#e30a17"/><circle cx="55" cy="50" r="24" fill="#fff"/><circle cx="62" cy="50" r="19" fill="#e30a17"/>' + _st(90, 50, 1.6, '#fff')],
+  gb:['United Kingdom', '<rect width="150" height="100" fill="#012169"/><path d="M0 0L150 100M150 0L0 100" stroke="#fff" stroke-width="16"/><path d="M0 0L150 100M150 0L0 100" stroke="#c8102e" stroke-width="6"/><path d="M75 0V100M0 50H150" stroke="#fff" stroke-width="26"/><path d="M75 0V100M0 50H150" stroke="#c8102e" stroke-width="15"/>'],
+  us:['USA', Array.from({ length: 13 }, (_, k) => `<rect y="${k * 100 / 13}" width="150" height="${100 / 13 + .3}" fill="${k % 2 ? '#fff' : '#b22234'}"/>`).join('') + '<rect width="66" height="54" fill="#3c3b6e"/>' + [0, 1, 2].map(c => [0, 1, 2, 3].map(r => _st(12 + c * 21, 10 + r * 13, .55, '#fff')).join('')).join('')],
+  cn:['China', '<rect width="150" height="100" fill="#de2910"/>' + _st(25, 27, 3, '#ffde00') + _st(52, 10, 1, '#ffde00') + _st(62, 22, 1, '#ffde00') + _st(62, 36, 1, '#ffde00') + _st(52, 48, 1, '#ffde00')],
+  jp:['Japan', '<rect width="150" height="100" fill="#fff"/><circle cx="75" cy="50" r="30" fill="#bc002d"/>'],
+  bd:['Bangladesh', '<rect width="150" height="100" fill="#006a4e"/><circle cx="67" cy="50" r="28" fill="#f42a41"/>'],
+  af:['Afghanistan', _v('#000', '#d32011', '#007a36')],
+  ir:['Iran', _h('#239f40', '#fff', '#da0000')],
+  ae:['UAE', _h('#00732f', '#fff', '#000') + '<rect width="38" height="100" fill="#f00"/>'],
+  eg:['Egypt', _h('#ce1126', '#fff', '#000')],
+  ps:['Palestine', _h('#000', '#fff', '#007a3d') + '<polygon points="0,0 55,50 0,100" fill="#ce1126"/>'],
+  fr:['France', _v('#0055a4', '#fff', '#ef4135')],
+  de:['Germany', _h('#000', '#dd0000', '#ffce00')],
+  it:['Italy', _v('#009246', '#fff', '#ce2b37')],
+  ru:['Russia', _h('#fff', '#0039a6', '#d52b1e')]
+};
+KG_LIB.flags = ['🏳️ Flags', Object.keys(KG_FLAGS).map(k => 'flag:' + k + ' ' + KG_FLAGS[k][0])];
+let kgLibOpen = -1, kgLibCatSel = 'animals';
+const kgDef = type => type === 'colour' ? 150 : (type === 'count' ? 30 : 64);
+function kgEntry(str) { const i = str.indexOf(' '); return [str.slice(0, i), str.slice(i + 1)]; }   // [code, name]
+const _emo = {};
+function emojiPng(e) { if (_emo[e]) return _emo[e]; const c = document.createElement('canvas'); c.width = c.height = 512; const x = c.getContext('2d'); x.font = "430px 'Noto Color Emoji','Apple Color Emoji','Segoe UI Emoji',sans-serif"; x.textAlign = 'center'; x.fillText(e, 256, 405); return _emo[e] = c.toDataURL('image/png'); }
+function kpic(it, cls, fit) {
+  const w = it.w ? it.w + 'px' : '', h = it.h ? it.h + 'px' : '';
+  const st = (it.w || it.h) ? ` style="${w ? 'width:' + w + ';' : ''}${h ? 'height:' + h + ';' : ''}max-width:none;object-fit:${fit || 'fill'};"` : '';
+  const svgOpen = `<svg viewBox="0 0 100 100" preserveAspectRatio="none" class="${cls}"${(it.w || it.h) ? ` width="${it.w || it.h}" height="${it.h || it.w}" style="width:${it.w || it.h}px;height:${it.h || it.w}px;max-width:none;"` : ''}`;
+  if (it.img) return `<img src="${it.img}" class="${cls}"${fit === 'contain' ? st.replace('object-fit:fill', 'object-fit:contain') : st}>`;
+  const e = it.em || '';
+  if (e.startsWith('shape:')) return `${svgOpen} fill="#fff" stroke="#222" stroke-width="4" stroke-linejoin="round">${KG_SHAPES[e.slice(6)] || ''}</svg>`;
+  if (e.startsWith('color:')) return `${svgOpen}><rect x="4" y="4" width="92" height="92" rx="14" fill="${e.slice(6)}" stroke="#222" stroke-width="3"/></svg>`;
+  if (e.startsWith('flag:')) { const f = KG_FLAGS[e.slice(5)], fw = it.w || it.h, fh = it.h || it.w; return `<svg viewBox="0 0 150 100" preserveAspectRatio="xMidYMid meet" class="${cls}"${fw ? ` width="${fw}" height="${fh}" style="width:${fw}px;height:${fh}px;max-width:none;"` : ''}>${f ? f[1] : ''}<rect width="150" height="100" fill="none" stroke="#222" stroke-width="3"/></svg>`; }
+  if (e) { const sz = (it.w || it.h) ? ` style="width:${it.w || it.h}px;height:${it.h || it.w}px;max-width:none;object-fit:contain;"` : ' style="object-fit:contain;"'; return `<img src="${emojiPng(e)}" class="${cls}"${sz}>`; }
+  return `<span class="${cls} kg-emptybox"></span>`;
+}
+function kgSize(i, j, k, v) { const it = kgBlocks[i].items[j], d = kgDef(kgBlocks[i].type); it.w = it.w || d; it.h = it.h || d; it[k] = +v; try { pqScheduleSave(); } catch (e) {} }
+function kgPreset(i, j, f) { const it = kgBlocks[i].items[j], d = kgDef(kgBlocks[i].type); it.w = Math.round(d * f); it.h = Math.round(d * f); renderTab(); }
+const KG_SETS = { cap:'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split(''), low:'abcdefghijklmnopqrstuvwxyz'.split(''),
+  ur:'ا ب پ ت ٹ ث ج چ ح خ د ڈ ذ ر ڑ ز ژ س ش ص ض ط ظ ع غ ف ق ک گ ل م ن و ہ ھ ء ی ے'.split(' '),
+  num:Array.from({length:20}, (_, k) => '' + (k + 1)), urnum:'۱ ۲ ۳ ۴ ۵ ۶ ۷ ۸ ۹ ۱۰ ۱۱ ۱۲ ۱۳ ۱۴ ۱۵ ۱۶ ۱۷ ۱۸ ۱۹ ۲۰'.split(' ') };
+function kgFill(i, k) { const b = kgBlocks[i], a = KG_SETS[k].slice(), n = k === 'ur' ? 8 : 6;
+  if (b.type === 'missing') for (let j = 1; j < a.length; j += 3) a[j] = '_';
+  const rows = []; for (let j = 0; j < a.length; j += n) rows.push({ txt: a.slice(j, j + n).join(' ') });
+  b.items = rows; try { pqScheduleSave(); } catch (e) {} renderTab(); }
+function kgBrk(i, j) { const it = kgBlocks[i].items[j]; it.brk = !it.brk; renderTab(); }
+function kgLibToggle(i) { kgLibOpen = kgLibOpen === i ? -1 : i; renderTab(); }
+function kgLibCat(c) { kgLibCatSel = c; renderTab(); }
+function kgLibPick(i, idx) {
+  const b = kgBlocks[i], [code, name] = kgEntry(KG_LIB[kgLibCatSel][1][idx]);
+  let it = b.items.find(x => !x.img && !x.em && !(x.txt || '').trim());
+  if (!it) { it = { img: null, txt: '' }; b.items.push(it); }
+  it.em = code; if (b.type === 'match') it.txt = name;
+  try { pqScheduleSave(); } catch (e) {}
+  renderTab();
+}
+function kgLibHtml(i) {
+  const cats = Object.keys(KG_LIB);
+  return `<div style="border:1px solid var(--line,#ddd);border-radius:12px;padding:8px;margin-top:8px;">
+    <div style="display:flex;gap:6px;overflow-x:auto;padding-bottom:6px;">${cats.map(c => `<button class="${kgLibCatSel === c ? 'btn-primary' : 'btn-ghost'}" style="flex:0 0 auto;padding:6px 10px;font-size:12px;" onclick="kgLibCat('${c}')">${KG_LIB[c][0]}</button>`).join('')}</div>
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;max-height:260px;overflow:auto;">${KG_LIB[kgLibCatSel][1].map((str, idx) => { const [code, name] = kgEntry(str); return `<button class="btn-ghost" style="padding:6px 2px;display:flex;flex-direction:column;align-items:center;gap:2px;" onclick="kgLibPick(${i},${idx})"><span style="display:block;width:38px;height:38px;">${kpic({ em: code, w: 38, h: 38 }, '')}</span><span style="font-size:9px;line-height:1.1;">${name}</span></button>`; }).join('')}</div></div>`;
+}
 function tplKgBuilder() {
   const blocks = kgBlocks.map((b,i) => {
     const txtOnly = b.type==='trace' || b.type==='missing';
-    const ph = { trace:'e.g. A B C D E F', missing:'e.g. A _ C', picname:'answer (optional)', match:'name (e.g. Apple)', count:'number (e.g. 3)', colour:'' }[b.type];
+    const ph = { trace:'e.g. A B C D E F', missing:'e.g. A _ C', picname:'answer (optional)', match:'name (e.g. Apple)', count:'number (e.g. 3)', colour:'', compare:'label (e.g. Big) — optional', mcq:'Question | option 1 | option 2 | option 3' }[b.type];
     let body;
     if (txtOnly) {
-      body = `<textarea rows="3" style="width:100%;" placeholder="${ph} — one line per row" oninput="kgBlocks[${i}].items=this.value.split('\\n').map(x=>({txt:x}))">${esc(b.items.map(x=>x.txt).join('\n'))}</textarea>`;
+      body = `<textarea rows="3" style="width:100%;" placeholder="${ph} — one line per row" oninput="kgBlocks[${i}].items=this.value.split('\\n').map(x=>({txt:x}))">${esc(b.items.map(x=>x.txt).join('\n'))}</textarea><div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;">${[['cap','A–Z'],['low','a–z'],['ur','اردو حروف'],['num','1–20'],['urnum','۱–۲۰']].map(f => `<button class="btn-ghost" style="padding:4px 10px;font-size:12px;" onclick="kgFill(${i},'${f[0]}')">${f[1]}</button>`).join('')}</div>`;
     } else {
-      body = b.items.map((it,j) => `<div class="flexgap paper-q-row" style="align-items:center;">
-        <label style="cursor:pointer;flex-shrink:0;">${it.img ? `<img src="${it.img}" style="width:48px;height:48px;object-fit:contain;border:1px solid var(--line);border-radius:8px;">` : `<div style="width:48px;height:48px;border:1px dashed var(--line);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:20px;">📷</div>`}
-          <input type="file" accept="image/*" style="display:none;" onchange="kgItemImg(${i},${j},this.files[0])"></label>
-        ${b.type==='colour' ? '<span style="flex:1;font-size:12px;opacity:.6;">picture</span>' : `<input style="flex:1;" placeholder="${ph}" value="${esc(it.txt||'')}" oninput="kgBlocks[${i}].items[${j}].txt=this.value">`}
-        <button class="btn-ghost" style="padding:6px 10px;" onclick="kgDelItem(${i},${j})">✕</button></div>`).join('')
-        + `<button class="btn-ghost" style="margin-top:6px;" onclick="kgAddItem(${i})">＋ Add</button>`;
+      body = b.items.map((it,j) => { const d = kgDef(b.type), cw = it.w || d, ch = it.h || d;
+        return `<div class="paper-q-row" style="margin-bottom:8px;padding-bottom:8px;border-bottom:1px dashed var(--line,#ddd);">
+        <div class="flexgap" style="align-items:center;">
+          <label style="cursor:pointer;flex-shrink:0;">${(it.img || it.em) ? `<span style="display:block;width:48px;height:48px;border:1px solid var(--line,#ddd);border-radius:8px;overflow:hidden;">${kpic({ ...it, w: 46, h: 46 }, '', 'contain')}</span>` : `<div style="width:48px;height:48px;border:1px dashed var(--line,#ddd);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:20px;">📷</div>`}
+            <input type="file" accept="image/*" style="display:none;" onchange="kgItemImg(${i},${j},this.files[0])"></label>
+          ${b.type==='colour' ? '<span style="flex:1;font-size:12px;opacity:.6;">picture</span>' : `<input style="flex:1;" placeholder="${ph}" value="${esc(it.txt||'')}" oninput="kgBlocks[${i}].items[${j}].txt=this.value">`}
+          <button class="btn-ghost" style="padding:6px 10px;" onclick="kgDelItem(${i},${j})">✕</button></div>
+        <div style="display:flex;align-items:center;gap:6px;margin-top:6px;font-size:11px;">
+          <span title="Width">↔</span><input type="range" min="20" max="240" value="${cw}" style="flex:1;min-width:0;" oninput="kgSize(${i},${j},'w',this.value)">
+          <span title="Height">↕</span><input type="range" min="20" max="240" value="${ch}" style="flex:1;min-width:0;" oninput="kgSize(${i},${j},'h',this.value)">
+          <button class="btn-ghost" style="padding:2px 8px;" onclick="kgPreset(${i},${j},0.6)">S</button><button class="btn-ghost" style="padding:2px 8px;" onclick="kgPreset(${i},${j},1)">M</button><button class="btn-ghost" style="padding:2px 8px;" onclick="kgPreset(${i},${j},1.7)">L</button>${b.type==='compare' ? `<button class="${it.brk?'btn-primary':'btn-ghost'}" style="padding:2px 8px;" title="Start a new row here" onclick="kgBrk(${i},${j})">↵</button>` : ''}</div></div>`; }).join('')
+        + `<div class="flexgap" style="margin-top:6px;"><button class="btn-ghost" style="flex:1;" onclick="kgAddItem(${i})">＋ Add</button><button class="${kgLibOpen===i?'btn-primary':'btn-ghost'}" style="flex:1;" onclick="kgLibToggle(${i})">📚 Library</button></div>` + (kgLibOpen === i ? kgLibHtml(i) : '');
     }
     return `<div class="card" style="margin-bottom:14px;">
       <div class="flexgap" style="align-items:center;margin-bottom:8px;">
@@ -8955,19 +9061,24 @@ function tplPapers() {
   return tg + html.split('<!--PQ_HDR_END-->')[0] + tplKgBuilder() + '</div>';
 }
 function kgBodyHtml() {
-  const kimg = (src, cls) => src ? `<img src="${src}" class="${cls}">` : `<span class="${cls} kg-emptybox"></span>`;
+  const kimg = (x, cls) => kpic(x, cls);
+  const ur = t => /[\u0600-\u06FF]/.test(t || '');
   return kgBlocks.map((b,n) => {
     const its = b.items.filter(x => (b.type==='trace'||b.type==='missing') ? (x.txt||'').trim() : true);
     if (!its.length) return '';
     let body = '';
-    if (b.type==='trace') body = its.map(x => `<div class="kg-trace">${pqEsc(x.txt)}</div>`).join('');
-    else if (b.type==='missing') body = `<div class="kg-missing">${its.map(x => `<span>${pqEsc(x.txt).replace(/_+/g,'<i class="kg-gap"></i>')}</span>`).join('')}</div>`;
-    else if (b.type==='picname') body = `<div class="kg-grid">${its.map(x => `<div class="kg-cell">${kimg(x.img,'kg-pic')}<div class="kg-line"></div></div>`).join('')}</div>`;
-    else if (b.type==='colour') body = `<div class="kg-grid kg-big">${its.map(x => kimg(x.img,'kg-pic-big')).join('')}</div>`;
-    else if (b.type==='count') body = its.map(x => { const c = Math.max(0, Math.min(10, parseInt(x.txt)||0)); return `<div class="kg-count">${Array(c||3).fill(kimg(x.img,'kg-pic-sm')).join('')}<span class="kg-eq">= ____</span></div>`; }).join('');
+    if (b.type==='trace') body = its.map(x => `<div class="kg-trace${ur(x.txt)?' kg-ur':''}"${ur(x.txt)?' dir="rtl"':''}>${pqEsc(x.txt)}</div>`).join('');
+    else if (b.type==='missing') body = `<div class="kg-missing${its.some(x=>ur(x.txt))?' kg-ur':''}"${its.some(x=>ur(x.txt))?' dir="rtl"':''}>${its.map(x => `<span>${pqEsc(x.txt).replace(/_+/g,'<i class="kg-gap"></i>')}</span>`).join('')}</div>`;
+    else if (b.type==='picname') body = `<div class="kg-grid">${its.map(x => `<div class="kg-cell">${kimg(x,'kg-pic')}<div class="kg-line"></div></div>`).join('')}</div>`;
+    else if (b.type==='colour') body = `<div class="kg-grid kg-big">${its.map(x => kimg(x,'kg-pic-big')).join('')}</div>`;
+    else if (b.type==='count') body = its.map(x => { const c = Math.max(0, Math.min(10, parseInt(x.txt)||0)); return `<div class="kg-count">${Array(c||3).fill(kimg(x,'kg-pic-sm')).join('')}<span class="kg-eq">= ____</span></div>`; }).join('');
+    else if (b.type==='compare') { const rows = [[]]; its.forEach(x => { if (x.brk && rows[rows.length-1].length) rows.push([]); rows[rows.length-1].push(x); });
+      body = rows.map(r => `<div class="kg-cmp">${r.map(x => `<div class="kg-cmpc">${kimg(x,'kg-pic')}<i class="kg-cbox"></i><div class="kg-clab" dir="auto">${pqEsc(x.txt||'')}</div></div>`).join('')}</div>`).join(''); }
+    else if (b.type==='mcq') body = its.map((x,i) => { const p = (x.txt||'').split('|').map(z => z.trim()), q = p.shift();
+      return `<div class="kg-mcq">${(x.em||x.img) ? kimg(x,'kg-pic') : ''}<div class="kg-mq" dir="auto">${i+1}. ${pqEsc(q)}</div><div class="kg-mo">${p.filter(Boolean).map((o,k) => `<span dir="auto">(${'abcdefgh'[k]}) ${pqEsc(o)}</span>`).join('')}</div></div>`; }).join('');
     else if (b.type==='match') {
       const m = its.length, right = its.map((x,i) => its[(i+1)%m]);
-      body = `<div class="kg-match">${its.map((x,i) => `<div class="kg-mrow"><div>${kimg(x.img,'kg-pic')}</div><i class="kg-dot"></i><span class="kg-mid"></span><i class="kg-dot"></i><div class="kg-mname">${pqEsc(right[i].txt||'')}</div></div>`).join('')}</div>`;
+      body = `<div class="kg-match">${its.map((x,i) => `<div class="kg-mrow"><div>${kimg(x,'kg-pic')}</div><i class="kg-dot"></i><span class="kg-mid"></span><i class="kg-dot"></i><div class="kg-mname">${pqEsc(right[i].txt||'')}</div></div>`).join('')}</div>`;
     }
     return `<div class="pq-section"><div class="pq-section-title" dir="auto">Q${n+1}. ${pqEsc(b.title)}</div>${body}</div>`;
   }).join('');
