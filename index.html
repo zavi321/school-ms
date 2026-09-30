@@ -682,6 +682,8 @@ html, body{overscroll-behavior:none;}
 .qpaper-print .kg-cbox{width:22px;height:22px;border:2px solid #444;border-radius:50%;}
 .qpaper-print .kg-clab{font-size:14px;font-weight:700;}
 .qpaper-print .kg-mcq{margin:8px 0;page-break-inside:avoid;}
+.qpaper-print .kg-mpics{display:inline-flex;flex-wrap:wrap;gap:6px;align-items:center;}
+.qpaper-print .kg-mopt{display:inline-flex;align-items:center;gap:6px;}
 .qpaper-print .kg-mq{font-size:16px;font-weight:700;}
 .qpaper-print .kg-mo{display:flex;flex-wrap:wrap;gap:6px 28px;font-size:15px;margin-top:4px;}
 .qpaper-print .qp-head, .qpaper-print .qp-head *{font-family:'PaperUrdu','Noto Nastaliq Urdu',Inter,serif;}
@@ -8895,11 +8897,18 @@ const KG_FLAGS = {
   ru:['Russia', _h('#fff', '#0039a6', '#d52b1e')]
 };
 KG_LIB.flags = ['🏳️ Flags', Object.keys(KG_FLAGS).map(k => 'flag:' + k + ' ' + KG_FLAGS[k][0])];
+const _note = (n, c1, c2) => `<rect x="1" y="1" width="148" height="68" rx="4" fill="${c1}" stroke="#222" stroke-width="2"/><rect x="6" y="6" width="138" height="58" rx="3" fill="none" stroke="${c2}" stroke-width="2"/><rect x="10" y="10" width="40" height="50" rx="3" fill="${c2}" opacity=".35"/><circle cx="30" cy="30" r="12" fill="${c2}" opacity=".6"/><path d="M12 60Q30 40 48 60Z" fill="${c2}" opacity=".6"/><text x="98" y="26" font-size="11" font-weight="700" text-anchor="middle" fill="#222" font-family="Arial,sans-serif">PAKISTAN</text><text x="98" y="52" font-size="24" font-weight="800" text-anchor="middle" fill="#111" font-family="Arial,sans-serif">Rs ${n}</text>`;
+const _coin = (n, c1, c2) => `<circle cx="50" cy="50" r="46" fill="${c1}" stroke="#222" stroke-width="3"/><circle cx="50" cy="50" r="36" fill="none" stroke="${c2}" stroke-width="3"/><text x="50" y="62" font-size="36" font-weight="800" text-anchor="middle" fill="#222" font-family="Arial,sans-serif">${n}</text>`;
+[[10, '#b9e0a5', '#3f8f2e'], [20, '#f6c68b', '#d9741c'], [50, '#d7b3e6', '#8e3fa8'], [100, '#f4a9a9', '#c62828'], [500, '#a8d8b0', '#1e7a3c'], [1000, '#a9c8ee', '#1e5aa8'], [5000, '#d9c39a', '#8a6a2b']]
+  .forEach(a => { KG_FLAGS['n' + a[0]] = ['Rs ' + a[0] + ' note', _note(a[0], a[1], a[2]), '0 0 150 70']; });
+[[1, '#cfd3d6', '#8a9096'], [2, '#cfd3d6', '#8a9096'], [5, '#e3c86a', '#a88a1d'], [10, '#e3c86a', '#a88a1d']]
+  .forEach(a => { KG_FLAGS['c' + a[0]] = ['Rs ' + a[0] + ' coin', _coin(a[0], a[1], a[2]), '0 0 100 100']; });
+KG_LIB.money = ['💵 Pakistani Money', ['n10', 'n20', 'n50', 'n100', 'n500', 'n1000', 'n5000', 'c1', 'c2', 'c5', 'c10'].map(k => 'flag:' + k + ' ' + KG_FLAGS[k][0])];
 let kgLibOpen = -1, kgLibCatSel = 'animals';
 const kgDef = type => type === 'colour' ? 150 : (type === 'count' ? 30 : 64);
 function kgEntry(str) { const i = str.indexOf(' '); return [str.slice(0, i), str.slice(i + 1)]; }   // [code, name]
 const _emo = {};
-function emojiPng(e) { if (_emo[e]) return _emo[e]; const c = document.createElement('canvas'); c.width = c.height = 512; const x = c.getContext('2d'); x.font = "430px 'Noto Color Emoji','Apple Color Emoji','Segoe UI Emoji',sans-serif"; x.textAlign = 'center'; x.fillText(e, 256, 405); return _emo[e] = c.toDataURL('image/png'); }
+function emojiPng(e, z) { z = z || 512; const key = e + z; if (_emo[key]) return _emo[key]; const c = document.createElement('canvas'); c.width = c.height = z; const x = c.getContext('2d'); x.font = (z * .84) + "px 'Noto Color Emoji','Apple Color Emoji','Segoe UI Emoji',sans-serif"; x.textAlign = 'center'; x.fillText(e, z / 2, z * .79); return _emo[key] = c.toDataURL('image/png'); }
 function kpic(it, cls, fit) {
   const w = it.w ? it.w + 'px' : '', h = it.h ? it.h + 'px' : '';
   const st = (it.w || it.h) ? ` style="${w ? 'width:' + w + ';' : ''}${h ? 'height:' + h + ';' : ''}max-width:none;object-fit:${fit || 'fill'};"` : '';
@@ -8908,8 +8917,8 @@ function kpic(it, cls, fit) {
   const e = it.em || '';
   if (e.startsWith('shape:')) return `${svgOpen} fill="#fff" stroke="#222" stroke-width="4" stroke-linejoin="round">${KG_SHAPES[e.slice(6)] || ''}</svg>`;
   if (e.startsWith('color:')) return `${svgOpen}><rect x="4" y="4" width="92" height="92" rx="14" fill="${e.slice(6)}" stroke="#222" stroke-width="3"/></svg>`;
-  if (e.startsWith('flag:')) { const f = KG_FLAGS[e.slice(5)], fw = it.w || it.h, fh = it.h || it.w; return `<svg viewBox="0 0 150 100" preserveAspectRatio="xMidYMid meet" class="${cls}"${fw ? ` width="${fw}" height="${fh}" style="width:${fw}px;height:${fh}px;max-width:none;"` : ''}>${f ? f[1] : ''}<rect width="150" height="100" fill="none" stroke="#222" stroke-width="3"/></svg>`; }
-  if (e) { const sz = (it.w || it.h) ? ` style="width:${it.w || it.h}px;height:${it.h || it.w}px;max-width:none;object-fit:contain;"` : ' style="object-fit:contain;"'; return `<img src="${emojiPng(e)}" class="${cls}"${sz}>`; }
+  if (e.startsWith('flag:')) { const f = KG_FLAGS[e.slice(5)], fw = it.w || it.h, fh = it.h || it.w; return `<svg viewBox="${f && f[2] || '0 0 150 100'}" preserveAspectRatio="xMidYMid meet" class="${cls}"${fw ? ` width="${fw}" height="${fh}" style="width:${fw}px;height:${fh}px;max-width:none;"` : ''}>${f ? f[1] : ''}${f && f[2] ? '' : '<rect width="150" height="100" fill="none" stroke="#222" stroke-width="3"/>'}</svg>`; }
+  if (e) { const sz = (it.w || it.h) ? ` style="width:${it.w || it.h}px;height:${it.h || it.w}px;max-width:none;object-fit:contain;"` : ' style="object-fit:contain;"'; return `<img src="${emojiPng(e, (it.w && it.w <= 60 && (it.h || it.w) <= 60) ? 128 : 512)}" class="${cls}"${sz}>`; }
   return `<span class="${cls} kg-emptybox"></span>`;
 }
 function kgSize(i, j, k, v) { const it = kgBlocks[i].items[j], d = kgDef(kgBlocks[i].type); it.w = it.w || d; it.h = it.h || d; it[k] = +v; try { pqScheduleSave(); } catch (e) {} }
@@ -8921,43 +8930,69 @@ function kgFill(i, k) { const b = kgBlocks[i], a = KG_SETS[k].slice(), n = k ===
   if (b.type === 'missing') for (let j = 1; j < a.length; j += 3) a[j] = '_';
   const rows = []; for (let j = 0; j < a.length; j += n) rows.push({ txt: a.slice(j, j + n).join(' ') });
   b.items = rows; try { pqScheduleSave(); } catch (e) {} renderTab(); }
+function kgOpt(i, j, k, v) { const it = kgBlocks[i].items[j]; it.o = it.o || ['', '', '', '']; it.o[k] = v; try { pqScheduleSave(); } catch (e) {} }
 function kgBrk(i, j) { const it = kgBlocks[i].items[j]; it.brk = !it.brk; renderTab(); }
+let kgLibT = null;
+function kgSlot(i, j, s) { const it = kgBlocks[i].items[j];
+  if (!it.qp) { it.qp = (it.em || it.img) ? [{ em: it.em, img: it.img, w: it.w, h: it.h }] : []; delete it.em; delete it.img; }
+  if (!it.op) it.op = [[], [], [], []];
+  return s === 'q' ? it.qp : it.op[s]; }
+function kgMcqPick(cat, idx) { const t = kgLibT; if (!t) return; const [code] = kgEntry(KG_LIB[cat][1][idx]), b = t.s === 'q' ? 64 : 48;
+  kgSlot(t.i, t.j, t.s).push({ em: code, w: b, h: b });
+  const pn = document.getElementById('kgLib'), st = pn ? pn.scrollTop : 0;
+  try { pqScheduleSave(); } catch (e) {} renderTab();
+  const p2 = document.getElementById('kgLib'); if (p2) p2.scrollTop = st; }
+function kgPicSz(i, j, s, k, f, base) { const pp = kgSlot(i, j, s)[k]; pp.w = pp.h = Math.round(base * f); try { pqScheduleSave(); } catch (e) {} }
+function kgPicDel(i, j, s, k) { kgSlot(i, j, s).splice(k, 1); renderTab(); }
+function kgSlotImg(i, j, s, files) { const b = s === 'q' ? 64 : 48;
+  [...files].forEach(file => { const r = new FileReader(); r.onload = e => { const im = new Image(); im.onload = () => {
+    const k = Math.min(1, 320 / Math.max(im.width, im.height)), c = document.createElement('canvas'); c.width = Math.round(im.width * k); c.height = Math.round(im.height * k);
+    c.getContext('2d').drawImage(im, 0, 0, c.width, c.height); kgSlot(i, j, s).push({ img: c.toDataURL('image/png'), w: b, h: b }); renderTab(); }; im.src = e.target.result; }; r.readAsDataURL(file); }); }
+function kgMcqEditor(i, j, it) {
+  kgSlot(i, j, 'q');
+  const slotHtml = (s, label) => { const arr = kgSlot(i, j, s), base = s === 'q' ? 64 : 48;
+    return `<div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap;align-items:center;">${label}${arr.map((pp, k) => { const cur = pp.w ? pp.w / base : 1;
+      return `<span style="display:inline-flex;flex-direction:column;align-items:center;gap:2px;border:1px solid var(--line,#ddd);border-radius:8px;padding:2px;"><span style="display:block;width:40px;height:40px;">${kpic({ ...pp, w: 38, h: 38 }, '', 'contain')}</span><span style="display:flex;gap:2px;"><select style="font-size:10px;padding:0;" onchange="kgPicSz(${i},${j},'${s}',${k},this.value,${base})">${[['.6', 'S'], ['1', 'M'], ['1.6', 'L'], ['2.2', 'XL']].map(o => `<option value="${o[0]}"${Math.abs(cur - o[0]) < .15 ? ' selected' : ''}>${o[1]}</option>`).join('')}</select><button class="btn-ghost" style="padding:0 5px;font-size:11px;" onclick="kgPicDel(${i},${j},'${s}',${k})">✕</button></span></span>`; }).join('')}<button class="${kgLibT && kgLibT.i === i && kgLibT.j === j && kgLibT.s === s ? 'btn-primary' : 'btn-ghost'}" style="padding:4px 8px;font-size:12px;" onclick="kgLibT={i:${i},j:${j},s:'${s}'};renderTab()">＋ Picture</button><label class="btn-ghost" style="padding:4px 8px;font-size:12px;cursor:pointer;">📷<input type="file" accept="image/*" multiple style="display:none;" onchange="kgSlotImg(${i},${j},'${s}',this.files)"></label></div>`; };
+  return `<div class="paper-q-row" style="margin-bottom:10px;padding-bottom:10px;border-bottom:1px dashed var(--line,#ddd);">
+    <div class="flexgap" style="align-items:center;"><input dir="auto" style="flex:1;" placeholder="Question" value="${esc(it.txt||'')}" oninput="kgBlocks[${i}].items[${j}].txt=this.value"><button class="btn-ghost" style="padding:6px 10px;" onclick="kgDelItem(${i},${j})">✕</button></div>
+    ${slotHtml('q', '<b style="font-size:11px;">Question</b>')}
+    ${'abcd'.split('').map((l, k) => `<div style="margin-top:8px;"><input dir="auto" style="width:100%;" placeholder="(${l}) option" value="${esc((it.o||[])[k]||'')}" oninput="kgOpt(${i},${j},${k},this.value)">${slotHtml(k, '<b style="font-size:11px;">(' + l + ')</b>')}</div>`).join('')}
+    ${kgLibT && kgLibT.i === i && kgLibT.j === j ? `<div style="font-size:12px;margin-top:8px;">Picking for: <b>${kgLibT.s === 'q' ? 'Question' : 'option (' + 'abcd'[kgLibT.s] + ')'}</b> — tap as many pictures as you want <button class="btn-ghost" style="padding:2px 8px;" onclick="kgLibT=null;renderTab()">Done</button></div>` + kgLibHtml(i, true) : ''}
+  </div>`; }
 function kgLibToggle(i) { kgLibOpen = kgLibOpen === i ? -1 : i; renderTab(); }
 function kgLibCat(c) { kgLibCatSel = c; renderTab(); }
-function kgLibPick(i, idx) {
-  const b = kgBlocks[i], [code, name] = kgEntry(KG_LIB[kgLibCatSel][1][idx]);
+function kgLibPick(i, cat, idx) {
+  const b = kgBlocks[i], [code, name] = kgEntry(KG_LIB[cat][1][idx]), pn = document.getElementById('kgLib'), st = pn ? pn.scrollTop : 0;
   let it = b.items.find(x => !x.img && !x.em && !(x.txt || '').trim());
   if (!it) { it = { img: null, txt: '' }; b.items.push(it); }
   it.em = code; if (b.type === 'match') it.txt = name;
   try { pqScheduleSave(); } catch (e) {}
   renderTab();
+  const p2 = document.getElementById('kgLib'); if (p2) p2.scrollTop = st;
 }
-function kgLibHtml(i) {
-  const cats = Object.keys(KG_LIB);
-  return `<div style="border:1px solid var(--line,#ddd);border-radius:12px;padding:8px;margin-top:8px;">
-    <div style="display:flex;gap:6px;overflow-x:auto;padding-bottom:6px;">${cats.map(c => `<button class="${kgLibCatSel === c ? 'btn-primary' : 'btn-ghost'}" style="flex:0 0 auto;padding:6px 10px;font-size:12px;" onclick="kgLibCat('${c}')">${KG_LIB[c][0]}</button>`).join('')}</div>
-    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;max-height:260px;overflow:auto;">${KG_LIB[kgLibCatSel][1].map((str, idx) => { const [code, name] = kgEntry(str); return `<button class="btn-ghost" style="padding:6px 2px;display:flex;flex-direction:column;align-items:center;gap:2px;" onclick="kgLibPick(${i},${idx})"><span style="display:block;width:38px;height:38px;">${kpic({ em: code, w: 38, h: 38 }, '')}</span><span style="font-size:9px;line-height:1.1;">${name}</span></button>`; }).join('')}</div></div>`;
+function kgLibHtml(i, t) {
+  return `<div id="kgLib" style="border:1px solid var(--line,#ddd);border-radius:12px;padding:8px;margin-top:8px;max-height:340px;overflow:auto;">${Object.keys(KG_LIB).map(c => `<div style="font-size:12px;font-weight:700;margin:8px 0 4px;">${KG_LIB[c][0]}</div><div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;">${KG_LIB[c][1].map((str, idx) => { const [code, name] = kgEntry(str); return `<button class="btn-ghost" style="padding:6px 2px;display:flex;flex-direction:column;align-items:center;gap:2px;" onclick="${t ? `kgMcqPick('${c}',${idx})` : `kgLibPick(${i},'${c}',${idx})`}"><span style="display:block;width:38px;height:38px;">${kpic({ em: code, w: 38, h: 38 }, '')}</span><span style="font-size:9px;line-height:1.1;">${name}</span></button>`; }).join('')}</div>`).join('')}</div>`;
 }
 function tplKgBuilder() {
   const blocks = kgBlocks.map((b,i) => {
     const txtOnly = b.type==='trace' || b.type==='missing';
-    const ph = { trace:'e.g. A B C D E F', missing:'e.g. A _ C', picname:'answer (optional)', match:'name (e.g. Apple)', count:'number (e.g. 3)', colour:'', compare:'label (e.g. Big) — optional', mcq:'Question | option 1 | option 2 | option 3' }[b.type];
+    const ph = { trace:'e.g. A B C D E F', missing:'e.g. A _ C', picname:'answer (optional)', match:'name (e.g. Apple)', count:'number (e.g. 3)', colour:'', compare:'label (e.g. Big) — optional', mcq:'Question' }[b.type];
     let body;
     if (txtOnly) {
       body = `<textarea rows="3" style="width:100%;" placeholder="${ph} — one line per row" oninput="kgBlocks[${i}].items=this.value.split('\\n').map(x=>({txt:x}))">${esc(b.items.map(x=>x.txt).join('\n'))}</textarea><div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;">${[['cap','A–Z'],['low','a–z'],['ur','اردو حروف'],['num','1–20'],['urnum','۱–۲۰']].map(f => `<button class="btn-ghost" style="padding:4px 10px;font-size:12px;" onclick="kgFill(${i},'${f[0]}')">${f[1]}</button>`).join('')}</div>`;
     } else {
-      body = b.items.map((it,j) => { const d = kgDef(b.type), cw = it.w || d, ch = it.h || d;
+      body = b.items.map((it,j) => { const d = kgDef(b.type), cw = it.w || d, ch = it.h || d; if (b.type === 'mcq') return kgMcqEditor(i, j, it);
         return `<div class="paper-q-row" style="margin-bottom:8px;padding-bottom:8px;border-bottom:1px dashed var(--line,#ddd);">
         <div class="flexgap" style="align-items:center;">
           <label style="cursor:pointer;flex-shrink:0;">${(it.img || it.em) ? `<span style="display:block;width:48px;height:48px;border:1px solid var(--line,#ddd);border-radius:8px;overflow:hidden;">${kpic({ ...it, w: 46, h: 46 }, '', 'contain')}</span>` : `<div style="width:48px;height:48px;border:1px dashed var(--line,#ddd);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:20px;">📷</div>`}
             <input type="file" accept="image/*" style="display:none;" onchange="kgItemImg(${i},${j},this.files[0])"></label>
           ${b.type==='colour' ? '<span style="flex:1;font-size:12px;opacity:.6;">picture</span>' : `<input style="flex:1;" placeholder="${ph}" value="${esc(it.txt||'')}" oninput="kgBlocks[${i}].items[${j}].txt=this.value">`}
           <button class="btn-ghost" style="padding:6px 10px;" onclick="kgDelItem(${i},${j})">✕</button></div>
-        <div style="display:flex;align-items:center;gap:6px;margin-top:6px;font-size:11px;">
+        ${b.type==='mcq' ? `<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:6px;">${'abcd'.split('').map((l,k) => `<input dir="auto" placeholder="(${l}) option" value="${esc((it.o||[])[k]||'')}" oninput="kgOpt(${i},${j},${k},this.value)">`).join('')}</div>` : ''}<div style="display:flex;align-items:center;gap:6px;margin-top:6px;font-size:11px;">
           <span title="Width">↔</span><input type="range" min="20" max="240" value="${cw}" style="flex:1;min-width:0;" oninput="kgSize(${i},${j},'w',this.value)">
           <span title="Height">↕</span><input type="range" min="20" max="240" value="${ch}" style="flex:1;min-width:0;" oninput="kgSize(${i},${j},'h',this.value)">
           <button class="btn-ghost" style="padding:2px 8px;" onclick="kgPreset(${i},${j},0.6)">S</button><button class="btn-ghost" style="padding:2px 8px;" onclick="kgPreset(${i},${j},1)">M</button><button class="btn-ghost" style="padding:2px 8px;" onclick="kgPreset(${i},${j},1.7)">L</button>${b.type==='compare' ? `<button class="${it.brk?'btn-primary':'btn-ghost'}" style="padding:2px 8px;" title="Start a new row here" onclick="kgBrk(${i},${j})">↵</button>` : ''}</div></div>`; }).join('')
-        + `<div class="flexgap" style="margin-top:6px;"><button class="btn-ghost" style="flex:1;" onclick="kgAddItem(${i})">＋ Add</button><button class="${kgLibOpen===i?'btn-primary':'btn-ghost'}" style="flex:1;" onclick="kgLibToggle(${i})">📚 Library</button></div>` + (kgLibOpen === i ? kgLibHtml(i) : '');
+        + `<div class="flexgap" style="margin-top:6px;"><button class="btn-ghost" style="flex:1;" onclick="kgAddItem(${i})">＋ Add</button>${b.type==='mcq' ? '' : `<button class="${kgLibOpen===i?'btn-primary':'btn-ghost'}" style="flex:1;" onclick="kgLibToggle(${i})">📚 Library</button>`}</div>` + (kgLibOpen === i && b.type !== 'mcq' ? kgLibHtml(i) : '');
     }
     return `<div class="card" style="margin-bottom:14px;">
       <div class="flexgap" style="align-items:center;margin-bottom:8px;">
@@ -9074,8 +9109,8 @@ function kgBodyHtml() {
     else if (b.type==='count') body = its.map(x => { const c = Math.max(0, Math.min(10, parseInt(x.txt)||0)); return `<div class="kg-count">${Array(c||3).fill(kimg(x,'kg-pic-sm')).join('')}<span class="kg-eq">= ____</span></div>`; }).join('');
     else if (b.type==='compare') { const rows = [[]]; its.forEach(x => { if (x.brk && rows[rows.length-1].length) rows.push([]); rows[rows.length-1].push(x); });
       body = rows.map(r => `<div class="kg-cmp">${r.map(x => `<div class="kg-cmpc">${kimg(x,'kg-pic')}<i class="kg-cbox"></i><div class="kg-clab" dir="auto">${pqEsc(x.txt||'')}</div></div>`).join('')}</div>`).join(''); }
-    else if (b.type==='mcq') body = its.map((x,i) => { const p = (x.txt||'').split('|').map(z => z.trim()), q = p.shift();
-      return `<div class="kg-mcq">${(x.em||x.img) ? kimg(x,'kg-pic') : ''}<div class="kg-mq" dir="auto">${i+1}. ${pqEsc(q)}</div><div class="kg-mo">${p.filter(Boolean).map((o,k) => `<span dir="auto">(${'abcdefgh'[k]}) ${pqEsc(o)}</span>`).join('')}</div></div>`; }).join('');
+    else if (b.type==='mcq') body = its.map((x,i) => { const p = (x.txt||'').split('|').map(z => z.trim()), q = p.shift(), pics = a => (a||[]).map(pp => kpic(pp,'kg-pic','contain')).join(''), qp = x.qp || ((x.em||x.img) ? [x] : []);
+      return `<div class="kg-mcq"><div class="kg-mq" dir="auto">${i+1}. ${pqEsc(q)}</div><div class="kg-mpics">${pics(qp)}</div><div class="kg-mo">${['a','b','c','d'].map((l,k) => `<span class="kg-mopt"><span dir="auto">(${l}) ${pqEsc((x.o||p)[k]||'')}</span><span class="kg-mpics">${pics((x.op||[])[k])}</span></span>`).join('')}</div></div>`; }).join('');
     else if (b.type==='match') {
       const m = its.length, right = its.map((x,i) => its[(i+1)%m]);
       body = `<div class="kg-match">${its.map((x,i) => `<div class="kg-mrow"><div>${kimg(x,'kg-pic')}</div><i class="kg-dot"></i><span class="kg-mid"></span><i class="kg-dot"></i><div class="kg-mname">${pqEsc(right[i].txt||'')}</div></div>`).join('')}</div>`;
