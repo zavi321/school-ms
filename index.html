@@ -724,6 +724,11 @@ body:not(.ur) .qpaper-print .pq-instruction::before{counter-increment:pqq;conten
 .pq-pvt tr.res td{border-top:3px double #111;}
 .pq-pvt tr.res td.op{border-top:0;}
 </style>
+<style>
+.pq-sn{font-weight:700;margin-inline-end:4px;font-family:'Times New Roman','Liberation Serif',serif;unicode-bidi:isolate;}
+#symBar .symtabs{overflow-x:auto;}
+#symBar .symtab{flex:0 0 auto;padding:8px 11px;white-space:nowrap;}
+</style>
 </head>
 <body>
 
@@ -8879,6 +8884,7 @@ const SYM_TABS = [
     ['Arrows','→ ← ↔ ⇒ ⇔ ↑ ↓']
   ]},
   { id:'sum', label:'▦ Sum', custom:true, groups:[] },
+  { id:'serial', label:'№ Serial', custom:true, groups:[] },
   { id:'aerab', label:'اعراب', ur:true, groups:[
     ['زبر، زیر، پیش', [TT+'\u064E',TT+'\u0650',TT+'\u064F'], 'mark'],
     ['تشدید، جزم', [TT+'\u0651',TT+'\u0652'], 'mark'],
@@ -8926,7 +8932,7 @@ function symTabSet(id) {
 }
 function symBarHtml() {
   const chip = (c, kind, ur) => `<button type="button" class="symchip${kind==='phrase'?' wide':''}${kind==='mark'?' mk':''}${ur?' ur':''}" data-c="${c}" onclick="symInsert(this.dataset.c,${kind==='phrase'})">${c}</button>`;
-  const panes = SYM_TABS.map(tb => `<div data-pane="${tb.id}" style="display:${tb.id===symTab?'block':'none'};">${tb.custom ? symSumHtml() : ''}${tb.groups.map(g => {
+  const panes = SYM_TABS.map(tb => `<div data-pane="${tb.id}" style="display:${tb.id===symTab?'block':'none'};">${tb.custom ? (tb.id === 'sum' ? symSumHtml() : symSerialHtml()) : ''}${tb.groups.map(g => {
     const items = Array.isArray(g[1]) ? g[1] : g[1].split(' ');
     return `<div class="symgt${tb.ur?' ur':''}">${g[0]}</div><div class="symrow${tb.ur?' rtl':''}">${items.map(c => chip(c, g[2], tb.ur)).join('')}</div>`;
   }).join('')}</div>`).join('');
@@ -8971,8 +8977,9 @@ function kgBodyHtml() {
 // ---------- Tables (word meanings, opposites, singular/plural, ...) ----------
 function pqTouch() { try { pqScheduleSave(); } catch (e) {} }
 const PQ_POS = { top:'Before the objective section (MCQs…)', preShort:'Before Short Questions', postShort:'After Short Questions (before Long)', end:'After Long Questions (end)' };
+function pqTblStyle(tb) { return tb.numStyle || (tb.nums === false ? 'none' : '1'); }
 function pqAddTable() {
-  paperTables.push({ title:'', pos:'end', nums:true, cols:['',''], rows:[0,1,2,3,4].map(() => ['','']) });
+  paperTables.push({ title:'', pos:'end', numStyle:'1', cols:['',''], rows:[0,1,2,3,4].map(() => ['','']) });
   pqTouch(); renderTab();
 }
 function pqDupTable(i) { paperTables.splice(i+1, 0, JSON.parse(JSON.stringify(paperTables[i]))); pqTouch(); renderTab(); }
@@ -8990,7 +8997,7 @@ function tplPqTables() {
       <select style="width:100%;padding:8px;margin-bottom:8px;" onchange="paperTables[${i}].pos=this.value">${Object.keys(PQ_POS).map(k => `<option value="${k}"${(tb.pos||'end')===k?' selected':''}>📍 ${PQ_POS[k]}</option>`).join('')}</select>
       <div style="${g}">${tb.cols.map((c,k) => `<input dir="auto" style="font-weight:700;" placeholder="Column heading" value="${esc(c)}" oninput="paperTables[${i}].cols[${k}]=this.value">`).join('')}<span></span></div>
       ${tb.rows.map((r,ri) => `<div style="${g}">${r.map((c,k) => `<input dir="auto" placeholder="blank = student writes" value="${esc(c)}" oninput="paperTables[${i}].rows[${ri}][${k}]=this.value">`).join('')}<button class="btn-ghost" style="padding:0;" onclick="pqDelRow(${i},${ri})">✕</button></div>`).join('')}
-      <label style="display:flex;align-items:center;gap:6px;font-size:12px;margin:6px 0;"><input type="checkbox" ${tb.nums===false?'':'checked'} onchange="paperTables[${i}].nums=this.checked"> Row numbers (1, 2, 3…)</label>
+      <select style="width:100%;padding:8px;margin:6px 0;" onchange="paperTables[${i}].numStyle=this.value">${[['none','No serial numbers'],...PQ_SN_STYLES.map(x => [x[0],'Serial: ' + x[1]])].map(o => `<option value="${o[0]}"${pqTblStyle(tb)===o[0]?' selected':''}>${o[1]}</option>`).join('')}</select>
       <div class="flexgap" style="flex-wrap:wrap;">
         <button class="btn-ghost" onclick="pqAddRow(${i})">＋ Row</button>
         <button class="btn-ghost" onclick="pqAddCol(${i})">＋ Column</button>
@@ -9009,13 +9016,27 @@ function pqTablesHtml(pos) {
   return paperTables.filter(tb => (tb.pos || 'end') === pos).map(tb => {
     const rows = tb.rows.filter(r => r.some(c => (c || '').trim()));
     if (!rows.length) return '';
-    const nums = tb.nums !== false, hasHead = tb.cols.some(c => (c || '').trim());
+    const ns = pqTblStyle(tb), nums = ns !== 'none', hasHead = tb.cols.some(c => (c || '').trim());
     return `<div class="pq-section">${(tb.title||'').trim() ? `<div class="pq-instruction" dir="auto">${esc(tb.title)}</div>` : ''}
       <table class="pq-table">${hasHead ? `<thead><tr>${nums ? '<th class="pq-no">#</th>' : ''}${tb.cols.map(c => `<th dir="auto">${esc(c||'')}</th>`).join('')}</tr></thead>` : ''}
-      <tbody>${rows.map((r,i) => `<tr>${nums ? `<td class="pq-no">${i+1}</td>` : ''}${r.map(c => `<td dir="auto">${pqEsc(c||'')}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
+      <tbody>${rows.map((r,i) => `<tr>${nums ? `<td class="pq-no">${pqSerialText(ns, i+1)}</td>` : ''}${r.map(c => `<td dir="auto">${pqEsc(c||'')}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
   }).join('');
 }
 
+
+// ---------- Serial numbers: {#} 1) 2) 3) · {#a} a) b) · {#A} · {#i} · {#I} · {#۱} · {#ا} (restart in every question) ----------
+const PQ_SN_STYLES = [['1','1  2  3'],['a','a  b  c'],['A','A  B  C'],['i','i  ii  iii'],['I','I  II  III'],['\u06F1','\u06F1  \u06F2  \u06F3'],['\u0627','الف  ب  ج']];
+const PQ_UR_ALPHA = ['الف','ب','ج','د','ہ','و','ز','ح','ط','ی','ک','ل','م','ن','س','ع','ف','ق','ر','ش'];
+function pqRoman(n) { const m = [[10,'x'],[9,'ix'],[5,'v'],[4,'iv'],[1,'i']]; let r = ''; m.forEach(([v,c]) => { while (n >= v) { r += c; n -= v; } }); return r; }
+function pqSerialText(k, n) {
+  if (k === 'a') return String.fromCharCode(96 + ((n - 1) % 26) + 1);
+  if (k === 'A') return String.fromCharCode(64 + ((n - 1) % 26) + 1);
+  if (k === 'i') return pqRoman(n);
+  if (k === 'I') return pqRoman(n).toUpperCase();
+  if (k === '\u06F1') return String(n).replace(/\d/g, d => String.fromCharCode(0x06F0 + Number(d)));
+  if (k === '\u0627') return PQ_UR_ALPHA[(n - 1) % PQ_UR_ALPHA.length];
+  return String(n);
+}
 
 // ---------- Column sums: {{345+128}} prints as a vertical addition/subtraction/multiplication ----------
 // Optional place-value boxes: {{345+128|pv}} (Th H T O) or {{345+128|pvf}} (Ones Tens Hundreds ...)
@@ -9059,7 +9080,13 @@ function symSumPrev() {
 function symSumInsert() {
   const v = symSumVals();
   if (v.nums.length < 2) return;
-  symInsert('{{' + symSumExpr(v) + '}}', true);
+  const sn = ((document.getElementById('sumSN') || {}).value || '');
+  symInsert((sn ? '{#' + (sn === '1' ? '' : sn) + '} ' : '') + '{{' + symSumExpr(v) + '}}', true);
+}
+function symSerialHtml() {
+  return `<div class="symgt">Serial number (har jagah lag sakta hai)</div>
+    <div class="symrow">${PQ_SN_STYLES.map(x => `<button type="button" dir="ltr" class="symchip wide${x[0]==='\u0627'||x[0]==='\u06F1'?' ur':''}" data-c="{#${x[0]==='1'?'':x[0]}}" onclick="symInsert(this.dataset.c,true)">${x[1].split('  ').map(v => v + ')').join('  ')}</button>`).join('')}</div>
+    <div style="font-size:11px;opacity:.7;margin-top:10px;line-height:1.6;">Chip dabane par us jagah <b>{#}</b> jaisa nishan lagta hai. Print me wo agla number ban jata hai, aur har sawal me dobara 1 (ya a, i…) se shuru hota hai. Jitni baar chahein likhein, jaise:<br><b>{#} {{345+128}} &nbsp; {#} {{45+67}} &nbsp; {#} {{90-38}}</b><br>Ye MCQ, True/False, Blanks, Short, Long aur Table ke cells sab me chalta hai. Sawal ka apna number upar ke number wale box me kuch bhi (1, a, i, ۱) likh sakte hain.</div>`;
 }
 function symSumHtml() {
   const inp = (id, ph) => `<input id="${id}" inputmode="decimal" placeholder="${ph}" oninput="symSumPrev()" style="width:100%;min-width:0;text-align:right;font-family:'Courier New',monospace;font-size:16px;padding:8px;">`;
@@ -9068,6 +9095,7 @@ function symSumHtml() {
       <div style="display:grid;gap:6px;">${inp('sumA','1st number, e.g. 345')}${inp('sumB','2nd number, e.g. 128')}${inp('sumC','3rd (optional)')}${inp('sumD','4th (optional)')}</div>
       <select id="sumOp" onchange="symSumPrev()" style="font-size:24px;text-align:center;border-radius:10px;height:44px;"><option value="+">+</option><option value="\u2212">\u2212</option><option value="\u00d7">\u00d7</option></select>
     </div>
+    <select id="sumSN" style="width:100%;padding:8px;margin-bottom:8px;"><option value="">Serial number: none</option>${PQ_SN_STYLES.map(x => `<option value="${x[0]}">Serial: ${x[1]}</option>`).join('')}</select>
     <label style="display:flex;align-items:center;gap:8px;font-size:13px;margin-bottom:6px;"><input type="checkbox" id="sumPV" onchange="symSumPrev()"> Ones / Tens / Hundreds… labels (optional)</label>
     <select id="sumPVS" onchange="symSumPrev()" style="display:none;width:100%;padding:8px;margin-bottom:8px;"><option value="pv">Short: Th  H  T  O</option><option value="pvf">Full: Thousands  Hundreds  Tens  Ones</option></select>
     <div id="sumPrev" style="background:#fff;color:#111;border:1px dashed var(--line,#ccc);border-radius:12px;padding:8px 12px;min-height:90px;margin-bottom:8px;overflow-x:auto;"><span style="opacity:.5;font-size:12px;">Numbers likhein…</span></div>
@@ -9254,6 +9282,8 @@ const pqEsc = s => esc(s)
   .replace(/\^([-\u2212+]?\d+)/g, (m, d) => '<sup>' + d.replace('-', '\u2212') + '</sup>')
   // [[word]] -> underlined word (for "underline the word" style questions)
   .replace(/\[\[(.+?)\]\]/g, '<u>$1</u>')
+  // {#} {#a} {#i} ... -> auto serial numbers (counter restarts for every question text)
+  .replace(/\{#([1aAiI\u06F1\u0627]?)\}/g, (() => { const c = {}; return (m, k) => { k = k || '1'; c[k] = (c[k] || 0) + 1; return `<span class="pq-sn" dir="ltr">${pqSerialText(k, c[k])})</span>`; }; })())
   // {{345+128}} -> vertical column sum (works in every question type)
   .replace(/\{\{([^{}]{1,80})\}\}/g, (m, e) => pqColSumHtml(e));
 
