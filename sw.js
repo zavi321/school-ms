@@ -1,18 +1,29 @@
 const CACHE_NAME = 'school-ms-cache-v3';
 const APP_SHELL = ['./', './index.html', './manifest.json', './icon-192.png', './icon-512.png'];
+const SHELL_TIMEOUT_MS = 4000;
+const PRECACHE_LIBS = [
+  'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.4/dist/umd/supabase.js',
+  'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js'
+];
 
 self.addEventListener('install', (e) => {
   e.waitUntil(
-    // { cache: 'reload' } forces this initial caching to bypass the browser's
-    // own HTTP cache and fetch the truly current files from the server —
-    // caches.addAll() alone does not do this, and would otherwise be able to
-    // seed the app-shell cache with an already-stale copy of index.html.
     caches.open(CACHE_NAME).then((cache) =>
-      Promise.all(APP_SHELL.map((url) =>
-        fetch(url, { cache: 'reload' }).then((response) => {
-          if (response && response.ok) return cache.put(url, response);
-        }).catch(() => {})
-      ))
+      Promise.all([
+        ...APP_SHELL.map((url) =>
+          fetch(url, { cache: 'reload' }).then((response) => {
+            if (response && response.ok) return cache.put(url, response);
+          }).catch(() => {})
+        ),
+        ...PRECACHE_LIBS.map((url) =>
+          cache.match(url).then((hit) => {
+            if (hit) return;
+            return fetch(url).then((response) => {
+              if (response && response.ok) return cache.put(url, response);
+            });
+          }).catch(() => {})
+        )
+      ])
     )
   );
   self.skipWaiting();
@@ -29,10 +40,30 @@ self.addEventListener('activate', (e) => {
 
 self.addEventListener('fetch', (e) => {
   const url = e.request.url;
+
+  // Google Fonts: stale-while-revalidate
+  if (e.request.method === 'GET' &&
+      (url.startsWith('https://fonts.googleapis.com/') || url.startsWith('https://fonts.gstatic.com/'))) {
+    e.respondWith(
+      caches.open(CACHE_NAME).then((cache) =>
+        cache.match(e.request).then((cached) => {
+          const net = fetch(e.request).then((response) => {
+            if (response && (response.ok || response.type === 'opaque')) {
+              cache.put(e.request, response.clone());
+            }
+            return response;
+          }).catch(() => cached || Response.error());
+          return cached || net;
+        })
+      )
+    );
+    return;
+  }
+
   const isData = url.includes('jsdelivr.net');
 
   if (isData) {
-    // Data (Quran text + Tafsir): cache-first — once saved, never fetched again
+    // Libraries / data: cache-first — once saved, never fetched again
     e.respondWith(
       caches.open(CACHE_NAME).then((cache) =>
         cache.match(e.request).then((cached) => {
@@ -47,37 +78,31 @@ self.addEventListener('fetch', (e) => {
     return;
   }
 
-  // Only manage this app's own same-origin GET requests (the shell: index.html,
-  // manifest, icons). Everything else — and in particular every Supabase call,
-  // which is cross-origin and mostly POST/PATCH/RPC — is left completely alone.
-  //
-  // Previously this branch caught ALL requests regardless of method or origin:
-  // it tried cache.put() on every Supabase response too, which throws for
-  // non-GET requests (the Cache API only accepts GET), and it forced every
-  // single database save/load through this extra network-first wrapper. On a
-  // slow or unstable mobile connection that adds real latency and retry
-  // overhead to every interaction in the app — typing, saving, opening a tab —
-  // which is exactly when this started going wrong.
+  // Only manage this app's own same-origin GET requests (the shell).
+  // Every Supabase call is cross-origin and is left completely alone.
   let sameOriginGet = false;
   try {
     sameOriginGet = e.request.method === 'GET' && new URL(url).origin === self.location.origin;
-  } catch (err) { /* leave sameOriginGet false — treat as "not ours", pass through */ }
+  } catch (err) { /* not ours, pass through */ }
 
-  if (!sameOriginGet) return; // let the browser handle it normally, no interception
+  if (!sameOriginGet) return;
+
+  // Shell: network-first, but fall back to cache after SHELL_TIMEOUT_MS.
+  const network = fetch(e.request, { cache: 'no-store' }).then((response) => {
+    if (response && response.ok) {
+      const copy = response.clone();
+      caches.open(CACHE_NAME).then((cache) => cache.put(e.request, copy));
+    }
+    return response;
+  });
+  e.waitUntil(network.catch(() => {})); // let the update finish in background
 
   e.respondWith(
-    // { cache: 'no-store' } is the actual fix for "I uploaded a new file but
-    // the app still shows the old one": without it, this fetch() could still
-    // be silently answered by the browser's own HTTP cache instead of truly
-    // going to the server, no matter how "network-first" this code looks.
-    fetch(e.request, { cache: 'no-store' })
-      .then((response) => {
-        if (response && response.ok) {
-          caches.open(CACHE_NAME).then((cache) => cache.put(e.request, response.clone()));
-        }
-        return response;
-      })
-      .catch(() => caches.match(e.request))
+    caches.match(e.request).then((cached) => {
+      if (!cached) return network;
+      const timeout = new Promise((resolve) => setTimeout(() => resolve(null), SHELL_TIMEOUT_MS));
+      return Promise.race([network.catch(() => null), timeout]).then((r) => r || cached);
+    })
   );
 });
 
