@@ -364,6 +364,9 @@ html, body{overscroll-behavior:none;}
   table.card-table tr.dup-row td{background:#FDF1E7;}
   table.card-table.cp-big{font-size:15px;}
   table.card-table.cp-big th,table.card-table.cp-big td{padding:10px 10px;}
+  table.card-table.cp-big th:first-child,table.card-table.cp-big td:first-child{position:sticky;left:0;z-index:2;}
+  table.card-table.cp-big th:first-child{background:var(--navy);z-index:3;box-shadow:2px 0 0 var(--gold);}
+  table.card-table.cp-big td:first-child{background:#fff;box-shadow:2px 0 0 var(--line);}
   table.card-table .dup-tag{display:inline-block;margin-left:6px;font-size:9px;font-weight:700;color:#B24A32;background:#FBE3D4;border-radius:999px;padding:2px 7px;white-space:nowrap;}
   body.ur table.card-table .dup-tag{margin-left:0;margin-right:6px;}
   /* Physical-register look for the Teacher Attendance Register */
@@ -3176,7 +3179,7 @@ function _renderTabInner() {
       renderDMCEditTable();
     });
   }
-  else if (TAB==='marksSheet') main.innerHTML = tplMarksSheet();
+  else if (TAB==='marksSheet') { main.innerHTML = tplMarksSheet(); _regBookRestoreScroll(); }
   else if (TAB==='admissionRegister') { main.innerHTML = tplAdmissionRegister(); initRegBookScroll(); _regBookRestoreScroll(); }
   else if (TAB==='papers') main.innerHTML = tplPapers();
   else if (TAB==='teacherRegister') { main.innerHTML = tplTeacherRegister(); initRegBookScroll(); _regBookRestoreScroll(); }
@@ -7963,10 +7966,10 @@ function tplMarksSheet() {
   if (classStudents.length > 0) {
     const msSum = msSummaryForClass(msSelectedClass);
     tableHtml = `
-      <div style="overflow-x:auto;margin-bottom:16px;"><table style="width:100%;border-collapse:collapse;font-size:15px;">
+      <div class="ms-scroll-wrap" style="overflow-x:auto;margin-bottom:16px;direction:ltr;-webkit-overflow-scrolling:touch;"><table style="width:100%;border-collapse:collapse;font-size:15px;">
         <thead>
           <tr style="background:#0F2740;color:#fff;position:sticky;top:0;">
-            <th style="padding:8px;text-align:left;min-width:150px;">Student Name</th>
+            <th style="padding:8px;text-align:left;min-width:120px;position:sticky;left:0;z-index:3;background:#0F2740;box-shadow:2px 0 0 #C9A227;">Student Name</th>
             <th style="padding:8px;text-align:left;min-width:150px;">Father Name</th>
             ${msSubjects.map(s => `<th style="padding:8px;text-align:center;min-width:80px;">${esc(s)}</th>`).join('')}
             <th style="padding:8px;text-align:center;min-width:70px;">Total</th>
@@ -7983,7 +7986,7 @@ function tplMarksSheet() {
       if (!msMarksData[msSelectedClass][student.id]) msMarksData[msSelectedClass][student.id] = {};
       
       tableHtml += `<tr style="border-bottom:1px solid #ddd;">
-        <td style="padding:8px;text-align:left;font-weight:500;">${esc(student.name)}</td>
+        <td style="padding:8px;text-align:left;font-weight:500;position:sticky;left:0;z-index:2;background:#fff;box-shadow:2px 0 0 #ddd;">${esc(student.name)}</td>
         <td style="padding:4px;"><input type="text" autocomplete="off" value="${esc(student.fatherName||'')}" placeholder="Father Name" style="width:100%;padding:6px;font-size:15px;border:1px solid #ccc;" onchange="msStudents['${msSelectedClass}'][${idx}].fatherName=this.value;saveMarksSheetData();"></td>
         ${msSubjects.map(subj => {
           const val = msMarksData[msSelectedClass][student.id][subj] || '';
@@ -8443,12 +8446,12 @@ function _regBookFlushVerticalScroll() {
 // rebuilt keeps the user's scroll position through any redraw, deferred or not.
 let _regBookScrollPositions = {};
 function _regBookCaptureScroll() {
-  document.querySelectorAll('.regbook-screen-wrap, .reg-drag-wrap, .tt-scroll-wrap').forEach((wrap, i) => {
+  document.querySelectorAll('.regbook-screen-wrap, .reg-drag-wrap, .tt-scroll-wrap, .ms-scroll-wrap').forEach((wrap, i) => {
     _regBookScrollPositions[wrap.className + '_' + i] = wrap.scrollLeft;
   });
 }
 function _regBookRestoreScroll() {
-  document.querySelectorAll('.regbook-screen-wrap, .reg-drag-wrap, .tt-scroll-wrap').forEach((wrap, i) => {
+  document.querySelectorAll('.regbook-screen-wrap, .reg-drag-wrap, .tt-scroll-wrap, .ms-scroll-wrap').forEach((wrap, i) => {
     const key = wrap.className + '_' + i;
     if (_regBookScrollPositions[key]) wrap.scrollLeft = _regBookScrollPositions[key];
   });
@@ -10965,8 +10968,10 @@ function renderClassPortalMarksViewGrid() {
     }).join('');
     return `<tr><td class="mo">${st.roll_no?'#'+esc(st.roll_no)+' ':''}${esc(st.name)}</td><td>${esc(st.father_name||'')}</td>${cells}<td style="text-align:center;font-weight:600;">${total}/${grandTotal}</td><td style="text-align:center;font-weight:600;">${stTotals[si] === null || !grandTotal ? '—' : dmcGradeFor(stTotals[si] / grandTotal * 100)}</td><td style="text-align:center;font-weight:600;">${stRanks[si] === null ? '—' : stRanks[si]}</td></tr>`;
   }).join('');
+  const _oldWrap = grid.querySelector('.card-table-wrap');
+  const _keepLeft = (_oldWrap && grid.dataset.exam === classPortalSelectedExam) ? _oldWrap.scrollLeft : 0;
   grid.innerHTML = `
-    <div class="card-table-wrap" style="margin-top:8px;">
+    <div class="card-table-wrap" style="margin-top:8px;direction:ltr;">
       <table class="card-table cp-big">
         <thead><tr><th style="text-align:left;">${esc(t.studentName)}</th><th style="text-align:left;">${esc(t.fatherName)}</th>${subjects.map(s=>`<th>${esc(s.name)} /${esc(s.total)}</th>`).join('')}<th>${esc(t.classPortalTotal)}</th><th>${gradeLbl}</th><th>${posLbl}</th></tr></thead>
         <tbody>${rows || `<tr><td colspan="${subjects.length + 5}">${esc(t.classPortalNoStudents)}</td></tr>`}</tbody>
@@ -10977,6 +10982,9 @@ function renderClassPortalMarksViewGrid() {
       <button class="btn-primary" style="flex:1;" onclick="shareClassMarksWhatsapp()">💬 ${esc(t.classPortalSendWhatsapp)}</button>
     </div>
   `;
+  grid.dataset.exam = classPortalSelectedExam;
+  const _newWrap = grid.querySelector('.card-table-wrap');
+  if (_newWrap && _keepLeft) _newWrap.scrollLeft = _keepLeft;
 }
 
 function buildClassMarksWorkbook() {
