@@ -6283,7 +6283,7 @@ function renderClassMarksDetail(examId) {
   detail.innerHTML = `
     <div class="card-table-wrap" style="margin-top:12px;">
       <table class="card-table">
-        <thead><tr><th style="text-align:left;">${esc(t.studentName)}</th>${subjects.map(s=>`<th>${esc(s.name)} /${esc(s.total)}</th>`).join('')}</tr></thead>
+        <thead><tr><th style="text-align:left;">${esc(t.studentName)}</th>${subjects.map(s=>`<th>${esc(s.name)}</th>`).join('')}</tr></thead>
         <tbody>${studentIds.map(sid => `<tr><td class="mo">${esc(studentName(sid))}</td>${subjects.map(s=>`<td>${esc((marks[sid]||{})[s.name] ?? '—')}</td>`).join('')}</tr>`).join('')}</tbody>
       </table>
     </div>`;
@@ -7769,59 +7769,50 @@ let msAcademicYear = '';
 let msLoadedYear = null; // the year msStudents/msMarksData currently reflect
 let msYearsList = [];    // years this school has previously saved, for the dropdown
 
+// ---- Device-only storage (same idea as the Question Paper draft) ----
+// The Marks Sheet is kept on this device: localStorage is written synchronously on
+// every change (so nothing is lost on refresh / app switch / closing the browser),
+// with an IndexedDB copy as a second backup. Nothing is sent to Supabase, and
+// nothing here is touched by "Clear cache" except the IndexedDB backup copy.
+let msSubjectTotals = {}; // {subjectName: maximum marks}
+function msLocalKey() { return 'msLocal_v1_' + ((typeof CURRENT_USER !== 'undefined' && CURRENT_USER && CURRENT_USER.id) || 'x'); }
+function msLocalRead() {
+  try { const o = JSON.parse(localStorage.getItem(msLocalKey()) || 'null'); if (o && o.years) return o; } catch (e) {}
+  return { years: {}, lastYear: '' };
+}
+function msSubjectMax(name) { const n = Number(msSubjectTotals[name]); return n > 0 ? n : 100; }
+
 async function loadMarksSheetYearsList() {
-  if (!navigator.onLine) {
-    // No signal at all — build the years dropdown from whatever's cached locally.
-    const cached = await idbGetAll('marks_sheet_data');
-    msYearsList = cached.map(r => r.academic_year).filter(Boolean).sort().reverse();
-    return;
-  }
-  const { data, error } = await withTimeout(
-    sb.from('marks_sheet_data').select('academic_year')
-      .eq('owner_id', CURRENT_USER.id).order('academic_year', { ascending: false })
-  );
-  if (error) {
-    // Network hiccup — fall back to the local cache instead of leaving the
-    // dropdown empty.
-    const cached = await idbGetAll('marks_sheet_data');
-    msYearsList = cached.map(r => r.academic_year).filter(Boolean).sort().reverse();
-    return;
-  }
-  msYearsList = (data || []).map(r => r.academic_year).filter(Boolean);
+  const set = new Set(Object.keys(msLocalRead().years));
+  try { (await idbGetAll('marks_sheet_data')).forEach(r => { if (r && r.academic_year) set.add(r.academic_year); }); } catch (e) {}
+  msYearsList = Array.from(set).filter(Boolean).sort().reverse();
 }
 
 async function loadMarksSheetData() {
   if (msLoaded && msLoadedYear === msAcademicYear) return;
   msLoaded = true;
-  await loadMarksSheetYearsList();
-  if (!msAcademicYear) msAcademicYear = msYearsList[0] || dmcAcademicSession || '';
+  try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) {}
+  const db = msLocalRead();
+  if (!msAcademicYear) msAcademicYear = db.lastYear || Object.keys(db.years).sort().reverse()[0] || dmcAcademicSession || '';
   const yearKey = msAcademicYear || 'Unspecified';
-  // No signal at all — skip straight to the local cache so the Marks Sheet
-  // tab still comes up with this year's data, and marks can be entered,
-  // printed, and exported with zero internet.
-  if (!navigator.onLine) {
-    const cached = await idbGetAll('marks_sheet_data');
-    applyMarksSheetData(cached.find(r => r.id === yearKey));
-    // msLoadedYear stays unset (not msAcademicYear) so a proper fetch is
-    // retried once back online, but msLoaded stays true so the sheet renders
-    // with the cached data now instead of getting stuck on the loading spinner.
-    return;
-  }
   msLoadedYear = msAcademicYear;
-  const { data, error } = await withTimeout(
-    sb.from('marks_sheet_data').select('*')
-      .eq('owner_id', CURRENT_USER.id).eq('academic_year', msAcademicYear).maybeSingle()
-  );
-  if (error) {
-    // Network hiccup — fall back to whatever was cached from the last
-    // successful load instead of showing a blank sheet.
-    const cached = await idbGetAll('marks_sheet_data');
-    applyMarksSheetData(cached.find(r => r.id === yearKey));
-    msLoadedYear = null;
-    return;
+  // Synchronous: no await before the data is applied, so a save can never run
+  // against empty defaults and overwrite what is stored.
+  let row = db.years[yearKey];
+  applyMarksSheetData(row);
+  loadMarksSheetYearsList();
+  if (!row) {
+    // Nothing in localStorage for this year: look for an older IndexedDB copy once.
+    try {
+      const cached = await idbGetAll('marks_sheet_data');
+      const old = cached.find(r => r.id === yearKey);
+      if (old && msLoadedYear === msAcademicYear && !(msStudents && Object.keys(msStudents).length)) {
+        applyMarksSheetData(old);
+        saveMarksSheetData();
+        if (TAB === 'marksSheet') renderTab();
+      }
+    } catch (e) {}
   }
-  applyMarksSheetData(data);
-  await idbPutRow('marks_sheet_data', { id: yearKey, ...(data || { owner_id: CURRENT_USER.id, academic_year: yearKey, classes: msClasses, subjects: [], students: {}, marks: {} }) });
 }
 
 // Applies a loaded marks-sheet row (from Supabase or the local cache) to the
@@ -7832,10 +7823,11 @@ function applyMarksSheetData(row) {
   if (row) {
     msClasses = row.classes && row.classes.length ? row.classes : msClasses;
     msSubjects = row.subjects || [];
+    msSubjectTotals = row.totals || {};
     msStudents = row.students || {};
     msMarksData = row.marks || {};
   } else {
-    msSubjects = []; msStudents = {}; msMarksData = {};
+    msSubjects = []; msSubjectTotals = {}; msStudents = {}; msMarksData = {};
   }
 }
 
@@ -7857,41 +7849,24 @@ function changeMarksSheetYear(year) {
 // lost even if the tab/app is backgrounded (app switched, notification panel
 // pulled down, screen locked, etc.) a moment after typing. Only the network
 // call to Supabase is debounced, to avoid spamming the server on every keystroke.
-let msFlushPending = null;
+let msFlushPending = null; // kept for compatibility; saving is now immediate and local
 function saveMarksSheetData() {
+  // Never write before this year's data has been loaded (would overwrite it with empty defaults).
+  if (!msLoaded || msLoadedYear !== msAcademicYear) return;
   const yearKey = msAcademicYear || 'Unspecified';
-  const payload = {
-    owner_id: CURRENT_USER.id, academic_year: yearKey, classes: msClasses, subjects: msSubjects,
-    students: msStudents, marks: msMarksData, updated_at: new Date().toISOString()
-  };
-  // Cache locally right away — so the sheet reflects the latest edits even
-  // if the device goes offline, or the tab gets backgrounded, before the
-  // debounced network save below has a chance to run.
-  idbPutRow('marks_sheet_data', { id: yearKey, ...payload });
-
-  clearTimeout(msSaveTimer);
-  msFlushPending = async () => {
-    msFlushPending = null;
-    if (!navigator.onLine) { if (!msYearsList.includes(msAcademicYear)) msYearsList = [msAcademicYear, ...msYearsList]; return; }
-    const { error } = await sb.from('marks_sheet_data').upsert(payload, { onConflict: 'owner_id,academic_year' });
-    if (error) { if (!isNetworkError(error)) console.error('Marks sheet save failed:', error.message); }
-    else if (!msYearsList.includes(msAcademicYear)) loadMarksSheetYearsList();
-  };
-  msSaveTimer = setTimeout(() => { if (msFlushPending) msFlushPending(); }, 500);
+  const row = { classes: msClasses, subjects: msSubjects, totals: msSubjectTotals, students: msStudents, marks: msMarksData, updated_at: new Date().toISOString() };
+  const db = msLocalRead();
+  db.years[yearKey] = row;
+  db.lastYear = msAcademicYear;
+  try { localStorage.setItem(msLocalKey(), JSON.stringify(db)); }
+  catch (e) { console.error('Marks sheet could not be saved on this device:', e); }
+  // Second copy in IndexedDB (best effort, device only).
+  try { idbPutRow('marks_sheet_data', { id: yearKey, academic_year: yearKey, ...row }); } catch (e) {}
+  if (msAcademicYear && !msYearsList.includes(msAcademicYear)) msYearsList = [msAcademicYear, ...msYearsList];
 }
-// If the app gets backgrounded (screen locked, app switched, notification
-// panel pulled down, tab hidden) before the 500ms debounce above fires, push
-// the pending save immediately — mobile browsers routinely pause/kill timers
-// in background tabs, so waiting for the timer there can lose the edit.
-document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'hidden' && msFlushPending) {
-    clearTimeout(msSaveTimer);
-    msFlushPending();
-  }
-});
-window.addEventListener('pagehide', () => {
-  if (msFlushPending) { clearTimeout(msSaveTimer); msFlushPending(); }
-});
+// Save once more whenever the app is hidden or closed (harmless: it writes the same state).
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') { try { saveMarksSheetData(); } catch (e) {} } });
+window.addEventListener('pagehide', () => { try { saveMarksSheetData(); } catch (e) {} });
 
 // ---- Total / Grade / Position helpers (Marks Sheet + Teacher Portal) ----
 // Position: highest total = 1. Equal totals share a position (1, 1, 3). A
@@ -7900,7 +7875,7 @@ function msComputeRanks(totals) {
   const valid = totals.filter(x => x !== null).sort((a, b) => b - a);
   return totals.map(x => x === null ? null : valid.indexOf(x) + 1);
 }
-// The owner Marks Sheet keeps no per-subject maximum, so each subject is taken as out of 100.
+// Max = sum of each subject's own total marks (default 100 for subjects added before totals existed).
 function msSummaryForClass(cls) {
   const studs = msStudents[cls] || [];
   const md = msMarksData[cls] || {};
@@ -7911,7 +7886,7 @@ function msSummaryForClass(cls) {
     return any ? tot : null;
   });
   const ranks = msComputeRanks(totals);
-  const max = msSubjects.length * 100;
+  const max = msSubjects.reduce((sum, sj) => sum + msSubjectMax(sj), 0);
   return studs.map((st, i) => ({
     total: totals[i], max,
     grade: (totals[i] === null || !max) ? '' : dmcGradeFor(totals[i] / max * 100),
@@ -7971,7 +7946,7 @@ function tplMarksSheet() {
           <tr style="background:#0F2740;color:#fff;position:sticky;top:0;">
             <th style="padding:8px;text-align:left;min-width:150px;position:sticky;left:0;z-index:3;background:#0F2740;box-shadow:2px 0 0 #C9A227;">Student Name</th>
             <th style="padding:8px;text-align:left;min-width:150px;">Father Name</th>
-            ${msSubjects.map(s => `<th style="padding:10px;text-align:center;min-width:100px;">${esc(s)}</th>`).join('')}
+            ${msSubjects.map(s => `<th style="padding:10px;text-align:center;min-width:100px;">${esc(s)}<div style="font-size:12px;font-weight:400;opacity:.8;">/ ${msSubjectMax(s)}</div></th>`).join('')}
             <th style="padding:8px;text-align:center;min-width:70px;">Total</th>
             <th style="padding:8px;text-align:center;min-width:50px;">Grade</th>
             <th style="padding:8px;text-align:center;min-width:60px;">Position</th>
@@ -7987,10 +7962,10 @@ function tplMarksSheet() {
       
       tableHtml += `<tr style="border-bottom:1px solid #ddd;">
         <td style="padding:10px;text-align:left;font-weight:600;position:sticky;left:0;z-index:2;background:#fff;box-shadow:2px 0 0 #ddd;">${esc(student.name)}</td>
-        <td style="padding:4px;"><input type="text" autocomplete="off" value="${esc(student.fatherName||'')}" placeholder="Father Name" style="width:100%;padding:9px;font-size:19px;border:1px solid #ccc;" onchange="msStudents['${msSelectedClass}'][${idx}].fatherName=this.value;saveMarksSheetData();"></td>
+        <td style="padding:4px;"><input type="text" autocomplete="off" value="${esc(student.fatherName||'')}" placeholder="Father Name" style="width:100%;padding:9px;font-size:19px;border:1px solid #ccc;" oninput="msStudents['${msSelectedClass}'][${idx}].fatherName=this.value;saveMarksSheetData();" onchange="msStudents['${msSelectedClass}'][${idx}].fatherName=this.value;saveMarksSheetData();"></td>
         ${msSubjects.map(subj => {
           const val = msMarksData[msSelectedClass][student.id][subj] || '';
-          return `<td style="padding:4px;"><input type="number" autocomplete="off" value="${val}" placeholder="—" style="width:100%;text-align:center;padding:9px;font-size:19px;border:1px solid #ccc;" onchange="msMarksData['${msSelectedClass}']['${student.id}']['${subj}']=this.value;saveMarksSheetData();msRefreshSummary();"></td>`;
+          return `<td style="padding:4px;"><input type="number" inputmode="decimal" min="0" max="${msSubjectMax(subj)}" autocomplete="off" value="${val}" placeholder="—" style="width:100%;text-align:center;padding:9px;font-size:19px;border:1px solid #ccc;" oninput="msMarksData['${msSelectedClass}']['${student.id}']['${subj}']=this.value;saveMarksSheetData();msRefreshSummary();" onchange="msMarksData['${msSelectedClass}']['${student.id}']['${subj}']=this.value;saveMarksSheetData();msRefreshSummary();"></td>`;
         }).join('')}
         <td style="padding:8px;text-align:center;font-weight:600;" data-ms="tot" data-ms-sid="${esc(student.id)}">${msSum[idx].total === null ? '—' : msSum[idx].total + '/' + msSum[idx].max}</td>
         <td style="padding:8px;text-align:center;font-weight:600;" data-ms="grade" data-ms-sid="${esc(student.id)}">${msSum[idx].grade || '—'}</td>
@@ -8036,13 +8011,15 @@ function tplMarksSheet() {
       <h3 style="margin-top:0;">Subjects</h3>
       <p style="font-size:11px;opacity:.6;">Add or remove subjects for this marks sheet</p>
       <div style="display:flex;gap:6px;margin-bottom:8px;">
-        <input type="text" id="ms-new-subject" autocomplete="off" placeholder="Subject Name (e.g., Urdu, Math)" style="flex:1;">
+        <input type="text" id="ms-new-subject" autocomplete="off" placeholder="Subject Name (e.g., Urdu, Math)" style="flex:1;min-width:0;">
+        <input type="number" id="ms-new-subject-total" autocomplete="off" inputmode="numeric" min="1" value="100" placeholder="Total" title="Total marks" style="width:86px;">
         <button class="btn-ghost" onclick="addMarksSheetSubject()">+ Add</button>
       </div>
       <div style="display:flex;flex-wrap:wrap;gap:6px;">
         ${msSubjects.map((s, i) => `
           <div style="background:#F0EBDA;padding:6px 10px;border-radius:6px;font-size:12px;display:flex;align-items:center;gap:6px;">
             ${esc(s)}
+            <span style="opacity:.7;">/</span><input type="number" inputmode="numeric" min="1" value="${msSubjectMax(s)}" title="Total marks" style="width:62px;padding:3px 4px;font-size:13px;" onchange="msSubjectTotals[msSubjects[${i}]]=(Number(this.value)>0?Number(this.value):100);saveMarksSheetData();renderTab();">
             <button class="btn-ghost" style="padding:0;font-size:10px;opacity:.6;" onclick="msSubjects.splice(${i},1);saveMarksSheetData();renderTab();">✕</button>
           </div>
         `).join('')}
@@ -8098,11 +8075,14 @@ function removeMarksSheetClass(idx) {
 
 function addMarksSheetSubject() {
   const input = document.getElementById('ms-new-subject');
+  const totalInput = document.getElementById('ms-new-subject-total');
   const subj = input.value.trim();
   if (!subj) return;
+  const tot = Number(totalInput && totalInput.value);
   if (!msSubjects.includes(subj)) {
     msSubjects.push(subj);
   }
+  msSubjectTotals[subj] = tot > 0 ? tot : 100;
   input.value = '';
   saveMarksSheetData();
   renderTab();
@@ -10986,7 +10966,7 @@ function renderClassPortalMarksViewGrid() {
   grid.innerHTML = `
     <div class="card-table-wrap" style="margin-top:8px;direction:ltr;">
       <table class="card-table cp-big">
-        <thead><tr><th style="text-align:left;">${esc(t.studentName)}</th>${showFather ? `<th style="text-align:left;">${esc(t.fatherName)}</th>` : ''}${subjects.map(s=>`<th>${esc(s.name)} /${esc(s.total)}</th>`).join('')}<th>${esc(t.classPortalTotal)}</th><th>${gradeLbl}</th><th>${posLbl}</th></tr></thead>
+        <thead><tr><th style="text-align:left;">${esc(t.studentName)}</th>${showFather ? `<th style="text-align:left;">${esc(t.fatherName)}</th>` : ''}${subjects.map(s=>`<th>${esc(s.name)}</th>`).join('')}<th>${esc(t.classPortalTotal)}</th><th>${gradeLbl}</th><th>${posLbl}</th></tr></thead>
         <tbody>${rows || `<tr><td colspan="${subjects.length + 4 + (showFather ? 1 : 0)}">${esc(t.classPortalNoStudents)}</td></tr>`}</tbody>
       </table>
     </div>
@@ -11023,7 +11003,7 @@ function buildClassMarksWorkbook() {
     let total = 0;
     subjects.forEach(s => {
       const v = row[s.name];
-      out[`${s.name} /${s.total}`] = (v === undefined || v === null) ? '' : Number(v);
+      out[s.name] = (v === undefined || v === null) ? '' : Number(v);
       total += Number(v) || 0;
     });
     out[`${t.classPortalTotal} /${grandTotal}`] = total;
@@ -11301,7 +11281,7 @@ async function renderClassPortalMarks() {
   const session = getClassSession();
   const body = document.getElementById('class-portal-body');
   if (!session || !body) return;
-  classMarksDraft = { examName: '', subjects: [], marks: {} };
+  classMarksDraft = cpDraftLoad() || { examName: '', subjects: [], marks: {} };
   let savedExams = [];
   if (navigator.onLine) {
     try {
@@ -11317,14 +11297,49 @@ async function renderClassPortalMarks() {
   body.innerHTML = `
     <button class="btn-ghost" style="padding:9px 14px;margin-bottom:10px;" onclick="renderClassPortalMenu()">‹ ${esc(t.classPortalBackToMenu)}</button>
     <h2 style="margin-top:0;">${esc(t.classPortalMenuMarks)}</h2>
-    <label><span>${esc(t.classPortalExamName)}</span><input id="cp-exam-name" placeholder="${esc(t.classPortalExamNamePlaceholder)}" value="${esc(classMarksDraft.examName)}" oninput="classMarksDraft.examName=this.value"></label>
+    <label><span>${esc(t.classPortalExamName)}</span><input id="cp-exam-name" placeholder="${esc(t.classPortalExamNamePlaceholder)}" value="${esc(classMarksDraft.examName)}" oninput="classMarksDraft.examName=this.value;cpDraftSave()"></label>
     <div id="cp-subjects">${classPortalSubjectsHtml()}</div>
     <button class="btn-ghost" style="width:100%;margin:8px 0;" onclick="addClassSubject()">${esc(t.classPortalAddSubject)}</button>
     <div id="cp-marks-grid">${classPortalMarksGridHtml(session)}</div>
     <div id="cp-marks-msg" style="font-size:12px;margin:10px 0;"></div>
     <button class="btn-primary" style="width:100%;" onclick="submitClassPortalMarks()">${esc(t.classPortalSaveMarks)}</button>
+    <button class="btn-ghost" style="width:100%;margin-top:10px;" onclick="cpDraftClear()">🗑 ${LANG==='ur' ? 'صاف کریں / نئی شیٹ' : 'Clear / New sheet'}</button>
   `;
 }
+
+// ---- Teacher portal: marks being entered are kept on this device ----
+// Same idea as the Question Paper draft: written on every change, restored when
+// the Marks screen opens, and only removed when the teacher taps Clear.
+function cpDraftKey() {
+  const ses = getClassSession();
+  return ses ? 'cpMarksDraft_v1_' + [ses.schoolCode, ses.loginId, ses.className].join('_') : null;
+}
+function cpDraftSave() {
+  const k = cpDraftKey(); if (!k) return;
+  try { localStorage.setItem(k, JSON.stringify(classMarksDraft)); } catch (e) {}
+}
+function cpDraftLoad() {
+  const k = cpDraftKey(); if (!k) return null;
+  try {
+    const o = JSON.parse(localStorage.getItem(k) || 'null');
+    if (o && Array.isArray(o.subjects) && o.marks && typeof o.marks === 'object') return { examName: o.examName || '', subjects: o.subjects, marks: o.marks };
+  } catch (e) {}
+  return null;
+}
+function cpDraftClear() {
+  if (!confirm(LANG==='ur' ? 'اس اسکرین کے تمام درج شدہ نمبر اور مضامین صاف کر دیں؟' : 'Clear all marks and subjects entered on this screen?')) return;
+  const k = cpDraftKey();
+  if (k) { try { localStorage.removeItem(k); } catch (e) {} }
+  renderClassPortalMarks();
+}
+function cpLiveMark(studentId, subjectName, value) {
+  if (!classMarksDraft.marks[studentId]) classMarksDraft.marks[studentId] = {};
+  if (value === '') delete classMarksDraft.marks[studentId][subjectName];
+  else classMarksDraft.marks[studentId][subjectName] = Number(value);
+  cpDraftSave();
+}
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden' && CLASS_PORTAL_SCREEN === 'marks') cpDraftSave(); });
+window.addEventListener('pagehide', () => { if (CLASS_PORTAL_SCREEN === 'marks') cpDraftSave(); });
 
 function classPortalSubjectsHtml() {
   if (!classMarksDraft.subjects.length) return `<p style="font-size:12px;opacity:.6;">${esc(t.classPortalNoSubjects)}</p>`;
@@ -11340,11 +11355,13 @@ function classPortalSubjectsHtml() {
 
 function addClassSubject() {
   classMarksDraft.subjects.push({ name: '', total: 100 });
+  cpDraftSave();
   document.getElementById('cp-subjects').innerHTML = classPortalSubjectsHtml();
   document.getElementById('cp-marks-grid').innerHTML = classPortalMarksGridHtml(getClassSession());
 }
 function removeClassSubject(i) {
   classMarksDraft.subjects.splice(i, 1);
+  cpDraftSave();
   document.getElementById('cp-subjects').innerHTML = classPortalSubjectsHtml();
   document.getElementById('cp-marks-grid').innerHTML = classPortalMarksGridHtml(getClassSession());
 }
@@ -11356,10 +11373,12 @@ function renameClassSubject(i, val) {
     const row = classMarksDraft.marks[sid];
     if (row && oldName in row) { row[val] = row[oldName]; delete row[oldName]; }
   });
+  cpDraftSave();
   document.getElementById('cp-marks-grid').innerHTML = classPortalMarksGridHtml(getClassSession());
 }
 function retotalClassSubject(i, val) {
   classMarksDraft.subjects[i].total = Number(val || 0);
+  cpDraftSave();
 }
 
 function classPortalMarksGridHtml(session) {
@@ -11372,7 +11391,7 @@ function classPortalMarksGridHtml(session) {
         <thead><tr><th style="text-align:left;">${esc(t.studentName)}</th>${classMarksDraft.subjects.map(s=>`<th>${esc(s.name||'—')} /${esc(s.total)}</th>`).join('')}</tr></thead>
         <tbody>${students.map(st => `
           <tr><td class="mo">${st.roll_no?'#'+esc(st.roll_no)+' ':''}${esc(st.name)}</td>
-          ${classMarksDraft.subjects.map(s => `<td style="padding:3px;"><input type="number" style="width:56px;text-align:center;padding:5px 2px;" value="${(classMarksDraft.marks[st.id]||{})[s.name] ?? ''}" onchange="setClassMark('${st.id}','${esc(s.name).replace(/'/g,"\\'")}',this.value,${s.total})"></td>`).join('')}
+          ${classMarksDraft.subjects.map(s => `<td style="padding:3px;"><input type="number" style="width:56px;text-align:center;padding:5px 2px;" value="${(classMarksDraft.marks[st.id]||{})[s.name] ?? ''}" oninput="cpLiveMark('${st.id}','${esc(s.name).replace(/'/g,"\\'")}',this.value)" onchange="setClassMark('${st.id}','${esc(s.name).replace(/'/g,"\\'")}',this.value,${s.total})"></td>`).join('')}
           </tr>`).join('')}
         </tbody>
       </table>
@@ -11385,6 +11404,7 @@ function setClassMark(studentId, subjectName, value, total) {
   if (!classMarksDraft.marks[studentId]) classMarksDraft.marks[studentId] = {};
   if (v === null) delete classMarksDraft.marks[studentId][subjectName];
   else classMarksDraft.marks[studentId][subjectName] = v;
+  cpDraftSave();
 }
 
 async function submitClassPortalMarks() {
