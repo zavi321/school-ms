@@ -6115,7 +6115,7 @@ function openAddClassLogin(id) {
     </label>
     <label><span>${esc(t.classTeacherName)}</span><input id="cl-teacher" value="${existing?esc(existing.teacher_name||''):''}"></label>
     <label><span>${esc(t.loginId)}</span><input id="cl-login" value="${existing?esc(existing.login_id):''}" autocapitalize="none"></label>
-    <label><span>${esc(t.classLoginPassword)}</span><input id="cl-pw" value="${existing?esc(existing.password):''}"></label>
+    <label><span>${esc(t.classLoginPassword)}</span><input id="cl-pw" autocomplete="off" placeholder="${existing?'(blank = keep current password)':''}"></label>
     <p style="font-size:11px;opacity:.6;margin:-6px 0 12px;">${esc(t.classLoginSavedHint)}</p>
     <div id="cl-msg"></div>
     <div class="flexgap">
@@ -6131,11 +6131,12 @@ async function submitClassLogin(id) {
   const teacherName = document.getElementById('cl-teacher').value.trim();
   const loginId = document.getElementById('cl-login').value.trim();
   const password = document.getElementById('cl-pw').value;
-  if (!loginId || !password) return;
+  if (!loginId || (!id && !password)) return;
   let queued, error;
   if (id) {
     const baseRow = DATA.classLogins.find(x => x.id === id) || null;
-    const patch = { class_name: className, teacher_name: teacherName, login_id: loginId, password };
+    const patch = { class_name: className, teacher_name: teacherName, login_id: loginId };
+    if (password) patch.password = password;
     ({ queued, error } = await offlineWrite({
       table: 'class_logins', action: 'update', payload: patch, id, baseRow,
       run: () => sb.from('class_logins').update(patch).eq('id', id),
@@ -10843,7 +10844,7 @@ async function submitClassPortalLogin() {
   if (!navigator.onLine) { msg.innerHTML = `<div class="err">${esc(t.classPortalOfflineNoList)}</div>`; return; }
   try {
     const { data, error } = await sb.rpc('class_login_verify', { p_school_code: schoolCode, p_login_id: loginId, p_password: password });
-    if (error) { console.error('class_login_verify', error); msg.innerHTML = `<div class="err">${esc(t.classPortalInvalid)}</div>`; return; }
+    if (error) { console.error('class_login_verify', error); const locked = /too_many/.test(error.message||''); msg.innerHTML = `<div class="err">${locked ? 'Too many wrong attempts. Please try again after 15 minutes. / بہت زیادہ غلط کوششیں۔ 15 منٹ بعد دوبارہ کوشش کریں۔' : esc(t.classPortalInvalid)}</div>`; return; }
     if (!data || !data.length) { msg.innerHTML = `<div class="err">${esc(t.classPortalInvalid)}</div>`; return; }
     setClassSession({
       schoolCode, loginId, password,
