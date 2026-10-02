@@ -3659,7 +3659,7 @@ function openSettings() {
       <button class="btn-primary" style="width:100%;" onclick="saveSchoolCode()">${esc(t.saveSettings)}</button>
     </div>
     <div style="margin-top:18px;padding-top:16px;border-top:1px solid var(--line);">
-      <label><span>${esc(t.diaryPasswordLabel)}</span><input id="set-diary-pw" type="password" autocomplete="off" value="${esc(CURRENT_PROFILE.diary_password||'')}" placeholder="e.g., diary123"></label>
+      <label><span>${esc(t.diaryPasswordLabel)}</span><input id="set-diary-pw" type="password" autocomplete="off" value="" placeholder="New password (min 6 characters)"></label>
       <p style="font-size:11px;opacity:.6;margin:4px 0 8px;">${esc(t.diaryPasswordHint)}</p>
       <div id="set-diary-msg"></div>
       <button class="btn-primary" style="width:100%;" onclick="saveDiaryPassword()">${esc(t.saveSettings)}</button>
@@ -3873,10 +3873,11 @@ async function saveSchoolCode() {
 async function saveDiaryPassword() {
   const msg = document.getElementById('set-diary-msg');
   const pw = document.getElementById('set-diary-pw').value.trim();
-  if (!pw) { msg.innerHTML = `<div class="err">${esc(t.diaryPasswordRequired)}</div>`; return; }
+  if (!pw || pw.length < 6) { msg.innerHTML = `<div class="err">${esc(t.diaryPasswordRequired)} (min 6)</div>`; return; }
   const { error } = await sb.from('profiles').update({ diary_password: pw }).eq('id', CURRENT_USER.id);
   if (error) { msg.innerHTML = `<div class="err">${esc(friendlyErrorMsg(error))}</div>`; return; }
-  CURRENT_PROFILE.diary_password = pw;
+  try { const { data: dp } = await sb.from('profiles').select('diary_password').eq('id', CURRENT_USER.id).single(); if (dp) CURRENT_PROFILE.diary_password = dp.diary_password; } catch(e) {}
+  document.getElementById('set-diary-pw').value = '';
   msg.innerHTML = `<div class="ok">${esc(t.saved)}</div>`;
 }
 
@@ -7332,7 +7333,7 @@ function handleDMCExcelUpload(file) {
       renderDMCEditTable();
       saveDMCUpload();
     } catch (err) {
-      dmcLastUploadMsg = `✗ Error: ${err.message}`;
+      dmcLastUploadMsg = `✗ Error: ${esc(err.message)}`;
       document.getElementById('dmc-upload-msg').innerHTML = dmcLastUploadMsg;
     }
   };
@@ -11632,6 +11633,7 @@ async function submitDiaryLogin() {
   if (!navigator.onLine) { msg.innerHTML = `<div class="err">${esc(t.classPortalOfflineNoList)}</div>`; return; }
   try {
     const { data, error } = await sb.rpc('diary_login_verify', { p_school_code: schoolCode, p_password: password });
+    if (error && /too_many/.test(error.message||'')) { msg.innerHTML = `<div class="err">Too many wrong attempts. Please try again after 15 minutes. / بہت زیادہ غلط کوششیں۔ 15 منٹ بعد دوبارہ کوشش کریں۔</div>`; return; }
     if (error || !data || !data.length) { msg.innerHTML = `<div class="err">${esc(t.diaryPortalInvalid)}</div>`; return; }
     setDiarySession({ schoolCode, password, ownerId: data[0].owner_id, schoolName: data[0].school_name || '' });
     DIARY_SCREEN = 'menu';
@@ -11723,10 +11725,11 @@ async function submitDiaryEntry() {
     return;
   }
   try {
-    const { error } = await sb.rpc('diary_add_entry', {
+    const { data: addOk, error } = await sb.rpc('diary_add_entry', {
       p_school_code: payload.schoolCode, p_password: payload.password, p_class_name: payload.className,
       p_subject: payload.subject, p_entry_date: payload.date, p_entry_text: payload.text
     });
+    if (!error && addOk === false) { msg.innerHTML = `<div class="err">${esc(t.diaryPortalInvalid)}</div>`; return; }
     if (error) { queueDiaryWrite({ type: 'entry', ...payload }); msg.innerHTML = `<div class="ok">${esc(t.diaryOfflineSaved)}</div>`; setTimeout(() => renderDiaryMenu(), 900); return; }
     msg.innerHTML = `<div class="ok">${esc(t.diarySaved)}</div>`;
     setTimeout(() => renderDiaryMenu(), 900);
