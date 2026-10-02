@@ -362,6 +362,8 @@ html, body{overscroll-behavior:none;}
   table.card-table td.bal-neg{color:var(--rust);font-weight:700;}
   table.card-table td.bal-pos{color:var(--sage);font-weight:700;}
   table.card-table tr.dup-row td{background:#FDF1E7;}
+  table.card-table.cp-big{font-size:15px;}
+  table.card-table.cp-big th,table.card-table.cp-big td{padding:10px 10px;}
   table.card-table .dup-tag{display:inline-block;margin-left:6px;font-size:9px;font-weight:700;color:#B24A32;background:#FBE3D4;border-radius:999px;padding:2px 7px;white-space:nowrap;}
   body.ur table.card-table .dup-tag{margin-left:0;margin-right:6px;}
   /* Physical-register look for the Teacher Attendance Register */
@@ -7888,6 +7890,49 @@ window.addEventListener('pagehide', () => {
   if (msFlushPending) { clearTimeout(msSaveTimer); msFlushPending(); }
 });
 
+// ---- Total / Grade / Position helpers (Marks Sheet + Teacher Portal) ----
+// Position: highest total = 1. Equal totals share a position (1, 1, 3). A
+// student with no marks entered yet gets null (shown as a dash).
+function msComputeRanks(totals) {
+  const valid = totals.filter(x => x !== null).sort((a, b) => b - a);
+  return totals.map(x => x === null ? null : valid.indexOf(x) + 1);
+}
+// The owner Marks Sheet keeps no per-subject maximum, so each subject is taken as out of 100.
+function msSummaryForClass(cls) {
+  const studs = msStudents[cls] || [];
+  const md = msMarksData[cls] || {};
+  const totals = studs.map(st => {
+    const row = md[st.id] || {};
+    let any = false, tot = 0;
+    msSubjects.forEach(sj => { const v = row[sj]; if (v !== undefined && v !== null && v !== '') { any = true; tot += Number(v) || 0; } });
+    return any ? tot : null;
+  });
+  const ranks = msComputeRanks(totals);
+  const max = msSubjects.length * 100;
+  return studs.map((st, i) => ({
+    total: totals[i], max,
+    grade: (totals[i] === null || !max) ? '' : dmcGradeFor(totals[i] / max * 100),
+    pos: ranks[i]
+  }));
+}
+// Updates the Total / Grade / Position cells in place while marks are typed,
+// without re-rendering the tab (a re-render would close the keyboard).
+function msRefreshSummary() {
+  if (!msSelectedClass) return;
+  const sum = msSummaryForClass(msSelectedClass);
+  const studs = msStudents[msSelectedClass] || [];
+  const cells = document.querySelectorAll('[data-ms-sid]');
+  studs.forEach((st, i) => {
+    cells.forEach(el => {
+      if (el.dataset.msSid !== String(st.id)) return;
+      const k = el.dataset.ms;
+      el.textContent = k === 'tot' ? (sum[i].total === null ? '—' : sum[i].total + '/' + sum[i].max)
+        : k === 'grade' ? (sum[i].grade || '—')
+        : (sum[i].pos === null ? '—' : sum[i].pos);
+    });
+  });
+}
+
 function tplMarksSheet() {
   if (!msLoaded) {
     // Previously this returned a bare "Loading..." placeholder (no inputs at
@@ -7916,13 +7961,17 @@ function tplMarksSheet() {
   
   let tableHtml = '';
   if (classStudents.length > 0) {
+    const msSum = msSummaryForClass(msSelectedClass);
     tableHtml = `
-      <table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:16px;">
+      <div style="overflow-x:auto;margin-bottom:16px;"><table style="width:100%;border-collapse:collapse;font-size:15px;">
         <thead>
           <tr style="background:#0F2740;color:#fff;position:sticky;top:0;">
             <th style="padding:8px;text-align:left;min-width:150px;">Student Name</th>
             <th style="padding:8px;text-align:left;min-width:150px;">Father Name</th>
             ${msSubjects.map(s => `<th style="padding:8px;text-align:center;min-width:80px;">${esc(s)}</th>`).join('')}
+            <th style="padding:8px;text-align:center;min-width:70px;">Total</th>
+            <th style="padding:8px;text-align:center;min-width:50px;">Grade</th>
+            <th style="padding:8px;text-align:center;min-width:60px;">Position</th>
             <th style="padding:8px;text-align:center;min-width:60px;">Action</th>
           </tr>
         </thead>
@@ -7935,16 +7984,19 @@ function tplMarksSheet() {
       
       tableHtml += `<tr style="border-bottom:1px solid #ddd;">
         <td style="padding:8px;text-align:left;font-weight:500;">${esc(student.name)}</td>
-        <td style="padding:4px;"><input type="text" autocomplete="off" value="${esc(student.fatherName||'')}" placeholder="Father Name" style="width:100%;padding:4px;border:1px solid #ccc;" onchange="msStudents['${msSelectedClass}'][${idx}].fatherName=this.value;saveMarksSheetData();"></td>
+        <td style="padding:4px;"><input type="text" autocomplete="off" value="${esc(student.fatherName||'')}" placeholder="Father Name" style="width:100%;padding:6px;font-size:15px;border:1px solid #ccc;" onchange="msStudents['${msSelectedClass}'][${idx}].fatherName=this.value;saveMarksSheetData();"></td>
         ${msSubjects.map(subj => {
           const val = msMarksData[msSelectedClass][student.id][subj] || '';
-          return `<td style="padding:4px;"><input type="number" autocomplete="off" value="${val}" placeholder="—" style="width:100%;text-align:center;padding:4px;border:1px solid #ccc;" onchange="msMarksData['${msSelectedClass}']['${student.id}']['${subj}']=this.value;saveMarksSheetData();"></td>`;
+          return `<td style="padding:4px;"><input type="number" autocomplete="off" value="${val}" placeholder="—" style="width:100%;text-align:center;padding:6px;font-size:15px;border:1px solid #ccc;" onchange="msMarksData['${msSelectedClass}']['${student.id}']['${subj}']=this.value;saveMarksSheetData();msRefreshSummary();"></td>`;
         }).join('')}
+        <td style="padding:8px;text-align:center;font-weight:600;" data-ms="tot" data-ms-sid="${esc(student.id)}">${msSum[idx].total === null ? '—' : msSum[idx].total + '/' + msSum[idx].max}</td>
+        <td style="padding:8px;text-align:center;font-weight:600;" data-ms="grade" data-ms-sid="${esc(student.id)}">${msSum[idx].grade || '—'}</td>
+        <td style="padding:8px;text-align:center;font-weight:600;" data-ms="pos" data-ms-sid="${esc(student.id)}">${msSum[idx].pos === null ? '—' : msSum[idx].pos}</td>
         <td style="padding:4px;text-align:center;"><button class="btn-ghost" style="padding:0;font-size:11px;" onclick="removeMarksSheetStudent('${msSelectedClass}', ${idx})">✕</button></td>
       </tr>`;
     });
     
-    tableHtml += `</tbody></table>`;
+    tableHtml += `</tbody></table></div>`;
   }
   
   return `
@@ -8085,7 +8137,8 @@ function exportMarksSheetExcel(className) {
   const classStudents = msStudents[className] || [];
   if (!classStudents.length || !msSubjects.length) return;
 
-  const rows = classStudents.map(student => {
+  const msSum = msSummaryForClass(className);
+  const rows = classStudents.map((student, si) => {
     const row = { 'Student Name': student.name, 'Father Name': student.fatherName || '' };
     let total = 0;
     msSubjects.forEach(subj => {
@@ -8094,6 +8147,8 @@ function exportMarksSheetExcel(className) {
       total += Number(val) || 0;
     });
     row['Total'] = total;
+    row['Grade'] = msSum[si].grade;
+    row['Position'] = msSum[si].pos === null ? '' : msSum[si].pos;
     return row;
   });
 
@@ -8104,7 +8159,7 @@ function exportMarksSheetExcel(className) {
     const addr = XLSX.utils.encode_cell({ r: 0, c });
     if (ws[addr]) ws[addr].s = { font: { bold: true } };
   }
-  ws['!cols'] = [{ wch: 24 }, { wch: 24 }, ...msSubjects.map(() => ({ wch: 12 })), { wch: 10 }];
+  ws['!cols'] = [{ wch: 24 }, { wch: 24 }, ...msSubjects.map(() => ({ wch: 12 })), { wch: 10 }, { wch: 8 }, { wch: 10 }];
 
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, className.slice(0, 31) || 'Marks Sheet');
@@ -8115,6 +8170,7 @@ function exportMarksSheetExcel(className) {
 
 function printMarksSheet(className) {
   const classStudents = msStudents[className] || [];
+  const msSum = msSummaryForClass(className);
   
   let html = `
     <html>
@@ -8126,8 +8182,8 @@ function printMarksSheet(className) {
         .school-name { font-size: 18px; font-weight: bold; color: #0F2740; }
         .class-name { font-size: 14px; color: #666; margin-top: 5px; }
         table { width: 100%; border-collapse: collapse; background: white; margin-bottom: 30px; }
-        th { background: #0F2740; color: white; padding: 10px; text-align: left; font-weight: bold; border: 1px solid #0F2740; }
-        td { padding: 8px; border: 1px solid #ddd; }
+        th { background: #0F2740; color: white; padding: 10px; text-align: left; font-weight: bold; font-size: 16px; border: 1px solid #0F2740; }
+        td { padding: 9px; font-size: 16px; border: 1px solid #ddd; }
         @media print { body { margin: 0; padding: 10px; } }
       </style>
     </head>
@@ -8143,14 +8199,20 @@ function printMarksSheet(className) {
             <th style="min-width: 150px;">Student Name</th>
             <th style="min-width: 150px;">Father Name</th>
             ${msSubjects.map(s => `<th style="min-width: 80px; text-align: center;">${esc(s)}</th>`).join('')}
+            <th style="min-width: 70px; text-align: center;">Total</th>
+            <th style="min-width: 50px; text-align: center;">Grade</th>
+            <th style="min-width: 60px; text-align: center;">Position</th>
           </tr>
         </thead>
         <tbody>
-          ${classStudents.map(student => `
+          ${classStudents.map((student, si) => `
             <tr>
               <td>${esc(student.name)}</td>
               <td>${esc(student.fatherName||'—')}</td>
               ${msSubjects.map(subj => `<td style="text-align: center;">${msMarksData[className] && msMarksData[className][student.id] && msMarksData[className][student.id][subj] ? msMarksData[className][student.id][subj] : '—'}</td>`).join('')}
+              <td style="text-align: center; font-weight: bold;">${msSum[si].total === null ? '—' : msSum[si].total + '/' + msSum[si].max}</td>
+              <td style="text-align: center; font-weight: bold;">${msSum[si].grade || '—'}</td>
+              <td style="text-align: center; font-weight: bold;">${msSum[si].pos === null ? '—' : msSum[si].pos}</td>
             </tr>
           `).join('')}
         </tbody>
@@ -9221,6 +9283,9 @@ const SYM_TABS = [
     ['دعائیہ کلمات', ['ﷺ','صلی اللہ علیہ وسلم','رضی اللہ عنہ','رضی اللہ عنہا','رضی اللہ عنہم','رضی اللہ عنہما','علیہ السلام','علیہا السلام','علیہم السلام','رحمۃ اللہ علیہ','رحمہا اللہ','جل جلالہ','عز و جل','سبحانہ و تعالیٰ','ﷲ','﷽'], 'phrase'],
     ['علامات', ['۔','،','؟','؛','«','»','٪','٫','ـ'], 'plain'],
     ['خاص حروف', ['ے','ں','ھ','ٹ','ڈ','ڑ','گ','چ','پ','ژ','ۃ','ء','ئ','ؤ','أ','آ','إ','ۓ','ۂ','ۃ'], 'plain'],
+    ['ابتدائی شکل (حرف کا شروع)', 'ب پ ت ٹ ث ج چ ح خ س ش ص ض ط ظ ع غ ف ق ک گ ل م ن ہ ھ ی ئ'.split(' ').map(c => c + '\u200D'), 'plain'],
+    ['درمیانی شکل (حرف کا بیچ)', 'ب پ ت ٹ ث ج چ ح خ س ش ص ض ط ظ ع غ ف ق ک گ ل م ن ہ ھ ی ئ'.split(' ').map(c => '\u200D' + c + '\u200D'), 'plain'],
+    ['آخری شکل (حرف کا آخر)', 'ا ب پ ت ٹ ث ج چ ح خ د ڈ ذ ر ڑ ز ژ س ش ص ض ط ظ ع غ ف ق ک گ ل م ن ں و ہ ھ ی ے'.split(' ').map(c => '\u200D' + c), 'plain'],
     ['ہندسے', ['۰','۱','۲','۳','۴','۵','۶','۷','۸','۹'], 'plain']
   ]}
 ];
@@ -10882,7 +10947,15 @@ function renderClassPortalMarksViewGrid() {
   const marks = exam.marks || {};
   const students = session.students.slice().sort((a,b)=>Number(a.roll_no||0)-Number(b.roll_no||0));
   const grandTotal = subjects.reduce((sum,s)=>sum+Number(s.total||0),0);
-  const rows = students.map(st => {
+  const stTotals = students.map(st => {
+    const r = marks[st.id] || {};
+    let any = false, tot = 0;
+    subjects.forEach(s => { const v = r[s.name]; if (v !== undefined && v !== null && v !== '') { any = true; tot += Number(v) || 0; } });
+    return any ? tot : null;
+  });
+  const stRanks = msComputeRanks(stTotals);
+  const gradeLbl = LANG==='ur' ? 'گریڈ' : 'Grade', posLbl = LANG==='ur' ? 'پوزیشن' : 'Position';
+  const rows = students.map((st, si) => {
     const row = marks[st.id] || {};
     let total = 0;
     const cells = subjects.map(s => {
@@ -10890,13 +10963,13 @@ function renderClassPortalMarksViewGrid() {
       if (v !== undefined && v !== null) total += Number(v) || 0;
       return `<td style="text-align:center;">${v === undefined || v === null ? '—' : esc(v)}</td>`;
     }).join('');
-    return `<tr><td class="mo">${st.roll_no?'#'+esc(st.roll_no)+' ':''}${esc(st.name)}</td><td>${esc(st.father_name||'')}</td>${cells}<td style="text-align:center;font-weight:600;">${total}/${grandTotal}</td></tr>`;
+    return `<tr><td class="mo">${st.roll_no?'#'+esc(st.roll_no)+' ':''}${esc(st.name)}</td><td>${esc(st.father_name||'')}</td>${cells}<td style="text-align:center;font-weight:600;">${total}/${grandTotal}</td><td style="text-align:center;font-weight:600;">${stTotals[si] === null || !grandTotal ? '—' : dmcGradeFor(stTotals[si] / grandTotal * 100)}</td><td style="text-align:center;font-weight:600;">${stRanks[si] === null ? '—' : stRanks[si]}</td></tr>`;
   }).join('');
   grid.innerHTML = `
     <div class="card-table-wrap" style="margin-top:8px;">
-      <table class="card-table">
-        <thead><tr><th style="text-align:left;">${esc(t.studentName)}</th><th style="text-align:left;">${esc(t.fatherName)}</th>${subjects.map(s=>`<th>${esc(s.name)} /${esc(s.total)}</th>`).join('')}<th>${esc(t.classPortalTotal)}</th></tr></thead>
-        <tbody>${rows || `<tr><td colspan="${subjects.length + 3}">${esc(t.classPortalNoStudents)}</td></tr>`}</tbody>
+      <table class="card-table cp-big">
+        <thead><tr><th style="text-align:left;">${esc(t.studentName)}</th><th style="text-align:left;">${esc(t.fatherName)}</th>${subjects.map(s=>`<th>${esc(s.name)} /${esc(s.total)}</th>`).join('')}<th>${esc(t.classPortalTotal)}</th><th>${gradeLbl}</th><th>${posLbl}</th></tr></thead>
+        <tbody>${rows || `<tr><td colspan="${subjects.length + 5}">${esc(t.classPortalNoStudents)}</td></tr>`}</tbody>
       </table>
     </div>
     <div style="display:flex;gap:8px;margin-top:12px;">
@@ -10914,7 +10987,14 @@ function buildClassMarksWorkbook() {
   const marks = exam.marks || {};
   const students = session.students.slice().sort((a,b)=>Number(a.roll_no||0)-Number(b.roll_no||0));
   const grandTotal = subjects.reduce((sum,s)=>sum+Number(s.total||0),0);
-  const rows = students.map(st => {
+  const stTotals = students.map(st => {
+    const r = marks[st.id] || {};
+    let any = false, tot = 0;
+    subjects.forEach(s => { const v = r[s.name]; if (v !== undefined && v !== null && v !== '') { any = true; tot += Number(v) || 0; } });
+    return any ? tot : null;
+  });
+  const stRanks = msComputeRanks(stTotals);
+  const rows = students.map((st, si) => {
     const row = marks[st.id] || {};
     const out = { [t.studentName]: st.name, [t.fatherName]: st.father_name || '' };
     let total = 0;
@@ -10924,6 +11004,8 @@ function buildClassMarksWorkbook() {
       total += Number(v) || 0;
     });
     out[`${t.classPortalTotal} /${grandTotal}`] = total;
+    out['Grade'] = (stTotals[si] === null || !grandTotal) ? '' : dmcGradeFor(stTotals[si] / grandTotal * 100);
+    out['Position'] = stRanks[si] === null ? '' : stRanks[si];
     return out;
   });
   const ws = XLSX.utils.json_to_sheet(rows);
@@ -10932,7 +11014,7 @@ function buildClassMarksWorkbook() {
     const addr = XLSX.utils.encode_cell({ r: 0, c });
     if (ws[addr]) ws[addr].s = { font: { bold: true } };
   }
-  ws['!cols'] = [{ wch: 24 }, { wch: 20 }, ...subjects.map(() => ({ wch: 12 })), { wch: 12 }];
+  ws['!cols'] = [{ wch: 24 }, { wch: 20 }, ...subjects.map(() => ({ wch: 12 })), { wch: 12 }, { wch: 8 }, { wch: 10 }];
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, (exam.exam_name || 'Marks Sheet').slice(0, 31));
   return wb;
