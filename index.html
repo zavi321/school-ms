@@ -7850,6 +7850,53 @@ function changeMarksSheetYear(year) {
 // pulled down, screen locked, etc.) a moment after typing. Only the network
 // call to Supabase is debounced, to avoid spamming the server on every keystroke.
 let msFlushPending = null; // kept for compatibility; saving is now immediate and local
+let msSaveWarned = false;
+function msWarnSaveFailed() {
+  if (msSaveWarned) return; // one warning per problem, not one per keystroke
+  msSaveWarned = true;
+  alert('⚠️ Marks is phone mein save nahi ho sake (phone ki jagah bhar gayi ho ya browser ne roka ho). Jo abhi likha hai wo kho sakta hai. Abhi "Backup" dabakar file mein save kar lein, aur phone ki jagah khali karein.');
+}
+// Backup: every year's data in one .json file; Restore puts it back (device-only, no server).
+function msBackupDownload() {
+  try {
+    saveMarksSheetData();
+    const db = msLocalRead();
+    const blob = new Blob([JSON.stringify({ app: 'SchoolMS-MarksSheet', version: 1, exported_at: new Date().toISOString(), lastYear: db.lastYear, years: db.years })], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'marks-sheet-backup-' + new Date().toISOString().slice(0, 10) + '.json';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+  } catch (e) { alert('Backup nahi ban saka: ' + (e && e.message || e)); }
+}
+function msRestoreFromFile(input) {
+  const f = input.files && input.files[0];
+  if (!f) return;
+  const r = new FileReader();
+  r.onload = () => {
+    try {
+      const o = JSON.parse(r.result);
+      if (!o || o.app !== 'SchoolMS-MarksSheet' || !o.years || typeof o.years !== 'object') throw new Error('bad file');
+      const names = Object.keys(o.years).filter(y => {
+        const row = o.years[y];
+        return row && typeof row === 'object' && Array.isArray(row.subjects) && row.students && typeof row.students === 'object' && row.marks && typeof row.marks === 'object';
+      });
+      if (!names.length) throw new Error('empty');
+      if (!confirm(names.length + ' saal ka data wapis lagana hai?\n(' + names.join(', ') + ')\nIsi naam ke saal ka maujooda data is file se badal jayega.')) return;
+      saveMarksSheetData(); // keep whatever is on screen right now before merging
+      const db = msLocalRead();
+      names.forEach(y => { db.years[y] = o.years[y]; });
+      const show = (o.lastYear && names.includes(o.lastYear)) ? o.lastYear : names[0];
+      db.lastYear = show;
+      localStorage.setItem(msLocalKey(), JSON.stringify(db));
+      msLoaded = false; msLoadedYear = null; msAcademicYear = show;
+      renderTab();
+      alert('Backup wapis laga diya gaya.');
+    } catch (e) { alert('Ye sahi backup file nahi lagti, ya data save nahi ho saka.'); }
+    input.value = '';
+  };
+  r.readAsText(f);
+}
 function saveMarksSheetData() {
   // Never write before this year's data has been loaded (would overwrite it with empty defaults).
   if (!msLoaded || msLoadedYear !== msAcademicYear) return;
@@ -7858,8 +7905,8 @@ function saveMarksSheetData() {
   const db = msLocalRead();
   db.years[yearKey] = row;
   db.lastYear = msAcademicYear;
-  try { localStorage.setItem(msLocalKey(), JSON.stringify(db)); }
-  catch (e) { console.error('Marks sheet could not be saved on this device:', e); }
+  try { localStorage.setItem(msLocalKey(), JSON.stringify(db)); msSaveWarned = false; }
+  catch (e) { console.error('Marks sheet could not be saved on this device:', e); msWarnSaveFailed(); }
   // Second copy in IndexedDB (best effort, device only).
   try { idbPutRow('marks_sheet_data', { id: yearKey, academic_year: yearKey, ...row }); } catch (e) {}
   if (msAcademicYear && !msYearsList.includes(msAcademicYear)) msYearsList = [msAcademicYear, ...msYearsList];
@@ -7988,6 +8035,16 @@ function tplMarksSheet() {
         <datalist id="ms-years-list">${msYearsList.map(y => `<option value="${esc(y)}">`).join('')}</datalist>
       </div>
       ${msYearsList.length ? `<p style="font-size:11px;opacity:.5;margin:6px 0 0;">Purane saal: ${msYearsList.map(esc).join(', ')}</p>` : ''}
+    </div>
+
+    <div class="card">
+      <h3 style="margin-top:0;">Backup</h3>
+      <p style="font-size:11px;opacity:.6;">Ye sheet sirf is phone mein save hoti hai. Kabhi kabhi (khaas kar naya phone lene ya browser saaf karne se pehle) Backup dabakar file save kar lein. Restore se wohi file wapis laga sakte hain.</p>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;">
+        <button class="btn-ghost" onclick="msBackupDownload()">⬇ Backup</button>
+        <button class="btn-ghost" onclick="document.getElementById('ms-restore-file').click()">⬆ Restore</button>
+        <input type="file" id="ms-restore-file" accept=".json,application/json" style="display:none" onchange="msRestoreFromFile(this)">
+      </div>
     </div>
 
     <div class="card">
@@ -11314,9 +11371,26 @@ function cpDraftKey() {
   const ses = getClassSession();
   return ses ? 'cpMarksDraft_v1_' + [ses.schoolCode, ses.loginId, ses.className].join('_') : null;
 }
+let cpSaveWarned = false;
 function cpDraftSave() {
   const k = cpDraftKey(); if (!k) return;
-  try { localStorage.setItem(k, JSON.stringify(classMarksDraft)); } catch (e) {}
+  try { localStorage.setItem(k, JSON.stringify(classMarksDraft)); cpSaveWarned = false; }
+  catch (e) {
+    if (!cpSaveWarned) {
+      cpSaveWarned = true;
+      alert(LANG==='ur' ? '⚠️ نمبر فون میں محفوظ نہیں ہو سکے (جگہ ختم ہو سکتی ہے)۔ ابھی "نمبر محفوظ کریں" دبا دیں اور فون میں جگہ خالی کریں۔' : '⚠️ Marks could not be saved on this phone (storage may be full). Tap Save marks now and free some space.');
+    }
+  }
+}
+// After the marks are saved (or queued offline) offer to clear the sheet so the next exam starts fresh.
+function cpAfterSavePrompt() {
+  setTimeout(() => {
+    if (confirm(LANG==='ur' ? 'نمبر محفوظ ہو گئے۔ کیا اب شیٹ صاف کر دیں تاکہ اگلا امتحان نئے سرے سے شروع ہو؟' : 'Marks saved. Clear this sheet now so the next exam starts fresh?')) {
+      const k = cpDraftKey();
+      if (k) { try { localStorage.removeItem(k); } catch (e) {} }
+      renderClassPortalMarks();
+    }
+  }, 60);
 }
 function cpDraftLoad() {
   const k = cpDraftKey(); if (!k) return null;
@@ -11417,6 +11491,7 @@ async function submitClassPortalMarks() {
   if (!navigator.onLine) {
     queueClassWrite({ type:'marks', ...payload });
     if (msg) msg.innerHTML = `<span class="ok">${esc(t.classPortalOffline)}</span>`;
+    cpAfterSavePrompt();
     return;
   }
   try {
@@ -11426,9 +11501,11 @@ async function submitClassPortalMarks() {
     });
     if (error || data !== true) throw new Error('failed');
     if (msg) msg.innerHTML = `<span class="ok">✓ ${esc(t.classPortalMarksSaved)}</span>`;
+    cpAfterSavePrompt();
   } catch(e) {
     queueClassWrite({ type:'marks', ...payload });
     if (msg) msg.innerHTML = `<span class="ok">${esc(t.classPortalOffline)}</span>`;
+    cpAfterSavePrompt();
   }
 }
 
