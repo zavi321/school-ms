@@ -1422,6 +1422,7 @@ const fmtDate = (iso) => {
   if (!m) return iso;
   return `${m[3]}-${m[2]}-${m[1]}`;
 };
+const escJs = s => esc(String(s==null?'':s).replace(/\\/g,'\\\\').replace(/'/g,"\\'"));
 const esc = s => (s==null?'':String(s)).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 // Wraps free-typed text (question wording, MCQ options, matching entries...)
 // in a <bdi> element so it gets its own bidi-isolated run: the browser reads
@@ -2982,7 +2983,7 @@ function renderGlobalSearchResults() {
     </div>`).join('');
 
   const msRows = msMatches.map(p => `
-    <div class="list-row" style="cursor:pointer;" onclick="openMarksheetFromSearch('${esc(p.class_name)}')">
+    <div class="list-row" style="cursor:pointer;" onclick="openMarksheetFromSearch('${escJs(p.class_name)}')">
       <div>
         <div class="nm">${esc(p.name)}</div>
         <div class="sub">${esc(p.class_name || '')}</div>
@@ -3658,7 +3659,7 @@ function openSettings() {
       <button class="btn-primary" style="width:100%;" onclick="saveSchoolCode()">${esc(t.saveSettings)}</button>
     </div>
     <div style="margin-top:18px;padding-top:16px;border-top:1px solid var(--line);">
-      <label><span>${esc(t.diaryPasswordLabel)}</span><input id="set-diary-pw" value="${esc(CURRENT_PROFILE.diary_password||'')}" placeholder="e.g., diary123"></label>
+      <label><span>${esc(t.diaryPasswordLabel)}</span><input id="set-diary-pw" type="password" autocomplete="off" value="${esc(CURRENT_PROFILE.diary_password||'')}" placeholder="e.g., diary123"></label>
       <p style="font-size:11px;opacity:.6;margin:4px 0 8px;">${esc(t.diaryPasswordHint)}</p>
       <div id="set-diary-msg"></div>
       <button class="btn-primary" style="width:100%;" onclick="saveDiaryPassword()">${esc(t.saveSettings)}</button>
@@ -5773,8 +5774,8 @@ function tplClassLogins() {
               </div>
             </div>
             <div class="flexgap" style="margin-top:10px;">
-              <button class="btn-ghost" style="flex:1;font-size:12px;padding:8px;" onclick="openClassAttendanceView('${esc(cl.class_name).replace(/'/g,"\\'")}')">${esc(t.viewAttendance)}</button>
-              <button class="btn-ghost" style="flex:1;font-size:12px;padding:8px;" onclick="openClassMarksView('${esc(cl.class_name).replace(/'/g,"\\'")}')">${esc(t.viewMarks)}</button>
+              <button class="btn-ghost" style="flex:1;font-size:12px;padding:8px;" onclick="openClassAttendanceView('${escJs(cl.class_name)}')">${esc(t.viewAttendance)}</button>
+              <button class="btn-ghost" style="flex:1;font-size:12px;padding:8px;" onclick="openClassMarksView('${escJs(cl.class_name)}')">${esc(t.viewMarks)}</button>
             </div>
           </div>`).join('')}
     </div>`;
@@ -10842,8 +10843,8 @@ async function submitClassPortalLogin() {
   if (!navigator.onLine) { msg.innerHTML = `<div class="err">${esc(t.classPortalOfflineNoList)}</div>`; return; }
   try {
     const { data, error } = await sb.rpc('class_login_verify', { p_school_code: schoolCode, p_login_id: loginId, p_password: password });
-    if (error) { msg.innerHTML = `<div class="err">DEBUG: ${esc(error.message || JSON.stringify(error))}</div>`; return; }
-    if (!data || !data.length) { msg.innerHTML = `<div class="err">${esc(t.classPortalInvalid)} (DEBUG: RPC returned 0 rows)</div>`; return; }
+    if (error) { console.error('class_login_verify', error); msg.innerHTML = `<div class="err">${esc(t.classPortalInvalid)}</div>`; return; }
+    if (!data || !data.length) { msg.innerHTML = `<div class="err">${esc(t.classPortalInvalid)}</div>`; return; }
     setClassSession({
       schoolCode, loginId, password,
       ownerId: data[0].owner_id, className: data[0].class_name, teacherName: data[0].teacher_name || '',
@@ -10853,7 +10854,7 @@ async function submitClassPortalLogin() {
     CLASS_PORTAL_SCREEN = 'menu';
     renderClassPortalMenu();
   } catch(e) {
-    msg.innerHTML = `<div class="err">DEBUG catch: ${esc(e.message || String(e))}</div>`;
+    console.error(e); msg.innerHTML = `<div class="err">${esc(t.classPortalInvalid)}</div>`;
   }
 }
 
@@ -11132,7 +11133,7 @@ function renderClassPortalManageStudents() {
     ${students.length ? students.map(st => `
       <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;border-bottom:1px solid var(--line);padding:10px 0;">
         <div style="font-size:13px;font-weight:600;">${esc(st.name)}</div>
-        <button class="btn-ghost danger" style="flex:none;padding:6px 12px;font-size:11px;" onclick="confirmClassPortalStrikeOff('${st.id}','${esc(st.name).replace(/'/g,"\\'")}')">${esc(t.strikeOffStudent)}</button>
+        <button class="btn-ghost danger" style="flex:none;padding:6px 12px;font-size:11px;" onclick="confirmClassPortalStrikeOff('${st.id}','${escJs(st.name)}')">${esc(t.strikeOffStudent)}</button>
       </div>`).join('') : `<p class="desc">${esc(t.classPortalNoStudents)}</p>`}
   `;
 }
