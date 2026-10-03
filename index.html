@@ -12518,6 +12518,7 @@ function qzErr(e) {
   if (/invalid_login/.test(m)) return qt('Login is wrong or expired. Please log in again.', 'لاگ اِن غلط ہے یا ختم ہو گیا۔ دوبارہ لاگ اِن کریں۔');
   if (/has_attempts/.test(m)) return qt('Some students already took this quiz, so it cannot be changed.', 'کچھ طلبہ یہ کوئز دے چکے ہیں، اس لیے اسے بدلا نہیں جا سکتا۔');
   if (/already_submitted/.test(m)) return qt('This quiz was already submitted.', 'یہ کوئز پہلے ہی جمع ہو چکا ہے۔');
+  if (/not_open_yet/.test(m)) return qt('This quiz starts at 7:00 AM.', 'یہ کوئز صبح 7:00 بجے شروع ہوگا۔');
   if (/not_closed/.test(m)) return qt('Answers are shown from the next day.', 'جوابات اگلے دن نظر آئیں گے۔');
   if (/closed/.test(m)) return qt('This quiz is closed. It is open only on its date.', 'یہ کوئز بند ہو چکا ہے۔ یہ صرف اپنی تاریخ کو کھلا ہوتا ہے۔');
   if (/bad_count/.test(m)) return qt('A quiz needs 1 to 30 questions.', 'کوئز میں 1 سے 30 سوال ہونے چاہییں۔');
@@ -12667,7 +12668,7 @@ function qzRenderCreate(prefSubject, prefDate) {
     <h2 style="margin-top:0;">${esc(qt('New quiz', 'نیا کوئز'))} — ${esc(QZ.cls)}</h2>
     <label><span>${esc(qt('Subject', 'مضمون'))}</span><input id="qz-subject" list="qz-subjects" value="${esc(prefSubject || '')}"></label>
     ${qzSubjectsDatalist()}
-    <label><span>${esc(qt('Quiz date (students can take it only on this day)', 'کوئز کی تاریخ (طلبہ صرف اسی دن دے سکتے ہیں)'))}</span><input id="qz-date" type="date" value="${esc(date)}"></label>
+    <label><span>${esc(qt('Quiz date (students can take it only on this day, from 7:00 AM)', 'کوئز کی تاریخ (طلبہ صرف اسی دن صبح 7:00 بجے سے دے سکتے ہیں)'))}</span><input id="qz-date" type="date" value="${esc(date)}"></label>
     <label><span>${esc(qt('Paste the questions here', 'سوال یہاں پیسٹ کریں'))}</span>
       <textarea id="qz-text" rows="10" dir="auto" placeholder="1. Question?\nA) option\nB) option\nC) option\nD) option\nAnswer: B"></textarea></label>
     <div style="display:flex;gap:8px;margin-bottom:8px;">
@@ -12849,7 +12850,9 @@ function ppQuizHtml(r) {
       <div class="nm">${esc(o.subject)} — ${esc(qt("Today's quiz", 'آج کا کوئز'))}</div>
       <div class="sub">${o.q_count} ${esc(qt('questions', 'سوال'))}</div>
       ${o.submitted ? `<div class="ok" style="margin-top:8px;">✓ ${esc(qt('Submitted', 'جمع ہو گیا'))} — ${o.score}/${o.total}</div>`
-        : `<button class="btn-primary" style="margin-top:8px;" onclick="ppQuizStart(${i})">${esc(qt('Start quiz', 'کوئز شروع کریں'))}</button>`}
+        : (q.started === false
+            ? `<div class="sub" style="margin-top:8px;">⏰ ${esc(qt('Starts today at 7:00 AM', 'آج صبح 7:00 بجے شروع ہوگا'))}</div>`
+            : `<button class="btn-primary" style="margin-top:8px;" onclick="ppQuizStart(${i})">${esc(qt('Start quiz', 'کوئز شروع کریں'))}</button>`)}
     </div>`;
   });
   const past = q.past || [];
@@ -12949,7 +12952,7 @@ async function ppQuizReview(i) {
   } catch (e) { alert(qzErr(e)); renderParentPortalResult(PP_CURRENT); }
 }
 
-console.log('SchoolMS build: 2026-10-04-daily-quiz'); // bump this string on every deploy to verify (in browser console) which version is actually running
+console.log('SchoolMS build: 2026-10-04-daily-quiz-7am'); // bump this string on every deploy to verify (in browser console) which version is actually running
 </script>
 </body>
 </html>
