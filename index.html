@@ -151,9 +151,17 @@ html, body{overscroll-behavior:none;}
 
 
   /* ---- Dashboard icon tiles ---- */
-  .d-sec{display:flex;align-items:center;gap:8px;font-size:12px;font-weight:700;letter-spacing:.1em;color:var(--navy);margin:18px 2px 10px;text-transform:uppercase;}
-  .d-sec::before{content:"";width:16px;height:3px;border-radius:2px;background:var(--gold);}
-  .d-sec small{font-weight:500;letter-spacing:0;opacity:.55;text-transform:none;}
+  /* Section box: navy header band (icon + title + subtitle + count) on top, tiles on a white body below. */
+  .d-box{margin-top:18px;background:var(--card);border:1px solid var(--line);border-radius:20px;overflow:hidden;box-shadow:var(--shadow-md);}
+  .d-hero{position:relative;overflow:hidden;display:flex;align-items:center;gap:12px;padding:13px 14px;background:linear-gradient(135deg,var(--navy) 0%,#1B4468 100%);color:#fff;border-bottom:3px solid var(--gold);}
+  .d-hero::after{content:'';position:absolute;right:-26px;top:-34px;width:104px;height:104px;border-radius:999px;background:var(--gold);opacity:.10;}
+  .d-hico{width:40px;height:40px;border-radius:13px;display:grid;place-items:center;flex:none;position:relative;z-index:1;background:rgba(228,199,101,.16);color:var(--gold-soft);box-shadow:inset 0 0 0 1px rgba(228,199,101,.28);}
+  .d-hico svg{width:21px;height:21px;fill:none;stroke:currentColor;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round;}
+  .d-htx{flex:1;min-width:0;position:relative;z-index:1;}
+  .d-ht{font-family:Fraunces,serif;font-size:16.5px;font-weight:600;line-height:1.25;color:#fff;}
+  .d-hs{font-size:11.5px;opacity:.72;margin-top:1px;color:var(--gold-soft);}
+  .d-hc{position:relative;z-index:1;flex:none;min-width:26px;height:26px;padding:0 8px;border-radius:999px;background:var(--gold);color:var(--navy-deep);font-size:12px;font-weight:700;display:grid;place-items:center;}
+  .d-box .d-quick{padding:16px 8px 14px;}
   .d-quick{display:grid;grid-template-columns:repeat(4,1fr);gap:14px 6px;}
   .d-q{background:none;border:0;padding:0;font:inherit;font-size:11.5px;font-weight:500;color:var(--ink);display:flex;flex-direction:column;align-items:center;gap:7px;text-align:center;cursor:pointer;-webkit-tap-highlight-color:transparent;}
   .d-tile{display:grid;place-items:center;flex:none;}
@@ -4413,7 +4421,10 @@ const DI = {
   hrt:'<path d="M20.8 4.6a5.5 5.5 0 00-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 00-7.8 7.8l1 1.1L12 21l7.8-7.5 1-1.1a5.5 5.5 0 000-7.8z"/>',
   gra:'<path d="M3 3v18h18M7 15l4-4 3 3 5-6"/>',
   clk:'<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
-  bel:'<path d="M18 8a6 6 0 10-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 01-3.4 0"/>'
+  bel:'<path d="M18 8a6 6 0 10-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 01-3.4 0"/>',
+  grd:'<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>',
+  blt:'<path d="M13 2L4 14h7l-1 8 9-12h-7z"/>',
+  dts:'<circle cx="5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/>'
 };
 const diSvg = k => `<svg viewBox="0 0 24 24" aria-hidden="true">${DI[k]}</svg>`;
 
@@ -4492,10 +4503,17 @@ function dashRefreshSheet() {
 function tplDashOverview(s) {
   _dsCache = null;
   const ur = LANG==='ur';
-  const group = (g, title, keys, sub) => `
-    <div class="d-sec">${esc(title)}${sub ? ` <small>${esc(sub)}</small>` : ''}</div>
-    <div class="d-quick">${keys.map(k => { const i = dashStatInfo(k);
-      return `<button class="d-q d-ob ${DASH_OPEN_STAT===k?'open':''}" data-k="${k}" onclick="toggleDashStat('${k}')"><span class="d-tile d-lg ${i.c}">${diSvg(i.ic)}</span>${esc(i.n)}</button>`; }).join('')}</div>`;
+  const box = (ic, c, title, sub, count, body) => `
+    <section class="d-box">
+      <div class="d-hero">
+        <span class="d-hico ${c}">${diSvg(ic)}</span>
+        <div class="d-htx"><div class="d-ht">${esc(title)}</div><div class="d-hs">${esc(sub)}</div></div>
+        <span class="d-hc">${count}</span>
+      </div>
+      <div class="d-quick">${body}</div>
+    </section>`;
+  const group = (g, ic, c, title, sub, keys) => box(ic, c, title, sub, keys.length, keys.map(k => { const i = dashStatInfo(k);
+      return `<button class="d-q d-ob ${DASH_OPEN_STAT===k?'open':''}" data-k="${k}" onclick="toggleDashStat('${k}')"><span class="d-tile d-lg ${i.c}">${diSvg(i.ic)}</span>${esc(i.n)}</button>`; }).join(''));
   const qa = [
     ['att', t.navAttendance,        'openAttendanceHub()', 'c1'],
     ['fee', t.navFees,              "setTab('finance')", 'c3'],
@@ -4507,13 +4525,12 @@ function tplDashOverview(s) {
     ['adm', t.admissionRegister,    "setTab('admissionRegister')", 'c5']
   ].map(([k,label,act,c]) => `<button class="d-q" onclick="${act}"><span class="d-tile d-lg ${c}">${diSvg(k)}</span>${esc(label)}</button>`).join('');
   return `
-    ${group('ov', ur?'جائزہ':'Overview', ['stu','tea','inc','exp','sal','bal','due'], ur?'ٹیپ کریں':'tap to open')}
-    <div class="d-sec">${esc(ur?'فوری رسائی':'Quick Access')}</div>
-    <div class="d-quick">${qa}</div>
-    ${group('td', t.todayAttendance, ['sat','tat'])}
-    ${group('mo', t.thisMonth, ['fcl','fdu','spd','exm','ofe'])}
-    ${group('st', t.studentType, ['pay','fre','orp'])}
-    ${group('mr', ur?'مزید':'More', ['gra','act','ntf'])}
+    ${group('ov', 'grd', 'c2', ur?'جائزہ':'Overview', ur?'ٹیپ کر کے تفصیل دیکھیں':'Tap a tile for details', ['stu','tea','inc','exp','sal','bal','due'])}
+    ${box('blt', 'c7', ur?'فوری رسائی':'Quick Access', ur?'کسی بھی صفحے پر جائیں':'Jump to any screen', 8, qa)}
+    ${group('td', 'att', 'c1', t.todayAttendance, ur?'آج کی حاضری':'Live from today', ['sat','tat'])}
+    ${group('mo', 'dol', 'c3', t.thisMonth, ur?'فیس اور اخراجات':'Fees & expenses', ['fcl','fdu','spd','exm','ofe'])}
+    ${group('st', 'stu', 'c4', t.studentType, ur?'طلبہ کی تقسیم':'Student breakdown', ['pay','fre','orp'])}
+    ${group('mr', 'dts', 'c8', ur?'مزید':'More', ur?'گراف، سرگرمی، یاد دہانی':'Graph, activity & reminders', ['gra','act','ntf'])}
     <div style="height:190px;"></div>
     <div class="d-sheet ${DASH_OPEN_STAT?'show':''}" id="dash-sheet">${DASH_OPEN_STAT?dashPanelHtml(DASH_OPEN_STAT):''}</div>`;
 }
