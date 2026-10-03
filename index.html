@@ -151,37 +151,29 @@ html, body{overscroll-behavior:none;}
 
 
   /* ---- Dashboard icon tiles ---- */
-  /* Section box: navy header band (icon + title + subtitle + count) on top, tiles on a white body below. */
-  .d-box{margin-top:18px;background:var(--card);border:1px solid var(--line);border-radius:20px;overflow:hidden;box-shadow:var(--shadow-md);}
-  .d-hero{position:relative;overflow:hidden;display:flex;align-items:center;gap:12px;padding:13px 14px;background:linear-gradient(135deg,var(--navy) 0%,#1B4468 100%);color:#fff;border-bottom:3px solid var(--gold);}
-  .d-hero::after{content:'';position:absolute;right:-26px;top:-34px;width:104px;height:104px;border-radius:999px;background:var(--gold);opacity:.10;}
-  .d-hico{width:40px;height:40px;border-radius:13px;display:grid;place-items:center;flex:none;position:relative;z-index:1;background:rgba(228,199,101,.16);color:var(--gold-soft);box-shadow:inset 0 0 0 1px rgba(228,199,101,.28);}
-  .d-hico svg{width:21px;height:21px;fill:none;stroke:currentColor;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round;}
-  .d-htx{flex:1;min-width:0;position:relative;z-index:1;}
-  .d-ht{font-family:Fraunces,serif;font-size:16.5px;font-weight:600;line-height:1.25;color:#fff;}
-  .d-hs{font-size:11.5px;opacity:.72;margin-top:1px;color:var(--gold-soft);}
-  .d-hc{position:relative;z-index:1;flex:none;min-width:26px;height:26px;padding:0 8px;border-radius:999px;background:var(--gold);color:var(--navy-deep);font-size:12px;font-weight:700;display:grid;place-items:center;}
-  .d-box .d-quick{padding:16px 8px 14px;}
+  .d-sec{display:flex;align-items:center;gap:8px;font-size:12px;font-weight:700;letter-spacing:.1em;color:var(--navy);margin:18px 2px 10px;text-transform:uppercase;}
+  .d-sec::before{content:"";width:16px;height:3px;border-radius:2px;background:var(--gold);}
+  .d-sec small{font-weight:500;letter-spacing:0;opacity:.55;text-transform:none;}
   .d-quick{display:grid;grid-template-columns:repeat(4,1fr);gap:14px 6px;}
   .d-q{background:none;border:0;padding:0;font:inherit;font-size:11.5px;font-weight:500;color:var(--ink);display:flex;flex-direction:column;align-items:center;gap:7px;text-align:center;cursor:pointer;-webkit-tap-highlight-color:transparent;}
-  .d-tile{display:grid;place-items:center;flex:none;}
+  .d-tile{display:grid;place-items:center;flex:none;transition:transform .15s,box-shadow .15s;}
   .d-tile svg{fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;}
   .d-lg{width:54px;height:54px;border-radius:17px;} .d-lg svg{width:25px;height:25px;}
   .d-md{width:42px;height:42px;border-radius:14px;} .d-md svg{width:21px;height:21px;}
-  .d-q:active,.d-sheet button:active{transform:none;}
-  .d-q,.d-sheet button{touch-action:manipulation;-webkit-tap-highlight-color:transparent;}
+  .d-q:active .d-tile{transform:scale(.92);}
   .d-q.open .d-tile{box-shadow:0 0 0 2px var(--navy);}
   .d-tile.c1{background:#FDEBD8;color:#D9822B;} .d-tile.c2{background:#E3ECF9;color:#3D6FB6;}
   .d-tile.c3{background:#DDF3E4;color:#2E8B57;} .d-tile.c4{background:#ECE4F8;color:#7A55C4;}
   .d-tile.c5{background:#FBE0E4;color:#D2455C;} .d-tile.c6{background:#D9F1F2;color:#1F9AA3;}
   .d-tile.c7{background:#FFF1C9;color:#B58A00;} .d-tile.c8{background:#E4E8EE;color:#46566B;}
-  /* Details card is FIXED over the page (not inside the flow), with no animation:
-     opening/closing it can never push, shift or shake anything on the dashboard. */
-  .d-sheet{display:none;position:fixed;left:0;right:0;bottom:84px;margin:0 auto;width:calc(100% - 32px);max-width:388px;max-height:55vh;overflow-y:auto;z-index:30;
-    flex-wrap:wrap;align-items:center;gap:12px;background:var(--card);border:1px solid var(--line);border-left:4px solid var(--gold);border-radius:14px;padding:12px 14px;box-shadow:0 8px 24px rgba(15,39,64,.22);}
-  .d-sheet.show{display:flex;}
-  @media(min-width:960px) and (pointer:fine){ .d-sheet{bottom:20px;left:246px;max-width:728px;width:calc(100% - 246px - 32px);} }
-  .d-pextra{width:100%;}
+  .d-panel{display:none;align-items:center;gap:12px;background:var(--card);border:1px solid var(--line);border-left:4px solid var(--gold);border-radius:14px;padding:12px 14px;margin-top:12px;box-shadow:var(--shadow-sm);}
+  .d-panel.show{display:flex;animation:dPop .22s ease;}
+  @keyframes dPop{from{opacity:0;transform:translateY(-6px);}to{opacity:1;transform:none;}}
+  .d-panel{flex-wrap:wrap;}
+  .d-pextra{width:100%;margin-top:6px;}
+  .d-pbody{flex:1;min-width:0;}
+  .d-pl{font-size:12.5px;opacity:.65;font-weight:600;}
+  .d-pv{font-size:24px;font-weight:600;font-family:Fraunces,serif;color:var(--navy);overflow-wrap:anywhere;}
   .d-pgo{border:0;background:var(--navy);color:#fff;border-radius:10px;padding:7px 11px;font-size:12px;font-weight:600;cursor:pointer;}
   .d-px{border:0;background:#f1ece0;color:var(--navy);border-radius:50%;width:26px;height:26px;cursor:pointer;flex:none;}
   .stat-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:16px;}
@@ -1161,7 +1153,7 @@ const T = {
     examMarksTitle:'Exam Marks', backToClassLogins:'Back to Class Logins', shareLoginLink:'Portal Link',
     classPortalTitle:'Class Login', classPortalDesc:'Enter your School Code and the Login ID & Password given by your school.',
     classPortalLoginButton:'Log In', classPortalInvalid:'Incorrect School Code, Login ID or Password.',
-    classPortalMenuAttendance:'Mark Attendance', classPortalMenuRegister:'View Register', classPortalMenuMarks:'Enter Exam Marks',
+    classPortalMenuAttendance:'Mark Attendance', classPortalMenuDiary:'Diary', classPortalDiaryPwDesc:'Enter the Diary Password given by your school. You only need to do this once on this device.', classPortalDiaryDesc:'Tap a subject to write the diary for this class.', classPortalDiaryChangePw:'Change Diary Password', classPortalMenuRegister:'View Register', classPortalMenuMarks:'Enter Exam Marks',
     classPortalLogout:'Switch Class', classPortalBackToMenu:'Back',
     classPortalAttendanceSaved:'Attendance saved.', classPortalOffline:'Saved offline — will sync automatically once you\'re back online.',
     classPortalOfflineNoList:'You are offline and this class list is not cached yet. Please connect to the internet once to load it.',
@@ -1366,7 +1358,7 @@ const T = {
     examMarksTitle:'امتحانی نمبرات', backToClassLogins:'کلاس لاگ اِنز پر واپس', shareLoginLink:'پورٹل لنک',
     classPortalTitle:'کلاس لاگ اِن', classPortalDesc:'اپنا اسکول کوڈ اور اسکول کی طرف سے دی گئی لاگ اِن آئی ڈی و پاس ورڈ درج کریں۔',
     classPortalLoginButton:'لاگ اِن', classPortalInvalid:'غلط اسکول کوڈ، لاگ اِن آئی ڈی یا پاس ورڈ۔',
-    classPortalMenuAttendance:'حاضری لگائیں', classPortalMenuRegister:'رجسٹر دیکھیں', classPortalMenuMarks:'امتحانی نمبرات درج کریں',
+    classPortalMenuAttendance:'حاضری لگائیں', classPortalMenuDiary:'ڈائری', classPortalDiaryPwDesc:'اسکول کی طرف سے دیا گیا ڈائری پاس ورڈ درج کریں۔ اس ڈیوائس پر یہ صرف ایک بار کرنا ہے۔', classPortalDiaryDesc:'مضمون منتخب کریں اور اس کلاس کی ڈائری لکھیں۔', classPortalDiaryChangePw:'ڈائری پاس ورڈ تبدیل کریں', classPortalMenuRegister:'رجسٹر دیکھیں', classPortalMenuMarks:'امتحانی نمبرات درج کریں',
     classPortalLogout:'کلاس تبدیل کریں', classPortalBackToMenu:'واپس',
     classPortalAttendanceSaved:'حاضری محفوظ ہو گئی۔', classPortalOffline:'آف لائن محفوظ ہو گیا — انٹرنیٹ آنے پر خود بخود بھیج دیا جائے گا۔',
     classPortalOfflineNoList:'آپ آف لائن ہیں اور یہ کلاس لسٹ ابھی محفوظ نہیں — براہ کرم ایک بار انٹرنیٹ سے جڑیں۔',
@@ -2914,7 +2906,6 @@ function renderNav() {
 }
 
 function setTab(k){
-  DASH_OPEN_STAT = null;
   TAB = k; renderNav(); renderSidebar(); renderTab();
   const main = document.getElementById('main');
   main.classList.remove('tab-fade'); void main.offsetWidth; main.classList.add('tab-fade');
@@ -4187,8 +4178,7 @@ let dashActivityClass = null;
 function setDashActivityView(view, cls) {
   dashActivityView = view;
   dashActivityClass = cls || null;
-  if (typeof TAB !== 'undefined' && TAB === 'dashboard' && document.getElementById('dash-sheet')) dashRefreshSheet();
-  else renderTab();
+  renderTab();
 }
 
 // ---------------- Dashboard drill-down popups (click a stat card → related records) ----------------
@@ -4421,10 +4411,7 @@ const DI = {
   hrt:'<path d="M20.8 4.6a5.5 5.5 0 00-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 00-7.8 7.8l1 1.1L12 21l7.8-7.5 1-1.1a5.5 5.5 0 000-7.8z"/>',
   gra:'<path d="M3 3v18h18M7 15l4-4 3 3 5-6"/>',
   clk:'<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
-  bel:'<path d="M18 8a6 6 0 10-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 01-3.4 0"/>',
-  grd:'<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>',
-  blt:'<path d="M13 2L4 14h7l-1 8 9-12h-7z"/>',
-  dts:'<circle cx="5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/>'
+  bel:'<path d="M18 8a6 6 0 10-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 01-3.4 0"/>'
 };
 const diSvg = k => `<svg viewBox="0 0 24 24" aria-hidden="true">${DI[k]}</svg>`;
 
@@ -4488,32 +4475,23 @@ function toggleDashStat(k) {
   _dsCache = null;
   DASH_OPEN_STAT = (DASH_OPEN_STAT === k) ? null : k;
   document.querySelectorAll('.d-ob').forEach(b => b.classList.toggle('open', b.dataset.k === DASH_OPEN_STAT));
-  dashRefreshSheet();
-}
-
-function dashRefreshSheet() {
-  _dsCache = null;
-  const sh = document.getElementById('dash-sheet');
-  if (!sh) return;
-  if (!DASH_OPEN_STAT) { sh.classList.remove('show'); sh.innerHTML = ''; return; }
-  sh.innerHTML = dashPanelHtml(DASH_OPEN_STAT);
-  sh.classList.add('show');
+  document.querySelectorAll('.d-panel').forEach(p => { p.classList.remove('show'); p.innerHTML = ''; });
+  if (!DASH_OPEN_STAT) return;
+  const info = dashStatInfo(DASH_OPEN_STAT);
+  const panel = document.getElementById('dash-panel-' + info.g);
+  if (!panel) return;
+  panel.innerHTML = dashPanelHtml(DASH_OPEN_STAT);
+  void panel.offsetWidth; panel.classList.add('show');
 }
 
 function tplDashOverview(s) {
   _dsCache = null;
   const ur = LANG==='ur';
-  const box = (ic, c, title, sub, count, body) => `
-    <section class="d-box">
-      <div class="d-hero">
-        <span class="d-hico ${c}">${diSvg(ic)}</span>
-        <div class="d-htx"><div class="d-ht">${esc(title)}</div><div class="d-hs">${esc(sub)}</div></div>
-        <span class="d-hc">${count}</span>
-      </div>
-      <div class="d-quick">${body}</div>
-    </section>`;
-  const group = (g, ic, c, title, sub, keys) => box(ic, c, title, sub, keys.length, keys.map(k => { const i = dashStatInfo(k);
-      return `<button class="d-q d-ob ${DASH_OPEN_STAT===k?'open':''}" data-k="${k}" onclick="toggleDashStat('${k}')"><span class="d-tile d-lg ${i.c}">${diSvg(i.ic)}</span>${esc(i.n)}</button>`; }).join(''));
+  const group = (g, title, keys, sub) => `
+    <div class="d-sec">${esc(title)}${sub ? ` <small>${esc(sub)}</small>` : ''}</div>
+    <div class="d-quick">${keys.map(k => { const i = dashStatInfo(k);
+      return `<button class="d-q d-ob ${DASH_OPEN_STAT===k?'open':''}" data-k="${k}" onclick="toggleDashStat('${k}')"><span class="d-tile d-lg ${i.c}">${diSvg(i.ic)}</span>${esc(i.n)}</button>`; }).join('')}</div>
+    <div class="d-panel ${DASH_OPEN_STAT && dashStatInfo(DASH_OPEN_STAT).g===g ? 'show' : ''}" id="dash-panel-${g}">${DASH_OPEN_STAT && dashStatInfo(DASH_OPEN_STAT).g===g ? dashPanelHtml(DASH_OPEN_STAT) : ''}</div>`;
   const qa = [
     ['att', t.navAttendance,        'openAttendanceHub()', 'c1'],
     ['fee', t.navFees,              "setTab('finance')", 'c3'],
@@ -4525,14 +4503,13 @@ function tplDashOverview(s) {
     ['adm', t.admissionRegister,    "setTab('admissionRegister')", 'c5']
   ].map(([k,label,act,c]) => `<button class="d-q" onclick="${act}"><span class="d-tile d-lg ${c}">${diSvg(k)}</span>${esc(label)}</button>`).join('');
   return `
-    ${group('ov', 'grd', 'c2', ur?'جائزہ':'Overview', ur?'ٹیپ کر کے تفصیل دیکھیں':'Tap a tile for details', ['stu','tea','inc','exp','sal','bal','due'])}
-    ${box('blt', 'c7', ur?'فوری رسائی':'Quick Access', ur?'کسی بھی صفحے پر جائیں':'Jump to any screen', 8, qa)}
-    ${group('td', 'att', 'c1', t.todayAttendance, ur?'آج کی حاضری':'Live from today', ['sat','tat'])}
-    ${group('mo', 'dol', 'c3', t.thisMonth, ur?'فیس اور اخراجات':'Fees & expenses', ['fcl','fdu','spd','exm','ofe'])}
-    ${group('st', 'stu', 'c4', t.studentType, ur?'طلبہ کی تقسیم':'Student breakdown', ['pay','fre','orp'])}
-    ${group('mr', 'dts', 'c8', ur?'مزید':'More', ur?'گراف، سرگرمی، یاد دہانی':'Graph, activity & reminders', ['gra','act','ntf'])}
-    <div style="height:190px;"></div>
-    <div class="d-sheet ${DASH_OPEN_STAT?'show':''}" id="dash-sheet">${DASH_OPEN_STAT?dashPanelHtml(DASH_OPEN_STAT):''}</div>`;
+    ${group('ov', ur?'جائزہ':'Overview', ['stu','tea','inc','exp','sal','bal','due'], ur?'ٹیپ کریں':'tap to open')}
+    <div class="d-sec">${esc(ur?'فوری رسائی':'Quick Access')}</div>
+    <div class="d-quick">${qa}</div>
+    ${group('td', t.todayAttendance, ['sat','tat'])}
+    ${group('mo', t.thisMonth, ['fcl','fdu','spd','exm','ofe'])}
+    ${group('st', t.studentType, ['pay','fre','orp'])}
+    ${group('mr', ur?'مزید':'More', ['gra','act','ntf'])}`;
 }
 
 function tplDashboard() {
@@ -11128,6 +11105,7 @@ async function renderClassPortalEntry() {
   document.getElementById('loading').classList.add('hidden');
   renderAuthShell(`<div id="class-portal-body"><div style="text-align:center;padding:20px 0;opacity:.6;">…</div></div>`);
   await flushClassQueue(); // clear any older offline writes first
+  await flushDiaryQueue();
   const session = getClassSession();
   setupClassPortalManifest(session && session.className);
   if (session) {
@@ -11147,8 +11125,8 @@ async function renderClassPortalEntry() {
   } else {
     renderClassPortalLoginForm();
   }
-  window.addEventListener('online', () => flushClassQueue());
-  setInterval(() => { if (navigator.onLine) flushClassQueue(); }, 20000);
+  window.addEventListener('online', () => { flushClassQueue(); flushDiaryQueue(); });
+  setInterval(() => { if (navigator.onLine) { flushClassQueue(); flushDiaryQueue(); } }, 20000);
 }
 
 function renderClassPortalLoginForm() {
@@ -11207,6 +11185,7 @@ function renderClassPortalMenu() {
     ${session.teacherName ? `<p class="desc" style="margin-top:0;">${esc(t.classTeacherName)}: ${esc(session.teacherName)}</p>` : ''}
     <p class="desc">${session.students.length} ${esc(t.studentsCount)}</p>
     <button class="btn-primary" style="width:100%;margin-bottom:10px;" onclick="renderClassPortalAttendance()">${esc(t.classPortalMenuAttendance)}</button>
+    <button class="btn-primary" style="width:100%;margin-bottom:10px;" onclick="renderClassPortalDiary()">${esc(t.classPortalMenuDiary)}</button>
     <button class="btn-primary" style="width:100%;margin-bottom:10px;" onclick="renderClassPortalRegister()">${esc(t.classPortalMenuRegister)}</button>
     <button class="btn-primary" style="width:100%;margin-bottom:10px;" onclick="renderClassPortalMarks()">${esc(t.classPortalMenuMarks)}</button>
     <button class="btn-primary" style="width:100%;margin-bottom:10px;" onclick="renderClassPortalMarksView()">${esc(t.classPortalMenuMarksView)}</button>
@@ -11925,6 +11904,7 @@ async function flushClassQueue() {
 let DIARY_SCREEN = 'menu'; // 'menu' | 'classes' | 'entry'
 let DIARY_SUBJECT = '';
 let DIARY_CLASS = '';
+let DIARY_FROM_CLASS = false; // true when the diary is opened from inside the Teacher Portal (?class=1)
 
 async function renderDiaryPortalEntry() {
   document.getElementById('loading').classList.add('hidden');
@@ -12050,7 +12030,7 @@ async function submitDiaryEntry() {
   if (!navigator.onLine) {
     queueDiaryWrite({ type: 'entry', ...payload });
     msg.innerHTML = `<div class="ok">${esc(t.diaryOfflineSaved)}</div>`;
-    setTimeout(() => renderDiaryMenu(), 900);
+    setTimeout(() => diaryAfterSave(), 900);
     return;
   }
   try {
@@ -12059,13 +12039,13 @@ async function submitDiaryEntry() {
       p_subject: payload.subject, p_entry_date: payload.date, p_entry_text: payload.text
     });
     if (!error && addOk === false) { msg.innerHTML = `<div class="err">${esc(t.diaryPortalInvalid)}</div>`; return; }
-    if (error) { queueDiaryWrite({ type: 'entry', ...payload }); msg.innerHTML = `<div class="ok">${esc(t.diaryOfflineSaved)}</div>`; setTimeout(() => renderDiaryMenu(), 900); return; }
+    if (error) { queueDiaryWrite({ type: 'entry', ...payload }); msg.innerHTML = `<div class="ok">${esc(t.diaryOfflineSaved)}</div>`; setTimeout(() => diaryAfterSave(), 900); return; }
     msg.innerHTML = `<div class="ok">${esc(t.diarySaved)}</div>`;
-    setTimeout(() => renderDiaryMenu(), 900);
+    setTimeout(() => diaryAfterSave(), 900);
   } catch(e) {
     queueDiaryWrite({ type: 'entry', ...payload });
     msg.innerHTML = `<div class="ok">${esc(t.diaryOfflineSaved)}</div>`;
-    setTimeout(() => renderDiaryMenu(), 900);
+    setTimeout(() => diaryAfterSave(), 900);
   }
 }
 
@@ -12086,6 +12066,105 @@ async function flushDiaryQueue() {
   setDiaryQueue(remaining);
   const body = document.getElementById('diary-portal-body');
   if (body && DIARY_SCREEN === 'menu') renderDiaryMenu();
+}
+
+// ---------------- Diary inside the Teacher Portal ----------------
+// The teacher is already logged in to their class (class login), so the class
+// is fixed — only the school-wide Diary Password is asked once per device
+// (checked by the same diary_login_verify / diary_add_entry as ?diary=1).
+// Then: pick subject -> write entry for this class.
+function diaryAfterSave() {
+  if (DIARY_FROM_CLASS && document.getElementById('class-portal-body')) renderClassPortalDiary();
+  else renderDiaryMenu();
+}
+
+function classPortalDiarySessionOk() {
+  const cs = getClassSession(), ds = getDiarySession();
+  return !!(cs && ds && String(ds.schoolCode || '').trim().toUpperCase() === String(cs.schoolCode || '').trim().toUpperCase());
+}
+
+function renderClassPortalDiary() {
+  DIARY_FROM_CLASS = true;
+  CLASS_PORTAL_SCREEN = 'diary';
+  const cs = getClassSession();
+  const body = document.getElementById('class-portal-body');
+  if (!cs || !body) return;
+  if (!classPortalDiarySessionOk()) { renderClassPortalDiaryLogin(); return; }
+  const queue = getDiaryQueue();
+  const subjects = Array.from(new Set([...DIARY_DEFAULT_SUBJECTS, ...getDiarySubjects()]));
+  body.innerHTML = `
+    <button class="btn-ghost" style="padding:9px 14px;margin-bottom:10px;" onclick="CLASS_PORTAL_SCREEN='menu'; renderClassPortalMenu()">‹ ${esc(t.classPortalBackToMenu)}</button>
+    <h2 style="margin-top:0;">${esc(t.classPortalMenuDiary)} — ${esc(cs.className)}</h2>
+    <p class="desc">${esc(t.classPortalDiaryDesc)}</p>
+    <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px;">
+      ${subjects.map(s => `<button class="btn-primary" style="flex:none;padding:9px 16px;" onclick="renderClassPortalDiaryEntry('${esc(s).replace(/'/g,"\\'")}')">${esc(s)}</button>`).join('')}
+      <button class="btn-ghost" style="flex:none;padding:9px 16px;" onclick="promptClassPortalDiarySubject()">${esc(t.diaryAddSubject)}</button>
+    </div>
+    <button class="btn-ghost" style="font-size:12px;padding:7px 12px;" onclick="classPortalDiaryChangePw()">${esc(t.classPortalDiaryChangePw)}</button>
+    ${queue.length ? `<p style="font-size:11px;opacity:.6;margin-top:14px;">${esc(t.classPortalOffline)} (${queue.length})</p>` : ''}
+  `;
+}
+
+function classPortalDiaryChangePw() {
+  clearDiarySession();
+  renderClassPortalDiaryLogin();
+}
+
+function promptClassPortalDiarySubject() {
+  const name = (prompt(t.diaryNewSubjectPrompt) || '').trim();
+  if (!name) return;
+  rememberDiarySubject(name);
+  renderClassPortalDiaryEntry(name);
+}
+
+function renderClassPortalDiaryLogin() {
+  const body = document.getElementById('class-portal-body');
+  if (!body) return;
+  body.innerHTML = `
+    <button class="btn-ghost" style="padding:9px 14px;margin-bottom:10px;" onclick="CLASS_PORTAL_SCREEN='menu'; renderClassPortalMenu()">‹ ${esc(t.classPortalBackToMenu)}</button>
+    <h2 style="margin-top:0;">${esc(t.diaryPortalTitle)}</h2>
+    <p class="desc">${esc(t.classPortalDiaryPwDesc)}</p>
+    <label><span>${esc(t.diaryPasswordLabel)}</span><input id="cpd-pw" type="password"></label>
+    <div id="cpd-msg" style="font-size:12px;margin-bottom:8px;"></div>
+    <button class="btn-primary" style="width:100%;" onclick="submitClassPortalDiaryLogin()">${esc(t.diaryPortalLoginButton)}</button>
+  `;
+}
+
+async function submitClassPortalDiaryLogin() {
+  const cs = getClassSession();
+  const msg = document.getElementById('cpd-msg');
+  const password = document.getElementById('cpd-pw').value;
+  if (!cs || !password) return;
+  msg.textContent = '…';
+  if (!navigator.onLine) { msg.innerHTML = `<div class="err">${esc(t.classPortalOfflineNoList)}</div>`; return; }
+  try {
+    const { data, error } = await sb.rpc('diary_login_verify', { p_school_code: cs.schoolCode, p_password: password });
+    if (error && /too_many/.test(error.message||'')) { msg.innerHTML = `<div class="err">Too many wrong attempts. Please try again after 15 minutes. / بہت زیادہ غلط کوششیں۔ 15 منٹ بعد دوبارہ کوشش کریں۔</div>`; return; }
+    if (error || !data || !data.length) { msg.innerHTML = `<div class="err">${esc(t.diaryPortalInvalid)}</div>`; return; }
+    setDiarySession({ schoolCode: cs.schoolCode, password, ownerId: data[0].owner_id, schoolName: data[0].school_name || cs.schoolName || '' });
+    renderClassPortalDiary();
+  } catch(e) {
+    msg.innerHTML = `<div class="err">${esc(t.diaryPortalInvalid)}</div>`;
+  }
+}
+
+function renderClassPortalDiaryEntry(subject) {
+  DIARY_FROM_CLASS = true;
+  CLASS_PORTAL_SCREEN = 'diary';
+  const cs = getClassSession();
+  const body = document.getElementById('class-portal-body');
+  if (!cs || !body) return;
+  DIARY_SCREEN = 'entry';
+  DIARY_SUBJECT = subject;
+  DIARY_CLASS = cs.className;
+  body.innerHTML = `
+    <button class="btn-ghost" style="padding:9px 14px;margin-bottom:10px;" onclick="renderClassPortalDiary()">${esc(t.diaryBackToSubjects)}</button>
+    <h2 style="margin-top:0;">${esc(subject)} — ${esc(cs.className)}</h2>
+    <label><span>${esc(t.diaryEntryDate)}</span><input id="de-date" type="date" value="${todayISO()}"></label>
+    <label><span>${esc(t.diaryEntryTitle)}</span><textarea id="de-text" rows="5" placeholder="${esc(t.diaryEntryPlaceholder)}"></textarea></label>
+    <div id="de-msg" style="font-size:12px;margin-bottom:8px;"></div>
+    <button class="btn-primary" style="width:100%;" onclick="submitDiaryEntry()">${esc(t.diarySave)}</button>
+  `;
 }
 
 boot();
