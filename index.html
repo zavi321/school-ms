@@ -7013,6 +7013,9 @@ let dmcDesign = {
   primaryColor: '#0F2740', // navy — header banner, table header, borders
   accentColor: '#0F2740',  // navy — border trim, session pill, accents
   bgColor: '#FAF6EC',      // cream — certificate background
+  bgImage: '',             // optional background picture (data URL); '' = none
+  bgImageOpacity: 0.25,    // 0.05 - 1
+  bgImageFit: 'cover',     // 'cover' | 'contain'
   showPosition: true,      // "Position in class" summary block
   showStamp: true,         // dashed "SCHOOL STAMP" circle in footer
   teacherLabel: 'CLASS TEACHER SIGNATURE',
@@ -7096,8 +7099,19 @@ function tplDMC() {
     </div>
 
     <div class="card">
+      <h3 style="margin-top:0;">Certificate Background <span style="font-size:12px;font-weight:400;opacity:.6;">(optional)</span></h3>
+      <div id="dmc-bg-box">${dmcBgBoxHtml()}</div>
+    </div>
+
+    <div class="card">
+      <h3 style="margin-top:0;">Subjects & Total Marks</h3>
+      <p style="font-size:12px;opacity:.7;">Har subject ke saath uske total marks likhein. Naya subject yahin se add kar sakte hain, aur Excel se aaye subjects ke total marks bhi badal sakte hain.</p>
+      <div id="dmc-subjects-box"></div>
+    </div>
+
+    <div class="card">
       <h3 style="margin-top:0;">Review & Edit Students</h3>
-      <p style="font-size:12px;opacity:.7;">Fix each student's Name or Roll No. before printing — useful if something wasn't in your Excel file or came in wrong.</p>
+      <p style="font-size:12px;opacity:.7;">Print se pehle har student ka Name, Roll No. ya marks theek karein. Jo Excel mein nahi tha ya ghalat aaya, yahin sahi ho jayega.</p>
       <div id="dmc-edit-table"></div>
     </div>
 
@@ -7237,7 +7251,156 @@ function renderDMCPreviewIfOpen() {
   if (dmcResults.length > 0 && document.getElementById('dmc-preview')) generateDMCPreview();
 }
 
+// ---- Certificate Background (optional picture + colour, all editable) ----
+function dmcBgBoxHtml() {
+  const d = dmcDesign;
+  const has = !!d.bgImage;
+  const op = Math.round((d.bgImageOpacity == null ? 0.25 : d.bgImageOpacity) * 100);
+  return `
+    <label style="display:block;margin-bottom:10px;">
+      <span style="display:block;font-size:12px;font-weight:500;opacity:.7;margin-bottom:4px;">Background picture (optional)</span>
+      <input type="file" accept="image/*" onchange="handleDMCBgUpload(this.files[0])">
+    </label>
+    ${has ? `
+      <div style="margin-bottom:10px;"><img src="${d.bgImage}" style="max-height:90px;max-width:100%;border-radius:6px;border:1px solid var(--line);"></div>
+      <label style="display:block;margin-bottom:10px;font-size:12px;">
+        <span style="opacity:.7;">Picture ki dhundhlahat (opacity): <b id="dmc-bg-op-val">${op}%</b></span>
+        <input type="range" min="5" max="100" value="${op}" style="width:100%;" oninput="setDMCBgOpacity(this.value)">
+      </label>
+      <label style="display:block;margin-bottom:10px;font-size:12px;">
+        <span style="opacity:.7;">Picture ka size</span>
+        <select onchange="setDMCBgFit(this.value)">
+          <option value="cover" ${d.bgImageFit !== 'contain' ? 'selected' : ''}>Poora certificate dhake (cover)</option>
+          <option value="contain" ${d.bgImageFit === 'contain' ? 'selected' : ''}>Beech mein, poori picture (contain)</option>
+        </select>
+      </label>
+      <button class="btn-ghost" onclick="removeDMCBg()">✕ Picture hatayein</button>
+    ` : '<p style="font-size:12px;opacity:.55;margin:0 0 10px;">Abhi koi background picture nahi lagi. Certificate sirf rang ke saath print hoga.</p>'}
+    <label style="display:flex;align-items:center;gap:10px;margin-top:12px;font-size:12px;">
+      <span style="opacity:.7;">Background ka rang</span>
+      <input type="color" value="${esc(d.bgColor || '#FAF6EC')}" onchange="setDMCBgColor(this.value)" style="width:48px;height:32px;padding:0;">
+    </label>`;
+}
+function refreshDMCBgBox() {
+  const box = document.getElementById('dmc-bg-box');
+  if (box) box.innerHTML = dmcBgBoxHtml();
+}
+function handleDMCBgUpload(file) {
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    // Shrink big photos first so the saved settings stay small.
+    const img = new Image();
+    img.onload = () => {
+      const max = 1400;
+      const k = Math.min(1, max / Math.max(img.width, img.height));
+      const c = document.createElement('canvas');
+      c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
+      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+      dmcDesign.bgImage = c.toDataURL('image/jpeg', 0.82);
+      saveDMCConfig();
+      refreshDMCBgBox();
+      renderDMCPreviewIfOpen();
+    };
+    img.onerror = () => alert('Yeh picture khul nahi saki, doosri try karein');
+    img.src = e.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+function setDMCBgOpacity(v) {
+  dmcDesign.bgImageOpacity = Math.min(1, Math.max(0.05, Number(v) / 100));
+  const el = document.getElementById('dmc-bg-op-val'); if (el) el.textContent = Math.round(v) + '%';
+  saveDMCConfig();
+  renderDMCPreviewIfOpen();
+}
+function setDMCBgFit(v) {
+  dmcDesign.bgImageFit = v === 'contain' ? 'contain' : 'cover';
+  saveDMCConfig();
+  renderDMCPreviewIfOpen();
+}
+function setDMCBgColor(v) {
+  dmcDesign.bgColor = v;
+  saveDMCConfig();
+  renderDMCPreviewIfOpen();
+}
+function removeDMCBg() {
+  dmcDesign.bgImage = '';
+  saveDMCConfig();
+  refreshDMCBgBox();
+  renderDMCPreviewIfOpen();
+}
+
+// ---- Subjects & Total Marks (manual add / edit / remove) ----
+function renderDMCSubjects() {
+  const box = document.getElementById('dmc-subjects-box');
+  if (!box) return;
+  const a = document.activeElement;
+  if (a && box.contains(a) && (a.tagName === 'INPUT')) return; // never rebuild while typing
+  const rows = dmcSubjects.map((sub, j) => `
+    <div style="display:flex;align-items:center;gap:8px;border-bottom:1px solid var(--line);padding:8px 0;">
+      <input type="text" autocomplete="off" style="flex:1;min-width:0;" value="${esc(sub.name)}" placeholder="Subject" onchange="renameDMCSubject(${j}, this.value)">
+      <input type="number" inputmode="numeric" min="1" style="width:80px;flex-shrink:0;" value="${esc(sub.total)}" placeholder="Total" onchange="updateDMCSubjectTotal(${j}, this.value)">
+      <button class="btn-ghost" style="flex-shrink:0;" onclick="removeDMCSubject(${j})">✕</button>
+    </div>`).join('');
+  box.innerHTML = (rows || '<p style="font-size:12px;opacity:.5;">Abhi koi subject nahi hai. Neeche se add karein ya Excel upload karein.</p>') + `
+    <div style="display:flex;align-items:center;gap:8px;margin-top:12px;">
+      <input type="text" id="dmc-new-subj-name" autocomplete="off" style="flex:1;min-width:0;" placeholder="Subject name">
+      <input type="number" id="dmc-new-subj-total" inputmode="numeric" min="1" style="width:80px;flex-shrink:0;" placeholder="Total">
+      <button class="btn-ghost" style="flex-shrink:0;" onclick="addDMCSubject()">+ Add</button>
+    </div>`;
+}
+function dmcSubjectsChanged() {
+  saveDMCConfig();
+  saveDMCUpload();
+  renderDMCEditTable();
+  renderDMCPreviewIfOpen();
+}
+function addDMCSubject() {
+  const nameEl = document.getElementById('dmc-new-subj-name');
+  const totalEl = document.getElementById('dmc-new-subj-total');
+  const name = (nameEl.value || '').trim();
+  const total = Number(totalEl.value);
+  if (!name) { alert('Subject ka naam likhein'); return; }
+  if (!total || total <= 0) { alert('Is subject ke total marks likhein'); return; }
+  if (dmcSubjects.some(x => x.name.toLowerCase() === name.toLowerCase())) { alert('Yeh subject pehle se maujood hai'); return; }
+  dmcSubjects.push({ name, total });
+  dmcResults.forEach(r => { r.marks = r.marks || {}; if (r.marks[name] === undefined) r.marks[name] = 0; });
+  nameEl.value = ''; totalEl.value = '';
+  renderDMCSubjects();
+  dmcSubjectsChanged();
+}
+function updateDMCSubjectTotal(j, v) {
+  const total = Number(v);
+  if (!total || total <= 0) { alert('Total marks 0 se zyada hone chahiye'); renderDMCSubjects(); return; }
+  dmcSubjects[j].total = total;
+  dmcSubjectsChanged();
+}
+function renameDMCSubject(j, v) {
+  const name = (v || '').trim();
+  const old = dmcSubjects[j].name;
+  if (!name || name === old) { renderDMCSubjects(); return; }
+  if (dmcSubjects.some((x, k) => k !== j && x.name.toLowerCase() === name.toLowerCase())) { alert('Yeh naam pehle se maujood hai'); renderDMCSubjects(); return; }
+  dmcSubjects[j].name = name;
+  dmcResults.forEach(r => { if (r.marks && old in r.marks) { r.marks[name] = r.marks[old]; delete r.marks[old]; } });
+  dmcSubjectsChanged();
+}
+function removeDMCSubject(j) {
+  const sub = dmcSubjects[j];
+  if (!confirm(`"${sub.name}" ko hata dein? Is subject ke saare marks bhi hat jayenge.`)) return;
+  dmcResults.forEach(r => { if (r.marks) delete r.marks[sub.name]; });
+  dmcSubjects.splice(j, 1);
+  renderDMCSubjects();
+  dmcSubjectsChanged();
+}
+function setDMCMark(i, j, v) {
+  const r = dmcResults[i];
+  r.marks = r.marks || {};
+  r.marks[dmcSubjects[j].name] = Number(v) || 0;
+  saveDMCUpload();
+}
+
 function renderDMCEditTable() {
+  renderDMCSubjects();
   const container = document.getElementById('dmc-edit-table');
   if (!container) return;
   // Same protection as applyDMCConfigToFields(): never blow away a row the
@@ -7254,6 +7417,11 @@ function renderDMCEditTable() {
       <input type="text" autocomplete="off" style="flex:1;" value="${esc(r.studentName)}" placeholder="Student Name" oninput="dmcResults[${i}].studentName=this.value;saveDMCUpload();">
       <input type="text" autocomplete="off" style="width:110px;flex-shrink:0;" value="${esc(r.rollNo)}" placeholder="Roll No." oninput="dmcResults[${i}].rollNo=this.value;saveDMCUpload();">
     </div>
+    ${dmcSubjects.length ? `<div style="display:flex;flex-wrap:wrap;gap:8px;padding:6px 0 10px 32px;border-bottom:1px solid var(--line);">${dmcSubjects.map((sub, j) => `
+      <label style="display:flex;flex-direction:column;font-size:11px;opacity:.85;">
+        <span>${esc(sub.name)} /${esc(sub.total)}</span>
+        <input type="number" inputmode="decimal" min="0" max="${esc(sub.total)}" style="width:70px;" value="${esc((r.marks && r.marks[sub.name] !== undefined) ? r.marks[sub.name] : '')}" oninput="setDMCMark(${i},${j},this.value)">
+      </label>`).join('')}</div>` : ''}
   `).join('');
 }
 
@@ -7460,6 +7628,7 @@ function renderDMCCertificate(result) {
     <div class="dmc-cert" style="page-break-inside:avoid;break-inside:avoid;margin-bottom:24px;font-family:Inter,sans-serif;">
       <div style="max-width:800px;margin:0 auto;background:${pc};padding:8px;border-radius:22px;position:relative;overflow:hidden;">
         <div style="background:${bg};border:2px solid ${ac};border-radius:16px;padding:18px 26px 16px;position:relative;z-index:0;overflow:hidden;">
+          ${dmcDesign.bgImage ? `<div style="position:absolute;inset:0;z-index:-1;pointer-events:none;background:url('${dmcDesign.bgImage}') center/${dmcDesign.bgImageFit === 'contain' ? 'contain' : 'cover'} no-repeat;opacity:${dmcDesign.bgImageOpacity == null ? 0.25 : dmcDesign.bgImageOpacity};-webkit-print-color-adjust:exact;print-color-adjust:exact;"></div>` : ''}
           ${dmcLogo ? `<div style="position:absolute;inset:0;z-index:-1;display:flex;align-items:center;justify-content:center;pointer-events:none;overflow:hidden;"><img src="${dmcLogo}" style="width:63%;max-width:364px;object-fit:contain;opacity:.5;filter:blur(1px);"></div>` : ''}
 
           <!-- Header: logo back on the side (as in the original layout), with
