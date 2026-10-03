@@ -7457,7 +7457,7 @@ function renderDMCCertificate(result) {
   const nameFontSize = nameLen > 42 ? 22 : nameLen > 34 ? 26 : nameLen > 26 ? 30 : nameLen > 18 ? 34 : 40;
 
   return `
-    <div class="dmc-cert" style="page-break-after:always;page-break-inside:avoid;break-inside:avoid;margin-bottom:24px;font-family:Inter,sans-serif;">
+    <div class="dmc-cert" style="page-break-inside:avoid;break-inside:avoid;margin-bottom:24px;font-family:Inter,sans-serif;">
       <div style="max-width:800px;margin:0 auto;background:${pc};padding:8px;border-radius:22px;position:relative;overflow:hidden;">
         <div style="background:${bg};border:2px solid ${ac};border-radius:16px;padding:18px 26px 16px;position:relative;z-index:0;overflow:hidden;">
           ${dmcLogo ? `<div style="position:absolute;inset:0;z-index:-1;display:flex;align-items:center;justify-content:center;pointer-events:none;overflow:hidden;"><img src="${dmcLogo}" style="width:63%;max-width:364px;object-fit:contain;opacity:.5;filter:blur(1px);"></div>` : ''}
@@ -7743,7 +7743,7 @@ async function printSavedDMCRecord(id) {
 
 function printAllDMC() {
   if (dmcResults.length === 0) { alert('No results to print'); return; }
-  let html = '<html><head><meta charset="utf-8"><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700&family=Berkshire+Swash&family=Aref+Ruqaa:wght@400;700&family=Inter:wght@400;500;600;700&display=swap"><style>@page{size:A4;margin:8mm;}*{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;color-adjust:exact!important;}html,body{height:100%;}body{font-family:Inter,sans-serif;margin:0;padding:10px;background:#f5f5f5;}@media print{body{background:#fff;padding:0;}.dmc-cert{page-break-inside:avoid;page-break-after:always;break-inside:avoid;}.dmc-cert:last-child{page-break-after:auto;}}</style></head><body>';
+  let html = '<html><head><meta charset="utf-8"><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700&family=Berkshire+Swash&family=Aref+Ruqaa:wght@400;700&family=Inter:wght@400;500;600;700&display=swap"><style>@page{size:A4;margin:8mm;}*{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;color-adjust:exact!important;}html,body{height:100%;}body{font-family:Inter,sans-serif;margin:0;padding:10px;background:#f5f5f5;}@media print{body{background:#fff;padding:0;}.dmc-cert{page-break-inside:avoid;break-inside:avoid;page-break-after:auto;}}</style></head><body>';
   dmcResults.forEach(r => {
     html += renderDMCCertificate(r);
   });
@@ -7919,10 +7919,11 @@ document.addEventListener('visibilitychange', () => { if (document.visibilitySta
 window.addEventListener('pagehide', () => { try { saveMarksSheetData(); } catch (e) {} });
 
 // ---- Total / Grade / Position helpers (Marks Sheet + Teacher Portal) ----
-// Position: highest total = 1. Equal totals share a position (1, 1, 3). A
-// student with no marks entered yet gets null (shown as a dash).
+// Position: highest total = 1. Equal totals share a position and the next
+// position follows without a gap (1, 1, 2 - NOT 1, 1, 3). A student with no
+// marks entered yet gets null (shown as a dash).
 function msComputeRanks(totals) {
-  const valid = totals.filter(x => x !== null).sort((a, b) => b - a);
+  const valid = [...new Set(totals.filter(x => x !== null))].sort((a, b) => b - a);
   return totals.map(x => x === null ? null : valid.indexOf(x) + 1);
 }
 // Max = sum of each subject's own total marks (default 100 for subjects added before totals existed).
@@ -8218,8 +8219,64 @@ function printMarksSheet(className) {
   const msSum = msSummaryForClass(className);
   const showFather = classStudents.some(st => (st.fatherName || '').trim());
   const printCols = msSubjects.length;
-  const printLandscape = printCols > 4;
-  const printFont = printCols <= 4 ? 26 : printCols <= 6 ? 24 : printCols <= 8 ? 22 : printCols <= 10 ? 20 : printCols <= 12 ? 18 : 16;
+  const printLandscape = printCols > 8;
+  // Font picked from the number of columns. table-layout:fixed + width:100%
+  // means the table can never be wider than the paper, so the browser never
+  // "shrink-to-fits" it (that shrink is what left a big blank gap at the
+  // bottom of page 1 while the rest of the students went to page 2).
+  const printFont = printCols <= 4 ? 16 : printCols <= 6 ? 15 : printCols <= 8 ? 14 : printCols <= 10 ? 12 : 11;
+  // Rows have a FIXED height, so how many fit on a page is exact. Page 1 is
+  // filled completely before anything goes to page 2. Usable height is kept
+  // slightly under the real A4/Letter value so both paper sizes fit.
+  const rowMm = 8;
+  const usableMm = printLandscape ? 190 : 260;
+  const headMm = 24, theadMm = 10;
+  const firstRows = Math.max(1, Math.floor((usableMm - headMm - theadMm) / rowMm));
+  const nextRows = Math.max(1, Math.floor((usableMm - theadMm) / rowMm));
+
+  const theadHtml = `
+        <thead>
+          <tr style="height:${theadMm}mm;">
+            <th style="width:${showFather ? 20 : 26}%;">Student Name</th>
+            ${showFather ? '<th style="width:20%;">Father Name</th>' : ''}
+            ${msSubjects.map(s => `<th>${esc(s)}</th>`).join('')}
+            <th style="width:11%;">Total</th>
+            <th style="width:7%;">Grade</th>
+            <th style="width:9%;">Position</th>
+          </tr>
+        </thead>`;
+  const rowHtml = (student, si) => `
+            <tr style="height:${rowMm}mm;">
+              <td class="nm">${esc(student.name)}</td>
+              ${showFather ? `<td class="nm">${esc(student.fatherName||'—')}</td>` : ''}
+              ${msSubjects.map(subj => `<td class="c">${msMarksData[className] && msMarksData[className][student.id] && msMarksData[className][student.id][subj] ? msMarksData[className][student.id][subj] : '—'}</td>`).join('')}
+              <td class="c b">${msSum[si].total === null ? '—' : msSum[si].total + '/' + msSum[si].max}</td>
+              <td class="c b">${msSum[si].grade || '—'}</td>
+              <td class="c b">${msSum[si].pos === null ? '—' : msSum[si].pos}</td>
+            </tr>`;
+
+  // Split the students into page-sized chunks.
+  const chunks = [];
+  let idx = 0;
+  while (idx < classStudents.length || chunks.length === 0) {
+    const n = chunks.length === 0 ? firstRows : nextRows;
+    chunks.push(classStudents.slice(idx, idx + n).map((st, k) => rowHtml(st, idx + k)).join(''));
+    idx += n;
+    if (idx >= classStudents.length) break;
+  }
+
+  const headerHtml = `
+      <div class="header">
+        <div class="school-name">${esc(CURRENT_PROFILE?.school_name || 'School Name')}</div>
+        <div class="class-name">Marks Sheet - ${esc(className)}</div>
+      </div>`;
+  const pagesHtml = chunks.map((rows, i) => `
+      <div class="pg" style="${i < chunks.length - 1 ? 'page-break-after:always;break-after:page;' : ''}">
+        ${i === 0 ? headerHtml : ''}
+        <table>${theadHtml}
+          <tbody>${rows}</tbody>
+        </table>
+      </div>`).join('');
 
   let html = `
     <html>
@@ -8227,51 +8284,22 @@ function printMarksSheet(className) {
       <meta charset="utf-8">
       <meta name="viewport" content="width=device-width, initial-scale=1">
       <style>
-        /* Sized so the table fits the paper at its real size (no shrink-to-fit):
-           no fixed column widths, landscape when there are many subjects, and a
-           font picked from the number of columns. */
         @page { size: A4 ${printLandscape ? 'landscape' : 'portrait'}; margin: 8mm; }
+        * { -webkit-print-color-adjust: exact; print-color-adjust: exact; box-sizing: border-box; }
         body { font-family: Arial, sans-serif; margin: 0; padding: 0; }
-        .header { text-align: center; margin-bottom: 14px; border-bottom: 3px solid #0F2740; padding-bottom: 8px; }
-        .school-name { font-size: ${printFont + 10}px; font-weight: bold; color: #0F2740; }
+        .header { height: ${headMm}mm; text-align: center; border-bottom: 3px solid #0F2740; padding-bottom: 6px; margin-bottom: 4mm; overflow: hidden; }
+        .school-name { font-size: ${printFont + 8}px; font-weight: bold; color: #0F2740; }
         .class-name { font-size: ${printFont}px; color: #444; margin-top: 4px; }
-        table { width: 100%; border-collapse: collapse; background: white; margin-bottom: 20px; }
-        thead { display: table-header-group; }
-        tr { page-break-inside: avoid; }
-        th { min-width: 0 !important; background: #0F2740; color: white; padding: 9px 6px; text-align: center; font-weight: bold; font-size: ${printFont - 2}px; border: 1.5px solid #0F2740; overflow-wrap: anywhere; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-        td { padding: 10px 6px; font-size: ${printFont}px; border: 1.5px solid #888; overflow-wrap: anywhere; }
+        table { width: 100%; table-layout: fixed; border-collapse: collapse; background: white; }
+        th { background: #0F2740; color: white; padding: 0 3px; text-align: center; font-weight: bold; font-size: ${printFont - 1}px; border: 1.5px solid #0F2740; overflow: hidden; }
+        td { padding: 0 4px; font-size: ${printFont}px; border: 1.5px solid #888; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+        td.nm { text-align: left; }
+        td.c { text-align: center; }
+        td.b { font-weight: bold; }
+        tr { page-break-inside: avoid; break-inside: avoid; }
       </style>
     </head>
-    <body>
-      <div class="header">
-        <div class="school-name">${esc(CURRENT_PROFILE?.school_name || 'School Name')}</div>
-        <div class="class-name">Marks Sheet - ${esc(className)}</div>
-      </div>
-      
-      <table>
-        <thead>
-          <tr>
-            <th style="min-width: 150px;">Student Name</th>
-            ${showFather ? '<th style="min-width: 150px;">Father Name</th>' : ''}
-            ${msSubjects.map(s => `<th style="min-width: 80px; text-align: center;">${esc(s)}</th>`).join('')}
-            <th style="min-width: 70px; text-align: center;">Total</th>
-            <th style="min-width: 50px; text-align: center;">Grade</th>
-            <th style="min-width: 60px; text-align: center;">Position</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${classStudents.map((student, si) => `
-            <tr>
-              <td>${esc(student.name)}</td>
-              ${showFather ? `<td>${esc(student.fatherName||'—')}</td>` : ''}
-              ${msSubjects.map(subj => `<td style="text-align: center;">${msMarksData[className] && msMarksData[className][student.id] && msMarksData[className][student.id][subj] ? msMarksData[className][student.id][subj] : '—'}</td>`).join('')}
-              <td style="text-align: center; font-weight: bold;">${msSum[si].total === null ? '—' : msSum[si].total + '/' + msSum[si].max}</td>
-              <td style="text-align: center; font-weight: bold;">${msSum[si].grade || '—'}</td>
-              <td style="text-align: center; font-weight: bold;">${msSum[si].pos === null ? '—' : msSum[si].pos}</td>
-            </tr>
-          `).join('')}
-        </tbody>
-      </table>
+    <body>${pagesHtml}
     </body>
     </html>
   `;
