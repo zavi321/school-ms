@@ -1180,7 +1180,7 @@ const T = {
     diaryPortalTitle:'Diary Login', diaryPortalDesc:'Enter your School Code and the Diary Password given by your school.',
     diaryPasswordLabel:'Diary Password', diaryPortalLoginButton:'Log In', diaryPortalInvalid:'Incorrect School Code or Diary Password.',
     diaryMenuTitle:'Select Subject', diaryMenuDesc:'Tap a subject, then choose the class you want to write an entry for.',
-    diaryAddSubject:'+ Add Subject', diaryNewSubjectPrompt:'Enter subject name', diaryLogout:'Switch School',
+    diaryAddSubject:'+ Add Subject', diaryRemoveSubject:'Remove Subject', diaryDone:'Done', diaryRemoveConfirm:'Remove this subject from the list?', diaryNewSubjectPrompt:'Enter subject name', diaryLogout:'Switch School',
     diaryChooseClassTitle:'Select Class', diaryEntryTitle:'New Diary Entry', diaryEntryDate:'Date',
     diaryEntryPlaceholder:'Write homework / class work / notice…', diarySave:'Save Entry',
     diarySaved:'Diary entry saved.', diaryOfflineSaved:'Saved offline — will sync automatically once you\'re back online.',
@@ -1385,7 +1385,7 @@ const T = {
     diaryPortalTitle:'ڈائری لاگ اِن', diaryPortalDesc:'اپنا اسکول کوڈ اور اسکول کی طرف سے دیا گیا ڈائری پاس ورڈ درج کریں۔',
     diaryPasswordLabel:'ڈائری پاس ورڈ', diaryPortalLoginButton:'لاگ اِن', diaryPortalInvalid:'غلط اسکول کوڈ یا ڈائری پاس ورڈ۔',
     diaryMenuTitle:'مضمون منتخب کریں', diaryMenuDesc:'ایک مضمون منتخب کریں، پھر وہ کلاس منتخب کریں جس کے لیے اندراج کرنا ہے۔',
-    diaryAddSubject:'+ نیا مضمون شامل کریں', diaryNewSubjectPrompt:'مضمون کا نام درج کریں', diaryLogout:'اسکول تبدیل کریں',
+    diaryAddSubject:'+ نیا مضمون شامل کریں', diaryRemoveSubject:'مضمون ہٹائیں', diaryDone:'مکمل', diaryRemoveConfirm:'اس مضمون کو فہرست سے ہٹائیں؟', diaryNewSubjectPrompt:'مضمون کا نام درج کریں', diaryLogout:'اسکول تبدیل کریں',
     diaryChooseClassTitle:'کلاس منتخب کریں', diaryEntryTitle:'نئی ڈائری اندراج', diaryEntryDate:'تاریخ',
     diaryEntryPlaceholder:'ہوم ورک / کلاس ورک / نوٹس لکھیں…', diarySave:'اندراج محفوظ کریں',
     diarySaved:'ڈائری اندراج محفوظ ہو گئی۔', diaryOfflineSaved:'آف لائن محفوظ ہو گیا — انٹرنیٹ آنے پر خود بخود بھیج دیا جائے گا۔',
@@ -11056,7 +11056,25 @@ function getDiarySubjects() { try { return JSON.parse(localStorage.getItem(DIARY
 function rememberDiarySubject(name) {
   const list = getDiarySubjects();
   if (!list.includes(name)) { list.push(name); localStorage.setItem(DIARY_SUBJECTS_KEY, JSON.stringify(list)); }
+  // re-adding a subject that was removed earlier brings it back
+  const hidden = getDiaryHiddenSubjects();
+  if (hidden.includes(name)) localStorage.setItem(DIARY_HIDDEN_KEY, JSON.stringify(hidden.filter(x => x !== name)));
 }
+const DIARY_HIDDEN_KEY = 'sms_diary_hidden_subjects'; // starter subjects this device has removed
+function getDiaryHiddenSubjects() { try { return JSON.parse(localStorage.getItem(DIARY_HIDDEN_KEY) || '[]'); } catch(e) { return []; } }
+function diarySubjectList() {
+  const hidden = new Set(getDiaryHiddenSubjects());
+  return Array.from(new Set([...DIARY_DEFAULT_SUBJECTS, ...getDiarySubjects()])).filter(x => !hidden.has(x));
+}
+function removeDiarySubject(name) {
+  if (!confirm(t.diaryRemoveConfirm + '\n\n' + name)) return;
+  localStorage.setItem(DIARY_SUBJECTS_KEY, JSON.stringify(getDiarySubjects().filter(x => x !== name)));
+  const hidden = getDiaryHiddenSubjects();
+  if (!hidden.includes(name)) { hidden.push(name); localStorage.setItem(DIARY_HIDDEN_KEY, JSON.stringify(hidden)); }
+  renderDiaryMenu();
+}
+let DIARY_EDIT_SUBJECTS = false;
+function toggleDiaryEditSubjects() { DIARY_EDIT_SUBJECTS = !DIARY_EDIT_SUBJECTS; renderDiaryMenu(); }
 // A small starter list so the subject screen isn't empty on first use —
 // schools can add more (or ones not in this list) with "+ Add Subject",
 // and anything added is remembered on that device from then on.
@@ -11910,6 +11928,8 @@ async function renderDiaryPortalEntry() {
   renderAuthShell(`<div id="diary-portal-body"><div style="text-align:center;padding:20px 0;opacity:.6;">…</div></div>`);
   await flushDiaryQueue(); // clear any older offline writes first
   const session = getDiarySession();
+  try { history.replaceState({ diary: 'menu' }, ''); } catch(e) {}
+  window.addEventListener('popstate', diaryPopState);
   if (session) {
     DIARY_SCREEN = 'menu';
     renderDiaryMenu();
@@ -11956,13 +11976,29 @@ function diaryPortalLogout() {
   renderDiaryLoginForm();
 }
 
+// Phone back button: every Diary screen gets its own history entry, so Back
+// goes dashboard <- classes <- entry instead of closing the whole Diary.
+function diaryBack(kind) {
+  const st = history.state;
+  if (st && st.diary && st.diary !== 'menu') { history.back(); return; }
+  if (kind === 'classes') renderDiaryClasses(DIARY_SUBJECT, true); else renderDiaryMenu();
+}
+function diaryPopState(e) {
+  if (DIARY_FROM_CLASS || !document.getElementById('diary-portal-body')) return;
+  const st = e.state;
+  if (st && st.diary === 'classes') renderDiaryClasses(st.subject, true);
+  else if (st && st.diary === 'entry') { DIARY_SUBJECT = st.subject; renderDiaryEntryForm(st.cls, true); }
+  else renderDiaryMenu();
+}
 function renderDiaryMenu() {
   DIARY_SCREEN = 'menu';
+  DIARY_EDIT_SUBJECTS = DIARY_EDIT_SUBJECTS && !!document.getElementById('diary-portal-body');
   const session = getDiarySession();
   const body = document.getElementById('diary-portal-body');
   if (!session || !body) return;
   const queue = getDiaryQueue();
-  const subjects = Array.from(new Set([...DIARY_DEFAULT_SUBJECTS, ...getDiarySubjects()]));
+  const subjects = diarySubjectList();
+  const editing = DIARY_EDIT_SUBJECTS;
   body.innerHTML = `
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
       <h2 style="margin:0;">${esc(session.schoolName || t.diaryMenuTitle)}</h2>
@@ -11970,9 +12006,12 @@ function renderDiaryMenu() {
     </div>
     <p class="desc">${esc(t.diaryMenuDesc)}</p>
     <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px;">
-      ${subjects.map(s => `<button class="btn-primary" style="flex:none;padding:9px 16px;" onclick="renderDiaryClasses('${esc(s).replace(/'/g,"\\'")}')">${esc(s)}</button>`).join('')}
-      <button class="btn-ghost" style="flex:none;padding:9px 16px;" onclick="promptDiaryNewSubject()">${esc(t.diaryAddSubject)}</button>
+      ${subjects.map(s => editing
+        ? `<span style="display:inline-flex;align-items:stretch;border-radius:10px;overflow:hidden;border:1px solid var(--rust,#b5452f);"><span style="padding:9px 12px;">${esc(s)}</span><button style="flex:none;border:0;background:var(--rust,#b5452f);color:#fff;padding:0 12px;font-size:16px;" onclick="removeDiarySubject('${esc(s).replace(/'/g,"\\'")}')">✕</button></span>`
+        : `<button class="btn-primary" style="flex:none;padding:9px 16px;" onclick="renderDiaryClasses('${esc(s).replace(/'/g,"\\'")}')">${esc(s)}</button>`).join('')}
+      ${editing ? '' : `<button class="btn-ghost" style="flex:none;padding:9px 16px;" onclick="promptDiaryNewSubject()">${esc(t.diaryAddSubject)}</button>`}
     </div>
+    <button class="btn-ghost" style="font-size:12px;padding:7px 12px;" onclick="toggleDiaryEditSubjects()">${esc(editing ? t.diaryDone : t.diaryRemoveSubject)}</button>
     ${queue.length ? `<p style="font-size:11px;opacity:.6;margin-top:14px;">${esc(t.classPortalOffline)} (${queue.length})</p>` : ''}
   `;
 }
@@ -11984,13 +12023,14 @@ function promptDiaryNewSubject() {
   renderDiaryClasses(name);
 }
 
-function renderDiaryClasses(subject) {
+function renderDiaryClasses(subject, noPush) {
   DIARY_SCREEN = 'classes';
   DIARY_SUBJECT = subject;
+  if (!noPush && !DIARY_FROM_CLASS) history.pushState({ diary: 'classes', subject }, '');
   const body = document.getElementById('diary-portal-body');
   if (!body) return;
   body.innerHTML = `
-    <button class="btn-ghost" style="padding:9px 14px;margin-bottom:10px;" onclick="renderDiaryMenu()">${esc(t.diaryBackToSubjects)}</button>
+    <button class="btn-ghost" style="padding:9px 14px;margin-bottom:10px;" onclick="diaryBack('menu')">${esc(t.diaryBackToSubjects)}</button>
     <h2 style="margin-top:0;">${esc(subject)}</h2>
     <p class="desc">${esc(t.diaryChooseClassTitle)}</p>
     <div style="display:flex;flex-wrap:wrap;gap:8px;">
@@ -11999,13 +12039,14 @@ function renderDiaryClasses(subject) {
   `;
 }
 
-function renderDiaryEntryForm(className) {
+function renderDiaryEntryForm(className, noPush) {
   DIARY_SCREEN = 'entry';
   DIARY_CLASS = className;
+  if (!noPush && !DIARY_FROM_CLASS) history.pushState({ diary: 'entry', subject: DIARY_SUBJECT, cls: className }, '');
   const body = document.getElementById('diary-portal-body');
   if (!body) return;
   body.innerHTML = `
-    <button class="btn-ghost" style="padding:9px 14px;margin-bottom:10px;" onclick="renderDiaryClasses('${esc(DIARY_SUBJECT).replace(/'/g,"\\'")}')">${esc(t.diaryBackToClasses)}</button>
+    <button class="btn-ghost" style="padding:9px 14px;margin-bottom:10px;" onclick="diaryBack('classes')">${esc(t.diaryBackToClasses)}</button>
     <h2 style="margin-top:0;">${esc(DIARY_SUBJECT)} — ${esc(className)}</h2>
     <label><span>${esc(t.diaryEntryDate)}</span><input id="de-date" type="date" value="${todayISO()}"></label>
     <label><span>${esc(t.diaryEntryTitle)}</span><textarea id="de-text" rows="5" placeholder="${esc(t.diaryEntryPlaceholder)}"></textarea></label>
@@ -12073,8 +12114,10 @@ async function flushDiaryQueue() {
 // (checked by the same diary_login_verify / diary_add_entry as ?diary=1).
 // Then: pick subject -> write entry for this class.
 function diaryAfterSave() {
-  if (DIARY_FROM_CLASS && document.getElementById('class-portal-body')) renderClassPortalDiary();
-  else renderDiaryMenu();
+  if (DIARY_FROM_CLASS && document.getElementById('class-portal-body')) { renderClassPortalDiary(); return; }
+  const st = history.state;
+  renderDiaryMenu();
+  if (st && st.diary && st.diary !== 'menu') history.go(st.diary === 'entry' ? -2 : -1);
 }
 
 function classPortalDiarySessionOk() {
@@ -12090,7 +12133,7 @@ function renderClassPortalDiary() {
   if (!cs || !body) return;
   if (!classPortalDiarySessionOk()) { renderClassPortalDiaryLogin(); return; }
   const queue = getDiaryQueue();
-  const subjects = Array.from(new Set([...DIARY_DEFAULT_SUBJECTS, ...getDiarySubjects()]));
+  const subjects = diarySubjectList();
   body.innerHTML = `
     <button class="btn-ghost" style="padding:9px 14px;margin-bottom:10px;" onclick="CLASS_PORTAL_SCREEN='menu'; renderClassPortalMenu()">‹ ${esc(t.classPortalBackToMenu)}</button>
     <h2 style="margin-top:0;">${esc(t.classPortalMenuDiary)} — ${esc(cs.className)}</h2>
