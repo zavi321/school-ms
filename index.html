@@ -12016,37 +12016,51 @@ function renderDiaryEntryForm(className) {
 }
 
 async function submitDiaryEntry() {
-  const session = getDiarySession();
+  const fromClass = DIARY_FROM_CLASS && !!document.getElementById('class-portal-body');
+  const session = fromClass ? getClassSession() : getDiarySession();
   if (!session) return;
   const date = document.getElementById('de-date').value || todayISO();
   const text = document.getElementById('de-text').value.trim();
   const msg = document.getElementById('de-msg');
   if (!text) return;
   rememberDiarySubject(DIARY_SUBJECT);
-  const payload = {
-    schoolCode: session.schoolCode, password: session.password,
-    className: DIARY_CLASS, subject: DIARY_SUBJECT, date, text
-  };
+  const payload = fromClass
+    ? { type: 'class_entry', schoolCode: session.schoolCode, loginId: session.loginId, password: session.password,
+        className: DIARY_CLASS, subject: DIARY_SUBJECT, date, text }
+    : { type: 'entry', schoolCode: session.schoolCode, password: session.password,
+        className: DIARY_CLASS, subject: DIARY_SUBJECT, date, text };
   if (!navigator.onLine) {
-    queueDiaryWrite({ type: 'entry', ...payload });
+    queueDiaryWrite(payload);
     msg.innerHTML = `<div class="ok">${esc(t.diaryOfflineSaved)}</div>`;
     setTimeout(() => diaryAfterSave(), 900);
     return;
   }
   try {
-    const { data: addOk, error } = await sb.rpc('diary_add_entry', {
-      p_school_code: payload.schoolCode, p_password: payload.password, p_class_name: payload.className,
-      p_subject: payload.subject, p_entry_date: payload.date, p_entry_text: payload.text
-    });
+    const { data: addOk, error } = await sendDiaryEntry(payload);
     if (!error && addOk === false) { msg.innerHTML = `<div class="err">${esc(t.diaryPortalInvalid)}</div>`; return; }
-    if (error) { queueDiaryWrite({ type: 'entry', ...payload }); msg.innerHTML = `<div class="ok">${esc(t.diaryOfflineSaved)}</div>`; setTimeout(() => diaryAfterSave(), 900); return; }
+    if (error) { queueDiaryWrite(payload); msg.innerHTML = `<div class="ok">${esc(t.diaryOfflineSaved)}</div>`; setTimeout(() => diaryAfterSave(), 900); return; }
     msg.innerHTML = `<div class="ok">${esc(t.diarySaved)}</div>`;
     setTimeout(() => diaryAfterSave(), 900);
   } catch(e) {
-    queueDiaryWrite({ type: 'entry', ...payload });
+    queueDiaryWrite(payload);
     msg.innerHTML = `<div class="ok">${esc(t.diaryOfflineSaved)}</div>`;
     setTimeout(() => diaryAfterSave(), 900);
   }
+}
+
+// Class Portal diary is verified with the class login (no separate Diary Password);
+// the standalone ?diary=1 page still uses the school-wide Diary Password.
+function sendDiaryEntry(item) {
+  if (item.type === 'class_entry') {
+    return sb.rpc('class_diary_add_entry', {
+      p_school_code: item.schoolCode, p_login_id: item.loginId, p_password: item.password,
+      p_subject: item.subject, p_entry_date: item.date, p_entry_text: item.text
+    });
+  }
+  return sb.rpc('diary_add_entry', {
+    p_school_code: item.schoolCode, p_password: item.password, p_class_name: item.className,
+    p_subject: item.subject, p_entry_date: item.date, p_entry_text: item.text
+  });
 }
 
 async function flushDiaryQueue() {
@@ -12056,10 +12070,7 @@ async function flushDiaryQueue() {
   const remaining = [];
   for (const item of q) {
     try {
-      const { error } = await sb.rpc('diary_add_entry', {
-        p_school_code: item.schoolCode, p_password: item.password, p_class_name: item.className,
-        p_subject: item.subject, p_entry_date: item.date, p_entry_text: item.text
-      });
+      const { error } = await sendDiaryEntry(item);
       if (error) remaining.push(item);
     } catch(e) { remaining.push(item); }
   }
@@ -12078,18 +12089,12 @@ function diaryAfterSave() {
   else renderDiaryMenu();
 }
 
-function classPortalDiarySessionOk() {
-  const cs = getClassSession(), ds = getDiarySession();
-  return !!(cs && ds && String(ds.schoolCode || '').trim().toUpperCase() === String(cs.schoolCode || '').trim().toUpperCase());
-}
-
 function renderClassPortalDiary() {
   DIARY_FROM_CLASS = true;
   CLASS_PORTAL_SCREEN = 'diary';
   const cs = getClassSession();
   const body = document.getElementById('class-portal-body');
   if (!cs || !body) return;
-  if (!classPortalDiarySessionOk()) { renderClassPortalDiaryLogin(); return; }
   const queue = getDiaryQueue();
   const subjects = Array.from(new Set([...DIARY_DEFAULT_SUBJECTS, ...getDiarySubjects()]));
   body.innerHTML = `
@@ -12100,14 +12105,8 @@ function renderClassPortalDiary() {
       ${subjects.map(s => `<button class="btn-primary" style="flex:none;padding:9px 16px;" onclick="renderClassPortalDiaryEntry('${esc(s).replace(/'/g,"\\'")}')">${esc(s)}</button>`).join('')}
       <button class="btn-ghost" style="flex:none;padding:9px 16px;" onclick="promptClassPortalDiarySubject()">${esc(t.diaryAddSubject)}</button>
     </div>
-    <button class="btn-ghost" style="font-size:12px;padding:7px 12px;" onclick="classPortalDiaryChangePw()">${esc(t.classPortalDiaryChangePw)}</button>
     ${queue.length ? `<p style="font-size:11px;opacity:.6;margin-top:14px;">${esc(t.classPortalOffline)} (${queue.length})</p>` : ''}
   `;
-}
-
-function classPortalDiaryChangePw() {
-  clearDiarySession();
-  renderClassPortalDiaryLogin();
 }
 
 function promptClassPortalDiarySubject() {
@@ -12115,37 +12114,6 @@ function promptClassPortalDiarySubject() {
   if (!name) return;
   rememberDiarySubject(name);
   renderClassPortalDiaryEntry(name);
-}
-
-function renderClassPortalDiaryLogin() {
-  const body = document.getElementById('class-portal-body');
-  if (!body) return;
-  body.innerHTML = `
-    <button class="btn-ghost" style="padding:9px 14px;margin-bottom:10px;" onclick="CLASS_PORTAL_SCREEN='menu'; renderClassPortalMenu()">‹ ${esc(t.classPortalBackToMenu)}</button>
-    <h2 style="margin-top:0;">${esc(t.diaryPortalTitle)}</h2>
-    <p class="desc">${esc(t.classPortalDiaryPwDesc)}</p>
-    <label><span>${esc(t.diaryPasswordLabel)}</span><input id="cpd-pw" type="password"></label>
-    <div id="cpd-msg" style="font-size:12px;margin-bottom:8px;"></div>
-    <button class="btn-primary" style="width:100%;" onclick="submitClassPortalDiaryLogin()">${esc(t.diaryPortalLoginButton)}</button>
-  `;
-}
-
-async function submitClassPortalDiaryLogin() {
-  const cs = getClassSession();
-  const msg = document.getElementById('cpd-msg');
-  const password = document.getElementById('cpd-pw').value;
-  if (!cs || !password) return;
-  msg.textContent = '…';
-  if (!navigator.onLine) { msg.innerHTML = `<div class="err">${esc(t.classPortalOfflineNoList)}</div>`; return; }
-  try {
-    const { data, error } = await sb.rpc('diary_login_verify', { p_school_code: cs.schoolCode, p_password: password });
-    if (error && /too_many/.test(error.message||'')) { msg.innerHTML = `<div class="err">Too many wrong attempts. Please try again after 15 minutes. / بہت زیادہ غلط کوششیں۔ 15 منٹ بعد دوبارہ کوشش کریں۔</div>`; return; }
-    if (error || !data || !data.length) { msg.innerHTML = `<div class="err">${esc(t.diaryPortalInvalid)}</div>`; return; }
-    setDiarySession({ schoolCode: cs.schoolCode, password, ownerId: data[0].owner_id, schoolName: data[0].school_name || cs.schoolName || '' });
-    renderClassPortalDiary();
-  } catch(e) {
-    msg.innerHTML = `<div class="err">${esc(t.diaryPortalInvalid)}</div>`;
-  }
 }
 
 function renderClassPortalDiaryEntry(subject) {
