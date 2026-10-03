@@ -156,19 +156,21 @@ html, body{overscroll-behavior:none;}
   .d-sec small{font-weight:500;letter-spacing:0;opacity:.55;text-transform:none;}
   .d-quick{display:grid;grid-template-columns:repeat(4,1fr);gap:14px 6px;}
   .d-q{background:none;border:0;padding:0;font:inherit;font-size:11.5px;font-weight:500;color:var(--ink);display:flex;flex-direction:column;align-items:center;gap:7px;text-align:center;cursor:pointer;-webkit-tap-highlight-color:transparent;}
-  .d-tile{display:grid;place-items:center;flex:none;transition:transform .15s,box-shadow .15s;}
+  .d-tile{display:grid;place-items:center;flex:none;}
   .d-tile svg{fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;}
   .d-lg{width:54px;height:54px;border-radius:17px;} .d-lg svg{width:25px;height:25px;}
   .d-md{width:42px;height:42px;border-radius:14px;} .d-md svg{width:21px;height:21px;}
-  .d-q:active .d-tile{transform:scale(.92);}
+  .d-q:active,.d-panel button:active{transform:none;}
+  .d-q:active .d-tile{opacity:.7;}
+  .d-q,.d-panel button{touch-action:manipulation;-webkit-tap-highlight-color:transparent;}
   .d-q.open .d-tile{box-shadow:0 0 0 2px var(--navy);}
   .d-tile.c1{background:#FDEBD8;color:#D9822B;} .d-tile.c2{background:#E3ECF9;color:#3D6FB6;}
   .d-tile.c3{background:#DDF3E4;color:#2E8B57;} .d-tile.c4{background:#ECE4F8;color:#7A55C4;}
   .d-tile.c5{background:#FBE0E4;color:#D2455C;} .d-tile.c6{background:#D9F1F2;color:#1F9AA3;}
   .d-tile.c7{background:#FFF1C9;color:#B58A00;} .d-tile.c8{background:#E4E8EE;color:#46566B;}
   .d-panel{display:none;align-items:center;gap:12px;background:var(--card);border:1px solid var(--line);border-left:4px solid var(--gold);border-radius:14px;padding:12px 14px;margin-top:12px;box-shadow:var(--shadow-sm);}
-  .d-panel.show{display:flex;animation:dPop .22s ease;}
-  @keyframes dPop{from{opacity:0;transform:translateY(-6px);}to{opacity:1;transform:none;}}
+  .d-panel.show{display:flex;animation:dFade .15s ease-out;}
+  @keyframes dFade{from{opacity:0;}to{opacity:1;}}
   .d-panel{flex-wrap:wrap;}
   .d-pextra{width:100%;margin-top:6px;}
   .d-pbody{flex:1;min-width:0;}
@@ -4471,17 +4473,37 @@ function dashPanelHtml(k) {
     ${i.x ? `<div class="d-pextra">${i.x()}</div>` : ''}`;
 }
 
+function dashScroller(el) {
+  for (let n = el.parentElement; n && n !== document.body; n = n.parentElement) {
+    const oy = getComputedStyle(n).overflowY;
+    if ((oy === 'auto' || oy === 'scroll') && n.scrollHeight > n.clientHeight) return n;
+  }
+  return document.scrollingElement || document.documentElement;
+}
+
 function toggleDashStat(k) {
   _dsCache = null;
+  const tile = document.querySelector('.d-ob[data-k="' + k + '"]');
+  const topBefore = tile ? tile.getBoundingClientRect().top : null;
   DASH_OPEN_STAT = (DASH_OPEN_STAT === k) ? null : k;
   document.querySelectorAll('.d-ob').forEach(b => b.classList.toggle('open', b.dataset.k === DASH_OPEN_STAT));
   document.querySelectorAll('.d-panel').forEach(p => { p.classList.remove('show'); p.innerHTML = ''; });
-  if (!DASH_OPEN_STAT) return;
+  if (!DASH_OPEN_STAT) { dashKeepTile(tile, topBefore); return; }
   const info = dashStatInfo(DASH_OPEN_STAT);
   const panel = document.getElementById('dash-panel-' + info.g);
   if (!panel) return;
   panel.innerHTML = dashPanelHtml(DASH_OPEN_STAT);
-  void panel.offsetWidth; panel.classList.add('show');
+  panel.classList.add('show');
+  dashKeepTile(tile, topBefore);
+}
+
+// If a panel above the tapped tile opened/closed, the tile would jump on screen; scroll by the same amount so it stays under the finger.
+function dashKeepTile(tile, topBefore) {
+  if (!tile || topBefore === null) return;
+  const delta = tile.getBoundingClientRect().top - topBefore;
+  if (Math.abs(delta) < 1) return;
+  const sc = dashScroller(tile);
+  if (sc === document.scrollingElement || sc === document.documentElement) window.scrollBy(0, delta); else sc.scrollTop += delta;
 }
 
 function tplDashOverview(s) {
