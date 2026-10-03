@@ -149,6 +149,33 @@ html, body{overscroll-behavior:none;}
   nav.bottom button.active{background:rgba(201,162,39,.18);color:var(--gold-soft);}
   nav.bottom button svg{width:18px;height:18px;}
 
+
+  /* ---- Dashboard icon tiles ---- */
+  .d-sec{display:flex;align-items:center;gap:8px;font-size:12px;font-weight:700;letter-spacing:.1em;color:var(--navy);margin:18px 2px 10px;text-transform:uppercase;}
+  .d-sec::before{content:"";width:16px;height:3px;border-radius:2px;background:var(--gold);}
+  .d-sec small{font-weight:500;letter-spacing:0;opacity:.55;text-transform:none;}
+  .d-quick{display:grid;grid-template-columns:repeat(4,1fr);gap:14px 6px;}
+  .d-q{background:none;border:0;padding:0;font:inherit;font-size:11.5px;font-weight:500;color:var(--ink);display:flex;flex-direction:column;align-items:center;gap:7px;text-align:center;cursor:pointer;-webkit-tap-highlight-color:transparent;}
+  .d-tile{display:grid;place-items:center;flex:none;transition:transform .15s,box-shadow .15s;}
+  .d-tile svg{fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;}
+  .d-lg{width:54px;height:54px;border-radius:17px;} .d-lg svg{width:25px;height:25px;}
+  .d-md{width:42px;height:42px;border-radius:14px;} .d-md svg{width:21px;height:21px;}
+  .d-q:active .d-tile{transform:scale(.92);}
+  .d-q.open .d-tile{box-shadow:0 0 0 2px var(--navy);}
+  .d-tile.c1{background:#FDEBD8;color:#D9822B;} .d-tile.c2{background:#E3ECF9;color:#3D6FB6;}
+  .d-tile.c3{background:#DDF3E4;color:#2E8B57;} .d-tile.c4{background:#ECE4F8;color:#7A55C4;}
+  .d-tile.c5{background:#FBE0E4;color:#D2455C;} .d-tile.c6{background:#D9F1F2;color:#1F9AA3;}
+  .d-tile.c7{background:#FFF1C9;color:#B58A00;} .d-tile.c8{background:#E4E8EE;color:#46566B;}
+  .d-panel{display:none;align-items:center;gap:12px;background:var(--card);border:1px solid var(--line);border-left:4px solid var(--gold);border-radius:14px;padding:12px 14px;margin-top:12px;box-shadow:var(--shadow-sm);}
+  .d-panel.show{display:flex;animation:dPop .22s ease;}
+  @keyframes dPop{from{opacity:0;transform:translateY(-6px);}to{opacity:1;transform:none;}}
+  .d-panel{flex-wrap:wrap;}
+  .d-pextra{width:100%;margin-top:6px;}
+  .d-pbody{flex:1;min-width:0;}
+  .d-pl{font-size:12.5px;opacity:.65;font-weight:600;}
+  .d-pv{font-size:24px;font-weight:600;font-family:Fraunces,serif;color:var(--navy);overflow-wrap:anywhere;}
+  .d-pgo{border:0;background:var(--navy);color:#fff;border-radius:10px;padding:7px 11px;font-size:12px;font-weight:600;cursor:pointer;}
+  .d-px{border:0;background:#f1ece0;color:var(--navy);border-radius:50%;width:26px;height:26px;cursor:pointer;flex:none;}
   .stat-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:16px;}
   .stat-card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;box-shadow:var(--shadow-sm);}
   .stat-card .lbl{font-size:14.5px;font-weight:600;opacity:.8;margin:6px 0 2px;}
@@ -4359,6 +4386,132 @@ function openDashFeeCollectionGraphModal(cls) {
   showModal(cls, `${back}${tplFeeCollectionChartSvg(cls)}`);
 }
 
+// ---------------- Dashboard: icon tiles (Overview, Today, This Month, Student Type, More) ----------------
+let DASH_OPEN_STAT = null;
+const DI = {
+  stu:'<path d="M22 10l-10-5-10 5 10 5zM6 12v5c3 3 9 3 12 0v-5"/>',
+  tea:'<circle cx="9" cy="7" r="4"/><path d="M2 21v-2a4 4 0 014-4h6a4 4 0 014 4v2"/>',
+  inc:'<path d="M12 19V5M5 12l7-7 7 7"/>',
+  exp:'<path d="M12 5v14M19 12l-7 7-7-7"/>',
+  bal:'<path d="M3 7h18v12H3zM3 7l2-3h14l2 3"/><circle cx="16" cy="13" r="1.5"/>',
+  due:'<path d="M12 3l10 18H2z"/><path d="M12 10v5M12 18v.5"/>',
+  sal:'<rect x="2" y="6" width="20" height="13" rx="2"/><circle cx="12" cy="12.5" r="2.5"/><path d="M6 12.5h.01M18 12.5h.01"/>',
+  att:'<rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18M9 16l2 2 4-4"/>',
+  fee:'<path d="M3 7h18v12H3zM3 7l2-3h14l2 3"/><circle cx="16" cy="13" r="1.5"/>',
+  mrk:'<path d="M6 20V11M12 20V4M18 20v-6"/>',
+  cer:'<path d="M14 3H6a2 2 0 00-2 2v14a2 2 0 002 2h12a2 2 0 002-2V9zM14 3v6h6M8 13h8M8 17h5"/>',
+  pap:'<path d="M14 3H6a2 2 0 00-2 2v14a2 2 0 002 2h12a2 2 0 002-2V9z"/><path d="M8 9h4"/>',
+  tmt:'<rect x="3" y="4" width="18" height="18" rx="2"/><path d="M3 10h18M8 15h3"/>',
+  qr:'<path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h3v3h-3z"/>',
+  adm:'<path d="M4 19.5A2.5 2.5 0 016.5 17H20V3H6.5A2.5 2.5 0 004 5.5z"/>',
+  dol:'<path d="M12 1v22M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/>',
+  bld:'<path d="M3 21h18M5 21V7l7-4 7 4v14M9 21v-6h6v6"/>',
+  crd:'<rect x="2" y="6" width="20" height="13" rx="2"/><path d="M2 10h20"/>',
+  gft:'<path d="M20 12v9H4v-9M2 7h20v5H2zM12 21V7M12 7a3 3 0 10-3-3c0 1.7 3 3 3 3zm0 0a3 3 0 113-3c0 1.7-3 3-3 3z"/>',
+  hrt:'<path d="M20.8 4.6a5.5 5.5 0 00-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 00-7.8 7.8l1 1.1L12 21l7.8-7.5 1-1.1a5.5 5.5 0 000-7.8z"/>',
+  gra:'<path d="M3 3v18h18M7 15l4-4 3 3 5-6"/>',
+  clk:'<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+  bel:'<path d="M18 8a6 6 0 10-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 01-3.4 0"/>'
+};
+const diSvg = k => `<svg viewBox="0 0 24 24" aria-hidden="true">${DI[k]}</svg>`;
+
+// Every tile: g = group (each group has its own panel right under it), n = tile label,
+// l = panel heading, v = value (optional), x = extra HTML shown inside the panel (optional),
+// open = existing detail screen to jump to (optional), ic = icon key, c = colour class.
+let _dsCache = null;
+function dashStatInfo(k) {
+  if (!_dsCache) _dsCache = dashBuildStatMap();
+  return _dsCache[k];
+}
+function dashBuildStatMap() {
+  const s = computeStats();
+  const ur = LANG==='ur';
+  const m = {
+    stu:{g:'ov', ic:'stu', c:'c2', n:t.students,  l:t.totalStudents, v:dv(s.activeCount), open:'openDashStudentsModal()'},
+    tea:{g:'ov', ic:'tea', c:'c4', n:t.teachers,  l:t.totalTeachers, v:dv(DATA.teachers.length), open:'openDashTeachersModal()'},
+    inc:{g:'ov', ic:'inc', c:'c3', n:ur?'آمدنی':'Income',  l:t.totalIncome,  v:dv('₨'+fmt(s.totalIncomeAllTime)),  col:'var(--sage)', open:'openDashIncomeExpenseModal()'},
+    exp:{g:'ov', ic:'exp', c:'c5', n:ur?'اخراجات':'Expense', l:t.totalExpense, v:dv('₨'+fmt(s.totalExpenseAllTime)), col:'var(--rust)', open:'openDashIncomeExpenseModal()'},
+    sal:{g:'ov', ic:'sal', c:'c8', n:ur?'تنخواہیں':'Salaries', l:t.teacherSalaries, v:dv('₨'+fmt(s.totalSalariesAllTime)), open:'openDashTeacherSalariesModal()'},
+    bal:{g:'ov', ic:'bal', c:'c7', n:ur?'بقایا':'Net Balance', l:t.netBalance, v:dv('₨'+fmt(s.netBalance)), open:'openDashIncomeExpenseModal()'},
+    due:{g:'ov', ic:'due', c:'c1', n:ur?'واجبات':'Total Dues', l:t.totalDuesAllTime, v:dv('₨'+fmt(s.totalDuesAllTime)), col:'var(--rust)', open:'openDashDuesModal()'},
+
+    sat:{g:'td', ic:'att', c:'c1', n:t.students, l:t.todayAttendance, v:dv(todayStudentAttendanceSummary().marked+'/'+s.activeCount), open:'openDashTodayAttendanceModal()'},
+    tat:{g:'td', ic:'tea', c:'c4', n:t.teachers, l:t.teacherAttendanceToday, v:dv(todayTeacherAttendanceSummary().checkedIn+'/'+DATA.teachers.length), open:'openDashTeacherAttendanceModal()'},
+
+    fcl:{g:'mo', ic:'dol', c:'c3', n:ur?'وصول':'Collected', l:t.feesCollected, v:dv('₨'+fmt(s.feesCollectedThisMonth)), open:'openDashFeesCollectedModal()'},
+    fdu:{g:'mo', ic:'due', c:'c1', n:ur?'واجب':'Fees Due', l:t.feesDue, v:dv('₨'+fmt(s.feesDueThisMonth)), open:'openDashFeesDueModal()'},
+    spd:{g:'mo', ic:'sal', c:'c8', n:ur?'تنخواہ':'Salaries', l:t.salaryPaid, v:dv('₨'+fmt(s.salaryPaidThisMonth)), open:'openDashTeacherSalariesModal()'},
+    exm:{g:'mo', ic:'exp', c:'c5', n:ur?'اخراجات':'Expenses', l:t.expensesThisMonth, v:dv('₨'+fmt(s.totalExpenseThisMonth)), col:'var(--rust)', open:"setTab('finance')"},
+    ofe:{g:'mo', ic:'bld', c:'c6', n:ur?'دیگر فیس':'Other Fees', l:t.otherFeeStandalone, v:dv('₨'+fmt(s.otherFeeThisMonth))},
+
+    pay:{g:'st', ic:'crd', c:'c2', n:t.feePaying, l:t.feePaying, v:dv(s.payingCount)},
+    fre:{g:'st', ic:'gft', c:'c6', n:t.free,      l:t.free,      v:dv(s.freeCount), col:'#2563A6'},
+    orp:{g:'st', ic:'hrt', c:'c7', n:t.orphan,    l:t.orphan,    v:dv(s.orphanCount), col:'#8A6200'},
+
+    gra:{g:'mr', ic:'gra', c:'c3', n:ur?'فیس گراف':'Fee Graph', l:t.feeCollectionGraphTitle,
+         x:() => `<div style="cursor:pointer;" onclick="openDashFeeCollectionGraphModal()">${tplFeeCollectionMiniChart()}</div>`},
+    act:{g:'mr', ic:'clk', c:'c4', n:t.recentActivity, l:t.recentActivity, x:() => tplDashActivity()},
+    ntf:{g:'mr', ic:'bel', c:'c5', n:ur?'یاد دہانی':'Reminders', l:t.enableNotifications,
+         x:() => `<div id="admin-notify-row"><button class="btn-ghost" style="width:100%;" onclick="subscribeAdminToPush(document.getElementById('admin-notify-row'))">${esc(t.enableNotifications)}</button></div>`}
+  };
+  return m;
+}
+
+function dashPanelHtml(k) {
+  const i = dashStatInfo(k);
+  if (!i) return '';
+  return `
+    <span class="d-tile d-md ${i.c}">${diSvg(i.ic)}</span>
+    <div class="d-pbody">
+      <div class="d-pl">${esc(i.l)}</div>
+      ${i.v!==undefined ? `<div class="d-pv" style="${i.col?'color:'+i.col+';':''}">${esc(String(i.v))}</div>` : ''}
+    </div>
+    ${i.open ? `<button class="d-pgo" onclick="${i.open}">${esc(LANG==='ur'?'تفصیل':'Details')} ›</button>` : ''}
+    <button class="d-px" aria-label="Close" onclick="toggleDashStat('${k}')">✕</button>
+    ${i.x ? `<div class="d-pextra">${i.x()}</div>` : ''}`;
+}
+
+function toggleDashStat(k) {
+  _dsCache = null;
+  DASH_OPEN_STAT = (DASH_OPEN_STAT === k) ? null : k;
+  document.querySelectorAll('.d-ob').forEach(b => b.classList.toggle('open', b.dataset.k === DASH_OPEN_STAT));
+  document.querySelectorAll('.d-panel').forEach(p => { p.classList.remove('show'); p.innerHTML = ''; });
+  if (!DASH_OPEN_STAT) return;
+  const info = dashStatInfo(DASH_OPEN_STAT);
+  const panel = document.getElementById('dash-panel-' + info.g);
+  if (!panel) return;
+  panel.innerHTML = dashPanelHtml(DASH_OPEN_STAT);
+  void panel.offsetWidth; panel.classList.add('show');
+}
+
+function tplDashOverview(s) {
+  _dsCache = null;
+  const ur = LANG==='ur';
+  const group = (g, title, keys, sub) => `
+    <div class="d-sec">${esc(title)}${sub ? ` <small>${esc(sub)}</small>` : ''}</div>
+    <div class="d-quick">${keys.map(k => { const i = dashStatInfo(k);
+      return `<button class="d-q d-ob ${DASH_OPEN_STAT===k?'open':''}" data-k="${k}" onclick="toggleDashStat('${k}')"><span class="d-tile d-lg ${i.c}">${diSvg(i.ic)}</span>${esc(i.n)}</button>`; }).join('')}</div>
+    <div class="d-panel ${DASH_OPEN_STAT && dashStatInfo(DASH_OPEN_STAT).g===g ? 'show' : ''}" id="dash-panel-${g}">${DASH_OPEN_STAT && dashStatInfo(DASH_OPEN_STAT).g===g ? dashPanelHtml(DASH_OPEN_STAT) : ''}</div>`;
+  const qa = [
+    ['att', t.navAttendance,        'openAttendanceHub()', 'c1'],
+    ['fee', t.navFees,              "setTab('finance')", 'c3'],
+    ['mrk', t.navExamsMarks,        "setTab('marksSheet')", 'c7'],
+    ['cer', t.dmc,                  "setTab('dmc')", 'c6'],
+    ['pap', t.papers,               "setTab('papers')", 'c2'],
+    ['tmt', ur?'ٹائم ٹیبل':'Timetable', "setTab('timetable')", 'c4'],
+    ['qr',  t.qrCheckin,            'openQrCheckin()', 'c8'],
+    ['adm', t.admissionRegister,    "setTab('admissionRegister')", 'c5']
+  ].map(([k,label,act,c]) => `<button class="d-q" onclick="${act}"><span class="d-tile d-lg ${c}">${diSvg(k)}</span>${esc(label)}</button>`).join('');
+  return `
+    ${group('ov', ur?'جائزہ':'Overview', ['stu','tea','inc','exp','sal','bal','due'], ur?'ٹیپ کریں':'tap to open')}
+    <div class="d-sec">${esc(ur?'فوری رسائی':'Quick Access')}</div>
+    <div class="d-quick">${qa}</div>
+    ${group('td', t.todayAttendance, ['sat','tat'])}
+    ${group('mo', t.thisMonth, ['fcl','fdu','spd','exm','ofe'])}
+    ${group('st', t.studentType, ['pay','fre','orp'])}
+    ${group('mr', ur?'مزید':'More', ['gra','act','ntf'])}`;
+}
+
 function tplDashboard() {
   const s = computeStats();
 
@@ -4372,51 +4525,7 @@ function tplDashboard() {
         <span>🔔 ${esc(LANG==='ur' ? `${alerts.length} اہم الرٹس` : `${alerts.length} Important Alert${alerts.length>1?'s':''}`)}</span>
         <span style="font-size:12px;opacity:.8;">${esc(LANG==='ur' ? 'دیکھیں ›' : 'View ›')}</span>
       </div>` : ''}
-      <div class="stat-grid">
-        <div class="stat-card" style="cursor:pointer;" onclick="openDashStudentsModal()"><div class="lbl">👨‍🎓 ${esc(t.totalStudents)}</div><div class="val">${dv(s.activeCount)}</div></div>
-        <div class="stat-card" style="cursor:pointer;" onclick="openDashTeachersModal()"><div class="lbl">👨‍🏫 ${esc(t.totalTeachers)}</div><div class="val">${dv(DATA.teachers.length)}</div></div>
-        <div class="stat-card" style="cursor:pointer;" onclick="openDashIncomeExpenseModal()"><div class="lbl">💵 ${esc(t.totalIncome)}</div><div class="val" style="color:var(--sage);">${dv('₨'+fmt(s.totalIncomeAllTime))}</div></div>
-        <div class="stat-card" style="cursor:pointer;" onclick="openDashIncomeExpenseModal()"><div class="lbl">💸 ${esc(t.totalExpense)}</div><div class="val" style="color:var(--rust);">${dv('₨'+fmt(s.totalExpenseAllTime))}</div></div>
-        <div class="stat-card" style="cursor:pointer;" onclick="openDashTeacherSalariesModal()"><div class="lbl">💰 ${esc(t.teacherSalaries)}</div><div class="val">${dv('₨'+fmt(s.totalSalariesAllTime))}</div></div>
-      </div>
-      <div class="balance-card" style="cursor:pointer;" onclick="openDashIncomeExpenseModal()"><div class="lbl">💵 ${esc(t.netBalance)}</div><div class="val">${dv('₨'+fmt(s.netBalance))}</div></div>
-      <div class="dues-card" style="cursor:pointer;" onclick="openDashDuesModal()"><div class="lbl">⚠️ ${esc(t.totalDuesAllTime)}</div><div class="val">${dv('₨'+fmt(s.totalDuesAllTime))}</div></div>
-
-      <div class="section-title">📅 ${esc(t.todayAttendance)}</div>
-      <div class="stat-grid" style="grid-template-columns:1fr 1fr;">
-        <div class="stat-card" style="cursor:pointer;" onclick="openDashTodayAttendanceModal()"><div class="lbl">📅 ${esc(t.todayAttendance)}</div><div class="val" style="font-size:18px;">${dv(todayStudentAttendanceSummary().marked+'/'+s.activeCount)}</div></div>
-        <div class="stat-card" style="cursor:pointer;" onclick="openDashTeacherAttendanceModal()"><div class="lbl">🧑‍🏫 ${esc(t.teacherAttendanceToday)}</div><div class="val" style="font-size:18px;">${dv(todayTeacherAttendanceSummary().checkedIn+'/'+DATA.teachers.length)}</div></div>
-      </div>
-
-      <div class="section-title">📊 ${esc(t.feeCollectionGraphTitle)}</div>
-      <div class="stat-card" style="cursor:pointer;padding:10px 14px;" onclick="openDashFeeCollectionGraphModal()">${tplFeeCollectionMiniChart()}</div>
-
-      <div class="other-fee-card">
-        <div class="lbl">${esc(t.otherFeeStandalone)}</div>
-        <div class="val">${dv('₨'+fmt(s.otherFeeThisMonth))}</div>
-      </div>
-
-      <div id="admin-notify-row" style="margin-top:10px;">
-        <button class="btn-ghost" style="width:100%;" onclick="subscribeAdminToPush(document.getElementById('admin-notify-row'))">${esc(t.enableNotifications)}</button>
-      </div>
-
-      <div class="section-title">${esc(t.thisMonth)}</div>
-      <div class="stat-grid">
-        <div class="stat-card" style="cursor:pointer;" onclick="openDashFeesCollectedModal()"><div class="lbl">💰 ${esc(t.feesCollected)}</div><div class="val" style="font-size:18px;">${dv('₨'+fmt(s.feesCollectedThisMonth))}</div></div>
-        <div class="stat-card" style="cursor:pointer;" onclick="openDashFeesDueModal()"><div class="lbl">⚠️ ${esc(t.feesDue)}</div><div class="val" style="font-size:18px;">${dv('₨'+fmt(s.feesDueThisMonth))}</div></div>
-        <div class="stat-card" style="cursor:pointer;" onclick="openDashTeacherSalariesModal()"><div class="lbl">💵 ${esc(t.salaryPaid)}</div><div class="val" style="font-size:18px;">${dv('₨'+fmt(s.salaryPaidThisMonth))}</div></div>
-        <div class="stat-card" style="cursor:pointer;" onclick="setTab('finance')"><div class="lbl">💸 ${esc(t.expensesThisMonth)}</div><div class="val" style="font-size:18px;color:var(--rust);">${dv('₨'+fmt(s.totalExpenseThisMonth))}</div></div>
-      </div>
-
-      <div class="section-title">${esc(t.studentType)}</div>
-      <div class="stat-grid" style="grid-template-columns:1fr 1fr 1fr;">
-        <div class="stat-card"><div class="lbl">${esc(t.feePaying)}</div><div class="val" style="font-size:18px;">${dv(s.payingCount)}</div></div>
-        <div class="stat-card"><div class="lbl">${esc(t.free)}</div><div class="val" style="font-size:18px;color:#2563A6;">${dv(s.freeCount)}</div></div>
-        <div class="stat-card"><div class="lbl">${esc(t.orphan)}</div><div class="val" style="font-size:18px;color:#8A6200;">${dv(s.orphanCount)}</div></div>
-      </div>
-
-      <div class="section-title">${esc(t.recentActivity)}</div>
-      ${tplDashActivity()}
+      ${tplDashOverview(s)}
     </div>`;
 }
 
