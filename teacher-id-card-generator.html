@@ -35,12 +35,12 @@
     font-family:'Inter',Arial,sans-serif;
     box-shadow:inset 4px 0 0 0 var(--gold-soft),0 2px 6px rgba(10,20,35,.2),0 14px 30px rgba(10,20,35,.32);
   }
-  .id-card::before{
+  .id-card::before{ /* fine diagonal texture, works over any brand color */
     content:'';position:absolute;inset:0;
     background-image:repeating-linear-gradient(135deg,rgba(255,255,255,.045) 0 2px,transparent 2px 26px);
     pointer-events:none;
   }
-  .id-card::after{
+  .id-card::after{ /* soft corner glow / watermark */
     content:'';position:absolute;right:-40px;bottom:-46px;width:190px;height:190px;border-radius:50%;
     background:radial-gradient(circle,rgba(255,255,255,.08),transparent 70%);pointer-events:none;
   }
@@ -49,8 +49,8 @@
   .card-top{display:flex;align-items:center;gap:9px;padding:15px 16px 9px;position:relative;z-index:1;}
   .card-top .logo-ring{width:32px;height:32px;border-radius:50%;background:#fff;padding:2px;box-shadow:0 0 0 1.5px var(--gold-soft);flex-shrink:0;}
   .card-top .logo-ring img{width:100%;height:100%;border-radius:50%;object-fit:cover;display:block;}
-  .card-top .brand-text{min-width:0;}
-  .card-top .sname{font-family:'Fraunces',serif;font-weight:600;font-size:12.5px;line-height:1.15;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .card-top .brand-text{min-width:0;flex:1;}
+  .card-top .sname{font-family:'Fraunces',serif;font-weight:600;font-size:12.5px;line-height:1.12;color:#fff;max-height:2.24em;overflow:hidden;overflow-wrap:anywhere;}
   .card-top .tagline{font-size:8px;letter-spacing:.13em;color:var(--gold-soft);margin-top:2px;font-weight:600;text-transform:uppercase;}
   .card-top .role-tag{margin-left:auto;background:var(--gold);color:var(--navy-deep);font-size:8.5px;font-weight:800;letter-spacing:.07em;padding:3px 9px;border-radius:999px;flex-shrink:0;text-transform:uppercase;}
 
@@ -75,7 +75,6 @@
 
   .btn{background:var(--navy);color:var(--gold-soft);border:none;padding:11px 22px;border-radius:9px;font-size:14px;font-weight:600;cursor:pointer;box-shadow:0 2px 8px rgba(15,39,64,.3);width:100%;}
   .btn:active{transform:scale(.97);}
-  .btn-outline{background:#fff;color:var(--navy);border:1.5px solid var(--navy);box-shadow:none;}
   .btn-print{background:var(--gold);color:var(--navy-deep);}
   .file-btn{font-size:12px;}
   .hint{font-size:11px;color:#8892A0;margin-top:2px;}
@@ -87,9 +86,33 @@
   .queue-header .clear-link{font-size:12px;color:#B3261E;background:none;border:none;cursor:pointer;font-weight:600;}
   .queue-empty{font-size:13px;color:#8892A0;background:#fff;border:1px dashed var(--line);border-radius:10px;padding:18px;text-align:center;}
   .print-sheet{display:flex;flex-wrap:wrap;gap:16px;}
-  .queue-item{position:relative;}
+  .queue-item{position:relative;display:flex;flex-wrap:wrap;gap:12px;}
   .queue-item .id-card{width:344px;height:216px;}
   .queue-remove{position:absolute;top:-8px;right:-8px;width:24px;height:24px;border-radius:50%;background:#B3261E;color:#fff;border:2px solid #fff;font-size:14px;line-height:1;cursor:pointer;box-shadow:0 2px 6px rgba(0,0,0,.25);z-index:5;}
+
+
+  .back-body{display:flex;gap:10px;padding:10px 16px 0;position:relative;z-index:1;}
+  .back-info{flex:1;min-width:0;}
+  .back-info .lbl{display:block;opacity:.55;font-size:8px;letter-spacing:.05em;text-transform:uppercase;margin-bottom:1px;}
+  .back-info b{display:block;color:#fff;font-weight:600;font-size:11px;line-height:1.25;}
+  .back-info b.addr{max-height:2.5em;overflow:hidden;overflow-wrap:anywhere;}
+  .back-info b.one{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+
+  select{width:100%;padding:9px 11px;border:1px solid var(--line);border-radius:7px;font-size:14px;font-family:inherit;background:#FDFCF8;color:var(--ink);outline:none;}
+  select:focus{border-color:var(--gold);box-shadow:0 0 0 3px rgba(201,162,39,.15);}
+  .back-info{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:6px 8px;align-content:start;}
+  .back-info > div{min-width:0;}
+  .back-info .full{grid-column:1/-1;}
+  .back-qr{width:62px;flex-shrink:0;text-align:center;}
+  .back-qr .qr-box{background:#fff;padding:3px;border-radius:6px;box-shadow:0 2px 6px rgba(0,0,0,.25);}
+  .back-qr .qr-box canvas,.back-qr .qr-box img{display:block;width:56px;height:56px;}
+  .back-qr .qr-cap{font-size:7px;letter-spacing:.06em;color:rgba(255,255,255,.55);margin-top:3px;text-transform:uppercase;}
+  .back-sign{position:absolute;right:16px;bottom:10px;width:116px;z-index:1;}
+  .back-sign .sign-space{height:38px;}
+  .back-sign .sign-line{border-top:1px solid rgba(255,255,255,.75);}
+  .back-sign .sign-cap{margin-top:2px;text-align:center;font-size:8px;color:rgba(255,255,255,.75);line-height:1.2;}
+  .back-return{position:absolute;left:16px;bottom:10px;width:180px;font-size:8.5px;font-style:italic;color:var(--gold-soft);z-index:1;line-height:1.3;}
+  @media (max-width:700px){ .card-col{position:static;flex:1 1 100%;} }
 
   @media print{
     *{-webkit-print-color-adjust:exact !important;print-color-adjust:exact !important;color-adjust:exact !important;}
@@ -100,7 +123,8 @@
     .queue-section{max-width:none;margin:0;}
     .print-sheet{display:flex !important;flex-wrap:wrap;gap:6mm;align-content:flex-start;justify-content:flex-start;}
     .queue-item{page-break-inside:avoid;break-inside:avoid;}
-    .queue-item .id-card{width:85.6mm;height:54mm;border-radius:10px;box-shadow:none;margin:0;}
+    .queue-item{gap:4mm;flex-wrap:nowrap;}
+    .queue-item .id-card{width:344px;height:216px;zoom:.94;border-radius:10px;box-shadow:none;margin:0;}
     .queue-item .id-card .notch{background:#fff;}
   }
 </style>
@@ -118,6 +142,10 @@
       <input type="file" id="schoolLogo" class="file-btn" accept="image/*">
       <label>School Name</label>
       <input type="text" id="schoolName" placeholder="e.g. Islamia School & College" value="Islamia School & College">
+      <label>School Address</label>
+      <input type="text" id="schoolAddress" placeholder="e.g. Martung, District Shangla, KPK">
+      <label>School Phone</label>
+      <input type="tel" id="schoolPhone" placeholder="e.g. 0346-1234567">
       <p class="hint">Card colour is drawn automatically from the logo. Branding stays the same for every card you add.</p>
     </div>
 
@@ -127,51 +155,35 @@
     <label>Name</label>
     <input type="text" id="name" placeholder="Full name">
 
+    <label>Designation</label>
+    <input type="text" id="designation" placeholder="e.g. Senior Teacher">
+
     <label>Qualification</label>
     <input type="text" id="qualification" placeholder="e.g. M.Ed, B.Sc">
 
-    <label>Designation</label>
-    <input type="text" id="designation" placeholder="e.g. Senior Teacher">
+    <label>Staff ID</label>
+    <input type="text" id="staffId" placeholder="e.g. T-012">
 
     <label>Joining Date</label>
     <input type="date" id="joining">
 
+    <label>CNIC No</label>
+    <input type="text" id="cnic" inputmode="numeric" placeholder="e.g. 12345-1234567-1">
+
     <label>Contact</label>
-    <input type="text" id="contact" placeholder="e.g. 03001234567">
+    <input type="tel" id="contact" placeholder="e.g. 03001234567">
+
+    <label>Blood Group</label>
+    <select id="bloodGroup">
+      <option value="">Not set</option>
+      <option>A+</option><option>A-</option><option>B+</option><option>B-</option>
+      <option>O+</option><option>O-</option><option>AB+</option><option>AB-</option>
+    </select>
   </div>
 
   <div class="card-col">
-    <div class="id-card" id="idCard">
-      <span class="notch"></span>
-      <div class="card-top">
-        <div class="logo-ring"><img id="cardLogo" src="https://placehold.co/40x40/ffffff/0F2740?text=S"></div>
-        <div class="brand-text">
-          <div class="sname" id="cardSchool">Islamia School &amp; College</div>
-          <div class="tagline">Service Card</div>
-        </div>
-        <div class="role-tag">Staff</div>
-      </div>
-      <div class="card-rule"></div>
-      <div class="card-body">
-        <img class="photo" id="cardPhoto" src="https://placehold.co/70x80/33475A/ffffff?text=Photo">
-        <div class="card-main">
-          <div class="cname" id="cardName">Teacher Name</div>
-          <div class="info-grid">
-            <div class="full"><span class="lbl">Qualification</span><b id="cardQual">—</b></div>
-            <div><span class="lbl">Designation</span><b id="cardDesig">—</b></div>
-            <div><span class="lbl">Joined</span><b id="cardJoining">—</b></div>
-            <div class="full"><span class="lbl">Contact</span><b id="cardContact">—</b></div>
-          </div>
-        </div>
-      </div>
-      <div class="card-footer">
-        <div class="valid">Session<b id="cardSession">—</b></div>
-        <div class="qr-wrap">
-          <div class="qr-box" id="qrBox"></div>
-          <div class="qr-cap">Scan to verify</div>
-        </div>
-      </div>
-    </div>
+    <div class="id-card" id="liveFront"></div>
+    <div class="id-card" id="liveBack"></div>
 
     <button class="btn" onclick="addToQueue()">+ Add to Print List</button>
     <button class="btn btn-print" onclick="printQueue()">Print List (<span id="queueCountBtn">0</span>)</button>
@@ -182,192 +194,128 @@
       <h3>Print List — <span id="queueCount">0</span> card(s)</h3>
       <button class="clear-link" onclick="clearQueue()">Clear all</button>
     </div>
-    <div class="queue-empty" id="queueEmpty">No cards added yet. Fill the form on the left and click "Add to Print List" for each teacher — everyone you add will print together on the same page(s).</div>
+    <div class="queue-empty" id="queueEmpty">No cards added yet. Fill the form and click "Add to Print List" for each teacher. Each teacher prints with front and back side by side, and everyone you add prints together on the same page(s).</div>
     <div class="print-sheet" id="printSheet"></div>
   </div>
 </div>
 
 <script>
   // ---- PER-CLIENT SCHOOL CONFIG ----
-  // Same convention as the student ID card generator — set once per deployed
-  // school (inject from Supabase school_settings, or hardcode per client copy).
-  // window.SCHOOL_CONFIG = { name: 'Islamia School & College', logo: 'https://.../logo.png' };
+  // Optional. Set once per deployed school; fields are then locked.
+  // window.SCHOOL_CONFIG = { name:'...', logo:'https://.../logo.png', address:'...', phone:'...' };
 
   const $ = id => document.getElementById(id);
-  let qr = new QRCode($('qrBox'), { text: 'teacher', width: 44, height: 44 });
+  const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 
-  (function applySchoolConfig(){
-    const cfg = window.SCHOOL_CONFIG;
-    if (!cfg) return;
-    if (cfg.name) { $('schoolName').value = cfg.name; $('cardSchool').textContent = cfg.name; }
-    if (cfg.logo) {
-      $('cardLogo').crossOrigin = 'anonymous';
-      $('cardLogo').onload = () => applyLogoBackground($('cardLogo'));
-      $('cardLogo').src = cfg.logo;
-    }
-    $('schoolName').readOnly = true;
-    $('schoolLogo').disabled = true;
-    document.getElementById('brandingBlock').style.opacity = '.6';
-  })();
+  const PH_LOGO  = 'data:image/svg+xml;utf8,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40"><rect width="40" height="40" fill="#fff"/><text x="20" y="27" font-size="20" text-anchor="middle" fill="#0F2740" font-family="Arial">S</text></svg>');
+  const PH_PHOTO = 'data:image/svg+xml;utf8,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="70" height="80"><rect width="70" height="80" fill="#33475A"/><text x="35" y="45" font-size="12" text-anchor="middle" fill="#fff" font-family="Arial">Photo</text></svg>');
 
-  $('teacherPhoto').addEventListener('change', e => {
-    const file = e.target.files[0];
-    if(!file) return;
-    const reader = new FileReader();
-    reader.onload = ev => { $('cardPhoto').src = ev.target.result; };
-    reader.readAsDataURL(file);
-  });
+  let logoSrc = PH_LOGO, photoSrc = PH_PHOTO, currentBg = null;
 
-  // Card background: instead of a manual upload, the color is derived
-  // automatically from the school logo's dominant color, so the card always
-  // matches the school's branding.
-  const idCardEl = $('idCard');
+  // ---- Auto-fit: shrink text until it is fully visible (never cut off) ----
+  // data-fit="h": may wrap to 2 lines, shrinks until both lines fit.
+  // data-fit="w": single line, shrinks until the full width fits.
+  function fitAll(root){
+    root.querySelectorAll('[data-fit]').forEach(el => {
+      if(!el.clientWidth) return;
+      let s = parseFloat(el.dataset.start);
+      const min = parseFloat(el.dataset.min || 6);
+      el.style.fontSize = s + 'px';
+      const over = () => el.dataset.fit === 'w'
+        ? el.scrollWidth > el.clientWidth + 1
+        : el.scrollHeight > el.clientHeight + 1;
+      while(over() && s > min){ s -= 0.5; el.style.fontSize = s + 'px'; }
+    });
+  }
+
+  // ---- Card colour from the logo ----
   function getDominantColor(imgEl){
     try{
-      const size = 40;
-      const c = document.createElement('canvas');
+      const size = 40, c = document.createElement('canvas');
       c.width = size; c.height = size;
       const ctx = c.getContext('2d');
       ctx.drawImage(imgEl, 0, 0, size, size);
       const data = ctx.getImageData(0, 0, size, size).data;
       let r=0,g=0,b=0,n=0;
       for(let i=0;i<data.length;i+=4){
-        if(data[i+3] < 100) continue; // skip transparent pixels
+        if(data[i+3] < 100) continue;
         const rr=data[i], gg=data[i+1], bb=data[i+2];
-        // Skip near-white/near-black pixels so a white logo background or
-        // black outline doesn't wash out the actual brand color.
         if((rr>235&&gg>235&&bb>235) || (rr<20&&gg<20&&bb<20)) continue;
         r+=rr; g+=gg; b+=bb; n++;
       }
       if(!n) return null;
       return { r: Math.round(r/n), g: Math.round(g/n), b: Math.round(b/n) };
-    }catch(e){ return null; } // canvas tainted by a cross-origin logo — keep default
+    }catch(e){ return null; }
   }
   function shade(rgb, amt){
-    return {
-      r: Math.max(0, Math.min(255, rgb.r + amt)),
-      g: Math.max(0, Math.min(255, rgb.g + amt)),
-      b: Math.max(0, Math.min(255, rgb.b + amt))
+    const f = v => Math.max(0, Math.min(255, v + amt));
+    return { r: f(rgb.r), g: f(rgb.g), b: f(rgb.b) };
+  }
+  function setLogo(src, cross){
+    logoSrc = src;
+    const im = new Image();
+    if(cross) im.crossOrigin = 'anonymous';
+    im.onload = () => {
+      const rgb = getDominantColor(im);
+      if(rgb){
+        const d = shade(rgb, -40);
+        currentBg = `linear-gradient(135deg, rgb(${rgb.r},${rgb.g},${rgb.b}), rgb(${d.r},${d.g},${d.b}))`;
+        renderLive();
+      }
     };
-  }
-  let currentBg = null;
-  function applyLogoBackground(imgEl){
-    const rgb = getDominantColor(imgEl);
-    if(!rgb) return;
-    const dark = shade(rgb, -40);
-    currentBg = `linear-gradient(135deg, rgb(${rgb.r},${rgb.g},${rgb.b}), rgb(${dark.r},${dark.g},${dark.b}))`;
-    idCardEl.style.backgroundImage = currentBg;
-  }
-  $('schoolLogo').addEventListener('change', e => {
-    const file = e.target.files[0];
-    if(!file) return;
-    const reader = new FileReader();
-    reader.onload = ev => {
-      $('cardLogo').src = ev.target.result;
-      $('cardLogo').onload = () => applyLogoBackground($('cardLogo'));
-    };
-    reader.readAsDataURL(file);
-  });
-
-  function fmtDate(v){
-    if(!v) return '—';
-    const d = new Date(v);
-    if (isNaN(d)) return v;
-    return String(d.getDate()).padStart(2,'0') + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + d.getFullYear();
+    im.src = src;
+    renderLive();
   }
 
-  function currentQRData(){
-    return [
-      $('name').value, $('qualification').value, $('designation').value,
-      fmtDate($('joining').value), $('contact').value, $('schoolName').value
-    ].join(' | ') || 'teacher';
-  }
-  function updateQR(){
-    qr.clear();
-    qr.makeCode(currentQRData());
-  }
-
-  // Academic session label (e.g. "2026–27"), computed automatically so
-  // no extra input is needed; assumes an April–March school year.
   function sessionLabel(){
     const d = new Date();
     const startY = (d.getMonth() + 1) >= 4 ? d.getFullYear() : d.getFullYear() - 1;
     return startY + '–' + String(startY + 1).slice(-2);
   }
-  $('cardSession').textContent = sessionLabel();
+  function fmtDob(v){
+    if(!v) return '—';
+    const p = v.split('-');
+    return p.length === 3 ? p[2] + '-' + p[1] + '-' + p[0] : v;
+  }
 
-  ['name','qualification','designation','joining','contact','schoolName'].forEach(id=>{
-    $(id).addEventListener('input', () => {
-      $('cardName').textContent = $('name').value || 'Teacher Name';
-      $('cardQual').textContent = $('qualification').value || '—';
-      $('cardDesig').textContent = $('designation').value || '—';
-      $('cardJoining').textContent = fmtDate($('joining').value);
-      $('cardContact').textContent = $('contact').value || '—';
-      $('cardSchool').textContent = $('schoolName').value || '—';
-      updateQR();
-    });
-  });
-
-  // ---- PRINT LIST: each "Add to Print List" click snapshots the current
-  // card as one more DIFFERENT person, so many teachers print together on
-  // the same page(s) instead of many copies of the same one. ----
-  let entries = [];
-  let nextId = 0;
-
-  function addToQueue(){
-    entries.push({
-      id: nextId++,
+  function fmtCnic(v){
+    const d = String(v).replace(/\D/g, '').slice(0, 13);
+    if(d.length > 12) return d.slice(0,5) + '-' + d.slice(5,12) + '-' + d.slice(12);
+    if(d.length > 5) return d.slice(0,5) + '-' + d.slice(5);
+    return d;
+  }
+  // QR holds no CNIC or phone numbers.
+  function currentQRData(){
+    return [$('name').value, $('designation').value, $('staffId').value,
+            $('qualification').value, $('schoolName').value].join(' | ') || 'teacher';
+  }
+  function currentData(){
+    return {
       name: $('name').value || 'Teacher Name',
-      qualification: $('qualification').value || '—',
       designation: $('designation').value || '—',
-      joining: fmtDate($('joining').value),
+      qualification: $('qualification').value || '—',
+      staffId: $('staffId').value || '—',
+      joining: fmtDob($('joining').value),
+      cnic: $('cnic').value || '—',
       contact: $('contact').value || '—',
-      schoolName: $('schoolName').value || '—',
+      blood: $('bloodGroup').value || '—',
+      schoolName: $('schoolName').value || 'School Name',
+      address: $('schoolAddress').value || '—',
+      phone: $('schoolPhone').value || '—',
       session: sessionLabel(),
-      photoSrc: $('cardPhoto').src,
-      logoSrc: $('cardLogo').src,
-      bg: currentBg,
+      photoSrc, logoSrc, bg: currentBg,
       qrData: currentQRData()
-    });
-    renderQueue();
-    resetPersonFields();
+    };
   }
 
-  function resetPersonFields(){
-    $('teacherPhoto').value = '';
-    $('name').value = '';
-    $('qualification').value = '';
-    $('designation').value = '';
-    $('joining').value = '';
-    $('contact').value = '';
-    $('cardPhoto').src = 'https://placehold.co/70x80/33475A/ffffff?text=Photo';
-    $('cardName').textContent = 'Teacher Name';
-    $('cardQual').textContent = '—';
-    $('cardDesig').textContent = '—';
-    $('cardJoining').textContent = '—';
-    $('cardContact').textContent = '—';
-    updateQR();
-    $('name').focus();
-  }
-
-  function removeEntry(id){
-    entries = entries.filter(e => e.id !== id);
-    renderQueue();
-  }
-
-  function clearQueue(){
-    if(entries.length && !confirm('Remove all cards from the print list?')) return;
-    entries = [];
-    renderQueue();
-  }
-
-  function cardInnerMarkup(e, suffix){
+  // ---- Card markup (front + back) ----
+  function frontMarkup(e, suffix){
     return `
       <span class="notch"></span>
       <div class="card-top">
         <div class="logo-ring"><img src="${e.logoSrc}"></div>
         <div class="brand-text">
-          <div class="sname">${e.schoolName}</div>
+          <div class="sname" data-fit="h" data-start="12.5" data-min="6">${esc(e.schoolName)}</div>
           <div class="tagline">Service Card</div>
         </div>
         <div class="role-tag">Staff</div>
@@ -376,40 +324,131 @@
       <div class="card-body">
         <img class="photo" src="${e.photoSrc}">
         <div class="card-main">
-          <div class="cname">${e.name}</div>
+          <div class="cname" data-fit="w" data-start="14.5" data-min="9">${esc(e.name)}</div>
           <div class="info-grid">
-            <div class="full"><span class="lbl">Qualification</span><b>${e.qualification}</b></div>
-            <div><span class="lbl">Designation</span><b>${e.designation}</b></div>
-            <div><span class="lbl">Joined</span><b>${e.joining}</b></div>
-            <div class="full"><span class="lbl">Contact</span><b>${e.contact}</b></div>
+            <div class="full"><span class="lbl">Designation</span><b data-fit="w" data-start="10.5" data-min="7">${esc(e.designation)}</b></div>
+            <div class="full"><span class="lbl">Qualification</span><b data-fit="w" data-start="10.5" data-min="7">${esc(e.qualification)}</b></div>
+            <div><span class="lbl">Staff ID</span><b data-fit="w" data-start="10.5" data-min="7">${esc(e.staffId)}</b></div>
+            <div><span class="lbl">Joining Date</span><b>${esc(e.joining)}</b></div>
           </div>
         </div>
       </div>
       <div class="card-footer">
-        <div class="valid">Session<b>${e.session}</b></div>
-        <div class="qr-wrap">
+        <div class="valid">Session<b>${esc(e.session)}</b></div>
+      </div>
+`;
+  }
+  function backMarkup(e, suffix){
+    return `
+      <span class="notch"></span>
+      <div class="card-top">
+        <div class="logo-ring"><img src="${e.logoSrc}"></div>
+        <div class="brand-text">
+          <div class="sname" data-fit="h" data-start="12.5" data-min="6">${esc(e.schoolName)}</div>
+        </div>
+      </div>
+      <div class="card-rule"></div>
+      <div class="back-body">
+        <div class="back-info">
+          <div><span class="lbl">Contact</span><b class="one" data-fit="w" data-start="11" data-min="7">${esc(e.contact)}</b></div>
+          <div><span class="lbl">Blood Group</span><b class="one" data-fit="w" data-start="11" data-min="7">${esc(e.blood)}</b></div>
+          <div><span class="lbl">CNIC No</span><b class="one" data-fit="w" data-start="11" data-min="7">${esc(e.cnic)}</b></div>
+          <div><span class="lbl">School Phone</span><b class="one" data-fit="w" data-start="11" data-min="7">${esc(e.phone)}</b></div>
+          <div class="full"><span class="lbl">School Address</span><b class="addr" data-fit="h" data-start="11" data-min="6">${esc(e.address)}</b></div>
+        </div>
+        <div class="back-qr">
           <div class="qr-box" id="qrBox${suffix}"></div>
           <div class="qr-cap">Scan to verify</div>
         </div>
+      </div>
+      <div class="back-return">If found, please return this card to the school.</div>
+      <div class="back-sign">
+        <div class="sign-space"></div>
+        <div class="sign-line"></div>
+        <div class="sign-cap">Principal stamp and sign</div>
       </div>`;
+  }
+
+  function makeQR(box, text){
+    const L = window.QRCode && window.QRCode.CorrectLevel ? window.QRCode.CorrectLevel.L : undefined;
+    new QRCode(box, { text, width: 112, height: 112, correctLevel: L });
+  }
+
+  function applyBg(el, bg){ el.style.backgroundImage = bg || ''; }
+
+  function renderLive(){
+    const e = currentData();
+    $('liveFront').innerHTML = frontMarkup(e, '-live');
+    $('liveBack').innerHTML = backMarkup(e, '-live');
+    applyBg($('liveFront'), e.bg); applyBg($('liveBack'), e.bg);
+    makeQR($('qrBox-live'), e.qrData);
+    fitAll($('liveFront')); fitAll($('liveBack'));
+  }
+
+  // ---- Inputs ----
+  function readImage(file, cb){
+    const r = new FileReader();
+    r.onload = ev => cb(ev.target.result);
+    r.readAsDataURL(file);
+  }
+  $('teacherPhoto').addEventListener('change', e => {
+    const f = e.target.files[0]; if(!f) return;
+    readImage(f, src => { photoSrc = src; renderLive(); });
+  });
+  $('schoolLogo').addEventListener('change', e => {
+    const f = e.target.files[0]; if(!f) return;
+    readImage(f, src => setLogo(src, false));
+  });
+  $('cnic').addEventListener('input', () => { $('cnic').value = fmtCnic($('cnic').value); });
+  ['name','designation','qualification','staffId','joining','cnic','contact','bloodGroup','schoolName','schoolAddress','schoolPhone']
+    .forEach(id => $(id).addEventListener('input', renderLive));
+
+
+  (function applySchoolConfig(){
+    const cfg = window.SCHOOL_CONFIG;
+    if(!cfg) return;
+    if(cfg.name){ $('schoolName').value = cfg.name; $('schoolName').readOnly = true; }
+    if(cfg.address){ $('schoolAddress').value = cfg.address; $('schoolAddress').readOnly = true; }
+    if(cfg.phone){ $('schoolPhone').value = cfg.phone; $('schoolPhone').readOnly = true; }
+    if(cfg.logo){ setLogo(cfg.logo, true); $('schoolLogo').disabled = true; }
+  })();
+
+  // ---- PRINT LIST ----
+  let entries = [], nextId = 0;
+
+  function addToQueue(){
+    entries.push(Object.assign({ id: nextId++ }, currentData()));
+    renderQueue();
+    resetPersonFields();
+  }
+  function resetPersonFields(){
+    ['teacherPhoto'].forEach(id => $(id).value = '');
+    ['name','designation','qualification','staffId','joining','cnic','contact','bloodGroup'].forEach(id => $(id).value = '');
+    photoSrc = PH_PHOTO;
+    renderLive();
+    $('name').focus();
+  }
+  function removeEntry(id){ entries = entries.filter(e => e.id !== id); renderQueue(); }
+  function clearQueue(){
+    if(entries.length && !confirm('Remove all cards from the print list?')) return;
+    entries = []; renderQueue();
   }
 
   function renderQueue(){
     const sheet = $('printSheet');
     sheet.innerHTML = entries.map(e => {
-      const suffix = '-q' + e.id;
-      const bgStyle = e.bg ? ` style="background-image:${e.bg}"` : '';
+      const bg = e.bg ? ` style="background-image:${e.bg}"` : '';
       return `<div class="queue-item">
         <button class="queue-remove" onclick="removeEntry(${e.id})" title="Remove">×</button>
-        <div class="id-card"${bgStyle}>${cardInnerMarkup(e, suffix)}</div>
+        <div class="id-card"${bg}>${frontMarkup(e, '-q' + e.id)}</div>
+        <div class="id-card"${bg}>${backMarkup(e, '-q' + e.id)}</div>
       </div>`;
     }).join('');
-
     entries.forEach(e => {
       const box = $('qrBox-q' + e.id);
-      if(box) new QRCode(box, { text: e.qrData, width: 44, height: 44 });
+      if(box) makeQR(box, e.qrData);
     });
-
+    fitAll(sheet);
     $('queueCount').textContent = entries.length;
     $('queueCountBtn').textContent = entries.length;
     $('queueEmpty').style.display = entries.length ? 'none' : 'block';
@@ -418,6 +457,11 @@
   function printQueue(){
     if(entries.length === 0) addToQueue();
     window.print();
+  }
+
+  renderLive();
+  if(document.fonts && document.fonts.ready){
+    document.fonts.ready.then(() => { renderLive(); renderQueue(); });
   }
 </script>
 </body>
