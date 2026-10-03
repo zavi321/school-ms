@@ -12048,6 +12048,7 @@ function renderDiaryMenu() {
         : `<button class="btn-primary" style="flex:none;padding:9px 16px;" onclick="renderDiaryClasses('${esc(s).replace(/'/g,"\\'")}')">${esc(s)}</button>`).join('')}
       ${editing ? '' : `<button class="btn-ghost" style="flex:none;padding:9px 16px;" onclick="promptDiaryNewSubject()">${esc(t.diaryAddSubject)}</button>`}
     </div>
+    <button class="btn-primary" style="margin-bottom:12px;" onclick="qzOpen()">📝 ${esc(qt('Daily Quiz', 'روزانہ کوئز'))}</button>
     <button class="btn-ghost" style="font-size:12px;padding:7px 12px;" onclick="toggleDiaryEditSubjects()">${esc(editing ? t.diaryDone : t.diaryRemoveSubject)}</button>
     ${queue.length ? `<p style="font-size:11px;opacity:.6;margin-top:14px;">${esc(t.classPortalOffline)} (${queue.length})</p>` : ''}
   `;
@@ -12179,6 +12180,7 @@ function renderClassPortalDiary() {
       ${subjects.map(s => `<button class="btn-primary" style="flex:none;padding:9px 16px;" onclick="renderClassPortalDiaryEntry('${esc(s).replace(/'/g,"\\'")}')">${esc(s)}</button>`).join('')}
       <button class="btn-ghost" style="flex:none;padding:9px 16px;" onclick="promptClassPortalDiarySubject()">${esc(t.diaryAddSubject)}</button>
     </div>
+    <button class="btn-primary" style="margin-bottom:12px;" onclick="qzOpen()">📝 ${esc(qt('Daily Quiz', 'روزانہ کوئز'))}</button>
     <button class="btn-ghost" style="font-size:12px;padding:7px 12px;" onclick="classPortalDiaryChangePw()">${esc(t.classPortalDiaryChangePw)}</button>
     ${queue.length ? `<p style="font-size:11px;opacity:.6;margin-top:14px;">${esc(t.classPortalOffline)} (${queue.length})</p>` : ''}
   `;
@@ -12334,6 +12336,7 @@ async function refreshParentPortalSilently(cache) {
       diary = (dRes && dRes.data) || [];
     } catch(e) {}
     r.diary_entries = diary;
+    r.quiz = (await ppLoadQuiz(cache.schoolCode, cache.roll, cache.pin)) || (cache.data && cache.data.quiz) || null;
     setPpCache({ schoolCode: cache.schoolCode, roll: cache.roll, pin: cache.pin, data: r, ts: Date.now() });
     // Only repaint if the parent is still looking at this same student's cached view
     // (not, say, results they've since navigated away from within this page).
@@ -12394,6 +12397,7 @@ async function submitParentPortalLookup() {
     diary = (dRes && dRes.data) || [];
   } catch(e) {}
   r.diary_entries = diary;
+  r.quiz = await ppLoadQuiz(schoolCode, roll, pin);
   setPpCache({ schoolCode, roll, pin, data: r, ts: Date.now() });
   renderParentPortalResult(r, { fromCache: false });
 }
@@ -12455,6 +12459,7 @@ function renderParentPortalResult(r, opts) {
     <h2>${esc(name)}</h2>
     <p class="desc">${esc(r.school_name || '')} · ${esc(r.class_admitted || '')}${r.father_name ? ' · ' + esc(r.father_name) : ''}</p>
     ${(admLine || dobLine) ? `<p class="desc" style="margin-top:-4px;">${[admLine, dobLine].filter(Boolean).join(' · ')}</p>` : ''}
+    ${ppQuizHtml(r)}
     ${feeHtml}
     ${resultsHtml}
     ${diaryHtml}
@@ -12492,7 +12497,459 @@ function togglePpDiary(i) {
   if (!box) return;
   box.classList.toggle('hidden');
 }
-console.log('SchoolMS build: 2026-09-07-dmc-archive-marks-year'); // bump this string on every deploy to verify (in browser console) which version is actually running
+
+/* ============================================================================
+   DAILY QUIZ — teacher side (diary portal) + parent portal
+   Needs quiz_setup.sql to be run once in Supabase.
+   ============================================================================ */
+function qt(en, ur) { return LANG === 'ur' ? ur : en; }
+function qzDayName(n) {
+  const en = ['', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+  const ur = ['', 'پیر', 'منگل', 'بدھ', 'جمعرات', 'جمعہ', 'ہفتہ', 'اتوار'];
+  return (LANG === 'ur' ? ur : en)[n] || '';
+}
+function qzIsoDow(iso) { const d = new Date(iso + 'T00:00:00Z').getUTCDay(); return d === 0 ? 7 : d; }
+function qzAddDays(iso, n) { const d = new Date(iso + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); }
+function qzDateLabel(iso) { return qzDayName(qzIsoDow(iso)) + ' · ' + ((typeof fmtDate === 'function' && fmtDate(iso)) || iso); }
+
+function qzErr(e) {
+  const m = String((e && e.message) || e || '');
+  if (/too_many/.test(m)) return qt('Too many wrong attempts. Try again after 15 minutes.', 'بہت زیادہ غلط کوششیں۔ 15 منٹ بعد دوبارہ کوشش کریں۔');
+  if (/invalid_login/.test(m)) return qt('Login is wrong or expired. Please log in again.', 'لاگ اِن غلط ہے یا ختم ہو گیا۔ دوبارہ لاگ اِن کریں۔');
+  if (/has_attempts/.test(m)) return qt('Some students already took this quiz, so it cannot be changed.', 'کچھ طلبہ یہ کوئز دے چکے ہیں، اس لیے اسے بدلا نہیں جا سکتا۔');
+  if (/already_submitted/.test(m)) return qt('This quiz was already submitted.', 'یہ کوئز پہلے ہی جمع ہو چکا ہے۔');
+  if (/not_closed/.test(m)) return qt('Answers are shown from the next day.', 'جوابات اگلے دن نظر آئیں گے۔');
+  if (/closed/.test(m)) return qt('This quiz is closed. It is open only on its date.', 'یہ کوئز بند ہو چکا ہے۔ یہ صرف اپنی تاریخ کو کھلا ہوتا ہے۔');
+  if (/bad_count/.test(m)) return qt('A quiz needs 1 to 30 questions.', 'کوئز میں 1 سے 30 سوال ہونے چاہییں۔');
+  if (/does not exist|could not find the function|PGRST202|schema cache/i.test(m)) return qt('Quiz setup is not done yet: run quiz_setup.sql in Supabase.', 'کوئز کا سیٹ اپ باقی ہے: Supabase میں quiz_setup.sql چلائیں۔');
+  return qt('Something went wrong. Please try again.', 'کچھ غلط ہو گیا۔ دوبارہ کوشش کریں۔');
+}
+
+function qzCircle(filled, id) {
+  return `<span style="width:22px;height:22px;border-radius:50%;border:2px solid var(--navy);display:inline-flex;align-items:center;justify-content:center;flex:none;"><span id="${id}" style="width:12px;height:12px;border-radius:50%;background:var(--navy);display:${filled ? 'block' : 'none'};"></span></span>`;
+}
+function qzNote(kind, html) {
+  const c = kind === 'ok' ? 'background:#E6F2E8;color:#2f6b3d;' : kind === 'warn' ? 'background:#FBE9E4;color:#8a2f1c;' : 'background:#F0EAD6;color:var(--navy);';
+  return `<div style="${c}border-radius:10px;padding:10px 12px;margin:0 0 10px;font-size:13px;">${html}</div>`;
+}
+
+/* ---------------------------- Teacher side ---------------------------- */
+var QZ = { cls: '', ov: null, parsed: [] };
+
+function qzBody() { return document.getElementById('diary-portal-body') || document.getElementById('class-portal-body'); }
+function qzCreds() { const s = getDiarySession(); return s ? { p_school_code: s.schoolCode, p_password: s.password } : null; }
+function qzExit() { if (DIARY_FROM_CLASS) renderClassPortalDiary(); else renderDiaryMenu(); }
+function qzBackFromClass() { if (DIARY_FROM_CLASS) qzExit(); else qzRenderClasses(); }
+function qzBackBtn(action) {
+  return `<button class="btn-ghost" style="padding:9px 14px;margin-bottom:10px;" onclick="${action}">‹ ${esc(qt('Back', 'واپس'))}</button>`;
+}
+function qzSubjectsDatalist() {
+  const set = new Set(diarySubjectList());
+  ((QZ.ov && QZ.ov.schedule) || []).forEach(s => set.add(s.subject));
+  return `<datalist id="qz-subjects">${Array.from(set).map(s => `<option value="${esc(s)}"></option>`).join('')}</datalist>`;
+}
+
+function qzOpen() {
+  if (!getDiarySession()) return;
+  if (!DIARY_FROM_CLASS) { try { history.pushState({ diary: 'quiz' }, ''); } catch (e) {} }
+  if (DIARY_FROM_CLASS) { const cs = getClassSession(); qzOpenClass(cs.className); }
+  else qzRenderClasses();
+}
+
+function qzRenderClasses() {
+  const body = qzBody(); if (!body) return;
+  body.innerHTML = `
+    ${qzBackBtn('qzExit()')}
+    <h2 style="margin-top:0;">${esc(qt('Daily Quiz', 'روزانہ کوئز'))}</h2>
+    <p class="desc">${esc(qt('Choose a class.', 'کلاس چنیں۔'))}</p>
+    <div style="display:flex;flex-wrap:wrap;gap:8px;">
+      ${CLASS_OPTIONS.map((c, i) => `<button class="btn-primary" style="flex:none;padding:9px 16px;width:auto;" onclick="qzOpenClass(CLASS_OPTIONS[${i}])">${esc(c)}</button>`).join('')}
+    </div>`;
+}
+
+async function qzOpenClass(cls) {
+  QZ.cls = cls;
+  const body = qzBody(); if (!body) return;
+  const back = qzBackBtn('qzBackFromClass()');
+  if (!navigator.onLine) { body.innerHTML = `${back}<div class="err">${esc(qt('Internet is needed for quizzes.', 'کوئز کے لیے انٹرنیٹ ضروری ہے۔'))}</div>`; return; }
+  body.innerHTML = '<div style="text-align:center;padding:20px 0;opacity:.6;">…</div>';
+  const c = qzCreds();
+  try {
+    const { data, error } = await sb.rpc('quiz_teacher_overview', Object.assign({}, c, { p_class_name: cls }));
+    if (error) { body.innerHTML = `${back}<div class="err">${esc(qzErr(error))}</div>`; return; }
+    QZ.ov = data;
+    qzRenderClass();
+  } catch (e) {
+    body.innerHTML = `${back}<div class="err">${esc(qzErr(e))}</div>`;
+  }
+}
+
+function qzRenderClass() {
+  const ov = QZ.ov, body = qzBody(); if (!ov || !body) return;
+  const today = ov.today, tomorrow = qzAddDays(today, 1);
+  let banners = '';
+  if (ov.today_subject && !ov.today_ready) {
+    banners += qzNote('warn', `${esc(qt(`Today's ${ov.today_subject} quiz is not uploaded yet.`, `آج کا ${ov.today_subject} کا کوئز ابھی اپلوڈ نہیں ہوا۔`))}
+      <div style="margin-top:8px;"><button class="btn-primary" style="padding:8px 12px;width:auto;" onclick="qzRenderCreate(QZ.ov.today_subject, QZ.ov.today)">${esc(qt('Upload now', 'ابھی اپلوڈ کریں'))}</button></div>`);
+  }
+  if (ov.next) {
+    const lbl = ov.next.date === tomorrow ? qt('Tomorrow', 'کل') : qzDayName(qzIsoDow(ov.next.date));
+    if (ov.next.ready) {
+      banners += qzNote('ok', `✓ ${esc(qt(`${lbl}: ${ov.next.subject} quiz is ready.`, `${lbl}: ${ov.next.subject} کا کوئز تیار ہے۔`))}`);
+    } else {
+      banners += qzNote('warn', `${esc(qt(`${lbl} is the ${ov.next.subject} quiz — not uploaded yet.`, `${lbl} ${ov.next.subject} کا کوئز ہے — ابھی اپلوڈ نہیں ہوا۔`))}
+        <div style="margin-top:8px;"><button class="btn-primary" style="padding:8px 12px;width:auto;" onclick="qzRenderCreate(QZ.ov.next.subject, QZ.ov.next.date)">${esc(qt('Upload', 'اپلوڈ کریں'))}</button></div>`);
+    }
+  } else if (!(ov.schedule || []).length) {
+    banners += qzNote('info', esc(qt('Set the weekly schedule first, so each class gets its reminder.', 'پہلے ہفتے کا شیڈول بنائیں تاکہ ہر کلاس کو یاد دہانی ملے۔')));
+  }
+  const quizzes = ov.quizzes || [];
+  const rows = quizzes.map((q, i) => {
+    const status = q.quiz_date > today ? qt('Upcoming', 'آنے والا') : q.quiz_date === today ? qt('Open today', 'آج کھلا ہے') : qt('Closed', 'بند');
+    const canDelete = Number(q.attempts) === 0 && q.quiz_date >= today;
+    return `<div class="list-row" style="flex-direction:column;align-items:stretch;gap:6px;">
+      <div style="display:flex;justify-content:space-between;gap:8px;"><div class="nm">${esc(q.subject)}</div><div class="sub">${esc(qzDateLabel(q.quiz_date))}</div></div>
+      <div class="sub">${q.q_count} ${esc(qt('questions', 'سوال'))} · ${q.attempts} ${esc(qt('submitted', 'جمع'))} · ${esc(status)}</div>
+      <div style="display:flex;gap:8px;">
+        <button class="btn-ghost" style="padding:7px 12px;font-size:13px;" onclick="qzOpenResult(${i})">${esc(qt('Result', 'نتیجہ'))}</button>
+        ${canDelete ? `<button class="btn-ghost" style="padding:7px 12px;font-size:13px;color:var(--rust);" onclick="qzDelete(${i})">${esc(qt('Delete', 'حذف'))}</button>` : ''}
+      </div></div>`;
+  }).join('');
+  body.innerHTML = `
+    ${qzBackBtn('qzBackFromClass()')}
+    <h2 style="margin-top:0;">${esc(qt('Daily Quiz', 'روزانہ کوئز'))} — ${esc(QZ.cls)}</h2>
+    ${banners}
+    <div style="display:flex;gap:8px;margin-bottom:12px;">
+      <button class="btn-primary" style="flex:1;" onclick="qzRenderCreate(QZ.ov.next ? QZ.ov.next.subject : '', QZ.ov.next ? QZ.ov.next.date : '${tomorrow}')">+ ${esc(qt('New quiz', 'نیا کوئز'))}</button>
+      <button class="btn-ghost" style="flex:1;" onclick="qzRenderSchedule()">${esc(qt('Weekly schedule', 'ہفتے کا شیڈول'))}</button>
+    </div>
+    <div class="section-title" style="margin-top:6px;">${esc(qt('Quizzes', 'کوئز'))}</div>
+    ${quizzes.length ? `<div class="list-card">${rows}</div>` : `<p style="font-size:12px;opacity:.6;">${esc(qt('No quizzes yet.', 'ابھی کوئی کوئز نہیں۔'))}</p>`}`;
+}
+
+function qzRenderSchedule() {
+  const body = qzBody(); if (!body) return;
+  const sched = {};
+  ((QZ.ov && QZ.ov.schedule) || []).forEach(s => { sched[s.weekday] = s.subject; });
+  body.innerHTML = `
+    ${qzBackBtn('qzOpenClass(QZ.cls)')}
+    <h2 style="margin-top:0;">${esc(qt('Weekly schedule', 'ہفتے کا شیڈول'))} — ${esc(QZ.cls)}</h2>
+    <p class="desc">${esc(qt('One subject per day. Leave empty for no quiz that day.', 'ہر دن ایک مضمون۔ خالی چھوڑیں تو اس دن کوئز نہیں ہوگا۔'))}</p>
+    ${[1, 2, 3, 4, 5, 6].map(n => `<label><span>${esc(qzDayName(n))}</span><input id="qz-sch-${n}" list="qz-subjects" value="${esc(sched[n] || '')}" onchange="qzSaveDay(${n})"></label>`).join('')}
+    ${qzSubjectsDatalist()}
+    <div id="qz-sch-msg" style="font-size:12px;margin:8px 0;min-height:16px;"></div>
+    <button class="btn-primary" onclick="qzOpenClass(QZ.cls)">${esc(qt('Done', 'مکمل'))}</button>`;
+}
+
+async function qzSaveDay(n) {
+  const el = document.getElementById('qz-sch-' + n), msg = document.getElementById('qz-sch-msg');
+  if (!el) return;
+  const v = el.value.trim();
+  msg.textContent = '…';
+  try {
+    const { error } = await sb.rpc('quiz_schedule_set', Object.assign({}, qzCreds(), { p_class_name: QZ.cls, p_weekday: n, p_subject: v }));
+    if (error) { msg.innerHTML = `<span class="err">${esc(qzErr(error))}</span>`; return; }
+    const list = ((QZ.ov && QZ.ov.schedule) || []).filter(s => s.weekday !== n);
+    if (v) list.push({ weekday: n, subject: v });
+    list.sort((a, b) => a.weekday - b.weekday);
+    QZ.ov.schedule = list;
+    if (v) rememberDiarySubject(v);
+    msg.innerHTML = `<span class="ok">✓ ${esc(qzDayName(n))}</span>`;
+  } catch (e) { msg.innerHTML = `<span class="err">${esc(qzErr(e))}</span>`; }
+}
+
+function qzRenderCreate(prefSubject, prefDate) {
+  const body = qzBody(); if (!body) return;
+  QZ.parsed = [];
+  const date = prefDate || qzAddDays(QZ.ov.today, 1);
+  body.innerHTML = `
+    ${qzBackBtn('qzOpenClass(QZ.cls)')}
+    <h2 style="margin-top:0;">${esc(qt('New quiz', 'نیا کوئز'))} — ${esc(QZ.cls)}</h2>
+    <label><span>${esc(qt('Subject', 'مضمون'))}</span><input id="qz-subject" list="qz-subjects" value="${esc(prefSubject || '')}"></label>
+    ${qzSubjectsDatalist()}
+    <label><span>${esc(qt('Quiz date (students can take it only on this day)', 'کوئز کی تاریخ (طلبہ صرف اسی دن دے سکتے ہیں)'))}</span><input id="qz-date" type="date" value="${esc(date)}"></label>
+    <label><span>${esc(qt('Paste the questions here', 'سوال یہاں پیسٹ کریں'))}</span>
+      <textarea id="qz-text" rows="10" dir="auto" placeholder="1. Question?\nA) option\nB) option\nC) option\nD) option\nAnswer: B"></textarea></label>
+    <div style="display:flex;gap:8px;margin-bottom:8px;">
+      <button class="btn-ghost" onclick="qzCopyPrompt()">${esc(qt('Copy AI prompt', 'AI پرامپٹ کاپی'))}</button>
+      <button class="btn-primary" onclick="qzParse()">${esc(qt('Make cards', 'کارڈ بنائیں'))}</button>
+    </div>
+    <div id="qz-msg" style="font-size:12px;margin-bottom:8px;"></div>
+    <div id="qz-cards"></div>`;
+}
+
+function qzCopyPrompt() {
+  const subj = (document.getElementById('qz-subject') || {}).value || '';
+  const text = `Make 10 multiple-choice questions (MCQs) for Class ${QZ.cls}${subj ? ', subject ' + subj : ''}, from the chapter/topic below.\n` +
+    `Rules: exactly 4 options (A, B, C, D) and only one correct answer. Keep questions and options short. Use the same language as the book (English or Urdu).\n` +
+    `Write ONLY in this format, nothing else:\n1. Question text?\nA) option\nB) option\nC) option\nD) option\nAnswer: B\n\nChapter/topic:\n`;
+  const msg = document.getElementById('qz-msg');
+  const done = () => { if (msg) msg.innerHTML = `<span class="ok">${esc(qt('Prompt copied. Paste it in ChatGPT / Gemini / Claude and add the chapter.', 'پرامپٹ کاپی ہو گیا۔ اسے ChatGPT / Gemini / Claude میں پیسٹ کریں اور باب شامل کریں۔'))}</span>`; };
+  try {
+    navigator.clipboard.writeText(text).then(done, () => prompt(qt('Copy this prompt:', 'یہ پرامپٹ کاپی کریں:'), text));
+  } catch (e) { prompt(qt('Copy this prompt:', 'یہ پرامپٹ کاپی کریں:'), text); }
+}
+
+function qzParseText(raw) {
+  const lines = String(raw || '').replace(/\r/g, '').split('\n').map(s => s.trim());
+  const ansRe = /^(?:answer|ans|correct(?:\s*answer)?|جواب|درست\s*جواب)\s*[:：=\-]?\s*\(?([A-Da-d])\)?\s*[.)]?\s*$/i;
+  const optRe = /^\(?([A-Da-d])\s*[.)\-:：]\s*(.+)$/;
+  const qRe = /^(?:Q(?:uestion)?\s*)?[0-9۰-۹]+\s*[.)\-:：]\s*(.+)$/i;
+  const out = []; let cur = null, lastOpt = '';
+  const push = () => { if (cur) out.push(cur); cur = null; lastOpt = ''; };
+  for (const ln of lines) {
+    if (!ln) continue;
+    let m;
+    if ((m = ln.match(ansRe)) && cur) { cur.correct = m[1].toUpperCase(); continue; }
+    if ((m = ln.match(optRe)) && cur && !cur[m[1].toLowerCase()]) { lastOpt = m[1].toLowerCase(); cur[lastOpt] = m[2].trim(); continue; }
+    m = ln.match(qRe);
+    if (m || !cur || cur.d) { push(); cur = { q: (m ? m[1] : ln).trim(), a: '', b: '', c: '', d: '', correct: '' }; continue; }
+    if (cur) { if (lastOpt) cur[lastOpt] += ' ' + ln; else cur.q += ' ' + ln; }
+  }
+  push();
+  const good = out.filter(x => x.q && x.a && x.b && x.c && x.d);
+  return { questions: good, bad: out.filter(x => x.a && !(x.q && x.a && x.b && x.c && x.d)).length };
+}
+
+function qzParse() {
+  const msg = document.getElementById('qz-msg');
+  const res = qzParseText((document.getElementById('qz-text') || {}).value);
+  if (!res.questions.length) { msg.innerHTML = `<span class="err">${esc(qt('No questions found. Each question needs 4 options (A to D).', 'کوئی سوال نہیں ملا۔ ہر سوال کے 4 آپشن (A سے D) ہونے چاہییں۔'))}</span>`; return; }
+  if (res.questions.length > 30) { msg.innerHTML = `<span class="err">${esc(qzErr('bad_count'))}</span>`; return; }
+  QZ.parsed = res.questions;
+  msg.innerHTML = res.bad ? `<span class="err">${esc(qt(`${res.bad} incomplete question(s) were skipped.`, `${res.bad} نامکمل سوال چھوڑ دیے گئے۔`))}</span>` : '';
+  qzRenderCards();
+}
+
+function qzRenderCards() {
+  const box = document.getElementById('qz-cards'); if (!box) return;
+  const qs = QZ.parsed;
+  box.innerHTML = `
+    <div class="section-title">${qs.length} ${esc(qt('questions', 'سوال'))}</div>
+    <p class="desc">${esc(qt('Tap the correct option of each question. Students will not see this.', 'ہر سوال کا صحیح آپشن ٹیپ کریں۔ طلبہ کو یہ نظر نہیں آئے گا۔'))}</p>
+    ${qs.map((q, i) => `<div class="card" style="margin:10px 0;">
+      <div class="nm" dir="auto" style="white-space:pre-wrap;">${i + 1}. ${esc(q.q)}</div>
+      ${['A', 'B', 'C', 'D'].map(L => `<div onclick="qzPick(${i},'${L}')" style="display:flex;align-items:center;gap:10px;padding:9px 2px;cursor:pointer;">${qzCircle(q.correct === L, `qz-dot-${i}-${L}`)}<span dir="auto">${L}) ${esc(q[L.toLowerCase()])}</span></div>`).join('')}
+    </div>`).join('')}
+    <div id="qz-left" style="font-size:12px;margin:8px 0;"></div>
+    <button class="btn-primary" id="qz-save-btn" onclick="qzSave()">${esc(qt('Save quiz', 'کوئز محفوظ کریں'))}</button>`;
+  qzUpdateLeft();
+}
+function qzPick(i, L) {
+  QZ.parsed[i].correct = L;
+  ['A', 'B', 'C', 'D'].forEach(x => { const d = document.getElementById(`qz-dot-${i}-${x}`); if (d) d.style.display = x === L ? 'block' : 'none'; });
+  qzUpdateLeft();
+}
+function qzUpdateLeft() {
+  const el = document.getElementById('qz-left'); if (!el) return;
+  const left = QZ.parsed.filter(q => !q.correct).length;
+  el.innerHTML = left ? `<span class="err">${esc(qt(`${left} question(s) still need a correct answer.`, `${left} سوال کا صحیح جواب چننا باقی ہے۔`))}</span>` : `<span class="ok">✓ ${esc(qt('All answers marked.', 'سب جوابات منتخب ہیں۔'))}</span>`;
+}
+
+async function qzSave() {
+  const msg = document.getElementById('qz-msg');
+  const subject = (document.getElementById('qz-subject').value || '').trim();
+  const date = document.getElementById('qz-date').value;
+  const err = s => { msg.innerHTML = `<span class="err">${esc(s)}</span>`; msg.scrollIntoView({ block: 'center' }); };
+  if (!subject) return err(qt('Enter the subject.', 'مضمون لکھیں۔'));
+  if (!date) return err(qt('Choose the quiz date.', 'کوئز کی تاریخ چنیں۔'));
+  if (QZ.ov && date < QZ.ov.today) return err(qt('The date cannot be in the past.', 'تاریخ گزری ہوئی نہیں ہو سکتی۔'));
+  if (!QZ.parsed.length) return err(qt('Paste the questions and tap Make cards.', 'سوال پیسٹ کریں اور کارڈ بنائیں دبائیں۔'));
+  if (QZ.parsed.some(q => !q.correct)) return err(qt('Choose the correct answer of every question.', 'ہر سوال کا صحیح جواب چنیں۔'));
+  if (!navigator.onLine) return err(qt('Internet is needed.', 'انٹرنیٹ ضروری ہے۔'));
+  const btn = document.getElementById('qz-save-btn'); if (btn) btn.disabled = true;
+  try {
+    const { error } = await sb.rpc('quiz_save', Object.assign({}, qzCreds(), {
+      p_class_name: QZ.cls, p_subject: subject, p_quiz_date: date,
+      p_questions: QZ.parsed.map(q => ({ q: q.q, a: q.a, b: q.b, c: q.c, d: q.d, correct: q.correct }))
+    }));
+    if (error) { if (btn) btn.disabled = false; return err(qzErr(error)); }
+    rememberDiarySubject(subject);
+    alert(qt('Quiz saved.', 'کوئز محفوظ ہو گیا۔'));
+    qzOpenClass(QZ.cls);
+  } catch (e) { if (btn) btn.disabled = false; err(qzErr(e)); }
+}
+
+async function qzDelete(i) {
+  const q = QZ.ov.quizzes[i]; if (!q) return;
+  if (!confirm(qt(`Delete the ${q.subject} quiz?`, `${q.subject} کا کوئز حذف کریں؟`))) return;
+  try {
+    const { error } = await sb.rpc('quiz_delete', Object.assign({}, qzCreds(), { p_quiz_id: q.id }));
+    if (error) { alert(qzErr(error)); return; }
+    qzOpenClass(QZ.cls);
+  } catch (e) { alert(qzErr(e)); }
+}
+
+async function qzOpenResult(i) {
+  const q = QZ.ov.quizzes[i], body = qzBody(); if (!q || !body) return;
+  body.innerHTML = '<div style="text-align:center;padding:20px 0;opacity:.6;">…</div>';
+  try {
+    const { data, error } = await sb.rpc('quiz_result_teacher', Object.assign({}, qzCreds(), { p_quiz_id: q.id }));
+    if (error) { body.innerHTML = `${qzBackBtn('qzRenderClass()')}<div class="err">${esc(qzErr(error))}</div>`; return; }
+    qzRenderResult(data);
+  } catch (e) { body.innerHTML = `${qzBackBtn('qzRenderClass()')}<div class="err">${esc(qzErr(e))}</div>`; }
+}
+
+function qzRenderResult(d) {
+  const body = qzBody(); if (!body) return;
+  const done = d.done || [], miss = d.missing || [];
+  const avg = done.length ? done.reduce((s, x) => s + Number(x.score), 0) / done.length : 0;
+  body.innerHTML = `
+    ${qzBackBtn('qzRenderClass()')}
+    <h2 style="margin-top:0;">${esc(d.subject)} — ${esc(d.class_name)}</h2>
+    <p class="desc">${esc(qzDateLabel(d.quiz_date))}</p>
+    <div class="card" style="margin:10px 0;"><div class="row2">
+      <div><div class="sub">${esc(qt('Submitted', 'جمع'))}</div><div class="nm">${done.length}</div></div>
+      <div><div class="sub">${esc(qt('Not yet', 'باقی'))}</div><div class="nm">${miss.length}</div></div>
+      <div><div class="sub">${esc(qt('Average', 'اوسط'))}</div><div class="nm">${avg.toFixed(1)}/${d.q_count}</div></div>
+    </div></div>
+    ${done.length ? `<div class="list-card">${done.map((x, k) => `<div class="list-row"><div class="nm" dir="auto">${k + 1}. ${esc(x.name || '')}</div><div class="nm">${x.score}/${x.total}</div></div>`).join('')}</div>` : ''}
+    ${miss.length ? `<div class="section-title">${esc(qt('Did not take the quiz', 'کوئز نہیں دیا'))}</div><div class="list-card">${miss.map(x => `<div class="list-row"><div class="sub" dir="auto">${esc(x.name || '')}</div></div>`).join('')}</div>` : ''}`;
+}
+
+/* ---------------------------- Parent portal ---------------------------- */
+var PP_QZ = null;
+
+function ppBody() { return document.getElementById('parent-portal-body'); }
+function ppQuizCreds() {
+  const c = getPpCache();
+  return c ? { p_school_code: c.schoolCode, p_roll: String(c.roll), p_pin: String(c.pin) } : null;
+}
+async function ppLoadQuiz(schoolCode, roll, pin) {
+  try {
+    const { data, error } = await sb.rpc('quiz_parent_overview', { p_school_code: schoolCode, p_roll: String(roll), p_pin: String(pin) });
+    if (!error && data) return data;
+  } catch (e) {}
+  return null;
+}
+async function ppRefreshQuiz() {
+  const cr = ppQuizCreds();
+  if (cr && PP_CURRENT && navigator.onLine) {
+    const q = await ppLoadQuiz(cr.p_school_code, cr.p_roll, cr.p_pin);
+    if (q) {
+      PP_CURRENT.quiz = q;
+      const c = getPpCache();
+      if (c) setPpCache({ schoolCode: c.schoolCode, roll: c.roll, pin: c.pin, data: PP_CURRENT, ts: Date.now() });
+    }
+  }
+  if (PP_CURRENT) renderParentPortalResult(PP_CURRENT);
+}
+
+function ppQuizHtml(r) {
+  const q = r && r.quiz; if (!q) return '';
+  const tomorrow = qzAddDays(q.today, 1);
+  let html = '';
+  if (q.next) {
+    const isTomorrow = q.next.date === tomorrow;
+    const lbl = isTomorrow ? qt('Tomorrow', 'کل') : qzDayName(qzIsoDow(q.next.date));
+    html += `<div style="background:#FFF6DB;border:1px solid #E8D48A;color:#5a4a10;border-radius:12px;padding:10px 12px;margin:12px 0;font-size:13px;">📘 ${esc(qt(`${lbl}: ${q.next.subject} quiz`, `${lbl}: ${q.next.subject} کا کوئز`))}${isTomorrow ? esc(' — ' + qt('please prepare', 'تیاری کر لیں')) : ''}</div>`;
+  }
+  (q.open || []).forEach((o, i) => {
+    html += `<div class="card" style="margin:12px 0;">
+      <div class="nm">${esc(o.subject)} — ${esc(qt("Today's quiz", 'آج کا کوئز'))}</div>
+      <div class="sub">${o.q_count} ${esc(qt('questions', 'سوال'))}</div>
+      ${o.submitted ? `<div class="ok" style="margin-top:8px;">✓ ${esc(qt('Submitted', 'جمع ہو گیا'))} — ${o.score}/${o.total}</div>`
+        : `<button class="btn-primary" style="margin-top:8px;" onclick="ppQuizStart(${i})">${esc(qt('Start quiz', 'کوئز شروع کریں'))}</button>`}
+    </div>`;
+  });
+  const past = q.past || [];
+  if (past.length) {
+    html += `<div class="section-title" style="margin-top:14px;">${esc(qt('Previous quizzes', 'پچھلے کوئز'))}</div>
+      <div class="list-card">${past.map((p, i) => `
+        <div class="list-row" style="cursor:pointer;" onclick="ppQuizReview(${i})">
+          <div><div class="nm">${esc(p.subject)}</div><div class="sub">${esc(qzDateLabel(p.quiz_date))}</div></div>
+          <div class="nm">${p.submitted ? p.score + '/' + p.total : '—'}</div>
+        </div>`).join('')}</div>`;
+  }
+  return html;
+}
+
+async function ppQuizStart(i) {
+  const o = PP_CURRENT && PP_CURRENT.quiz && (PP_CURRENT.quiz.open || [])[i]; if (!o) return;
+  if (!navigator.onLine) { alert(qt('Internet is needed to take the quiz.', 'کوئز کے لیے انٹرنیٹ ضروری ہے۔')); return; }
+  const cr = ppQuizCreds(); if (!cr) return;
+  const body = ppBody(); body.innerHTML = '<div style="text-align:center;padding:30px 0;opacity:.6;">…</div>';
+  try {
+    const { data, error } = await sb.rpc('quiz_parent_get', Object.assign({}, cr, { p_quiz_id: o.id }));
+    if (error) { alert(qzErr(error)); await ppRefreshQuiz(); return; }
+    PP_QZ = { quizId: o.id, subject: data.subject, questions: data.questions || [], answers: (data.questions || []).map(() => null) };
+    ppQuizRender();
+  } catch (e) { alert(qzErr(e)); await ppRefreshQuiz(); }
+}
+
+function ppQuizRender() {
+  const s = PP_QZ, body = ppBody(); if (!s || !body) return;
+  body.innerHTML = `
+    <button class="btn-ghost" style="padding:9px 14px;margin-bottom:10px;" onclick="if(confirm('${esc(qt('Leave the quiz? Your answers will be lost.', 'کوئز چھوڑیں؟ آپ کے جوابات ضائع ہو جائیں گے۔')).replace(/'/g, "\\'")}')) ppQuizBack()">‹ ${esc(qt('Back', 'واپس'))}</button>
+    <h2 style="margin-top:0;">${esc(s.subject)}</h2>
+    <p class="desc">${esc(qt('Tap one option for each question. You can change it until you press Submit.', 'ہر سوال کے لیے ایک آپشن ٹیپ کریں۔ سبمٹ دبانے تک بدل سکتے ہیں۔'))}</p>
+    ${s.questions.map((q, i) => `<div class="card" style="margin:10px 0;">
+      <div class="nm" dir="auto" style="white-space:pre-wrap;">${i + 1}. ${esc(q.q)}</div>
+      ${['A', 'B', 'C', 'D'].map(L => `<div onclick="ppQuizPick(${i},'${L}')" style="display:flex;align-items:center;gap:10px;padding:10px 2px;cursor:pointer;">${qzCircle(false, `ppq-dot-${i}-${L}`)}<span dir="auto">${L}) ${esc(q[L.toLowerCase()])}</span></div>`).join('')}
+    </div>`).join('')}
+    <div id="ppq-left" style="font-size:12px;margin:8px 0;"></div>
+    <button class="btn-primary" id="ppq-submit" onclick="ppQuizSubmit()">${esc(qt('Submit', 'سبمٹ'))}</button>`;
+  ppQuizUpdateLeft();
+}
+function ppQuizPick(i, L) {
+  if (!PP_QZ) return;
+  PP_QZ.answers[i] = L;
+  ['A', 'B', 'C', 'D'].forEach(x => { const d = document.getElementById(`ppq-dot-${i}-${x}`); if (d) d.style.display = x === L ? 'block' : 'none'; });
+  ppQuizUpdateLeft();
+}
+function ppQuizUpdateLeft() {
+  const el = document.getElementById('ppq-left'); if (!el || !PP_QZ) return;
+  const left = PP_QZ.answers.filter(a => !a).length;
+  el.textContent = left ? qt(`${left} question(s) left`, `${left} سوال باقی ہیں`) : qt('All questions answered', 'سب سوالوں کے جواب دے دیے');
+}
+async function ppQuizSubmit() {
+  const s = PP_QZ; if (!s) return;
+  const left = s.answers.filter(a => !a).length;
+  const ask = left ? qt(`${left} question(s) are not answered. Submit anyway? You cannot change after this.`, `${left} سوال کا جواب نہیں دیا۔ پھر بھی سبمٹ کریں؟ اس کے بعد بدل نہیں سکتے۔`)
+                   : qt('Submit now? You cannot change after this.', 'ابھی سبمٹ کریں؟ اس کے بعد بدل نہیں سکتے۔');
+  if (!confirm(ask)) return;
+  if (!navigator.onLine) { alert(qt('Internet is needed.', 'انٹرنیٹ ضروری ہے۔')); return; }
+  const cr = ppQuizCreds(); if (!cr) return;
+  const btn = document.getElementById('ppq-submit'); if (btn) btn.disabled = true;
+  try {
+    const { data, error } = await sb.rpc('quiz_parent_submit', Object.assign({}, cr, { p_quiz_id: s.quizId, p_answers: s.answers }));
+    if (error) { alert(qzErr(error)); if (/already_submitted|closed/.test(String(error.message || ''))) { PP_QZ = null; await ppRefreshQuiz(); } else if (btn) btn.disabled = false; return; }
+    const body = ppBody();
+    body.innerHTML = `<div style="text-align:center;padding:30px 10px;">
+      <div class="sub">${esc(s.subject)}</div>
+      <div style="font-size:46px;font-weight:700;margin:8px 0;">${data.score}/${data.total}</div>
+      <p class="desc">${esc(qt('Your quiz is submitted. The correct answers will be shown tomorrow.', 'آپ کا کوئز جمع ہو گیا۔ صحیح جوابات کل نظر آئیں گے۔'))}</p>
+      <button class="btn-primary" onclick="ppQuizBack()">${esc(qt('Done', 'مکمل'))}</button></div>`;
+    PP_QZ = null;
+  } catch (e) { alert(qzErr(e)); if (btn) btn.disabled = false; }
+}
+async function ppQuizBack() { PP_QZ = null; await ppRefreshQuiz(); }
+
+async function ppQuizReview(i) {
+  const p = PP_CURRENT && PP_CURRENT.quiz && (PP_CURRENT.quiz.past || [])[i]; if (!p) return;
+  if (!navigator.onLine) { alert(qt('Internet is needed.', 'انٹرنیٹ ضروری ہے۔')); return; }
+  const cr = ppQuizCreds(); if (!cr) return;
+  const body = ppBody(); body.innerHTML = '<div style="text-align:center;padding:30px 0;opacity:.6;">…</div>';
+  try {
+    const { data, error } = await sb.rpc('quiz_parent_review', Object.assign({}, cr, { p_quiz_id: p.id }));
+    if (error) { alert(qzErr(error)); renderParentPortalResult(PP_CURRENT); return; }
+    body.innerHTML = `
+      <button class="btn-ghost" style="padding:9px 14px;margin-bottom:10px;" onclick="renderParentPortalResult(PP_CURRENT)">‹ ${esc(qt('Back', 'واپس'))}</button>
+      <h2 style="margin-top:0;">${esc(data.subject)}</h2>
+      <p class="desc">${esc(qzDateLabel(data.quiz_date))} · ${data.submitted ? `${data.score}/${data.total}` : esc(qt('Not taken', 'نہیں دیا'))}</p>
+      ${(data.questions || []).map((q, k) => `<div class="card" style="margin:10px 0;">
+        <div class="nm" dir="auto" style="white-space:pre-wrap;">${k + 1}. ${esc(q.q)}</div>
+        ${['A', 'B', 'C', 'D'].map(L => {
+          const isCorrect = q.correct === L, isChosen = q.chosen === L;
+          const color = isCorrect ? 'var(--sage)' : (isChosen ? 'var(--rust)' : 'inherit');
+          const mark = isCorrect ? '✓' : (isChosen ? '✗' : '');
+          return `<div style="display:flex;align-items:center;gap:10px;padding:8px 2px;color:${color};${isCorrect || isChosen ? 'font-weight:600;' : ''}">${qzCircle(isChosen, `ppr-${k}-${L}`)}<span dir="auto" style="flex:1;">${L}) ${esc(q[L.toLowerCase()])}</span><span>${mark}</span></div>`;
+        }).join('')}
+      </div>`).join('')}`;
+  } catch (e) { alert(qzErr(e)); renderParentPortalResult(PP_CURRENT); }
+}
+
+console.log('SchoolMS build: 2026-10-04-daily-quiz'); // bump this string on every deploy to verify (in browser console) which version is actually running
 </script>
 </body>
 </html>
