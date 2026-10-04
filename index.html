@@ -1013,7 +1013,7 @@ const T = {
     appName:'School Finance & Records', tagline:'For school administration',
     dashboard:'Dashboard', students:'Students', teachers:'Teachers', finance:'Finance', reports:'Reports', dmc:'Certificates', marksSheet:'Marks Sheet',
     navFees:'Fees', navExamsMarks:'Exams & Marks', navAttendance:'Attendance', navSettings:'Settings',
-    navAttendanceDesc:'Mark teacher attendance, review the attendance register, or use QR check-in.',
+    navAttendanceDesc:'Mark teacher attendance, review the attendance register, or approve teachers\' attendance requests.',
     thisMonth:'This Month',
     totalStudents:'Active Students', feesCollected:'Fees Collected (this month)', feesDue:'Fees Due (this month)',
     salaryPaid:'Salaries Paid (this month)', expensesThisMonth:'Expenses (this month)', otherFeeStandalone:'Other Fees (Hostel/Transport) — held separately, not part of school totals', netBalance:'Net Balance (all-time)', totalDuesAllTime:'Total Dues (all-time)', recentActivity:'Recent Activity',
@@ -1222,7 +1222,7 @@ const T = {
     appName:'مالیاتی و ریکارڈ سسٹم', tagline:'اسکول انتظامیہ کے لیے',
     dashboard:'ڈیش بورڈ', students:'طلبہ', teachers:'اساتذہ', finance:'مالیات', reports:'رپورٹس', dmc:'سرٹیفکیٹس', marksSheet:'نتائج کی فہرست',
     navFees:'فیس', navExamsMarks:'امتحانات و نمبرات', navAttendance:'حاضری', navSettings:'ترتیبات',
-    navAttendanceDesc:'اساتذہ کی حاضری لگائیں، حاضری رجسٹر دیکھیں، یا QR چیک اِن استعمال کریں۔',
+    navAttendanceDesc:'اساتذہ کی حاضری لگائیں، حاضری رجسٹر دیکھیں، یا اساتذہ کی حاضری کی درخواستیں منظور کریں۔',
     thisMonth:'اس ماہ',
     totalStudents:'فعال طلبہ', feesCollected:'وصول شدہ فیس (اس ماہ)', feesDue:'واجب الادا فیس (اس ماہ)',
     salaryPaid:'ادا شدہ تنخواہ (اس ماہ)', expensesThisMonth:'اخراجات (اس ماہ)', otherFeeStandalone:'دیگر فیس (ہاسٹل/ٹرانسپورٹ) — الگ رکھی گئی، اسکول کی کل رقم میں شامل نہیں', netBalance:'کل بیلنس', totalDuesAllTime:'کل واجب الادا (تمام وقت)', recentActivity:'حالیہ سرگرمی',
@@ -2138,7 +2138,7 @@ async function boot() {
   // A teacher scanning the Principal's QR code lands here with ?checkin=TOKEN —
   // this is a public, no-login page, so it's handled before any session check.
   if (new URLSearchParams(window.location.search).get('checkin')) {
-    renderAuthShell(`<p style="font-size:14px;text-align:center;padding:20px 0;">${LANG === 'ur' ? 'QR حاضری اب بند ہے۔ اپنی حاضری ایڈمن سے لگوائیں۔' : 'QR check-in is no longer used. Please ask the admin to mark your attendance.'}</p>`);
+    renderAuthShell(`<p style="font-size:14px;text-align:center;padding:20px 0;">${LANG === 'ur' ? 'QR حاضری اب بند ہے۔ اپنی حاضری ڈائری میں "میری حاضری" سے لگائیں۔' : 'QR attendance is closed. Please mark your attendance from the Diary (My Attendance).'}</p>`);
     return;
   }
 
@@ -3452,21 +3452,29 @@ function generateAlerts() {
     }
   });
 
-  // Teacher check-in alerts: no attendance record for today yet, after a
-  // 9 AM grace period (matches the 7 AM–2 PM QR check-in window already
-  // shown to teachers, so this doesn't fire before they'd reasonably scan).
+  // Teacher attendance: QR check-in is gone, teachers now send a "present" request
+  // that the admin approves. After 9 AM show ONE summary alert (not one per teacher),
+  // plus one alert if requests are waiting for approval.
   if (now.getHours() >= 9) {
-    DATA.teachers.forEach(tc => {
-      const rec = DATA.teacherAttendance.find(a => a.teacher_id === tc.id && a.date === today);
-      const checkedIn = rec && (rec.checked_in_at_am || rec.checked_in_at_pm || rec.checked_in_at);
-      if (!checkedIn) {
-        list.push({
-          severity: 'medium', icon: '🕐',
-          en: `${tc.name} has not checked in today`,
-          ur: `${tc.name} نے آج حاضری نہیں لگائی`,
-          onclick: `openTeacherDetail('${tc.id}')`
-        });
-      }
+    const missing = DATA.teachers.filter(tc => {
+      const rec = DATA.teacherAttendance.find(a => String(a.teacher_id) === String(tc.id) && a.date === today);
+      return !teacherHasMark(rec);
+    }).length;
+    if (missing > 0) {
+      list.push({
+        severity: 'medium', icon: '🕐',
+        en: `${missing} teacher${missing > 1 ? 's have' : ' has'} no attendance marked today`,
+        ur: `آج ${missing} اساتذہ کی حاضری نہیں لگی`,
+        onclick: `openAttendanceHub()`
+      });
+    }
+  }
+  if (typeof SR_PENDING !== 'undefined' && SR_PENDING > 0) {
+    list.push({
+      severity: 'medium', icon: '🔔',
+      en: `${SR_PENDING} teacher attendance request${SR_PENDING > 1 ? 's' : ''} waiting for your approval`,
+      ur: `${SR_PENDING} اساتذہ کی حاضری کی درخواستیں منظوری کی منتظر ہیں`,
+      onclick: `openStaffRequests()`
     });
   }
 
@@ -4433,12 +4441,20 @@ function openDashTodayAttendanceModal(cls) {
   showModal(cls, `<div class="list-card">${back}${rows || dashEmptyRow()}</div>`);
 }
 
+// Teacher attendance is saved as status_am / status_pm / status (QR check-in and its
+// checked_in_at_* fields are gone; old rows that still have them are honoured).
+function teacherIsPresent(rec) {
+  return !!(rec && (rec.status_am === 'present' || rec.status_pm === 'present' || rec.checked_in_at_am || rec.checked_in_at_pm || rec.checked_in_at));
+}
+function teacherHasMark(rec) {
+  return !!(rec && (rec.status_am || rec.status_pm || rec.status || rec.checked_in_at_am || rec.checked_in_at_pm || rec.checked_in_at));
+}
 function todayTeacherAttendanceSummary() {
   const today = todayISO();
   let checkedIn = 0;
   DATA.teachers.forEach(tc => {
     const rec = DATA.teacherAttendance.find(a => a.teacher_id === tc.id && a.date === today);
-    if (rec && (rec.checked_in_at_am || rec.checked_in_at_pm || rec.checked_in_at)) checkedIn++;
+    if (teacherIsPresent(rec)) checkedIn++;
   });
   return { checkedIn };
 }
@@ -4447,7 +4463,7 @@ function openDashTeacherAttendanceModal() {
   const list = DATA.teachers.slice().sort((a,b)=> (a.name||'').localeCompare(b.name||''));
   const rows = list.map(tc => {
     const rec = DATA.teacherAttendance.find(a => a.teacher_id === tc.id && a.date === today);
-    const checkedIn = rec && (rec.checked_in_at_am || rec.checked_in_at_pm || rec.checked_in_at);
+    const checkedIn = teacherIsPresent(rec);
     return dashListRow(tc.name, tc.subject||'', `<span style="color:${checkedIn?'var(--sage)':'var(--rust)'};font-weight:600;">${esc(checkedIn?t.checkedIn:t.notCheckedIn)}</span>`, `openTeacherDetail('${tc.id}')`);
   }).join('');
   showModal(t.teacherAttendanceToday, `<div class="list-card">${rows || dashEmptyRow()}</div>`);
@@ -4581,8 +4597,6 @@ function dashBuildStatMap() {
     gra:{g:'mr', ic:'gra', c:'c3', n:ur?'فیس گراف':'Fee Graph', l:t.feeCollectionGraphTitle,
          x:() => `<div style="cursor:pointer;" onclick="openDashFeeCollectionGraphModal()">${tplFeeCollectionMiniChart()}</div>`},
     act:{g:'mr', ic:'clk', c:'c4', n:t.recentActivity, l:t.recentActivity, x:() => tplDashActivity()},
-    ntf:{g:'mr', ic:'bel', c:'c5', n:ur?'یاد دہانی':'Reminders', l:t.enableNotifications,
-         x:() => `<div id="admin-notify-row"><button class="btn-ghost" style="width:100%;" onclick="subscribeAdminToPush(document.getElementById('admin-notify-row'))">${esc(t.enableNotifications)}</button></div>`}
   };
   return m;
 }
@@ -4644,7 +4658,7 @@ function tplDashOverview(s) {
     ${group('td', t.todayAttendance, ['sat','tat'], '', 'sun', ur?'آج کتنے طلبہ اور اساتذہ حاضر ہیں':'How many students & teachers are present today')}
     ${group('mo', t.thisMonth, ['fcl','fdu','spd','exm','ofe'], '', 'cal', ur?'اس مہینے کی فیس، تنخواہیں اور اخراجات':'This month’s fees, salaries & expenses')}
     ${group('st', t.studentType, ['pay','fre','orp'], '', 'usr', ur?'فیس دینے والے، مفت اور یتیم طلبہ':'Fee-paying, free & orphan students')}
-    ${group('mr', ur?'مزید':'More', ['gra','act','ntf'], '', 'dots', ur?'فیس گراف، حالیہ سرگرمی اور یاد دہانیاں':'Fee graph, recent activity & reminders')}`;
+    ${group('mr', ur?'مزید':'More', ['gra','act'], '', 'dots', ur?'فیس گراف اور حالیہ سرگرمی':'Fee graph & recent activity')}`;
 }
 
 function tplDashboard() {
