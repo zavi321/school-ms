@@ -13824,8 +13824,20 @@ function chBubble(m) {
     <div style="max-width:85%;background:${mine ? '#E9F2E4' : '#fff'};border:1px solid var(--line);border-radius:12px;padding:8px 10px;">
       <div class="sub" style="font-size:11px;"><b>${esc(m.from_label || m.from_role)}</b> → ${esc(to)}</div>
       ${m.body ? `<div dir="auto" style="white-space:pre-wrap;font-size:14px;margin-top:4px;">${esc(m.body)}</div>` : ''}${voice}
-      <div class="sub" style="font-size:10px;text-align:end;margin-top:4px;">${esc(new Date(m.created_at).toLocaleString())}</div>
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:4px;">
+        ${mine || CH.role === 'owner' ? `<button onclick="chDel('${m.id}')" title="${esc(qt('Delete', 'حذف کریں'))}" style="background:none;border:none;padding:0;font-size:13px;opacity:.55;">🗑</button>` : '<span></span>'}
+        <span class="sub" style="font-size:10px;">${esc(new Date(m.created_at).toLocaleString())}</span></div>
     </div></div>`;
+}
+async function chDel(id) {
+  if (!confirm(qt('Delete this message? It will be removed for everyone.', 'یہ پیغام حذف کریں؟ یہ سب کے لیے ختم ہو جائے گا۔'))) return;
+  const cr = chCreds(), msg = document.getElementById('ch-msg'); if (!cr) return;
+  if (!navigator.onLine) { if (msg) msg.textContent = qt('Internet is needed.', 'انٹرنیٹ ضروری ہے۔'); return; }
+  try {
+    const { error } = await sb.rpc('chat_delete', Object.assign({}, cr, { p_id: id }));
+    if (error) { if (msg) msg.textContent = /not_allowed/.test(String(error.message)) ? qt('You can only delete your own messages.', 'آپ صرف اپنے پیغامات حذف کر سکتے ہیں۔') : chErr(error); return; }
+    delete CH.cache[id]; await chLoad(true);
+  } catch (e) { if (msg) msg.textContent = chErr(e); }
 }
 async function chLoad(force) {
   const cr = chCreds(), box = document.getElementById('ch-list'); if (!cr || !box || !navigator.onLine) return;
