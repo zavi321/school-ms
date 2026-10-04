@@ -3323,6 +3323,7 @@ function _renderTabInner() {
   main.insertAdjacentHTML('beforeend', `<div class="notice">${esc(t.sharedNotice)}</div>`);
   main.insertAdjacentHTML('beforeend', `<div class="notice" style="margin-top:8px;font-size:10px;">${esc(t.copyrightNotice)}</div>`);
   updateAlertsBadge();
+  pmOwnerBadgeRefresh();
 }
 
 // Keeps the 🔔 badge count in sync; safe to call anytime (no-ops if the
@@ -11440,6 +11441,8 @@ function ppContactBoxHtml() {
         ${btn('both', '👥 ' + esc(qt('Both', 'دونوں')))}
       </div>
       <div id="pp-contact-status" style="font-size:12px;margin-top:8px;"></div>
+      <button type="button" class="btn-ghost" style="width:100%;margin-top:10px;" onclick="ppToggleMyMsgs()">📜 ${esc(qt('My messages', 'میرے پیغامات'))}<span id="pp-my-badge"></span></button>
+      <div id="pp-my-list" class="hidden" style="margin-top:8px;"></div>
     </div>`;
 }
 
@@ -11468,27 +11471,88 @@ async function ppSendMessage(target) {
       box.value = '';
       const who = target === 'teacher' ? qt('Teacher', 'استاد') : target === 'owner' ? qt('Principal', 'پرنسپل') : qt('Teacher and Principal', 'استاد اور پرنسپل');
       out.innerHTML = `<span class="ok">✓ ${esc(qt('Sent to', 'بھیج دیا گیا:'))} ${esc(who)}</span>`;
+      const myl = document.getElementById('pp-my-list'); if (myl && !myl.classList.contains('hidden')) { myl.classList.add('hidden'); ppToggleMyMsgs(); }
     }
   } catch (e) { bad(qt('Could not send. Please check your connection.', 'پیغام نہیں بھیجا جا سکا۔ انٹرنیٹ چیک کریں۔')); }
   btns.forEach(b => b.disabled = false);
 }
 
-function pmRowHtml(m, showClass) {
+function pmSetupMissing(msg) { return /parent_message|teacher_read_at|owner_read_at/.test(msg || '') && /(does not exist|schema cache|relation|could not find|column)/i.test(msg || ''); }
+function pmSetupErr() { return `<div class="err">${esc(qt('Not set up yet (run parent_messages_v2.sql in Supabase).', 'ابھی سیٹ اپ نہیں ہوا (Supabase میں parent_messages_v2.sql چلائیں)۔'))}</div>`; }
+function pmRoleLabel(r) { return r === 'owner' ? qt('Principal', 'پرنسپل') : qt('Teacher', 'استاد'); }
+function pmNewTag() { return `<span style="background:#d33;color:#fff;border-radius:8px;font-size:10px;padding:1px 6px;margin-inline-start:6px;">${esc(qt('NEW', 'نیا'))}</span>`; }
+function pmRepliesHtml(m, seen) {
+  const rs = m.replies || [];
+  if (!rs.length) return '';
+  return `<div style="margin-top:8px;border-inline-start:3px solid var(--line);padding-inline-start:8px;">${rs.map(r => `
+    <div style="font-size:12px;margin-top:4px;"><b>${esc(pmRoleLabel(r.from_role))}:</b> <span style="white-space:pre-wrap;">${esc(r.reply)}</span>
+      <span class="sub">${esc(fmtDate((r.created_at || '').slice(0, 10)) || '')}</span>${seen !== undefined && new Date(r.created_at).getTime() > seen ? pmNewTag() : ''}</div>`).join('')}</div>`;
+}
+
+// role = 'teacher' (class portal) or 'owner' (Notice Board tab)
+function pmRowHtml(m, role) {
   const who = m.to_teacher && m.to_owner ? qt('Teacher + Principal', 'استاد + پرنسپل') : m.to_owner ? qt('Principal', 'پرنسپل') : qt('Teacher', 'استاد');
+  const unread = role === 'owner' ? !m.owner_read_at : !m.teacher_read_at;
   return `
     <div class="list-row" style="flex-direction:column;align-items:stretch;">
       <div style="display:flex;justify-content:space-between;gap:8px;">
-        <div class="nm">${esc(m.student_name || '')}${showClass && m.class_name ? ' · ' + esc(m.class_name) : ''}</div>
+        <div class="nm">${esc(m.student_name || '')}${role === 'owner' && m.class_name ? ' · ' + esc(m.class_name) : ''}${unread ? pmNewTag() : ''}</div>
         <div class="sub" style="flex:none;">${esc(fmtDate((m.created_at || '').slice(0, 10)) || '')}</div>
       </div>
       <div class="sub">${m.father_name ? esc(t.fatherName) + ': ' + esc(m.father_name) + ' · ' : ''}${esc(who)}</div>
       <div style="margin-top:6px;font-size:13px;line-height:1.5;white-space:pre-wrap;">${esc(m.message || '')}</div>
-      ${showClass ? `<button class="btn-ghost" style="align-self:flex-end;margin-top:6px;padding:4px 10px;font-size:11px;" onclick="pmOwnerDelete('${m.id}')">${esc(qt('Delete', 'حذف کریں'))}</button>` : ''}
+      ${pmRepliesHtml(m)}
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:6px;">
+        <button class="btn-ghost" style="flex:none;padding:4px 12px;font-size:12px;" onclick="pmToggleReply('${m.id}')">↩ ${esc(qt('Reply', 'جواب'))}</button>
+        ${role === 'owner' ? `<button class="btn-ghost" style="flex:none;padding:4px 12px;font-size:12px;" onclick="pmOwnerDelete('${m.id}')">${esc(qt('Delete', 'حذف کریں'))}</button>` : ''}
+      </div>
+      <div id="pm-rbox-${m.id}" class="hidden" style="margin-top:6px;">
+        <textarea id="pm-rtxt-${m.id}" maxlength="500" rows="2" style="width:100%;box-sizing:border-box;" placeholder="${esc(qt('Write your reply…', 'اپنا جواب لکھیں…'))}"></textarea>
+        <button class="btn-primary" style="width:100%;margin-top:6px;" onclick="pmSendReply('${m.id}','${role}')">${esc(qt('Send reply', 'جواب بھیجیں'))}</button>
+        <div id="pm-rst-${m.id}" style="font-size:12px;margin-top:6px;"></div>
+      </div>
     </div>`;
 }
-function pmSetupMissing(msg) { return /parent_messages|parent_message_/.test(msg || '') && /(does not exist|schema cache|relation|could not find)/i.test(msg || ''); }
+function pmToggleReply(id) { const b = document.getElementById('pm-rbox-' + id); if (b) b.classList.toggle('hidden'); }
 
-// Teacher side (class portal)
+async function pmSendReply(id, role) {
+  const ta = document.getElementById('pm-rtxt-' + id), st = document.getElementById('pm-rst-' + id);
+  if (!ta || !st) return;
+  const text = ta.value.trim();
+  const bad = m => { st.innerHTML = `<div class="err">${esc(m)}</div>`; };
+  if (!text) { bad(qt('Please write a reply first.', 'پہلے جواب لکھیں۔')); return; }
+  if (!navigator.onLine) { bad(qt('You are offline — connect to the internet to send.', 'آپ آف لائن ہیں — بھیجنے کے لیے انٹرنیٹ سے جڑیں۔')); return; }
+  st.textContent = '…';
+  try {
+    let res;
+    if (role === 'owner') {
+      res = await sb.rpc('parent_message_reply_owner', { p_message_id: id, p_text: text });
+    } else {
+      const s = getClassSession(); if (!s) return;
+      res = await sb.rpc('parent_message_reply_class', { p_school_code: s.schoolCode, p_login_id: s.loginId, p_password: s.password, p_message_id: id, p_text: text });
+    }
+    if (res.error) {
+      const m = String(res.error.message || '');
+      bad(pmSetupMissing(m) ? qt('Not set up yet (run parent_messages_v2.sql in Supabase).', 'ابھی سیٹ اپ نہیں ہوا۔') : /too_many/.test(m) ? qt('Too many replies on this message.', 'اس پیغام پر بہت زیادہ جوابات ہو چکے ہیں۔') : qt('Could not send. Please try again.', 'جواب نہیں بھیجا جا سکا۔ دوبارہ کوشش کریں۔'));
+      return;
+    }
+    if (role === 'owner') pmOwnerLoad(); else renderClassPortalParentMsgs();
+  } catch (e) { bad(qt('Could not send. Please check your connection.', 'جواب نہیں بھیجا جا سکا۔ انٹرنیٹ چیک کریں۔')); }
+}
+
+// ---- Teacher side (class portal) ----
+function pmTeacherArgs(s) { return { p_school_code: s.schoolCode, p_login_id: s.loginId, p_password: s.password }; }
+async function pmTeacherBadge() {
+  const s = getClassSession();
+  if (!s || !navigator.onLine || !document.getElementById('cp-pm-badge')) return;
+  try {
+    const { data, error } = await sb.rpc('parent_message_unread_class', pmTeacherArgs(s));
+    if (error) return;
+    const el = document.getElementById('cp-pm-badge');
+    const n = Number(data) || 0;
+    if (el) el.textContent = n > 0 ? ' (' + n + ')' : '';
+  } catch (e) {}
+}
 async function renderClassPortalParentMsgs() {
   CLASS_PORTAL_SCREEN = 'parentMsgs';
   const s = getClassSession();
@@ -11501,32 +11565,97 @@ async function renderClassPortalParentMsgs() {
   const box = document.getElementById('cp-pm-list');
   if (!navigator.onLine) { box.innerHTML = `<div class="err">${esc(qt('You are offline.', 'آپ آف لائن ہیں۔'))}</div>`; return; }
   try {
-    const { data, error } = await sb.rpc('parent_message_list_class', { p_school_code: s.schoolCode, p_login_id: s.loginId, p_password: s.password, p_limit: 50 });
-    if (error) {
-      box.innerHTML = `<div class="err">${esc(pmSetupMissing(error.message) ? qt('Not set up yet (run parent_messages.sql in Supabase).', 'ابھی سیٹ اپ نہیں ہوا (Supabase میں parent_messages.sql چلائیں)۔') : qt('Could not load messages.', 'پیغامات لوڈ نہیں ہو سکے۔'))}</div>`;
-      return;
-    }
-    box.innerHTML = (data && data.length) ? `<div class="list-card">${data.map(m => pmRowHtml(m, false)).join('')}</div>` : `<p class="desc">${esc(qt('No messages yet.', 'ابھی کوئی پیغام نہیں۔'))}</p>`;
+    const { data, error } = await sb.rpc('parent_message_list_class', Object.assign(pmTeacherArgs(s), { p_limit: 50 }));
+    if (error) { box.innerHTML = pmSetupMissing(error.message) ? pmSetupErr() : `<div class="err">${esc(qt('Could not load messages.', 'پیغامات لوڈ نہیں ہو سکے۔'))}</div>`; return; }
+    const list = data || [];
+    box.innerHTML = list.length ? `<div class="list-card">${list.map(m => pmRowHtml(m, 'teacher')).join('')}</div>` : `<p class="desc">${esc(qt('No messages yet.', 'ابھی کوئی پیغام نہیں۔'))}</p>`;
+    if (list.some(m => !m.teacher_read_at)) { try { await sb.rpc('parent_message_mark_read_class', pmTeacherArgs(s)); } catch (e) {} }
   } catch (e) { box.innerHTML = `<div class="err">${esc(qt('Could not load messages.', 'پیغامات لوڈ نہیں ہو سکے۔'))}</div>`; }
 }
 
-// Owner side (Notice Board tab)
+// ---- Owner side (Notice Board tab) ----
+let PM_OWNER_UNREAD = 0, PM_BADGE_TS = 0;
+function pmPaintNavBadge() {
+  document.querySelectorAll('[onclick="setTab(\'notices\')"]').forEach(el => {
+    const host = el.querySelector('span') || el;
+    let b = host.querySelector('.pm-nav-badge');
+    if (PM_OWNER_UNREAD > 0) {
+      if (!b) { b = document.createElement('b'); b.className = 'pm-nav-badge'; b.style.cssText = 'background:#d33;color:#fff;border-radius:9px;font-size:10px;padding:1px 6px;margin-inline-start:6px;'; host.appendChild(b); }
+      b.textContent = PM_OWNER_UNREAD > 9 ? '9+' : String(PM_OWNER_UNREAD);
+    } else if (b) b.remove();
+  });
+}
+async function pmOwnerBadgeRefresh(force) {
+  pmPaintNavBadge();
+  if (!CURRENT_USER || !navigator.onLine) return;
+  if (!force && Date.now() - PM_BADGE_TS < 60000) return;
+  PM_BADGE_TS = Date.now();
+  try {
+    const { count, error } = await sb.from('parent_messages').select('id', { count: 'exact', head: true }).eq('owner_id', CURRENT_USER.id).eq('to_owner', true).is('owner_read_at', null);
+    if (error) return;
+    PM_OWNER_UNREAD = count || 0;
+    pmPaintNavBadge();
+  } catch (e) {}
+}
 async function pmOwnerLoad() {
   const box = document.getElementById('pm-owner-list'); if (!box || !CURRENT_USER) return;
   if (!navigator.onLine) { box.innerHTML = `<p class="desc">${esc(qt('You are offline.', 'آپ آف لائن ہیں۔'))}</p>`; return; }
   try {
-    const { data, error } = await sb.from('parent_messages').select('*').eq('owner_id', CURRENT_USER.id).eq('to_owner', true).order('created_at', { ascending: false }).limit(50);
-    if (error) {
-      box.innerHTML = `<div class="err">${esc(pmSetupMissing(error.message) ? qt('Not set up yet (run parent_messages.sql in Supabase).', 'ابھی سیٹ اپ نہیں ہوا (Supabase میں parent_messages.sql چلائیں)۔') : (error.message || ''))}</div>`;
-      return;
+    const { data, error } = await sb.from('parent_messages').select('*, parent_message_replies(*)').eq('owner_id', CURRENT_USER.id).eq('to_owner', true).order('created_at', { ascending: false }).limit(50);
+    if (error) { box.innerHTML = pmSetupMissing(error.message) ? pmSetupErr() : `<div class="err">${esc(error.message || '')}</div>`; return; }
+    const list = (data || []).map(m => Object.assign({}, m, { replies: (m.parent_message_replies || []).slice().sort((a, b) => String(a.created_at).localeCompare(String(b.created_at))) }));
+    box.innerHTML = list.length ? `<div class="list-card">${list.map(m => pmRowHtml(m, 'owner')).join('')}</div>` : `<p class="desc">${esc(qt('No messages yet.', 'ابھی کوئی پیغام نہیں۔'))}</p>`;
+    if (list.some(m => !m.owner_read_at)) {
+      await sb.from('parent_messages').update({ owner_read_at: new Date().toISOString() }).eq('owner_id', CURRENT_USER.id).eq('to_owner', true).is('owner_read_at', null);
+      PM_OWNER_UNREAD = 0; pmPaintNavBadge();
     }
-    box.innerHTML = (data && data.length) ? `<div class="list-card">${data.map(m => pmRowHtml(m, true)).join('')}</div>` : `<p class="desc">${esc(qt('No messages yet.', 'ابھی کوئی پیغام نہیں۔'))}</p>`;
   } catch (e) { box.innerHTML = `<p class="desc">…</p>`; }
 }
 async function pmOwnerDelete(id) {
   if (!confirm(qt('Delete this message?', 'یہ پیغام حذف کریں؟'))) return;
   try { await sb.from('parent_messages').delete().eq('id', id).eq('owner_id', CURRENT_USER.id); } catch (e) {}
   pmOwnerLoad();
+}
+
+// ---- Parent side: "My messages" with replies ----
+let PP_MY = null;
+function ppMyKey() { const c = getPpCache(); return 'pp_reply_seen_' + (c ? c.schoolCode + '_' + c.roll : ''); }
+function ppMySeen() { return Number(localStorage.getItem(ppMyKey()) || 0); }
+async function ppFetchMy() {
+  const c = getPpCache(); if (!c || !navigator.onLine) return null;
+  try {
+    const { data, error } = await sb.rpc('parent_message_list_parent', { p_school_code: c.schoolCode, p_roll: String(c.roll), p_pin: String(c.pin), p_limit: 20 });
+    if (error) return null;
+    PP_MY = data || []; return PP_MY;
+  } catch (e) { return null; }
+}
+function ppMyNewCount(list, seen) {
+  let n = 0; (list || []).forEach(m => (m.replies || []).forEach(r => { if (new Date(r.created_at).getTime() > seen) n++; })); return n;
+}
+async function ppMyBadge() {
+  const list = await ppFetchMy(); const el = document.getElementById('pp-my-badge');
+  if (!el || !list) return;
+  const n = ppMyNewCount(list, ppMySeen());
+  el.textContent = n > 0 ? ' · ' + n + ' ' + qt('new reply', 'نیا جواب') : '';
+  el.style.color = '#d33';
+}
+async function ppToggleMyMsgs() {
+  const box = document.getElementById('pp-my-list'); if (!box) return;
+  if (!box.classList.contains('hidden')) { box.classList.add('hidden'); return; }
+  box.classList.remove('hidden'); box.innerHTML = '<p class="desc">…</p>';
+  const list = await ppFetchMy();
+  if (list === null) { box.innerHTML = `<div class="err">${esc(qt('Could not load. Check your connection.', 'لوڈ نہیں ہو سکا۔ انٹرنیٹ چیک کریں۔'))}</div>`; return; }
+  const seen = ppMySeen();
+  box.innerHTML = list.length ? `<div class="list-card">${list.map(m => {
+    const who = m.to_teacher && m.to_owner ? qt('Teacher + Principal', 'استاد + پرنسپل') : m.to_owner ? qt('Principal', 'پرنسپل') : qt('Teacher', 'استاد');
+    return `<div class="list-row" style="flex-direction:column;align-items:stretch;">
+      <div style="display:flex;justify-content:space-between;gap:8px;"><div class="sub">${esc(qt('To', 'بنام'))}: ${esc(who)}</div><div class="sub" style="flex:none;">${esc(fmtDate((m.created_at || '').slice(0, 10)) || '')}</div></div>
+      <div style="margin-top:4px;font-size:13px;line-height:1.5;white-space:pre-wrap;">${esc(m.message || '')}</div>
+      ${pmRepliesHtml(m, seen)}
+    </div>`; }).join('')}</div>` : `<p class="desc">${esc(qt('You have not sent any message yet.', 'آپ نے ابھی تک کوئی پیغام نہیں بھیجا۔'))}</p>`;
+  let mx = seen; list.forEach(m => (m.replies || []).forEach(r => { const ts = new Date(r.created_at).getTime(); if (ts > mx) mx = ts; }));
+  try { localStorage.setItem(ppMyKey(), String(mx)); } catch (e) {}
+  const b = document.getElementById('pp-my-badge'); if (b) b.textContent = '';
 }
 
 // Section shown at the top of the parent portal
@@ -11551,11 +11680,12 @@ function renderClassPortalMenu() {
     <button class="btn-primary" style="width:100%;margin-bottom:10px;" onclick="renderClassPortalMarks()">${esc(t.classPortalMenuMarks)}</button>
     <button class="btn-primary" style="width:100%;margin-bottom:10px;" onclick="renderClassPortalMarksView()">${esc(t.classPortalMenuMarksView)}</button>
     <button class="btn-primary" style="width:100%;margin-bottom:10px;" onclick="noticeOpenScreen('class')">📢 ${esc(qt('Notice Board', 'نوٹس بورڈ'))}</button>
-    <button class="btn-primary" style="width:100%;margin-bottom:10px;" onclick="renderClassPortalParentMsgs()">📩 ${esc(qt('Parent Messages', 'والدین کے پیغامات'))}</button>
+    <button class="btn-primary" style="width:100%;margin-bottom:10px;" onclick="renderClassPortalParentMsgs()">📩 ${esc(qt('Parent Messages', 'والدین کے پیغامات'))}<span id="cp-pm-badge"></span></button>
     <button class="btn-ghost" style="width:100%;margin-bottom:10px;" onclick="renderClassPortalAddStudent()">${esc(t.classPortalMenuAddStudent)}</button>
     <button class="btn-ghost" style="width:100%;" onclick="renderClassPortalManageStudents()">${esc(t.classPortalMenuManageStudents)}</button>
     ${queue.length ? `<p style="font-size:11px;opacity:.6;margin-top:14px;">${esc(t.classPortalOffline)} (${queue.length})</p>` : ''}
   `;
+  pmTeacherBadge();
 }
 
 // ---- Register (read-only month view — same grid the owner sees, so the
@@ -12809,6 +12939,8 @@ function renderParentPortalResult(r, opts) {
   const body = document.getElementById('parent-portal-body');
   const ppDraftEl = document.getElementById('pp-msg-text');
   const ppDraft = ppDraftEl ? ppDraftEl.value : '';
+  const ppMyEl = document.getElementById('pp-my-list');
+  const ppMyOpen = !!(ppMyEl && !ppMyEl.classList.contains('hidden'));
   const name = (LANG === 'ur' && r.student_name_ur) ? r.student_name_ur : r.student_name;
   const offlineBanner = opts.fromCache ? `<p style="font-size:11px;opacity:.65;margin-bottom:10px;">${esc(t.parentPortalOfflineNote)} ${esc(new Date(opts.ts).toLocaleString())}</p>` : '';
   const diaryEntries = r.diary_entries || [];
@@ -12879,6 +13011,7 @@ function renderParentPortalResult(r, opts) {
   `;
   noticeRefresh('pp-notices', 'parent', 10);
   if (ppDraft) { const ta = document.getElementById('pp-msg-text'); if (ta) ta.value = ppDraft; }
+  if (ppMyOpen) ppToggleMyMsgs(); else ppMyBadge();
 }
 
 function togglePpFeeHistory() {
