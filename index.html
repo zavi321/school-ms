@@ -1897,7 +1897,7 @@ let pendingRenderOnDragEnd = false;
 function safeRenderTab() {
   const ae = document.activeElement;
   const main = document.getElementById('main');
-  if (ae && main && main.contains(ae) && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.tagName === 'SELECT')) {
+  if (ae && main && main.contains(ae) && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.tagName === 'SELECT' || ae.isContentEditable)) {
     pendingRenderOnBlur = true;
     return;
   }
@@ -1909,7 +1909,7 @@ function safeRenderTab() {
 }
 document.addEventListener('focusout', (e) => {
   if (!pendingRenderOnBlur) return;
-  if (!e.target || (e.target.tagName !== 'INPUT' && e.target.tagName !== 'TEXTAREA' && e.target.tagName !== 'SELECT')) return;
+  if (!e.target || (e.target.tagName !== 'INPUT' && e.target.tagName !== 'TEXTAREA' && e.target.tagName !== 'SELECT' && !e.target.isContentEditable)) return;
   pendingRenderOnBlur = false;
   // Let the blur/value-commit finish first, then redraw with fresh data.
   setTimeout(() => { if (TAB) renderTab(); }, 0);
@@ -2902,6 +2902,7 @@ function toggleLangApp() {
 }
 
 const NAV_ICONS = {
+  notices: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 11v2a1 1 0 001 1h2l5 4V6L6 10H4a1 1 0 00-1 1z"/><path d="M15.5 8.5a5 5 0 010 7M18.5 6a9 9 0 010 12"/></svg>`,
   dashboard: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/></svg>`,
   students: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 10v6M2 10l10-5 10 5-10 5z"/><path d="M6 12v5c3 3 9 3 12 0v-5"/></svg>`,
   teachers: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="7" r="4"/><path d="M2 21v-2a4 4 0 014-4h6a4 4 0 014 4v2"/><circle cx="17" cy="7" r="3"/></svg>`,
@@ -2953,6 +2954,7 @@ function renderSidebar() {
     link('admissionRegister', t.admissionRegister, NAV_ICONS.admissionRegister, "setTab('admissionRegister')", 'admissionRegister'),
     link('papers', t.papers, NAV_ICONS.papers, "setTab('papers')", 'papers'),
     link('timetable', LANG==='ur' ? 'ٹائم ٹیبل' : 'Timetable', NAV_ICONS.timetable, "setTab('timetable')", 'timetable'),
+    link('notices', qt('Notice Board', 'نوٹس بورڈ'), NAV_ICONS.notices, "setTab('notices')", 'notices'),
     (CURRENT_PROFILE && CURRENT_PROFILE.is_admin) ? link('admin', t.admin, NAV_ICONS.admin, "setTab('admin')", 'admin') : '',
   ].join('');
 
@@ -2990,11 +2992,11 @@ function confirmSidebarLogout() {
 }
 
 function renderNav() {
-  const tabs = ['dashboard','students','teachers','finance','reports','dmc','marksSheet','admissionRegister','papers','timetable'];
+  const tabs = ['dashboard','students','teachers','finance','reports','dmc','marksSheet','admissionRegister','papers','timetable','notices'];
   if (CURRENT_PROFILE && CURRENT_PROFILE.is_admin) tabs.push('admin');
   document.getElementById('navbar').innerHTML = tabs.map(k => `
     <button class="${TAB===k?'active':''}" onclick="setTab('${k}')">
-      ${NAV_ICONS[k]}<span>${k==='timetable' ? (LANG==='ur'?'ٹائم ٹیبل':'Timetable') : esc(t[k] || t.admin)}</span>
+      ${NAV_ICONS[k]}<span>${k==='timetable' ? (LANG==='ur'?'ٹائم ٹیبل':'Timetable') : k==='notices' ? esc(qt('Notices','نوٹس')) : esc(t[k] || t.admin)}</span>
     </button>`).join('');
 }
 
@@ -3309,6 +3311,13 @@ function _renderTabInner() {
     main.innerHTML = tplTimetable();
     _regBookRestoreScroll();
     if (ttStatus === 'idle') loadTimetableGrid();
+  }
+  else if (TAB==='notices') {
+    // The form is NOT rebuilt if it is already on screen (same language): a background sync / 'online'
+    // event used to wipe it and close the keyboard. Only the list underneath is refreshed.
+    if (document.getElementById('notice-details') && main.dataset.noticeLang === LANG) { noticeLoad(); updateAlertsBadge(); return; }
+    main.dataset.noticeLang = LANG;
+    main.innerHTML = tplNotices(); noticeInit();
   }
   else if (TAB==='admin') { main.innerHTML = tplAdmin(); loadAdminLists(); return; }
   main.insertAdjacentHTML('beforeend', `<div class="notice">${esc(t.sharedNotice)}</div>`);
@@ -11042,6 +11051,380 @@ function classPortalLogout() {
   renderClassPortalLoginForm();
 }
 
+// =====================================================================
+// NOTICE BOARD
+// The owner writes a text notice and taps who it is for: Teachers,
+// Parents, or both. Teachers (class + diary portals) and parents read it
+// through the notice_list_* functions created by notice_board.sql.
+// Text only (no photos/videos) so it is very light on Supabase egress.
+// =====================================================================
+let NOTICES = [];
+let NOTICE_AUD = 'teachers';
+let NOTICE_EDIT_ID = null;
+
+// Keeps only simple formatting (bold / italic / underline / line breaks / lists).
+// Everything else (scripts, links, styles, attributes) is stripped, so a notice can never inject code.
+function noticeClean(html) {
+  const allowed = { B:1, STRONG:1, I:1, EM:1, U:1, BR:1, DIV:1, P:1, UL:1, OL:1, LI:1 };
+  const doc = new DOMParser().parseFromString('<body>' + String(html || '') + '</body>', 'text/html');
+  const walk = (node) => {
+    let out = '';
+    node.childNodes.forEach(ch => {
+      if (ch.nodeType === 3) { out += esc(ch.nodeValue); return; }
+      if (ch.nodeType !== 1) return;
+      const tag = ch.tagName;
+      if (tag === 'SCRIPT' || tag === 'STYLE') return;
+      const inner = walk(ch);
+      if (tag === 'BR') out += '<br>';
+      else if (allowed[tag]) { const tg = tag.toLowerCase(); out += '<' + tg + '>' + inner + '</' + tg + '>'; }
+      else out += inner;
+    });
+    return out;
+  };
+  return walk(doc.body);
+}
+function noticeToText(html) {
+  const d = document.createElement('div');
+  d.innerHTML = noticeClean(html).replace(/<br\s*\/?>/gi, '\n').replace(/<\/(div|p|li)>/gi, '\n');
+  return (d.textContent || '').replace(/\n{3,}/g, '\n\n').trim();
+}
+function noticeAudLabel(a) {
+  return a === 'teachers' ? qt('Teachers', 'اساتذہ') : a === 'parents' ? qt('Parents', 'والدین') : qt('Teachers & Parents', 'اساتذہ اور والدین');
+}
+function noticeAudColor(a) { return a === 'teachers' ? '#2f6fab' : a === 'parents' ? '#2e8b57' : '#b8860b'; }
+
+// ---------- Owner side ----------
+function tplNotices() {
+  const chip = (k) => `<button type="button" id="nt-aud-${k}" onclick="noticeSetAud('${k}')" style="flex:1;padding:10px 6px;border-radius:10px;font-weight:700;font-size:13px;cursor:pointer;border:2px solid ${noticeAudColor(k)};background:${NOTICE_AUD === k ? noticeAudColor(k) : 'transparent'};color:${NOTICE_AUD === k ? '#fff' : noticeAudColor(k)};">${esc(noticeAudLabel(k))}</button>`;
+  const tb = (cmd, label, style) => `<button type="button" onmousedown="event.preventDefault()" onclick="document.execCommand('${cmd}')" style="flex:none;width:38px;padding:6px 0;border-radius:8px;border:1px solid var(--line);background:transparent;color:inherit;cursor:pointer;${style}">${label}</button>`;
+  return `
+    <h2>${esc(qt('Notice Board', 'نوٹس بورڈ'))}</h2>
+    <p class="desc">${esc(qt('Write a notice and tap who it is for. It appears in the Teachers\' or Parents\' portal.', 'نوٹس لکھیں اور منتخب کریں کہ یہ کس کے لیے ہے۔ یہ اساتذہ یا والدین کے پورٹل میں نظر آئے گا۔'))}</p>
+    <div class="card">
+      <div id="notice-form-title" class="section-title" style="margin-top:0;">${esc(qt('New notice', 'نیا نوٹس'))}</div>
+      <div style="font-size:12px;opacity:.7;margin-bottom:6px;">${esc(qt('Send to', 'بھیجیں'))}</div>
+      <div style="display:flex;gap:8px;margin-bottom:12px;">${chip('teachers')}${chip('parents')}${chip('both')}</div>
+      <label><span>${esc(qt('Topic', 'عنوان'))}</span><input id="notice-topic" maxlength="100" oninput="noticeDraftSave()" placeholder="${esc(qt('e.g. Holiday on Friday', 'مثلاً جمعہ کی چھٹی'))}"></label>
+      <div style="font-size:12px;opacity:.7;margin:10px 0 6px;">${esc(qt('Details', 'تفصیل'))}</div>
+      <div style="display:flex;gap:6px;margin-bottom:6px;">${tb('bold', '<b>B</b>', '')}${tb('italic', '<i>I</i>', '')}${tb('underline', '<u>U</u>', '')}</div>
+      <div id="notice-details" contenteditable="true" oninput="noticeCount();noticeDraftSave()" onpaste="event.preventDefault();document.execCommand('insertText',false,(event.clipboardData||window.clipboardData).getData('text'))" style="min-height:120px;max-height:260px;overflow:auto;padding:10px 12px;border:1px solid var(--line);border-radius:10px;font-size:14px;line-height:1.5;outline:none;"></div>
+      <div id="notice-count" style="text-align:right;font-size:11px;opacity:.6;margin:4px 0 10px;">0 / 1000</div>
+      <button class="btn-primary" id="notice-publish-btn" style="width:100%;" onclick="noticePublish()">${esc(qt('Publish notice', 'نوٹس شائع کریں'))}</button>
+      <button class="btn-ghost hidden" id="notice-cancel-btn" style="width:100%;margin-top:8px;" onclick="noticeCancelEdit()">${esc(qt('Cancel editing', 'ایڈیٹ منسوخ کریں'))}</button>
+      <div id="notice-msg" style="margin-top:8px;"></div>
+    </div>
+    <div class="section-title" style="margin-top:16px;">${esc(qt('Published notices', 'شائع شدہ نوٹس'))}</div>
+    <div id="notice-list"><div class="empty">…</div></div>
+  `;
+}
+
+function noticeUuid() {
+  if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => { const r = Math.random() * 16 | 0; return (c === 'x' ? r : (r & 3 | 8)).toString(16); });
+}
+function noticeDraftKey() { return 'notice_draft_' + (CURRENT_USER ? CURRENT_USER.id : ''); }
+function noticeOwnerKey() { return 'notices_owner_' + (CURRENT_USER ? CURRENT_USER.id : ''); }
+// A half-written notice is kept on the phone, so nothing is lost if the page reloads or the app is closed.
+function noticeDraftSave() {
+  if (NOTICE_EDIT_ID) return;
+  const t0 = document.getElementById('notice-topic'), d0 = document.getElementById('notice-details');
+  if (!t0 || !d0) return;
+  try { localStorage.setItem(noticeDraftKey(), JSON.stringify({ aud: NOTICE_AUD, topic: t0.value, details: d0.innerHTML })); } catch (e) {}
+}
+function noticeDraftClear() { try { localStorage.removeItem(noticeDraftKey()); } catch (e) {} }
+function noticeInit() {
+  NOTICE_EDIT_ID = null;
+  try {
+    const dr = JSON.parse(localStorage.getItem(noticeDraftKey()) || 'null');
+    if (dr) {
+      if (dr.aud) { NOTICE_AUD = dr.aud; noticePaintAud(); }
+      const t0 = document.getElementById('notice-topic'), d0 = document.getElementById('notice-details');
+      if (t0) t0.value = dr.topic || '';
+      if (d0) d0.innerHTML = noticeClean(dr.details || '');
+      noticeCount();
+    }
+  } catch (e) {}
+  noticeLoad();
+}
+
+function noticePaintAud() {
+  ['teachers', 'parents', 'both'].forEach(k => {
+    const b = document.getElementById('nt-aud-' + k); if (!b) return;
+    b.style.background = NOTICE_AUD === k ? noticeAudColor(k) : 'transparent';
+    b.style.color = NOTICE_AUD === k ? '#fff' : noticeAudColor(k);
+  });
+}
+function noticeSetAud(k) { NOTICE_AUD = k; noticePaintAud(); noticeDraftSave(); }
+
+function noticeCount() {
+  const ed = document.getElementById('notice-details'), c = document.getElementById('notice-count');
+  if (!ed || !c) return;
+  const n = (ed.textContent || '').length;
+  c.textContent = n + ' / 1000';
+  c.style.color = n > 1000 ? '#c0392b' : '';
+  c.style.opacity = n > 1000 ? '1' : '.6';
+}
+
+function noticeSaveCache() {
+  try { localStorage.setItem(noticeOwnerKey(), JSON.stringify(NOTICES.map(n => { const c = Object.assign({}, n); delete c._pending; return c; }))); } catch (e) {}
+}
+// Notices written while offline wait in the app's sync queue; show them (marked) until they are sent.
+async function noticeMergePending(list) {
+  let q = [];
+  try { q = (await idbGetAll('sync_queue')) || []; } catch (e) {}
+  q = q.filter(x => x.table === 'notices').sort((a, b) => (a.ts || 0) - (b.ts || 0));
+  let out = list.slice();
+  q.forEach(it => {
+    if (it.action === 'insert' && it.payload) {
+      const i = out.findIndex(n => n.id === it.payload.id);
+      if (i < 0) out.unshift(Object.assign({ _pending: true }, it.payload));
+      else out[i] = Object.assign({}, out[i], it.payload, { _pending: true });
+    } else if (it.action === 'update' && it.payload) {
+      const i = out.findIndex(n => n.id === it.id);
+      if (i >= 0) out[i] = Object.assign({}, out[i], it.payload, { _pending: true });
+    } else if (it.action === 'delete') {
+      out = out.filter(n => n.id !== it.id);
+    }
+  });
+  out.sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
+  return out;
+}
+async function noticeLoad() {
+  const box = document.getElementById('notice-list'); if (!box) return;
+  let list = null, err = null;
+  if (navigator.onLine) {
+    try {
+      const { data, error } = await sb.from('notices').select('*').eq('owner_id', CURRENT_USER.id).order('created_at', { ascending: false }).limit(50);
+      if (error) err = error; else list = data || [];
+    } catch (e) { err = e; }
+  }
+  if (list === null) {
+    try { list = JSON.parse(localStorage.getItem(noticeOwnerKey()) || 'null'); } catch (e) {}
+    if (!list && err && !isNetworkError(err)) {
+      const m = (err.message || '');
+      const missing = /notices/.test(m) && /(does not exist|schema cache|relation)/i.test(m);
+      box.innerHTML = `<div class="err">${esc(missing ? qt('Notice Board is not set up yet (run notice_board.sql in Supabase).', 'نوٹس بورڈ ابھی سیٹ اپ نہیں ہوا (Supabase میں notice_board.sql چلائیں)۔') : m)}</div>`;
+      return;
+    }
+    list = list || [];
+  } else {
+    try { localStorage.setItem(noticeOwnerKey(), JSON.stringify(list)); } catch (e) {}
+  }
+  NOTICES = await noticeMergePending(list);
+  // Repaint only when something actually changed, so the page never jumps while the owner is typing.
+  const sig = JSON.stringify(NOTICES);
+  if (box.dataset.painted === '1' && box.dataset.sig === sig) return;
+  box.dataset.sig = sig; box.dataset.painted = '1';
+  noticeRenderList();
+}
+
+function noticeRenderList() {
+  const box = document.getElementById('notice-list'); if (!box) return;
+  if (!NOTICES.length) { box.innerHTML = `<div class="empty">${esc(qt('No notices yet.', 'ابھی کوئی نوٹس نہیں۔'))}</div>`; return; }
+  box.innerHTML = NOTICES.map(n => `
+    <div class="card" style="margin-bottom:10px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:6px;">
+        <span style="font-size:11px;font-weight:700;color:#fff;background:${noticeAudColor(n.audience)};padding:3px 10px;border-radius:999px;">${esc(noticeAudLabel(n.audience))}</span>
+        <span style="font-size:11px;opacity:.6;">${n._pending ? '⏳ ' + esc(qt('Waiting for internet', 'انٹرنیٹ کا انتظار')) + ' · ' : ''}${esc(fmtDate((n.created_at || '').slice(0, 10)) || '')}</span>
+      </div>
+      <div style="font-weight:700;font-size:15px;margin-bottom:6px;">${esc(n.topic)}</div>
+      <div style="font-size:13px;line-height:1.5;">${noticeClean(n.details)}</div>
+      <div style="display:flex;gap:8px;margin-top:12px;">
+        <button class="btn-ghost" style="flex:1;padding:8px 6px;font-size:12px;" onclick="noticeEdit('${n.id}')">✏️ ${esc(qt('Edit', 'ایڈیٹ'))}</button>
+        <button class="btn-ghost" style="flex:1;padding:8px 6px;font-size:12px;" onclick="noticeShareWA('${n.id}')">WhatsApp</button>
+        <button class="btn-ghost" style="flex:1;padding:8px 6px;font-size:12px;" onclick="noticeDelete('${n.id}')">🗑 ${esc(qt('Delete', 'حذف'))}</button>
+      </div>
+    </div>`).join('');
+}
+
+async function noticePublish() {
+  const topicEl = document.getElementById('notice-topic'), ed = document.getElementById('notice-details'), msg = document.getElementById('notice-msg'), btn = document.getElementById('notice-publish-btn');
+  if (!topicEl || !ed || !msg) return;
+  const topic = topicEl.value.trim();
+  const plainLen = (ed.textContent || '').trim().length;
+  const details = noticeClean(ed.innerHTML).trim();
+  if (!topic) { msg.innerHTML = `<div class="err">${esc(qt('Please write a topic.', 'براہ کرم عنوان لکھیں۔'))}</div>`; return; }
+  if (!plainLen) { msg.innerHTML = `<div class="err">${esc(qt('Please write the notice details.', 'براہ کرم نوٹس کی تفصیل لکھیں۔'))}</div>`; return; }
+  if (plainLen > 1000 || details.length > 6000) { msg.innerHTML = `<div class="err">${esc(qt('Details are too long (max 1000 characters).', 'تفصیل بہت لمبی ہے (زیادہ سے زیادہ 1000 حروف)۔'))}</div>`; return; }
+  if (btn) btn.disabled = true;
+  const wasEdit = !!NOTICE_EDIT_ID;
+  let res;
+  try {
+    if (wasEdit) {
+      const id = NOTICE_EDIT_ID;
+      const payload = { audience: NOTICE_AUD, topic, details, updated_at: new Date().toISOString() };
+      res = await offlineWrite({
+        table: 'notices', action: 'update', payload, id, baseRow: null,
+        run: () => sb.from('notices').update(payload).eq('id', id),
+        optimisticApply: () => { NOTICES = NOTICES.map(n => n.id === id ? Object.assign({}, n, payload) : n); noticeSaveCache(); }
+      });
+    } else {
+      const payload = { id: noticeUuid(), owner_id: CURRENT_USER.id, audience: NOTICE_AUD, topic, details, created_at: new Date().toISOString() };
+      res = await offlineWrite({
+        table: 'notices', action: 'insert', payload, id: payload.id, baseRow: null,
+        run: () => sb.from('notices').insert(payload),
+        optimisticApply: () => { NOTICES.unshift(Object.assign({}, payload)); noticeSaveCache(); }
+      });
+    }
+  } catch (e) { res = { error: e }; }
+  if (btn) btn.disabled = false;
+  if (res && res.error) {
+    msg.innerHTML = `<div class="err">${esc(res.error.message || String(res.error))}</div>`;
+    noticeLoad();   // undo the preview of a notice the server refused
+    return;
+  }
+  noticeDraftClear();
+  noticeCancelEdit(true);
+  const queued = !!(res && res.queued);
+  msg.innerHTML = `<div class="ok">${esc(queued
+    ? qt('Saved on this phone. It will be sent automatically when internet is back.', 'فون میں محفوظ ہو گیا۔ انٹرنیٹ آتے ہی خود بخود بھیج دیا جائے گا۔')
+    : (wasEdit ? qt('Notice updated.', 'نوٹس اپڈیٹ ہو گیا۔') : qt('Notice published.', 'نوٹس شائع ہو گیا۔')))}</div>`;
+  setTimeout(() => { const m = document.getElementById('notice-msg'); if (m) m.innerHTML = ''; }, queued ? 6000 : 3000);
+  noticeLoad();
+}
+
+function noticeEdit(id) {
+  const n = NOTICES.find(x => x.id === id); if (!n) return;
+  NOTICE_EDIT_ID = id; NOTICE_AUD = n.audience; noticePaintAud();
+  const topicEl = document.getElementById('notice-topic'), ed = document.getElementById('notice-details');
+  if (topicEl) topicEl.value = n.topic;
+  if (ed) ed.innerHTML = noticeClean(n.details);
+  noticeCount();
+  const ttl = document.getElementById('notice-form-title'); if (ttl) ttl.textContent = qt('Edit notice', 'نوٹس ایڈیٹ کریں');
+  const pb = document.getElementById('notice-publish-btn'); if (pb) pb.textContent = qt('Save changes', 'تبدیلیاں محفوظ کریں');
+  const cb = document.getElementById('notice-cancel-btn'); if (cb) cb.classList.remove('hidden');
+  if (topicEl) topicEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+function noticeCancelEdit(keepMsg) {
+  NOTICE_EDIT_ID = null;
+  const topicEl = document.getElementById('notice-topic'), ed = document.getElementById('notice-details');
+  if (topicEl) topicEl.value = '';
+  if (ed) ed.innerHTML = '';
+  noticeCount();
+  const ttl = document.getElementById('notice-form-title'); if (ttl) ttl.textContent = qt('New notice', 'نیا نوٹس');
+  const pb = document.getElementById('notice-publish-btn'); if (pb) pb.textContent = qt('Publish notice', 'نوٹس شائع کریں');
+  const cb = document.getElementById('notice-cancel-btn'); if (cb) cb.classList.add('hidden');
+  if (!keepMsg) { const m = document.getElementById('notice-msg'); if (m) m.innerHTML = ''; }
+}
+
+async function noticeDelete(id) {
+  if (!confirm(qt('Delete this notice?', 'کیا یہ نوٹس حذف کریں؟'))) return;
+  let res;
+  try {
+    res = await offlineWrite({
+      table: 'notices', action: 'delete', payload: null, id, baseRow: null,
+      run: () => sb.from('notices').delete().eq('id', id),
+      optimisticApply: () => { NOTICES = NOTICES.filter(n => n.id !== id); noticeSaveCache(); }
+    });
+  } catch (e) { res = { error: e }; }
+  if (res && res.error) { alert(res.error.message || String(res.error)); noticeLoad(); return; }
+  if (NOTICE_EDIT_ID === id) noticeCancelEdit();
+  noticeLoad();
+}
+
+function noticeShareWA(id) {
+  const n = NOTICES.find(x => x.id === id); if (!n) return;
+  const txt = '*' + n.topic + '*\n\n' + noticeToText(n.details);
+  window.open('https://wa.me/?text=' + encodeURIComponent(txt), '_blank');
+}
+
+// ---------- Teachers (class + diary portals) and parents ----------
+const NOTICE_ST = {};   // kind -> { items, more, loading }
+
+function noticeCred(kind) {
+  if (kind === 'class') {
+    const s = getClassSession(); if (!s) return null;
+    return { school: s.schoolCode, fn: 'notice_list_class', args: { p_school_code: s.schoolCode, p_login_id: s.loginId, p_password: s.password } };
+  }
+  if (kind === 'diary') {
+    const s = getDiarySession(); if (!s) return null;
+    return { school: s.schoolCode, fn: 'notice_list_diary', args: { p_school_code: s.schoolCode, p_password: s.password } };
+  }
+  const c = getPpCache(); if (!c) return null;
+  return { school: c.schoolCode, fn: 'notice_list_parent', args: { p_school_code: c.schoolCode, p_roll: String(c.roll), p_pin: String(c.pin) } };
+}
+function noticeCacheKey(kind) {
+  const c = noticeCred(kind);
+  return 'notices_cache_' + kind + '_' + String((c && c.school) || '').toUpperCase();
+}
+
+async function noticeFetch(kind, before, limit) {
+  const c = noticeCred(kind); if (!c) return null;
+  const args = Object.assign({}, c.args, { p_limit: limit });
+  if (before) args.p_before = before;
+  try {
+    const { data, error } = await sb.rpc(c.fn, args);
+    if (error) return null;
+    return data || [];
+  } catch (e) { return null; }
+}
+
+function noticeRowHtml(n) {
+  return `
+    <div class="list-row" style="cursor:pointer;flex-direction:column;align-items:stretch;" onclick="toggleNoticeRow('${n.id}')">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
+        <div class="nm">${esc(n.topic)}</div>
+        <div style="display:flex;align-items:center;gap:8px;flex:none;">
+          <div class="sub">${esc(fmtDate((n.created_at || '').slice(0, 10)) || '')}</div>
+          <span style="opacity:.5;">▾</span>
+        </div>
+      </div>
+      <div id="nt-${n.id}" class="hidden" style="margin-top:8px;font-size:13px;line-height:1.5;">${noticeClean(n.details)}</div>
+    </div>`;
+}
+function toggleNoticeRow(id) { const el = document.getElementById('nt-' + id); if (el) el.classList.toggle('hidden'); }
+
+function noticePaint(elId, kind) {
+  const el = document.getElementById(elId); if (!el) return;
+  const st = NOTICE_ST[kind] || { items: [], more: false, loading: true };
+  if (!st.items.length) {
+    el.innerHTML = `<p class="desc" style="margin:0;">${st.loading ? '…' : esc(qt('No notices yet.', 'ابھی کوئی نوٹس نہیں۔'))}</p>`;
+    return;
+  }
+  el.innerHTML = `<div class="list-card">${st.items.map(noticeRowHtml).join('')}</div>` +
+    (st.more ? `<button class="btn-ghost" style="width:100%;margin-top:8px;" onclick="noticeMore('${kind}','${elId}')">${esc(qt('Show older notices', 'پرانے نوٹس دیکھیں'))}</button>` : '');
+}
+
+async function noticeRefresh(elId, kind, limit) {
+  let cached = null;
+  try { cached = JSON.parse(localStorage.getItem(noticeCacheKey(kind)) || 'null'); } catch (e) {}
+  NOTICE_ST[kind] = { items: (cached && cached.items) || [], more: false, loading: true };
+  noticePaint(elId, kind);
+  if (!navigator.onLine) { NOTICE_ST[kind].loading = false; noticePaint(elId, kind); return; }
+  const items = await noticeFetch(kind, null, limit);
+  if (items === null) { NOTICE_ST[kind].loading = false; noticePaint(elId, kind); return; }
+  NOTICE_ST[kind] = { items, more: items.length >= limit, loading: false };
+  try { localStorage.setItem(noticeCacheKey(kind), JSON.stringify({ ts: Date.now(), items })); } catch (e) {}
+  noticePaint(elId, kind);
+}
+
+async function noticeMore(kind, elId) {
+  const st = NOTICE_ST[kind]; if (!st || !st.items.length) return;
+  const more = await noticeFetch(kind, st.items[st.items.length - 1].created_at, 20);
+  if (more === null) return;
+  st.items = st.items.concat(more); st.more = more.length >= 20;
+  noticePaint(elId, kind);
+}
+
+// Full-page Notice Board inside the class portal / diary portal (teachers)
+function noticeOpenScreen(kind) {
+  const body = document.getElementById(kind === 'class' ? 'class-portal-body' : 'diary-portal-body');
+  if (!body) return;
+  if (kind === 'class') CLASS_PORTAL_SCREEN = 'notices'; else DIARY_SCREEN = 'notices';
+  const back = kind === 'class' ? 'renderClassPortalMenu()' : 'renderDiaryMenu()';
+  body.innerHTML = `
+    <button class="btn-ghost" style="padding:9px 14px;margin-bottom:10px;" onclick="${back}">‹ ${esc(qt('Back', 'واپس'))}</button>
+    <h2 style="margin-top:0;">${esc(qt('Notice Board', 'نوٹس بورڈ'))}</h2>
+    <div id="notice-portal-list"></div>`;
+  noticeRefresh('notice-portal-list', kind, 20);
+}
+
+// Section shown at the top of the parent portal
+function noticeParentBoxHtml() {
+  return `<div class="section-title" style="margin-top:6px;">${esc(qt('Notices from school', 'اسکول کے نوٹس'))}</div><div id="pp-notices" style="margin-bottom:14px;"></div>`;
+}
+
 function renderClassPortalMenu() {
   const session = getClassSession();
   const body = document.getElementById('class-portal-body');
@@ -11058,6 +11441,7 @@ function renderClassPortalMenu() {
     <button class="btn-primary" style="width:100%;margin-bottom:10px;" onclick="renderClassPortalRegister()">${esc(t.classPortalMenuRegister)}</button>
     <button class="btn-primary" style="width:100%;margin-bottom:10px;" onclick="renderClassPortalMarks()">${esc(t.classPortalMenuMarks)}</button>
     <button class="btn-primary" style="width:100%;margin-bottom:10px;" onclick="renderClassPortalMarksView()">${esc(t.classPortalMenuMarksView)}</button>
+    <button class="btn-primary" style="width:100%;margin-bottom:10px;" onclick="noticeOpenScreen('class')">📢 ${esc(qt('Notice Board', 'نوٹس بورڈ'))}</button>
     <button class="btn-ghost" style="width:100%;margin-bottom:10px;" onclick="renderClassPortalAddStudent()">${esc(t.classPortalMenuAddStudent)}</button>
     <button class="btn-ghost" style="width:100%;" onclick="renderClassPortalManageStudents()">${esc(t.classPortalMenuManageStudents)}</button>
     ${queue.length ? `<p style="font-size:11px;opacity:.6;margin-top:14px;">${esc(t.classPortalOffline)} (${queue.length})</p>` : ''}
@@ -11865,6 +12249,7 @@ function renderDiaryMenu() {
     </div>
     <button class="btn-primary" style="margin-bottom:12px;" onclick="renderStaffAttScreen()">🙋 ${esc(qt('My Attendance / Leave', 'میری حاضری / رخصت'))}</button>
     <button class="btn-primary" style="margin-bottom:12px;" onclick="qzOpen()">📝 ${esc(qt('Daily Quiz', 'روزانہ کوئز'))}</button>
+    <button class="btn-primary" style="margin-bottom:12px;" onclick="noticeOpenScreen('diary')">📢 ${esc(qt('Notice Board', 'نوٹس بورڈ'))}</button>
     <button class="btn-ghost" style="font-size:12px;padding:7px 12px;" onclick="toggleDiaryEditSubjects()">${esc(editing ? t.diaryDone : t.diaryRemoveSubject)}</button>
     ${queue.length ? `<p style="font-size:11px;opacity:.6;margin-top:14px;">${esc(t.classPortalOffline)} (${queue.length})</p>` : ''}
   `;
@@ -12186,7 +12571,7 @@ if ('serviceWorker' in navigator) {
     // shortly after, instead of reloading out from under them.
     const tryReload = () => {
       const ae = document.activeElement;
-      const typing = ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA');
+      const typing = ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.isContentEditable);
       if (typing || _regBookDragActive) { setTimeout(tryReload, 500); return; }
       window.location.reload();
     };
@@ -12374,12 +12759,14 @@ function renderParentPortalResult(r, opts) {
     <h2>${esc(name)}</h2>
     <p class="desc">${esc(r.school_name || '')} · ${esc(r.class_admitted || '')}${r.father_name ? ' · ' + esc(r.father_name) : ''}</p>
     ${(admLine || dobLine) ? `<p class="desc" style="margin-top:-4px;">${[admLine, dobLine].filter(Boolean).join(' · ')}</p>` : ''}
+    ${noticeParentBoxHtml()}
     ${ppQuizHtml(r)}
     ${feeHtml}
     ${resultsHtml}
     ${diaryHtml}
     <button class="btn-ghost" style="width:100%;margin-top:16px;" onclick="clearPpCache(); document.getElementById('parent-portal-body').innerHTML = parentPortalFormHtml()">${esc(t.parentPortalSwitchStudent)}</button>
   `;
+  noticeRefresh('pp-notices', 'parent', 10);
 }
 
 function togglePpFeeHistory() {
