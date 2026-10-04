@@ -14,7 +14,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https:; connect-src 'self' https://*.supabase.co wss://*.supabase.co; manifest-src 'self' blob:; frame-ancestors 'none'; base-uri 'self'; form-action 'self';">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https:; media-src 'self' data: blob:; connect-src 'self' https://*.supabase.co wss://*.supabase.co; manifest-src 'self' blob:; frame-ancestors 'none'; base-uri 'self'; form-action 'self';">
 <meta name="referrer" content="strict-origin-when-cross-origin">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, interactive-widget=resizes-visual">
 <title>School Finance & Records</title>
@@ -11125,6 +11125,7 @@ function tplNotices() {
   return `
     <h2>${esc(qt('Notice Board', 'نوٹس بورڈ'))}</h2>
     <p class="desc">${esc(qt('Write a notice and tap who it is for. It appears in the Teachers\' or Parents\' portal.', 'نوٹس لکھیں اور منتخب کریں کہ یہ کس کے لیے ہے۔ یہ اساتذہ یا والدین کے پورٹل میں نظر آئے گا۔'))}</p>
+    <button class="btn-primary" style="width:100%;margin-bottom:12px;" onclick="chOpen('owner')">💬 ${esc(qt('Chat & voice message', 'چیٹ اور وائس میسج'))}</button>
     <div class="card">
       <div id="notice-form-title" class="section-title" style="margin-top:0;">${esc(qt('New notice', 'نیا نوٹس'))}</div>
       <div style="font-size:12px;opacity:.7;margin-bottom:6px;">${esc(qt('Send to', 'بھیجیں'))}</div>
@@ -11465,6 +11466,7 @@ function ppContactBoxHtml() {
         ${btn('both', '👥 ' + esc(qt('Both', 'دونوں')))}
       </div>
       <div id="pp-contact-status" style="font-size:12px;margin-top:8px;"></div>
+      <button type="button" class="btn-primary" style="width:100%;margin-top:10px;" onclick="chOpen('parent')">💬 ${esc(qt('Chat & voice message', 'چیٹ اور وائس میسج'))}</button>
       <button type="button" class="btn-ghost" style="width:100%;margin-top:10px;" onclick="ppToggleMyMsgs()">📜 ${esc(qt('My messages', 'میرے پیغامات'))}<span id="pp-my-badge"></span></button>
       <div id="pp-my-list" class="hidden" style="margin-top:8px;"></div>
     </div>`;
@@ -11714,6 +11716,7 @@ function renderClassPortalMenu() {
     <button class="btn-primary" style="width:100%;margin-bottom:10px;" onclick="renderClassPortalMarksView()">${esc(t.classPortalMenuMarksView)}</button>
     <button class="btn-primary" style="width:100%;margin-bottom:10px;" onclick="noticeOpenScreen('class')">📢 ${esc(qt('Notice Board', 'نوٹس بورڈ'))}</button>
     <button class="btn-primary" style="width:100%;margin-bottom:10px;" onclick="renderClassPortalParentMsgs()">📩 ${esc(qt('Parent Messages', 'والدین کے پیغامات'))}<span id="cp-pm-badge"></span></button>
+    <button class="btn-primary" style="width:100%;margin-bottom:10px;" onclick="chOpen('teacher')">💬 ${esc(qt('Chat & voice message', 'چیٹ اور وائس میسج'))}</button>
     <button class="btn-ghost" style="width:100%;margin-bottom:10px;" onclick="renderClassPortalAddStudent()">${esc(t.classPortalMenuAddStudent)}</button>
     <button class="btn-ghost" style="width:100%;" onclick="renderClassPortalManageStudents()">${esc(t.classPortalMenuManageStudents)}</button>
     ${queue.length ? `<p style="font-size:11px;opacity:.6;margin-top:14px;">${esc(t.classPortalOffline)} (${queue.length})</p>` : ''}
@@ -12868,6 +12871,7 @@ function getPpCache() { try { return JSON.parse(localStorage.getItem(PP_CACHE_KE
 function setPpCache(c) { localStorage.setItem(PP_CACHE_KEY, JSON.stringify(c)); }
 function clearPpCache() {
   localStorage.removeItem(PP_CACHE_KEY);
+  PP_HW_OPEN = false; PP_HW_DATES = [];
   try { history.replaceState(null, '', location.pathname + location.search); } catch (e) {}
 }
 // The login is also written into the page link (after the #, which is never sent to any server) so the same
@@ -13028,6 +13032,60 @@ async function submitParentPortalLookup() {
   renderParentPortalResult(r, { fromCache: false });
 }
 
+// ---- Homework (diary) in the parent portal ----
+// Only the newest day's homework is shown (older days are hidden once a newer day exists). A red number on the
+// button counts the days of homework the parent has not opened yet (2 days not opened = 2, 3 days = 3 ...).
+// Days the parent missed are shown together, newest first, the first time they open it.
+let PP_HW_OPEN = false, PP_HW_DATES = [];
+const ppDate10 = d => String((d && d.entry_date) || '').slice(0, 10);
+function ppLocalToday() { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
+function ppHwKey() { const c = getPpCache(); return 'pp_hw_seen_' + (c ? c.schoolCode + '_' + c.roll : ''); }
+function ppHwDays(r) {
+  const set = {}; ((r && r.diary_entries) || []).forEach(d => { const k = ppDate10(d); if (k) set[k] = 1; });
+  return Object.keys(set).sort().reverse();
+}
+function ppHwUnseen(r) {
+  const days = ppHwDays(r); if (!days.length) return [];
+  const seen = localStorage.getItem(ppHwKey()) || '';
+  return seen ? days.filter(k => k > seen) : [days[0]];
+}
+function ppHwPanelHtml(r) {
+  const entries = (r && r.diary_entries) || [], today = ppLocalToday();
+  return PP_HW_DATES.map(day => `
+    <div class="card" style="margin-bottom:8px;">
+      <div style="display:flex;justify-content:space-between;margin-bottom:4px;"><b>${esc(fmtDate(day) || day)}</b>${day === today ? `<span class="sub">${esc(qt('Today', 'آج'))}</span>` : ''}</div>
+      ${entries.filter(d => ppDate10(d) === day).map(d => `
+        <div style="padding:8px 0;border-top:1px solid var(--line);">
+          <div class="nm">${esc(d.subject || '')}</div>
+          <div style="margin-top:4px;font-size:13px;line-height:1.5;white-space:pre-wrap;">${esc(d.entry_text || '')}</div>
+        </div>`).join('')}
+    </div>`).join('');
+}
+function ppHomeworkHtml(r) {
+  const days = ppHwDays(r);
+  const title = `<div class="section-title" style="margin-top:6px;">${esc(qt('Homework', 'ہوم ورک'))}</div>`;
+  if (!days.length) return title + `<p style="font-size:12px;opacity:.6;margin-bottom:14px;">${esc(t.parentNoDiary)}</p>`;
+  const n = PP_HW_OPEN ? 0 : ppHwUnseen(r).length;
+  const label = days[0] === ppLocalToday() ? qt("Today's Homework", 'آج کا ہوم ورک') : qt('Latest Homework', 'تازہ ہوم ورک');
+  const badge = n > 0 ? `<span class="pp-hw-badge" style="background:#d33;color:#fff;border-radius:11px;padding:1px 9px;margin-inline-start:8px;font-size:13px;">${n}</span>` : '';
+  return title + `<div style="margin-bottom:14px;">
+    <button type="button" id="pp-hw-btn" class="btn-primary" style="width:100%;" onclick="ppToggleHomework()">📚 ${esc(label)}${badge}</button>
+    <div id="pp-hw" class="${PP_HW_OPEN ? '' : 'hidden'}" style="margin-top:8px;">${PP_HW_OPEN ? ppHwPanelHtml(r) : ''}</div>
+  </div>`;
+}
+function ppToggleHomework() {
+  const box = document.getElementById('pp-hw'), r = PP_CURRENT;
+  if (!box || !r) return;
+  if (PP_HW_OPEN) { PP_HW_OPEN = false; PP_HW_DATES = []; box.classList.add('hidden'); box.innerHTML = ''; return; }
+  const days = ppHwDays(r); if (!days.length) return;
+  const unseen = ppHwUnseen(r);
+  PP_HW_DATES = unseen.length ? unseen : [days[0]];
+  PP_HW_OPEN = true;
+  try { localStorage.setItem(ppHwKey(), days[0]); } catch (e) {}
+  box.innerHTML = ppHwPanelHtml(r); box.classList.remove('hidden');
+  const b = document.querySelector('#pp-hw-btn .pp-hw-badge'); if (b) b.remove();
+}
+
 let PP_CURRENT = null; // last-loaded parent portal record, so click-to-expand handlers can read it back
 
 function renderParentPortalResult(r, opts) {
@@ -13040,21 +13098,7 @@ function renderParentPortalResult(r, opts) {
   const ppMyOpen = !!(ppMyEl && !ppMyEl.classList.contains('hidden'));
   const name = (LANG === 'ur' && r.student_name_ur) ? r.student_name_ur : r.student_name;
   const offlineBanner = opts.fromCache ? `<p style="font-size:11px;opacity:.65;margin-bottom:10px;">${esc(t.parentPortalOfflineNote)} ${esc(new Date(opts.ts).toLocaleString())}</p>` : '';
-  const diaryEntries = r.diary_entries || [];
-  const diaryHtml = `
-    <div class="section-title" style="margin-top:14px;">${esc(t.parentDiaryTitle)}</div>
-    ${diaryEntries.length ? `<div class="list-card">${diaryEntries.map((d, i) => `
-      <div class="list-row" style="cursor:pointer;flex-direction:column;align-items:stretch;" onclick="togglePpDiary(${i})">
-        <div style="display:flex;justify-content:space-between;">
-          <div class="nm">${esc(d.subject || '')}</div>
-          <div style="display:flex;align-items:center;gap:8px;">
-            <div class="sub">${esc(fmtDate(d.entry_date) || '')}</div>
-            <span style="opacity:.5;">▾</span>
-          </div>
-        </div>
-        <div id="pp-diary-${i}" class="hidden sub" style="margin-top:8px;white-space:pre-wrap;">${esc(d.entry_text || '')}</div>
-      </div>`).join('')}</div>` : `<p style="font-size:12px;opacity:.6;">${esc(t.parentNoDiary)}</p>`}
-  `;
+  const diaryHtml = ppHomeworkHtml(r);
 
   const dobLine = (r.dob_figures || r.dob_words) ? `${esc(t.dobLabel || 'Date of Birth')}: ${esc(r.dob_words || fmtDate(r.dob_figures) || '')}` : '';
   const admLine = r.admission_date ? `${esc(t.admissionDate)}: ${esc(fmtDate(r.admission_date))}` : '';
@@ -13098,12 +13142,12 @@ function renderParentPortalResult(r, opts) {
     <h2>${esc(name)}</h2>
     <p class="desc">${esc(r.school_name || '')} · ${esc(r.class_admitted || '')}${r.father_name ? ' · ' + esc(r.father_name) : ''}</p>
     ${(admLine || dobLine) ? `<p class="desc" style="margin-top:-4px;">${[admLine, dobLine].filter(Boolean).join(' · ')}</p>` : ''}
+    ${diaryHtml}
     ${noticeParentBoxHtml()}
     ${ppContactBoxHtml()}
     ${ppQuizHtml(r)}
     ${feeHtml}
     ${resultsHtml}
-    ${diaryHtml}
     <button class="btn-ghost" style="width:100%;margin-top:16px;" onclick="ppCopyMyLink()">🔗 ${esc(qt('Save my link (no login needed)', 'میرا لنک محفوظ کریں (لاگ اِن کی ضرورت نہیں)'))}</button>
     <button class="btn-ghost" style="width:100%;margin-top:10px;" onclick="clearPpCache(); document.getElementById('parent-portal-body').innerHTML = parentPortalFormHtml()">${esc(t.parentPortalSwitchStudent)}</button>
   `;
@@ -13603,7 +13647,212 @@ async function ppQuizReview(i) {
   } catch (e) { alert(qzErr(e)); renderParentPortalResult(PP_CURRENT); }
 }
 
-console.log('SchoolMS build: 2026-10-04-daily-quiz-7am-latest-result-lightsync-staffreq'); // bump this string on every deploy to verify (in browser console) which version is actually running
+// =====================================================================
+// SCHOOL CHAT — text + voice notes between parents, teachers and principal.
+// Backend: chat_voice.sql (tables chat_msgs / chat_voice_data, RPCs chat_send,
+// chat_list, chat_audio, chat_contact). Voice notes: max 120 s, deleted after 2 days.
+// =====================================================================
+const CH = { role: null, to: '', cls: '', sid: '', rec: null, chunks: [], tick: null, audio: null, secs: 0, poll: null, cache: {} };
+
+function chCreds() {
+  if (CH.role === 'parent') { const c = ppQuizCreds(); return c ? { p_role: 'parent', p_code: c.p_school_code, p_a: c.p_roll, p_b: c.p_pin } : null; }
+  if (CH.role === 'teacher') { const s = getClassSession(); return s ? { p_role: 'teacher', p_code: s.schoolCode, p_a: s.loginId, p_b: s.password } : null; }
+  return CURRENT_USER ? { p_role: 'owner', p_code: '', p_a: '', p_b: '' } : null;
+}
+function chStudents() {
+  if (CH.role === 'teacher') { const s = getClassSession(); return s ? (s.students || []).map(x => ({ id: x.id, name: x.name, class_name: s.className })) : []; }
+  if (CH.role === 'owner') return (DATA.students || []).filter(x => x.status === 'active').map(x => ({ id: x.id, name: x.name, class_name: x.class_name }));
+  return [];
+}
+function chErr(e) {
+  const m = String((e && e.message) || '');
+  if (/does not exist|schema cache|could not find|chat_/.test(m) && !/too_many|bad_/.test(m)) return qt('Chat is not set up yet (run chat_voice.sql in Supabase).', 'چیٹ ابھی سیٹ اپ نہیں ہوئی (Supabase میں chat_voice.sql چلائیں)۔');
+  if (/too_many/.test(m)) return qt('Too many messages today. Try again tomorrow.', 'آج بہت زیادہ پیغامات بھیج دیے۔ کل کوشش کریں۔');
+  if (/bad_audio/.test(m)) return qt('Voice note is too large. Record a shorter one.', 'وائس نوٹ بہت بڑا ہے۔ چھوٹا ریکارڈ کریں۔');
+  return qt('Could not send. Please try again.', 'پیغام نہیں بھیجا جا سکا۔ دوبارہ کوشش کریں۔');
+}
+
+function chOpen(role) {
+  chClose();
+  CH.role = role; CH.to = role === 'parent' ? 'teacher' : (role === 'teacher' ? 'parents' : 'school');
+  CH.cls = ''; CH.sid = ''; CH.audio = null; CH.secs = 0;
+  const ov = document.createElement('div'); ov.id = 'ch-ov';
+  ov.style.cssText = 'position:fixed;inset:0;z-index:9999;background:var(--cream);display:flex;flex-direction:column;padding-top:env(safe-area-inset-top,0px);';
+  ov.innerHTML = `
+    <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--navy);color:var(--gold-soft);">
+      <button onclick="chClose()" style="background:none;border:none;color:inherit;font-size:22px;padding:0 6px;">‹</button>
+      <b style="flex:1;">💬 ${esc(qt('Chat', 'چیٹ'))}</b>
+    </div>
+    <div id="ch-list" style="flex:1;overflow-y:auto;padding:12px;"></div>
+    <div style="padding:10px 12px calc(10px + env(safe-area-inset-bottom,0px));border-top:1px solid var(--line);background:#fff;">
+      <div id="ch-to"></div>
+      <div id="ch-prev"></div>
+      <textarea id="ch-text" rows="2" maxlength="1000" placeholder="${esc(qt('Write a message…', 'پیغام لکھیں…'))}" style="width:100%;box-sizing:border-box;"></textarea>
+      <div style="display:flex;gap:8px;margin-top:8px;">
+        <button class="btn-ghost" id="ch-mic" style="flex:none;min-width:70px;" onclick="chRecToggle()">🎤</button>
+        <button class="btn-ghost hidden" id="ch-sms" style="flex:none;" onclick="chSms()">📱 SMS</button>
+        <button class="btn-primary" id="ch-send" style="flex:1;" onclick="chSend()">${esc(qt('Send', 'بھیجیں'))}</button>
+      </div>
+      <div id="ch-msg" class="err" style="margin:6px 0 0;"></div>
+    </div>`;
+  document.body.appendChild(ov);
+  chToPaint(); chLoad();
+  CH.poll = setInterval(() => { if (!CH.rec) chLoad(); }, 20000);
+}
+function chClose() {
+  clearInterval(CH.poll); clearInterval(CH.tick);
+  if (CH.rec) { CH.rec._cancel = true; try { CH.rec.stop(); } catch (e) {} }
+  const o = document.getElementById('ch-ov'); if (o) o.remove();
+  CH.role = null;
+}
+
+// ---------- recipient picker ----------
+function chSetTo(v) { CH.to = v; CH.cls = ''; CH.sid = ''; chToPaint(); }
+function chSetCls(v) { CH.cls = v; CH.sid = ''; chToPaint(); }
+function chSetSid(v) { CH.sid = v; chToPaint(); }
+function chToPaint() {
+  const el = document.getElementById('ch-to'); if (!el) return;
+  const sel = (opts, val, fn) => `<select onchange="${fn}(this.value)" style="margin-bottom:6px;">${opts.map(o => `<option value="${esc(o[0])}"${o[0] === val ? ' selected' : ''}>${esc(o[1])}</option>`).join('')}</select>`;
+  const sts = chStudents();
+  const classes = [...new Set(sts.map(s => s.class_name).filter(Boolean))].sort();
+  let h = '';
+  if (CH.role === 'parent') {
+    h = sel([['teacher', qt('To: Teacher', 'استاد کو')], ['owner', qt('To: Principal', 'پرنسپل کو')]], CH.to, 'chSetTo');
+  } else if (CH.role === 'teacher') {
+    h = sel([['parents', qt('To: All parents of my class', 'میری کلاس کے تمام والدین کو')], ['student', qt('To: One student\'s parent', 'ایک طالب علم کے والدین کو')], ['owner', qt('To: Principal', 'پرنسپل کو')]], CH.to, 'chSetTo');
+  } else {
+    h = sel([['school', qt('To: All parents of the school', 'پورے اسکول کے والدین کو')], ['class', qt('To: Parents of one class', 'ایک کلاس کے والدین کو')], ['student', qt('To: One student\'s parent', 'ایک طالب علم کے والدین کو')], ['teachers', qt('To: Teachers', 'اساتذہ کو')]], CH.to, 'chSetTo');
+    if (['class', 'student', 'teachers'].includes(CH.to)) {
+      h += sel([['', CH.to === 'teachers' ? qt('All classes', 'تمام کلاسیں') : qt('— choose class —', '— کلاس منتخب کریں —')]].concat(classes.map(c => [c, c])), CH.cls, 'chSetCls');
+    }
+  }
+  if (CH.to === 'student') {
+    const list = CH.role === 'owner' ? sts.filter(s => s.class_name === CH.cls) : sts;
+    if (CH.role === 'teacher' || CH.cls) h += sel([['', qt('— choose student —', '— طالب علم منتخب کریں —')]].concat(list.map(s => [s.id, s.name])), CH.sid, 'chSetSid');
+  }
+  el.innerHTML = h;
+  const sms = document.getElementById('ch-sms'); if (sms) sms.classList.toggle('hidden', !(CH.role !== 'parent' && CH.to === 'student' && CH.sid));
+}
+function chTarget() {
+  const to = CH.to, none = { p_class: null, p_student: null };
+  if (CH.role === 'parent') return Object.assign({ p_to: to }, none);
+  if (CH.role === 'teacher') {
+    if (to === 'owner') return Object.assign({ p_to: 'owner' }, none);
+    if (to === 'student') return CH.sid ? { p_to: 'parents', p_class: null, p_student: CH.sid } : null;
+    return Object.assign({ p_to: 'parents' }, none);
+  }
+  if (to === 'school') return Object.assign({ p_to: 'parents' }, none);
+  if (to === 'class') return CH.cls ? { p_to: 'parents', p_class: CH.cls, p_student: null } : null;
+  if (to === 'student') return CH.sid ? { p_to: 'parents', p_class: null, p_student: CH.sid } : null;
+  return { p_to: 'teacher', p_class: CH.cls || null, p_student: null };
+}
+
+// ---------- voice recording (tap to start, tap again to stop, max 120 s) ----------
+async function chRecToggle() {
+  const msg = document.getElementById('ch-msg');
+  if (CH.rec) { CH.rec.stop(); return; }
+  if (!window.MediaRecorder || !navigator.mediaDevices) { msg.textContent = qt('Voice recording is not supported on this browser.', 'اس براؤزر میں وائس ریکارڈنگ دستیاب نہیں۔'); return; }
+  msg.textContent = '';
+  try {
+    const st = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const mime = ['audio/webm;codecs=opus', 'audio/mp4', 'audio/webm'].find(m => MediaRecorder.isTypeSupported(m)) || '';
+    const rec = new MediaRecorder(st, Object.assign({ audioBitsPerSecond: 16000 }, mime ? { mimeType: mime } : {}));
+    CH.chunks = []; CH.rec = rec; CH.audio = null; chPrev();
+    const t0 = Date.now();
+    rec.ondataavailable = e => { if (e.data && e.data.size) CH.chunks.push(e.data); };
+    rec.onstop = () => {
+      clearInterval(CH.tick); st.getTracks().forEach(t => t.stop()); CH.rec = null;
+      const b = document.getElementById('ch-mic'); if (b) b.textContent = '🎤';
+      if (rec._cancel) return;
+      CH.secs = Math.min(120, Math.max(1, Math.round((Date.now() - t0) / 1000)));
+      const fr = new FileReader();
+      fr.onload = () => { CH.audio = fr.result; chPrev(); };
+      fr.readAsDataURL(new Blob(CH.chunks, { type: rec.mimeType || mime || 'audio/webm' }));
+    };
+    rec.start();
+    CH.tick = setInterval(() => {
+      const s = Math.round((Date.now() - t0) / 1000), b = document.getElementById('ch-mic');
+      if (b) b.textContent = '⏹ ' + s + 's';
+      if (s >= 120) rec.stop();
+    }, 500);
+  } catch (e) { msg.textContent = qt('Microphone permission is needed.', 'مائیک کی اجازت ضروری ہے۔'); }
+}
+function chPrev() {
+  const p = document.getElementById('ch-prev'); if (!p) return;
+  p.innerHTML = CH.audio ? `<div style="display:flex;gap:6px;align-items:center;margin-bottom:6px;"><audio controls src="${CH.audio}" style="flex:1;height:36px;min-width:0;"></audio><button class="btn-ghost danger" style="flex:none;padding:6px 10px;" onclick="CH.audio=null;chPrev()">✕</button></div>` : '';
+}
+
+// ---------- send / SMS ----------
+async function chSend() {
+  const cr = chCreds(), tg = chTarget(), msg = document.getElementById('ch-msg'), ta = document.getElementById('ch-text'), btn = document.getElementById('ch-send');
+  if (!cr || !ta) return;
+  msg.textContent = '';
+  if (!tg) { msg.textContent = qt('Please choose who to send to.', 'پہلے منتخب کریں کہ کسے بھیجنا ہے۔'); return; }
+  const body = ta.value.trim();
+  if (!body && !CH.audio) return;
+  if (!navigator.onLine) { msg.textContent = qt('Internet is needed.', 'انٹرنیٹ ضروری ہے۔'); return; }
+  btn.disabled = true;
+  try {
+    const { error } = await sb.rpc('chat_send', Object.assign({}, cr, tg, { p_body: body || null, p_audio: CH.audio, p_secs: CH.audio ? CH.secs : null }));
+    if (error) msg.textContent = chErr(error);
+    else { ta.value = ''; CH.audio = null; chPrev(); await chLoad(true); }
+  } catch (e) { msg.textContent = chErr(e); }
+  btn.disabled = false;
+}
+async function chSms() {
+  const text = (document.getElementById('ch-text').value || '').trim(), msg = document.getElementById('ch-msg');
+  if (!CH.sid) return;
+  if (!text) { msg.textContent = qt('Write the SMS text first.', 'پہلے SMS کا متن لکھیں۔'); return; }
+  let contact = '';
+  try {
+    if (CH.role === 'owner') { const s = (DATA.students || []).find(x => x.id === CH.sid); contact = s && s.contact; }
+    else { const cr = chCreds(); const { data } = await sb.rpc('chat_contact', { p_code: cr.p_code, p_a: cr.p_a, p_b: cr.p_b, p_student: CH.sid }); contact = data; }
+  } catch (e) {}
+  if (!contact) { alert(qt('No phone number saved for this student.', 'اس طالب علم کا فون نمبر محفوظ نہیں۔')); return; }
+  openFatherWhatsapp(contact, text);   // opens the phone's Messages app, pre-filled
+}
+
+// ---------- list + play ----------
+function chBubble(m) {
+  const mine = m.from_role === CH.role;
+  const to = m.to_role === 'parents' ? (m.student_name || (m.class_name ? qt('Class ', 'کلاس ') + m.class_name : qt('All parents', 'تمام والدین')))
+    : m.to_role === 'owner' ? qt('Principal', 'پرنسپل') : qt('Teacher', 'استاد') + (m.class_name ? ' (' + m.class_name + ')' : '');
+  const voice = m.has_audio
+    ? `<button class="btn-ghost" id="chv-${m.id}" style="flex:none;padding:6px 12px;margin-top:6px;" onclick="chPlay('${m.id}')">▶ ${esc(qt('Voice', 'وائس'))} ${m.secs || 0}s</button>`
+    : (m.had_audio ? `<div class="sub" style="margin-top:6px;">🎙 ${esc(qt('Voice note expired', 'وائس نوٹ ختم ہو گیا'))}</div>` : '');
+  return `<div style="display:flex;justify-content:${mine ? 'flex-end' : 'flex-start'};margin-bottom:10px;">
+    <div style="max-width:85%;background:${mine ? '#E9F2E4' : '#fff'};border:1px solid var(--line);border-radius:12px;padding:8px 10px;">
+      <div class="sub" style="font-size:11px;"><b>${esc(m.from_label || m.from_role)}</b> → ${esc(to)}</div>
+      ${m.body ? `<div dir="auto" style="white-space:pre-wrap;font-size:14px;margin-top:4px;">${esc(m.body)}</div>` : ''}${voice}
+      <div class="sub" style="font-size:10px;text-align:end;margin-top:4px;">${esc(new Date(m.created_at).toLocaleString())}</div>
+    </div></div>`;
+}
+async function chLoad(force) {
+  const cr = chCreds(), box = document.getElementById('ch-list'); if (!cr || !box || !navigator.onLine) return;
+  try {
+    const { data, error } = await sb.rpc('chat_list', Object.assign({}, cr, { p_limit: 60 }));
+    if (error) { box.innerHTML = `<div class="err">${esc(chErr(error))}</div>`; return; }
+    const list = (data || []).slice().reverse();
+    const sig = list.map(m => m.id + (m.has_audio ? 'a' : '')).join(',');
+    if (!force && box.dataset.sig === sig) return;   // nothing new: don't disturb a playing voice note
+    box.dataset.sig = sig;
+    box.innerHTML = list.length ? list.map(chBubble).join('') : `<p class="desc">${esc(qt('No messages yet.', 'ابھی کوئی پیغام نہیں۔'))}</p>`;
+    box.scrollTop = box.scrollHeight;
+  } catch (e) {}
+}
+async function chPlay(id) {
+  const b = document.getElementById('chv-' + id), cr = chCreds(); if (!b || !cr) return;
+  const show = d => { const el = document.getElementById('chv-' + id); if (el) el.outerHTML = `<audio controls autoplay src="${d}" style="width:100%;margin-top:6px;"></audio>`; };
+  if (CH.cache[id]) { show(CH.cache[id]); return; }
+  b.disabled = true; b.textContent = '…';
+  try {
+    const { data, error } = await sb.rpc('chat_audio', Object.assign({}, cr, { p_id: id }));
+    if (error || !data) { b.outerHTML = `<div class="sub">🎙 ${esc(qt('Voice note expired', 'وائس نوٹ ختم ہو گیا'))}</div>`; return; }
+    CH.cache[id] = data; show(data);
+  } catch (e) { b.disabled = false; b.textContent = '▶'; }
+}
+
+console.log('SchoolMS build: 2026-10-04-daily-quiz-7am-latest-result-lightsync-staffreq-chat-voice'); // bump this string on every deploy to verify (in browser console) which version is actually running
 </script>
 </body>
 </html>
