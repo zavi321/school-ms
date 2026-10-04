@@ -2265,6 +2265,7 @@ async function afterLogin() {
   await loadAllData();
   document.getElementById('loading').classList.add('hidden');
   renderApp();
+  startStaffReqPolling();
   maybeRunExamRecordsCleanup(); // fire-and-forget safety net (see function below)
 }
 
@@ -2344,6 +2345,89 @@ function maybeRunExamRecordsCleanup() {
   sb.rpc('cleanup_cleared_fee_records').then(({ error }) => {
     if (error) console.error('Fee records cleanup failed:', error.message);
   });
+}
+
+// ---------------- Teacher attendance requests (principal approves) ----------------
+let SR_PENDING = 0, SR_TIMER = null;
+function srPaintBadges() {
+  document.querySelectorAll('.sr-badge').forEach(el => { el.textContent = SR_PENDING; el.style.display = SR_PENDING ? '' : 'none'; });
+}
+// Head-only count query (no rows downloaded) — a few hundred bytes per check, and only while the app is visible.
+async function refreshStaffReqCount() {
+  if (!CURRENT_USER || document.hidden || !navigator.onLine) return;
+  const { count, error } = await sb.from('staff_att_requests').select('id', { count: 'exact', head: true })
+    .eq('owner_id', CURRENT_USER.id).eq('status', 'pending');
+  if (error) return;
+  const prev = SR_PENDING; SR_PENDING = count || 0; srPaintBadges();
+  if (SR_PENDING > prev) { try { if (navigator.vibrate) navigator.vibrate(200); } catch (e) {} }
+}
+function startStaffReqPolling() {
+  clearInterval(SR_TIMER);
+  refreshStaffReqCount();
+  SR_TIMER = setInterval(refreshStaffReqCount, 90000);
+}
+async function openStaffRequests() {
+  showModal(qt('Teacher Requests', 'اساتذہ کی درخواستیں'), `<div id="sr-body" style="padding:10px 0;opacity:.6;text-align:center;">…</div>`);
+  await renderStaffRequests();
+}
+async function renderStaffRequests() {
+  const body = document.getElementById('sr-body');
+  if (!body) return;
+  if (!navigator.onLine) { body.innerHTML = `<div class="err">${esc(qt('You are offline. Requests can be approved only when online.', 'آپ آف لائن ہیں۔ منظوری صرف آن لائن ہو سکتی ہے۔'))}</div>`; return; }
+  const { data, error } = await sb.from('staff_att_requests')
+    .select('id,teacher_id,att_date,kind,session,requested_at,received_at')
+    .eq('owner_id', CURRENT_USER.id).eq('status', 'pending').order('requested_at');
+  if (error) { body.innerHTML = `<div class="err">${esc(error.message)}</div>`; return; }
+  SR_PENDING = (data || []).length; srPaintBadges();
+  if (!data.length) { body.innerHTML = `<div style="padding:14px;text-align:center;font-size:13px;opacity:.6;">${esc(qt('No pending requests.', 'کوئی درخواست باقی نہیں۔'))}</div>`; return; }
+  const fmtT = iso => new Date(iso).toLocaleTimeString(LANG === 'ur' ? 'ur-PK' : 'en-PK', { hour: '2-digit', minute: '2-digit' });
+  const today = todayISO();
+  body.innerHTML = data.map(r => {
+    const tc = DATA.teachers.find(x => String(x.id) === String(r.teacher_id));
+    const kindTxt = r.kind === 'present' ? t.present : r.kind === 'leave' ? t.leave : t.sick;
+    const sessTxt = r.session === 'am' ? ' · ' + t.morning : r.session === 'pm' ? ' · ' + t.afternoon : '';
+    const late = Math.abs(new Date(r.received_at) - new Date(r.requested_at)) > 2 * 60000;
+    const dateTxt = r.att_date !== today ? ` · ${esc(r.att_date)}` : '';
+    return `<div class="ledger-row" style="flex-direction:column;align-items:stretch;gap:8px;">
+      <div>
+        <div style="font-size:14px;font-weight:600;">${esc(tc ? tc.name : '—')}</div>
+        <div style="font-size:12px;opacity:.75;">${esc(kindTxt)}${esc(sessTxt)}${dateTxt}</div>
+        <div style="font-size:11px;opacity:.6;">${esc(qt('Requested', 'درخواست'))}: ${esc(fmtT(r.requested_at))}${late ? ` · ${esc(qt('received', 'موصول'))} ${esc(fmtT(r.received_at))}` : ''}</div>
+      </div>
+      <div style="display:flex;gap:8px;">
+        <button class="btn-primary" style="flex:1;padding:8px;" onclick="decideStaffReq('${r.id}','approved')">${esc(qt('Approve', 'منظور'))}</button>
+        <button class="btn-ghost" style="flex:1;padding:8px;" onclick="decideStaffReq('${r.id}','denied')">${esc(qt('Deny', 'مسترد'))}</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+async function decideStaffReq(id, decision) {
+  if (!navigator.onLine) { alert(qt('You are offline.', 'آپ آف لائن ہیں۔')); return; }
+  const { data: r, error: e0 } = await sb.from('staff_att_requests').select('*').eq('id', id).eq('owner_id', CURRENT_USER.id).maybeSingle();
+  if (e0 || !r || r.status !== 'pending') { await renderStaffRequests(); return; }
+  if (decision === 'approved') {
+    const tc = DATA.teachers.find(x => String(x.id) === String(r.teacher_id));
+    if (!tc) { alert(qt('This teacher no longer exists.', 'یہ استاد اب موجود نہیں۔')); return; }
+    // Read the live row so a session already approved earlier today is never overwritten.
+    const { data: ex } = await sb.from('teacher_attendance').select('*').eq('teacher_id', tc.id).eq('date', r.att_date).maybeSingle();
+    let am = ex ? ex.status_am : null, pm = ex ? ex.status_pm : null;
+    if (r.kind === 'present') { if (r.session === 'am') am = 'present'; else pm = 'present'; }
+    else { am = r.kind; pm = r.kind; }
+    const payload = {
+      id: ex ? ex.id : (crypto.randomUUID ? crypto.randomUUID() : `local-${Date.now()}`),
+      owner_id: CURRENT_USER.id, teacher_id: tc.id, date: r.att_date,
+      status_am: am || null, status_pm: pm || null, status: deriveDayStatus(am, pm)
+    };
+    const { error: e1 } = await sb.from('teacher_attendance').upsert(payload, { onConflict: 'teacher_id,date' });
+    if (reportSaveError(e1)) return;
+    const idx = DATA.teacherAttendance.findIndex(x => String(x.teacher_id) === String(tc.id) && x.date === r.att_date);
+    if (idx >= 0) DATA.teacherAttendance[idx] = { ...DATA.teacherAttendance[idx], ...payload }; else DATA.teacherAttendance.push(payload);
+    try { idbPutRow('teacher_attendance', payload); } catch (e) {}
+  }
+  const { error: e2 } = await sb.from('staff_att_requests').update({ status: decision, decided_at: new Date().toISOString() })
+    .eq('id', id).eq('owner_id', CURRENT_USER.id);
+  if (reportSaveError(e2)) return;
+  await renderStaffRequests();
 }
 
 // ---------------- Auth screens ----------------
@@ -2927,7 +3011,8 @@ function openAttendanceHub() {
   showModal(t.navAttendance, `
     <p style="font-size:12px;opacity:.65;margin:0 0 14px;">${esc(t.navAttendanceDesc)}</p>
     <button class="btn-primary" style="width:100%;margin-bottom:10px;" onclick="closeModal();openMarkAttendance();">${esc(t.markAttendance)}</button>
-    <button class="btn-ghost" style="width:100%;" onclick="closeModal();openTeacherRegister();">${esc(t.teacherRegister)}</button>
+    <button class="btn-ghost" style="width:100%;margin-bottom:10px;" onclick="closeModal();openTeacherRegister();">${esc(t.teacherRegister)}</button>
+    <button class="btn-ghost" style="width:100%;" onclick="closeModal();openStaffRequests();">🔔 ${esc(qt('Teacher Requests', 'اساتذہ کی درخواستیں'))}</button>
   `);
 }
 
@@ -4541,13 +4626,15 @@ function tplDashOverview(s) {
     </div>`;
   const qa = [
     ['att', t.navAttendance,        'openAttendanceHub()', 'c1'],
+    ['bel', qt('Teacher Requests', 'اساتذہ کی درخواستیں'), 'openStaffRequests()', 'c8',
+      `<span class="sr-badge" style="display:${SR_PENDING ? '' : 'none'};position:absolute;top:-5px;right:-5px;background:#c0392b;color:#fff;border-radius:10px;font-size:10px;line-height:1;padding:3px 6px;font-weight:700;">${SR_PENDING}</span>`],
     ['fee', t.navFees,              "setTab('finance')", 'c3'],
     ['mrk', t.navExamsMarks,        "setTab('marksSheet')", 'c7'],
     ['cer', t.dmc,                  "setTab('dmc')", 'c6'],
     ['pap', t.papers,               "setTab('papers')", 'c2'],
     ['tmt', ur?'ٹائم ٹیبل':'Timetable', "setTab('timetable')", 'c4'],
     ['adm', t.admissionRegister,    "setTab('admissionRegister')", 'c5']
-  ].map(([k,label,act,c]) => `<button class="d-q" onclick="${act}"><span class="d-tile d-lg ${c}">${diSvg(k)}</span>${esc(label)}</button>`).join('');
+  ].map(([k,label,act,c,extra]) => `<button class="d-q" onclick="${act}"><span class="d-tile d-lg ${c}"${extra ? ' style="position:relative"' : ''}>${diSvg(k)}${extra || ''}</span>${esc(label)}</button>`).join('');
   return `
     ${group('ov', ur?'جائزہ':'Overview', ['stu','tea','inc','exp','sal','bal','due'], ur?'ٹیپ کریں':'tap to open', 'ovw', ur?'طلبہ، اساتذہ، آمدنی اور بقایا':'Students, staff, money & dues')}
     <div class="d-box">
@@ -11736,6 +11823,7 @@ function renderDiaryMenu() {
         : `<button class="btn-primary" style="flex:none;padding:9px 16px;" onclick="renderDiaryClasses('${esc(s).replace(/'/g,"\\'")}')">${esc(s)}</button>`).join('')}
       ${editing ? '' : `<button class="btn-ghost" style="flex:none;padding:9px 16px;" onclick="promptDiaryNewSubject()">${esc(t.diaryAddSubject)}</button>`}
     </div>
+    <button class="btn-primary" style="margin-bottom:12px;" onclick="renderStaffAttScreen()">🙋 ${esc(qt('My Attendance / Leave', 'میری حاضری / رخصت'))}</button>
     <button class="btn-primary" style="margin-bottom:12px;" onclick="qzOpen()">📝 ${esc(qt('Daily Quiz', 'روزانہ کوئز'))}</button>
     <button class="btn-ghost" style="font-size:12px;padding:7px 12px;" onclick="toggleDiaryEditSubjects()">${esc(editing ? t.diaryDone : t.diaryRemoveSubject)}</button>
     ${queue.length ? `<p style="font-size:11px;opacity:.6;margin-top:14px;">${esc(t.classPortalOffline)} (${queue.length})</p>` : ''}
@@ -11815,6 +11903,88 @@ async function submitDiaryEntry() {
   }
 }
 
+// ---------------- Teacher self-attendance request (Diary portal) ----------------
+// Teacher taps Present / Leave / Sick -> a *pending* request is stored (offline-safe queue,
+// same as diary entries). Nothing reaches the attendance register until the principal approves.
+const STAFF_TEACHERS_KEY = 'sms_diary_staff_teachers';
+const STAFF_LAST_KEY = 'sms_diary_staff_last';
+function pkClock() {
+  const p = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Karachi', hour: '2-digit', minute: '2-digit', hour12: false }).formatToParts(new Date());
+  const h = Number(p.find(x => x.type === 'hour').value) % 24, m = Number(p.find(x => x.type === 'minute').value);
+  return { h, m, mins: h * 60 + m };
+}
+function staffPresentOpen() { const n = pkClock().mins; return n >= 7 * 60 && n <= 14 * 60 + 30; } // 7:00 AM - 2:30 PM (phone clock)
+function getStaffTeachers() { try { return JSON.parse(localStorage.getItem(STAFF_TEACHERS_KEY) || 'null'); } catch (e) { return null; } }
+
+async function renderStaffAttScreen() {
+  DIARY_SCREEN = 'staff';
+  const session = getDiarySession();
+  const body = document.getElementById('diary-portal-body');
+  if (!session || !body) return;
+  let cache = getStaffTeachers();
+  if (cache && cache.school !== session.schoolCode) cache = null;
+  const stale = !cache || !cache.list || !cache.list.length || (Date.now() - (cache.ts || 0)) > 24 * 3600 * 1000;
+  if (stale && navigator.onLine) {
+    try {
+      const { data, error } = await sb.rpc('staff_att_teachers', { p_school_code: session.schoolCode, p_password: session.password });
+      if (!error && Array.isArray(data)) { cache = { school: session.schoolCode, ts: Date.now(), list: data }; localStorage.setItem(STAFF_TEACHERS_KEY, JSON.stringify(cache)); }
+    } catch (e) {}
+  }
+  const list = (cache && cache.list) || [];
+  const last = localStorage.getItem(STAFF_LAST_KEY) || '';
+  const open = staffPresentOpen();
+  body.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+      <h2 style="margin:0;">${esc(qt('My Attendance', 'میری حاضری'))}</h2>
+      <button class="btn-ghost" style="flex:none;padding:7px 12px;font-size:12px;" onclick="renderDiaryMenu()">${esc(qt('Back', 'واپس'))}</button>
+    </div>
+    <p class="desc">${esc(qt('Your request goes to the principal. It counts only after he approves it.', 'آپ کی درخواست پرنسپل کو جائے گی۔ ان کی منظوری کے بعد ہی حاضری لگے گی۔'))}</p>
+    ${list.length ? `
+      <label><span>${esc(qt('Your name', 'آپ کا نام'))}</span>
+        <select id="sa-teacher"><option value="">${esc(qt('— Select your name —', '— اپنا نام منتخب کریں —'))}</option>
+        ${list.map(x => `<option value="${esc(String(x.id))}" ${String(x.id) === last ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</select></label>
+      <div id="sa-msg" style="font-size:12px;margin:8px 0;"></div>
+      <button class="btn-primary" style="width:100%;margin-bottom:8px;${open ? '' : 'opacity:.45;'}" onclick="submitStaffAtt('present')">✅ ${esc(qt('Mark me present', 'میری حاضری لگائیں'))}</button>
+      ${open ? '' : `<p style="font-size:11px;opacity:.65;margin:-2px 0 10px;">${esc(qt('Present can be sent only between 7:00 AM and 2:30 PM.', 'حاضری صرف صبح 7:00 سے دوپہر 2:30 بجے تک بھیجی جا سکتی ہے۔'))}</p>`}
+      <div style="display:flex;gap:8px;">
+        <button class="btn-ghost" style="flex:1;" onclick="submitStaffAtt('leave')">${esc(t.leave)}</button>
+        <button class="btn-ghost" style="flex:1;" onclick="submitStaffAtt('sick')">${esc(t.sick)}</button>
+      </div>`
+    : `<p style="font-size:13px;">${esc(qt('Teacher list could not be loaded. Connect to the internet once and open this screen again.', 'اساتذہ کی فہرست نہیں ملی۔ ایک بار انٹرنیٹ سے جوڑ کر دوبارہ کھولیں۔'))}</p>`}
+  `;
+}
+
+async function submitStaffAtt(kind) {
+  const session = getDiarySession();
+  const sel = document.getElementById('sa-teacher');
+  const msg = document.getElementById('sa-msg');
+  if (!session || !sel || !msg) return;
+  if (!sel.value) { msg.innerHTML = `<div class="err">${esc(qt('Please select your name first.', 'پہلے اپنا نام منتخب کریں۔'))}</div>`; return; }
+  if (kind === 'present' && !staffPresentOpen()) { msg.innerHTML = `<div class="err">${esc(qt('Present can be sent only between 7:00 AM and 2:30 PM.', 'حاضری صرف صبح 7:00 سے دوپہر 2:30 بجے تک بھیجی جا سکتی ہے۔'))}</div>`; return; }
+  localStorage.setItem(STAFF_LAST_KEY, sel.value);
+  const payload = {
+    type: 'staff_att', schoolCode: session.schoolCode, password: session.password,
+    teacherId: sel.value, kind,
+    session: kind === 'present' ? (pkClock().h < 12 ? 'am' : 'pm') : 'both',
+    requestedAt: new Date().toISOString()
+  };
+  const offlineMsg = () => { msg.innerHTML = `<div class="ok">${esc(qt('Saved on this phone. It will be sent automatically when internet is back.', 'اس فون میں محفوظ ہو گیا۔ انٹرنیٹ آتے ہی خود بھیج دیا جائے گا۔'))}</div>`; };
+  if (!navigator.onLine) { queueDiaryWrite(payload); offlineMsg(); return; }
+  try {
+    const { data, error } = await sb.rpc('staff_att_request', {
+      p_school_code: payload.schoolCode, p_password: payload.password, p_teacher_id: payload.teacherId,
+      p_kind: payload.kind, p_session: payload.session, p_requested_at: payload.requestedAt
+    });
+    if (error) {
+      if (/invalid_login|not_found|bad_input/.test(error.message || '')) { msg.innerHTML = `<div class="err">${esc(t.diaryPortalInvalid)}</div>`; return; }
+      queueDiaryWrite(payload); offlineMsg(); return;
+    }
+    msg.innerHTML = data === 'duplicate'
+      ? `<div class="ok">${esc(qt('This request was already sent.', 'یہ درخواست پہلے ہی بھیجی جا چکی ہے۔'))}</div>`
+      : `<div class="ok">${esc(qt('Sent to the principal. Waiting for approval.', 'پرنسپل کو بھیج دی گئی۔ منظوری کا انتظار ہے۔'))}</div>`;
+  } catch (e) { queueDiaryWrite(payload); offlineMsg(); }
+}
+
 async function flushDiaryQueue() {
   if (!navigator.onLine) return;
   const q = getDiaryQueue();
@@ -11822,6 +11992,14 @@ async function flushDiaryQueue() {
   const remaining = [];
   for (const item of q) {
     try {
+      if (item.type === 'staff_att') {
+        const { error: sErr } = await sb.rpc('staff_att_request', {
+          p_school_code: item.schoolCode, p_password: item.password, p_teacher_id: item.teacherId,
+          p_kind: item.kind, p_session: item.session, p_requested_at: item.requestedAt
+        });
+        if (sErr && !/invalid_login|not_found|bad_input/.test(sErr.message || '')) remaining.push(item);
+        continue;
+      }
       const { error } = await sb.rpc('diary_add_entry', {
         p_school_code: item.schoolCode, p_password: item.password, p_class_name: item.className,
         p_subject: item.subject, p_entry_date: item.date, p_entry_text: item.text
@@ -12654,7 +12832,7 @@ async function ppQuizReview(i) {
   } catch (e) { alert(qzErr(e)); renderParentPortalResult(PP_CURRENT); }
 }
 
-console.log('SchoolMS build: 2026-10-04-daily-quiz-7am-latest-result-lightsync-noqr'); // bump this string on every deploy to verify (in browser console) which version is actually running
+console.log('SchoolMS build: 2026-10-04-daily-quiz-7am-latest-result-lightsync-noqr-staffreq'); // bump this string on every deploy to verify (in browser console) which version is actually running
 </script>
 </body>
 </html>
