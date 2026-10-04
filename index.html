@@ -10945,7 +10945,29 @@ const DIARY_DEFAULT_SUBJECTS = ['Urdu','English','Math','Science','Islamiat','Pa
 
 function getClassSession() { try { return JSON.parse(localStorage.getItem(CLASS_SESSION_KEY) || 'null'); } catch(e) { return null; } }
 function setClassSession(s) { localStorage.setItem(CLASS_SESSION_KEY, JSON.stringify(s)); }
-function clearClassSession() { localStorage.removeItem(CLASS_SESSION_KEY); }
+function clearClassSession() {
+  localStorage.removeItem(CLASS_SESSION_KEY);
+  try { history.replaceState(null, '', location.pathname + location.search); } catch (e) {}
+}
+// Same idea as the parent portal: the class login is kept in the page link (after the #, never sent to a server),
+// so the home-screen icon / saved link opens straight into the class without asking again.
+function cpSyncUrl() {
+  const s = getClassSession(); if (!s) return;
+  try { history.replaceState(null, '', location.pathname + (location.search || '?class=1') + '#c=' + [s.schoolCode, s.loginId, s.password].map(x => encodeURIComponent(String(x))).join('/')); } catch (e) {}
+}
+async function cpLoginFromHash(current) {
+  const m = location.hash.match(/^#c=(.+)$/); if (!m || !navigator.onLine) return null;
+  let parts; try { parts = m[1].split('/').map(decodeURIComponent); } catch (e) { return null; }
+  if (parts.length !== 3 || parts.some(x => !x)) return null;
+  const [schoolCode, loginId, password] = parts;
+  if (current && current.schoolCode === schoolCode && current.loginId === loginId && current.password === password) return null;
+  try {
+    const { data } = await sb.rpc('class_login_verify', { p_school_code: schoolCode, p_login_id: loginId, p_password: password });
+    if (!data || !data.length) return null;
+    setClassSession({ schoolCode, loginId, password, ownerId: data[0].owner_id, className: data[0].class_name, teacherName: data[0].teacher_name || '', schoolName: data[0].school_name || '', students: data[0].students || [] });
+    return getClassSession();
+  } catch (e) { return null; }
+}
 function getClassQueue() { try { return JSON.parse(localStorage.getItem(CLASS_QUEUE_KEY) || '[]'); } catch(e) { return []; } }
 function setClassQueue(q) { localStorage.setItem(CLASS_QUEUE_KEY, JSON.stringify(q)); }
 
@@ -10986,7 +11008,9 @@ async function renderClassPortalEntry() {
   renderAuthShell(`<div id="class-portal-body"><div style="text-align:center;padding:20px 0;opacity:.6;">…</div></div>`);
   await flushClassQueue(); // clear any older offline writes first
   await flushDiaryQueue();
-  const session = getClassSession();
+  let session = getClassSession();
+  const fromHash = await cpLoginFromHash(session);
+  if (fromHash) session = fromHash;
   setupClassPortalManifest(session && session.className);
   if (session) {
     CLASS_PORTAL_SCREEN = 'menu';
@@ -11536,7 +11560,7 @@ async function pmSendReply(id, role) {
       bad(pmSetupMissing(m) ? qt('Not set up yet (run parent_messages_v2.sql in Supabase).', 'ابھی سیٹ اپ نہیں ہوا۔') : /too_many/.test(m) ? qt('Too many replies on this message.', 'اس پیغام پر بہت زیادہ جوابات ہو چکے ہیں۔') : qt('Could not send. Please try again.', 'جواب نہیں بھیجا جا سکا۔ دوبارہ کوشش کریں۔'));
       return;
     }
-    if (role === 'owner') pmOwnerLoad(); else renderClassPortalParentMsgs();
+    if (role === 'owner') { const ob = document.getElementById('pm-owner-list'); if (ob) { ob.dataset.sig = ''; } ta.value = ''; pmOwnerLoad(); } else renderClassPortalParentMsgs();
   } catch (e) { bad(qt('Could not send. Please check your connection.', 'جواب نہیں بھیجا جا سکا۔ انٹرنیٹ چیک کریں۔')); }
 }
 
@@ -11599,21 +11623,29 @@ async function pmOwnerBadgeRefresh(force) {
 }
 async function pmOwnerLoad() {
   const box = document.getElementById('pm-owner-list'); if (!box || !CURRENT_USER) return;
-  if (!navigator.onLine) { box.innerHTML = `<p class="desc">${esc(qt('You are offline.', 'آپ آف لائن ہیں۔'))}</p>`; return; }
+  if (!navigator.onLine) { if (!box.dataset.sig) box.innerHTML = `<p class="desc">${esc(qt('You are offline.', 'آپ آف لائن ہیں۔'))}</p>`; return; }
   try {
     const { data, error } = await sb.from('parent_messages').select('*, parent_message_replies(*)').eq('owner_id', CURRENT_USER.id).eq('to_owner', true).order('created_at', { ascending: false }).limit(50);
     if (error) { box.innerHTML = pmSetupMissing(error.message) ? pmSetupErr() : `<div class="err">${esc(error.message || '')}</div>`; return; }
     const list = (data || []).map(m => Object.assign({}, m, { replies: (m.parent_message_replies || []).slice().sort((a, b) => String(a.created_at).localeCompare(String(b.created_at))) }));
-    box.innerHTML = list.length ? `<div class="list-card">${list.map(m => pmRowHtml(m, 'owner')).join('')}</div>` : `<p class="desc">${esc(qt('No messages yet.', 'ابھی کوئی پیغام نہیں۔'))}</p>`;
+    // Background syncs call this often. Repaint ONLY when the messages really changed, and never while the
+    // owner is typing a reply — replacing the HTML would remove the textarea and close the keyboard.
+    const sig = LANG + '|' + JSON.stringify(list.map(m => [m.id, (m.replies || []).length]));
+    const typing = Array.from(box.querySelectorAll('textarea')).some(x => x === document.activeElement || x.value.trim());
+    if (!typing && box.dataset.sig !== sig) {
+      box.innerHTML = list.length ? `<div class="list-card">${list.map(m => pmRowHtml(m, 'owner')).join('')}</div>` : `<p class="desc">${esc(qt('No messages yet.', 'ابھی کوئی پیغام نہیں۔'))}</p>`;
+      box.dataset.sig = sig;
+    }
     if (list.some(m => !m.owner_read_at)) {
       await sb.from('parent_messages').update({ owner_read_at: new Date().toISOString() }).eq('owner_id', CURRENT_USER.id).eq('to_owner', true).is('owner_read_at', null);
       PM_OWNER_UNREAD = 0; pmPaintNavBadge();
     }
-  } catch (e) { box.innerHTML = `<p class="desc">…</p>`; }
+  } catch (e) { if (!box.dataset.sig) box.innerHTML = `<p class="desc">…</p>`; }
 }
 async function pmOwnerDelete(id) {
   if (!confirm(qt('Delete this message?', 'یہ پیغام حذف کریں؟'))) return;
   try { await sb.from('parent_messages').delete().eq('id', id).eq('owner_id', CURRENT_USER.id); } catch (e) {}
+  const ob = document.getElementById('pm-owner-list'); if (ob) ob.dataset.sig = '';
   pmOwnerLoad();
 }
 
@@ -11664,6 +11696,7 @@ function noticeParentBoxHtml() {
 }
 
 function renderClassPortalMenu() {
+  cpSyncUrl();
   const session = getClassSession();
   const body = document.getElementById('class-portal-body');
   if (!session || !body) return;
@@ -12833,7 +12866,55 @@ if ('serviceWorker' in navigator) {
 const PP_CACHE_KEY = 'sms_parent_portal_cache';
 function getPpCache() { try { return JSON.parse(localStorage.getItem(PP_CACHE_KEY) || 'null'); } catch(e) { return null; } }
 function setPpCache(c) { localStorage.setItem(PP_CACHE_KEY, JSON.stringify(c)); }
-function clearPpCache() { localStorage.removeItem(PP_CACHE_KEY); }
+function clearPpCache() {
+  localStorage.removeItem(PP_CACHE_KEY);
+  try { history.replaceState(null, '', location.pathname + location.search); } catch (e) {}
+}
+// The login is also written into the page link (after the #, which is never sent to any server) so the same
+// link opens straight in without asking again — even from the home-screen icon or another browser.
+function ppSyncUrl() {
+  const c = getPpCache(); if (!c) return;
+  try { history.replaceState(null, '', location.pathname + (location.search || '?parent=1') + '#p=' + [c.schoolCode, c.roll, c.pin].map(x => encodeURIComponent(String(x))).join('/')); } catch (e) {}
+}
+function ppSetupManifest(r) {
+  try {
+    const abs = f => new URL(f, location.href).href;
+    const title = qt('Parent Portal', 'پیرنٹ پورٹل');
+    const manifest = {
+      name: (r && r.school_name ? r.school_name + ' — ' : '') + title, short_name: title,
+      start_url: location.href, scope: new URL('./', location.href).href, display: 'standalone', orientation: 'portrait',
+      background_color: '#FAF6EC', theme_color: '#0F2740',
+      icons: [{ src: abs('icon-192.png'), sizes: '192x192', type: 'image/png', purpose: 'any' }, { src: abs('icon-512.png'), sizes: '512x512', type: 'image/png', purpose: 'any' }]
+    };
+    const link = document.querySelector('link[rel="manifest"]');
+    if (link) link.setAttribute('href', URL.createObjectURL(new Blob([JSON.stringify(manifest)], { type: 'application/manifest+json' })));
+    const at = document.querySelector('meta[name="apple-mobile-web-app-title"]'); if (at) at.setAttribute('content', title);
+  } catch (e) {}
+}
+async function ppCopyMyLink() {
+  ppSyncUrl();
+  const url = location.href;
+  try { await navigator.clipboard.writeText(url); alert(qt('Link copied. Save it (e.g. send it to yourself on WhatsApp) — opening it will not ask for login again.', 'لنک کاپی ہو گیا۔ اسے محفوظ کر لیں (مثلاً واٹس ایپ پر خود کو بھیج دیں) — اسے کھولنے پر دوبارہ لاگ اِن نہیں مانگا جائے گا۔')); }
+  catch (e) { prompt(qt('Copy this link:', 'یہ لنک کاپی کریں:'), url); }
+}
+async function ppLoginFromHash() {
+  const m = location.hash.match(/^#p=(.+)$/); if (!m) return false;
+  let parts; try { parts = m[1].split('/').map(decodeURIComponent); } catch (e) { return false; }
+  if (parts.length !== 3 || parts.some(x => !x)) return false;
+  const [schoolCode, roll, pin] = parts;
+  try {
+    const { data, error } = await sb.rpc('parent_portal_lookup', { p_school_code: schoolCode, p_roll: roll, p_pin: pin });
+    if (error || !data || !data.length) return false;
+    const r = data[0];
+    let diary = [];
+    try { const dRes = await sb.rpc('diary_portal_list', { p_school_code: schoolCode, p_class_name: r.class_admitted || '' }); diary = (dRes && dRes.data) || []; } catch (e) {}
+    r.diary_entries = diary;
+    r.quiz = await ppLoadQuiz(schoolCode, roll, pin);
+    setPpCache({ schoolCode, roll, pin, data: r, ts: Date.now() });
+    renderParentPortalResult(r, { fromCache: false });
+    return true;
+  } catch (e) { return false; }
+}
 
 function renderParentPortal() {
   document.getElementById('loading').classList.add('hidden');
@@ -12844,6 +12925,20 @@ function renderParentPortal() {
     <div id="parent-portal-body">…</div>
   `);
   const cache = getPpCache();
+  const hm = location.hash.match(/^#p=(.+)$/);
+  if (hm && navigator.onLine) {
+    let hp = []; try { hp = hm[1].split('/').map(decodeURIComponent); } catch (e) {}
+    const same = cache && hp.length === 3 && cache.schoolCode === hp[0] && String(cache.roll) === hp[1] && String(cache.pin) === hp[2];
+    if (!same && hp.length === 3) {
+      document.getElementById('parent-portal-body').innerHTML = '<p class="desc" style="text-align:center;">…</p>';
+      ppLoginFromHash().then(ok => {
+        if (ok) return;
+        if (cache && cache.data) renderParentPortalResult(cache.data, { fromCache: true, ts: cache.ts });
+        else document.getElementById('parent-portal-body').innerHTML = parentPortalFormHtml();
+      });
+      return;
+    }
+  }
   if (cache && cache.data) {
     renderParentPortalResult(cache.data, { fromCache: true, ts: cache.ts });
     if (navigator.onLine) refreshParentPortalSilently(cache);
@@ -12869,6 +12964,8 @@ async function refreshParentPortalSilently(cache) {
     setPpCache({ schoolCode: cache.schoolCode, roll: cache.roll, pin: cache.pin, data: r, ts: Date.now() });
     // Only repaint if the parent is still looking at this same student's cached view
     // (not, say, results they've since navigated away from within this page).
+    const ppTa = document.getElementById('pp-msg-text');
+    if (ppTa && (ppTa === document.activeElement || ppTa.value.trim())) { PP_CURRENT = r; return; }
     if (PP_CURRENT === cache.data || (PP_CURRENT && PP_CURRENT.student_name === r.student_name)) {
       renderParentPortalResult(r, { fromCache: false });
     }
@@ -13007,9 +13104,11 @@ function renderParentPortalResult(r, opts) {
     ${feeHtml}
     ${resultsHtml}
     ${diaryHtml}
-    <button class="btn-ghost" style="width:100%;margin-top:16px;" onclick="clearPpCache(); document.getElementById('parent-portal-body').innerHTML = parentPortalFormHtml()">${esc(t.parentPortalSwitchStudent)}</button>
+    <button class="btn-ghost" style="width:100%;margin-top:16px;" onclick="ppCopyMyLink()">🔗 ${esc(qt('Save my link (no login needed)', 'میرا لنک محفوظ کریں (لاگ اِن کی ضرورت نہیں)'))}</button>
+    <button class="btn-ghost" style="width:100%;margin-top:10px;" onclick="clearPpCache(); document.getElementById('parent-portal-body').innerHTML = parentPortalFormHtml()">${esc(t.parentPortalSwitchStudent)}</button>
   `;
   noticeRefresh('pp-notices', 'parent', 10);
+  ppSyncUrl(); ppSetupManifest(r);
   if (ppDraft) { const ta = document.getElementById('pp-msg-text'); if (ta) ta.value = ppDraft; }
   if (ppMyOpen) ppToggleMyMsgs(); else ppMyBadge();
 }
