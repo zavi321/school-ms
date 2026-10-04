@@ -11530,7 +11530,7 @@ function pmRowHtml(m, role) {
       ${pmRepliesHtml(m)}
       <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:6px;">
         <button class="btn-ghost" style="flex:none;padding:4px 12px;font-size:12px;" onclick="pmToggleReply('${m.id}')">↩ ${esc(qt('Reply', 'جواب'))}</button>
-        ${role === 'owner' ? `<button class="btn-ghost" style="flex:none;padding:4px 12px;font-size:12px;" onclick="pmOwnerDelete('${m.id}')">${esc(qt('Delete', 'حذف کریں'))}</button>` : ''}
+        <button class="btn-ghost" style="flex:none;padding:4px 12px;font-size:12px;" onclick="${role === 'owner' ? 'pmOwnerDelete' : 'pmTeacherDelete'}('${m.id}')">${esc(qt('Delete', 'حذف کریں'))}</button>
       </div>
       <div id="pm-rbox-${m.id}" class="hidden" style="margin-top:6px;">
         <textarea id="pm-rtxt-${m.id}" maxlength="500" rows="2" style="width:100%;box-sizing:border-box;" placeholder="${esc(qt('Write your reply…', 'اپنا جواب لکھیں…'))}"></textarea>
@@ -11673,6 +11673,26 @@ async function ppMyBadge() {
   el.textContent = n > 0 ? ' · ' + n + ' ' + qt('new reply', 'نیا جواب') : '';
   el.style.color = '#d33';
 }
+async function ppDeleteMy(id) {
+  if (!confirm(qt('Delete this message?', 'کیا یہ پیغام حذف کریں؟'))) return;
+  const cr = ppQuizCreds(); if (!cr || !navigator.onLine) { alert(qt('Internet is needed.', 'انٹرنیٹ ضروری ہے۔')); return; }
+  try {
+    const { error } = await sb.rpc('parent_message_delete_parent', Object.assign({}, cr, { p_message_id: id }));
+    if (error) { alert(/does not exist|schema cache|could not find/i.test(String(error.message)) ? qt('Not set up yet (run parent_messages_delete.sql in Supabase).', 'ابھی سیٹ اپ نہیں ہوا (Supabase میں parent_messages_delete.sql چلائیں)۔') : qt('Could not delete.', 'حذف نہیں ہو سکا۔')); return; }
+    const b = document.getElementById('pp-my-list'); if (b) b.classList.add('hidden');
+    await ppToggleMyMsgs();
+  } catch (e) { alert(qt('Could not delete.', 'حذف نہیں ہو سکا۔')); }
+}
+async function pmTeacherDelete(id) {
+  const s = getClassSession(); if (!s) return;
+  if (!confirm(qt('Delete this message?', 'کیا یہ پیغام حذف کریں؟'))) return;
+  if (!navigator.onLine) { alert(qt('Internet is needed.', 'انٹرنیٹ ضروری ہے۔')); return; }
+  try {
+    const { error } = await sb.rpc('parent_message_delete_class', Object.assign(pmTeacherArgs(s), { p_message_id: id }));
+    if (error) { alert(/does not exist|schema cache|could not find/i.test(String(error.message)) ? qt('Not set up yet (run parent_messages_delete.sql in Supabase).', 'ابھی سیٹ اپ نہیں ہوا (Supabase میں parent_messages_delete.sql چلائیں)۔') : qt('Could not delete.', 'حذف نہیں ہو سکا۔')); return; }
+    renderClassPortalParentMsgs();
+  } catch (e) { alert(qt('Could not delete.', 'حذف نہیں ہو سکا۔')); }
+}
 async function ppToggleMyMsgs() {
   const box = document.getElementById('pp-my-list'); if (!box) return;
   if (!box.classList.contains('hidden')) { box.classList.add('hidden'); return; }
@@ -11686,6 +11706,7 @@ async function ppToggleMyMsgs() {
       <div style="display:flex;justify-content:space-between;gap:8px;"><div class="sub">${esc(qt('To', 'بنام'))}: ${esc(who)}</div><div class="sub" style="flex:none;">${esc(fmtDate((m.created_at || '').slice(0, 10)) || '')}</div></div>
       <div style="margin-top:4px;font-size:13px;line-height:1.5;white-space:pre-wrap;">${esc(m.message || '')}</div>
       ${pmRepliesHtml(m, seen)}
+      <div style="display:flex;justify-content:flex-end;margin-top:6px;"><button class="btn-ghost" style="flex:none;padding:4px 12px;font-size:12px;" onclick="ppDeleteMy('${m.id}')">${esc(qt('Delete', 'حذف کریں'))}</button></div>
     </div>`; }).join('')}</div>` : `<p class="desc">${esc(qt('You have not sent any message yet.', 'آپ نے ابھی تک کوئی پیغام نہیں بھیجا۔'))}</p>`;
   let mx = seen; list.forEach(m => (m.replies || []).forEach(r => { const ts = new Date(r.created_at).getTime(); if (ts > mx) mx = ts; }));
   try { localStorage.setItem(ppMyKey(), String(mx)); } catch (e) {}
