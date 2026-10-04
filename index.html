@@ -2137,8 +2137,10 @@ async function boot() {
 
   // A teacher scanning the Principal's QR code lands here with ?checkin=TOKEN —
   // this is a public, no-login page, so it's handled before any session check.
-  const checkinToken = new URLSearchParams(window.location.search).get('checkin');
-  if (checkinToken) { renderCheckinEntry(checkinToken); return; }
+  if (new URLSearchParams(window.location.search).get('checkin')) {
+    renderAuthShell(`<p style="font-size:14px;text-align:center;padding:20px 0;">${LANG === 'ur' ? 'QR حاضری اب بند ہے۔ اپنی حاضری ایڈمن سے لگوائیں۔' : 'QR check-in is no longer used. Please ask the admin to mark your attendance.'}</p>`);
+    return;
+  }
 
   // A parent visiting ?parent=1 lands on a public, no-login lookup page — they
   // enter School Code + Roll No. + PIN, verified server-side via a Postgres
@@ -2486,11 +2488,20 @@ async function logOut() {
 }
 
 // ---------------- Data loading (RLS auto-scopes everything to this school) ----------------
+// Student attendance grows every school day and is only ever written by the class
+// portal, so re-downloading its whole history after every save wasted Supabase egress.
+// Full history is fetched on first load (and again every 30 min); in between, only
+// the last two days are fetched and merged into the cached older rows.
+let SA_SYNC = { owner: null, ts: 0 };
 async function loadAllData() {
   // No signal at all — skip the network round-trip and use the last-synced
   // snapshot straight away instead of waiting for every request to time out.
   if (!navigator.onLine) { await offlineCacheRestore(); renderOfflineBanner(); return; }
   let s, fp, tc, sp, tx, ar, ta, hd, cl, sa;
+  const saFresh = SA_SYNC.owner === CURRENT_USER.id && (Date.now() - SA_SYNC.ts) < 30 * 60 * 1000
+    && Array.isArray(DATA.studentAttendance) && DATA.studentAttendance.length > 0;
+  const saCutoff = (() => { const d = new Date(); d.setDate(d.getDate() - 1);
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); })();
   const TIMED_OUT = Symbol('timed-out');
   try {
     const result = await Promise.race([
@@ -2512,7 +2523,7 @@ async function loadAllData() {
         // Daily student attendance taken via the Class Portal — cached here
         // purely for read access (e.g. the Admission Register's attendance
         // calculator below), never written from the owner side.
-        sb.from('student_attendance').select('*'),
+        saFresh ? sb.from('student_attendance').select('*').gte('date', saCutoff) : sb.from('student_attendance').select('*'),
       ]),
       // navigator.onLine can be true on a signal that's actually too weak to
       // reach the server — without this, that case hangs on "Loading your
@@ -2541,6 +2552,8 @@ async function loadAllData() {
       console.error('loadAllData: partial failure, keeping cached data', failed.error);
       await offlineCacheRestore(); renderOfflineBanner(); return;
     }
+    if (saFresh) sa = { data: DATA.studentAttendance.filter(r => r.date < saCutoff).concat(sa.data || []), error: null };
+    else SA_SYNC = { owner: CURRENT_USER.id, ts: Date.now() };
   } catch (e) {
     // Request(s) failed mid-flight (signal dropped just now) — same fallback.
     await offlineCacheRestore(); renderOfflineBanner(); return;
@@ -2914,8 +2927,7 @@ function openAttendanceHub() {
   showModal(t.navAttendance, `
     <p style="font-size:12px;opacity:.65;margin:0 0 14px;">${esc(t.navAttendanceDesc)}</p>
     <button class="btn-primary" style="width:100%;margin-bottom:10px;" onclick="closeModal();openMarkAttendance();">${esc(t.markAttendance)}</button>
-    <button class="btn-ghost" style="width:100%;margin-bottom:10px;" onclick="closeModal();openTeacherRegister();">${esc(t.teacherRegister)}</button>
-    <button class="btn-ghost" style="width:100%;" onclick="closeModal();openQrCheckin();">${esc(t.qrCheckin)}</button>
+    <button class="btn-ghost" style="width:100%;" onclick="closeModal();openTeacherRegister();">${esc(t.teacherRegister)}</button>
   `);
 }
 
@@ -4534,7 +4546,6 @@ function tplDashOverview(s) {
     ['cer', t.dmc,                  "setTab('dmc')", 'c6'],
     ['pap', t.papers,               "setTab('papers')", 'c2'],
     ['tmt', ur?'ٹائم ٹیبل':'Timetable', "setTab('timetable')", 'c4'],
-    ['qr',  t.qrCheckin,            'openQrCheckin()', 'c8'],
     ['adm', t.admissionRegister,    "setTab('admissionRegister')", 'c5']
   ].map(([k,label,act,c]) => `<button class="d-q" onclick="${act}"><span class="d-tile d-lg ${c}">${diSvg(k)}</span>${esc(label)}</button>`).join('');
   return `
@@ -5499,9 +5510,6 @@ function tplTeachers() {
         <button class="icon-btn" title="${esc(t.markAttendance)}" onclick="openMarkAttendance()">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#E4C765" stroke-width="2.5"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
         </button>
-        <button class="icon-btn" title="${esc(t.qrCheckin)}" onclick="openQrCheckin()">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#E4C765" stroke-width="2.5"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><path d="M14 14h3v3h-3zM19 14h2v2h-2zM14 19h2v2h-2zM19 19h2v2h-2z"/></svg>
-        </button>
         <button class="icon-btn" title="${esc(t.teacherRegister)}" onclick="openTeacherRegister()">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#E4C765" stroke-width="2.5"><path d="M4 19.5A2.5 2.5 0 016.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"/><path d="M9 7h7M9 11h7"/></svg>
         </button>
@@ -6436,111 +6444,6 @@ function renderClassMarksDetail(examId) {
         <tbody>${studentIds.map(sid => `<tr><td class="mo">${esc(studentName(sid))}</td>${subjects.map(s=>`<td>${esc((marks[sid]||{})[s.name] ?? '—')}</td>`).join('')}</tr>`).join('')}</tbody>
       </table>
     </div>`;
-}
-
-// ---------------- QR Check-in (Principal side: show the QR, watch live check-ins) ----------------
-let qrCheckinPollTimer = null;
-let qrCheckinToken = null;
-
-async function openQrCheckin() {
-  showModal(t.qrCheckin, `<div id="qr-checkin-body" style="text-align:center;padding:20px 0;opacity:.6;">…</div>`);
-  let { data: row } = await sb.from('checkin_tokens').select('*').eq('owner_id', CURRENT_USER.id).maybeSingle();
-  if (!row) {
-    const ins = await sb.from('checkin_tokens').insert({ owner_id: CURRENT_USER.id }).select().single();
-    row = ins.data;
-  }
-  if (!row) { document.getElementById('qr-checkin-body').innerHTML = `<div class="err">Could not create check-in code.</div>`; return; }
-  qrCheckinToken = row.token;
-  renderQrCheckinBody();
-  clearInterval(qrCheckinPollTimer);
-  qrCheckinPollTimer = setInterval(async () => {
-    await loadAllData(); renderTodaysCheckinsList();
-    await loadCheckinAttempts(); renderCheckinAttemptsList();
-  }, 15000);
-}
-
-function renderQrCheckinBody() {
-  const url = window.location.origin + window.location.pathname + '?checkin=' + qrCheckinToken;
-  const body = document.getElementById('qr-checkin-body');
-  if (!body) return;
-  const qrImgUrl = 'https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=' + encodeURIComponent(url);
-  body.innerHTML = `
-    <p style="font-size:12px;opacity:.7;">${esc(t.checkinQrHint)}</p>
-    <div style="display:flex;justify-content:center;margin:12px 0;">
-      <img id="qr-img" src="${esc(qrImgUrl)}" alt="QR" width="220" height="220" style="border:1px solid var(--line);border-radius:8px;background:#fff;" onerror="document.getElementById('qr-fallback').style.display='block';this.style.display='none';">
-    </div>
-    <div id="qr-fallback" style="display:none;font-size:11px;background:#fff;border:1px solid var(--line);border-radius:8px;padding:8px;margin-bottom:10px;">
-      ${esc(LANG==='ur' ? 'QR تصویر لوڈ نہیں ہو سکی — یہ لنک براہ راست بھیج دیں:' : 'QR image could not load — share this link directly instead:')}
-      <div style="word-break:break-all;font-weight:600;margin-top:4px;">${esc(url)}</div>
-    </div>
-    <button class="btn-ghost" style="width:100%;" onclick="regenerateCheckinToken()">${esc(t.regenerateCode)}</button>
-    <div class="section-title">${esc(t.todaysCheckins)}</div>
-    <div id="todays-checkins-list"></div>
-    <div class="section-title">${esc(t.checkinLogTitle)}</div>
-    <div id="checkin-attempts-list"></div>
-  `;
-  renderTodaysCheckinsList();
-  loadCheckinAttempts().then(renderCheckinAttemptsList);
-}
-
-function renderTodaysCheckinsList() {
-  const el = document.getElementById('todays-checkins-list');
-  if (!el) return;
-  const today = todayISO();
-  const rows = DATA.teacherAttendance.filter(a => a.date === today && (a.checked_in_at_am || a.checked_in_at_pm || a.checked_in_at));
-  if (!rows.length) { el.innerHTML = `<div style="padding:10px;text-align:center;font-size:12px;opacity:.5;">${esc(t.noCheckinsYet)}</div>`; return; }
-  const fmtTime = iso => new Date(iso).toLocaleTimeString(LANG==='ur'?'ur-PK':'en-PK', { hour:'2-digit', minute:'2-digit' });
-  el.innerHTML = rows
-    .sort((a,b) => new Date(b.checked_in_at_pm || b.checked_in_at_am || b.checked_in_at) - new Date(a.checked_in_at_pm || a.checked_in_at_am || a.checked_in_at))
-    .map(r => {
-      const tc = DATA.teachers.find(x => x.id === r.teacher_id);
-      const amTxt = r.checked_in_at_am ? `${esc(t.morning)}: ${esc(fmtTime(r.checked_in_at_am))}` : '';
-      const pmTxt = r.checked_in_at_pm ? `${esc(t.afternoon)}: ${esc(fmtTime(r.checked_in_at_pm))}` : '';
-      const both = [amTxt, pmTxt].filter(Boolean).join(' · ') || (r.checked_in_at ? `${esc(t.checkedInAt)} ${esc(fmtTime(r.checked_in_at))}` : '');
-      return `<div class="ledger-row"><span style="font-size:13px;">✓ ${esc(tc ? tc.name : '—')}</span><span style="font-size:11px;opacity:.6;">${both}</span></div>`;
-    }).join('');
-}
-
-// Full activity log for today: every scan attempt, successful or not — so the
-// principal can see rejected/duplicate/late attempts too, not just the ones
-// that actually counted as present.
-let checkinAttemptsCache = [];
-async function loadCheckinAttempts() {
-  const since = new Date(); since.setHours(0,0,0,0);
-  const { data, error } = await sb.from('checkin_attempts')
-    .select('*')
-    .eq('owner_id', CURRENT_USER.id)
-    .gte('created_at', since.toISOString())
-    .order('created_at', { ascending:false })
-    .limit(100);
-  if (!error) checkinAttemptsCache = data || [];
-}
-function renderCheckinAttemptsList() {
-  const el = document.getElementById('checkin-attempts-list');
-  if (!el) return;
-  if (!checkinAttemptsCache.length) { el.innerHTML = `<div style="padding:10px;text-align:center;font-size:12px;opacity:.5;">${esc(t.checkinLogEmpty)}</div>`; return; }
-  const badgeFor = (result) => {
-    if (result === 'ok') return `<span class="pill good">${esc(t.checkinLogOk)}</span>`;
-    if (result === 'already') return `<span class="pill orphan">${esc(t.checkinLogAlready)}</span>`;
-    if (result === 'closed') return `<span class="pill bad">${esc(t.checkinLogClosed)}</span>`;
-    return `<span class="pill bad">${esc(t.checkinLogInvalid)}</span>`;
-  };
-  el.innerHTML = checkinAttemptsCache.map(a => {
-    const time = new Date(a.created_at).toLocaleTimeString(LANG==='ur'?'ur-PK':'en-PK', { hour:'2-digit', minute:'2-digit' });
-    const name = a.teacher_name || '—';
-    return `<div class="ledger-row"><span style="font-size:13px;">${esc(name)} ${badgeFor(a.result)}</span><span style="font-size:11px;opacity:.6;">${esc(time)}</span></div>`;
-  }).join('');
-}
-
-function regenerateCheckinToken() {
-  if (!confirm(t.regenerateCodeConfirm)) return;
-  (async () => {
-    const newToken = (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random().toString(16).slice(2)).replace(/-/g,'');
-    const { error } = await sb.from('checkin_tokens').update({ token: newToken }).eq('owner_id', CURRENT_USER.id);
-    if (reportSaveError(error)) return;
-    qrCheckinToken = newToken;
-    renderQrCheckinBody();
-  })();
 }
 
 function openTeacherDetail(id) {
@@ -10766,7 +10669,7 @@ function showModal(title, bodyHtml) {
   // the Admission Register's Add/Edit form) — see initRegBookScroll().
   initRegBookScroll();
 }
-function closeModal() { clearInterval(qrCheckinPollTimer); document.getElementById('modal-root').innerHTML = ''; }
+function closeModal() { document.getElementById('modal-root').innerHTML = ''; }
 
 function confirmDelete(kind, id) {
   showModal(t.delete, `
@@ -10851,221 +10754,6 @@ async function doDelete(kind, id) {
   }
   closeModal(); await loadAllData(); renderTab();
   if (err) alert((LANG==='ur' ? 'حذف کرنے میں خرابی: ' : 'Delete failed: ') + err.message);
-}
-
-// ---------------- Public QR Check-in (no login — reached via ?checkin=TOKEN) ----------------
-const CHECKIN_QUEUE_KEY = 'sms_checkin_queue';
-const checkinTeacherListCacheKey = (token) => 'sms_checkin_teachers_' + token;
-
-function getCheckinQueue() {
-  try { return JSON.parse(localStorage.getItem(CHECKIN_QUEUE_KEY) || '[]'); } catch(e) { return []; }
-}
-function setCheckinQueue(q) { localStorage.setItem(CHECKIN_QUEUE_KEY, JSON.stringify(q)); }
-
-// Swaps the page's manifest to one whose start_url is THIS check-in link
-// (with the token baked in), so a teacher who taps "Add to Home Screen" /
-// "Install app" gets an icon that reopens straight to their check-in screen
-// every day — not the main owner login. Only ever called from the check-in
-// entry flow below; the normal app keeps using the static manifest.json.
-function setupCheckinManifest(token, schoolName) {
-  try {
-    const manifest = {
-      name: (schoolName ? schoolName + ' — ' : '') + t.checkinTitle,
-      short_name: t.checkinTitle,
-      start_url: './?checkin=' + encodeURIComponent(token),
-      scope: './',
-      display: 'standalone',
-      orientation: 'portrait',
-      background_color: '#FAF6EC',
-      theme_color: '#0F2740',
-      icons: [
-        { src: 'icon-180.png', sizes: '180x180', type: 'image/png' },
-        { src: 'icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
-        { src: 'icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' }
-      ]
-    };
-    const blobUrl = URL.createObjectURL(new Blob([JSON.stringify(manifest)], { type: 'application/manifest+json' }));
-    const link = document.querySelector('link[rel="manifest"]');
-    if (link) link.setAttribute('href', blobUrl);
-    // iOS ignores the manifest for Add to Home Screen but does read this meta
-    // tag for the label, and always launches to whatever URL was on screen
-    // when the shortcut was added — so this alone is enough to cover iOS.
-    const appleTitle = document.querySelector('meta[name="apple-mobile-web-app-title"]');
-    if (appleTitle) appleTitle.setAttribute('content', schoolName || t.checkinTitle);
-    document.title = (schoolName ? schoolName + ' — ' : '') + t.checkinTitle;
-  } catch (e) { /* Add to Home Screen just falls back to the main app's manifest — not fatal. */ }
-}
-
-async function renderCheckinEntry(token) {
-  document.getElementById('loading').classList.add('hidden');
-  renderAuthShell(`<div id="checkin-body"><div style="text-align:center;padding:20px 0;opacity:.6;">…</div></div>`);
-  await flushCheckinQueue(); // try to clear any older offline check-ins first
-  await loadCheckinTeachers(token);
-  // Keep trying quietly in the background in case connectivity returns mid-visit.
-  window.addEventListener('online', () => flushCheckinQueue());
-  setInterval(() => { if (navigator.onLine) flushCheckinQueue(); }, 20000);
-}
-
-async function loadCheckinTeachers(token) {
-  const body = document.getElementById('checkin-body');
-  let teachers = null, schoolName = '';
-  if (navigator.onLine) {
-    try {
-      const { data, error } = await sb.rpc('checkin_get_teachers', { p_token: token });
-      if (!error && data && data.length) {
-        teachers = data.map(r => ({ id: r.id, name: r.name }));
-        schoolName = data[0].school_name || '';
-        localStorage.setItem(checkinTeacherListCacheKey(token), JSON.stringify({ teachers, schoolName }));
-        setupCheckinManifest(token, schoolName);
-      } else if (!error && data && data.length === 0) {
-        // Valid RPC call, zero rows: either an invalid token or a school with no teachers yet.
-        teachers = [];
-      }
-    } catch(e) { /* fall through to cache below */ }
-  }
-  if (teachers === null) {
-    try {
-      const cached = JSON.parse(localStorage.getItem(checkinTeacherListCacheKey(token)) || 'null');
-      if (cached) { teachers = cached.teachers; schoolName = cached.schoolName; setupCheckinManifest(token, schoolName); }
-    } catch(e) {}
-  }
-  if (teachers === null) {
-    body.innerHTML = `<p style="font-size:13px;">${esc(t.checkinOfflineNoList)}</p>`;
-    return;
-  }
-  if (!teachers.length) {
-    body.innerHTML = `<p style="font-size:13px;">${esc(t.checkinInvalid)}</p>`;
-    return;
-  }
-  const queue = getCheckinQueue();
-  const queuedForToken = queue.filter(q => q.token === token).length;
-  body.innerHTML = `
-    ${schoolName ? `<p style="font-size:12px;opacity:.6;margin-top:0;">${esc(schoolName)}</p>` : ''}
-    <p style="font-size:13px;">${esc(t.checkinSelectPrompt)}</p>
-    <label><span>${esc(t.teacherName)}</span>
-      <select id="checkin-teacher">
-        <option value="">${esc(t.checkinChooseTeacher)}</option>
-        ${teachers.map(tc => `<option value="${esc(tc.id)}">${esc(tc.name)}</option>`).join('')}
-      </select>
-    </label>
-    <div id="checkin-msg" style="font-size:12px;margin-bottom:8px;"></div>
-    <button class="btn-primary" style="width:100%;" onclick="submitCheckin('${token}')">${esc(t.checkinButton)}</button>
-    ${queuedForToken ? `<p style="font-size:11px;opacity:.6;margin-top:10px;">${esc(t.checkinOffline)} (${queuedForToken})</p>` : ''}
-  `;
-}
-
-async function submitCheckin(token) {
-  const sel = document.getElementById('checkin-teacher');
-  const msg = document.getElementById('checkin-msg');
-  const teacherId = sel && sel.value;
-  if (!teacherId) return;
-  msg.innerHTML = '';
-
-  if (!navigator.onLine) { queueCheckin(token, teacherId); return; }
-
-  try {
-    const { data, error } = await sb.rpc('checkin_mark_present', { p_token: token, p_teacher_id: teacherId });
-    if (error) throw error;
-    // The server decides everything (date, time-of-day, whether it's already
-    // marked) — the client never sends or trusts a date/time of its own.
-    if (data === 'ok') {
-      msg.innerHTML = `<span class="ok">✓ ${esc(t.checkinSuccess)}</span>`;
-      sel.disabled = true;
-    } else if (data === 'already') {
-      msg.innerHTML = `<span class="ok">${esc(t.checkinAlready)}</span>`;
-      sel.disabled = true;
-    } else if (data === 'closed') {
-      msg.innerHTML = `<span class="err">${esc(t.checkinOutsideWindow)}</span>`;
-    } else {
-      // 'invalid', or an old un-migrated function still returning boolean false.
-      msg.innerHTML = `<span class="err">${esc(t.checkinInvalid)}</span>`;
-    }
-  } catch (e) {
-    // Network hiccup even though navigator.onLine said we're online — queue it rather than lose it.
-    queueCheckin(token, teacherId);
-  }
-}
-
-// Replace with the VAPID_PUBLIC_KEY printed when you ran the key-generation
-// step in the setup guide. This one value is public by design (it's sent to
-// the browser) — only the private key must stay secret, on the server.
-const VAPID_PUBLIC_KEY = 'BB9pXcOHLdShs-YYcBkz24ag1_ZsiZ6UVhlcxmFWTYbX2tOUf8z2kDaIBz_7K18YtJk5eisMcH0czrSB_ZSQqwk';
-
-function urlBase64ToUint8Array(base64String) {
-  const padding = '='.repeat((4 - base64String.length % 4) % 4);
-  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
-  const raw = atob(base64);
-  return Uint8Array.from([...raw].map(c => c.charCodeAt(0)));
-}
-
-// Called from the admin dashboard — subscribes the PRINCIPAL's own browser
-// to push notifications listing which teachers haven't checked in. Unlike
-// the (removed) teacher-facing version, this uses the admin's own logged-in
-// session (RLS-scoped to auth.uid()) instead of a QR token, since the
-// principal is authenticated here, not visiting an anonymous check-in page.
-async function subscribeAdminToPush(uiEl) {
-  if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
-    uiEl.innerHTML = `<span class="err">${esc(t.notificationsUnsupported)}</span>`;
-    return;
-  }
-  try {
-    const permission = await Notification.requestPermission();
-    if (permission !== 'granted') { uiEl.innerHTML = `<span class="err">${esc(t.notificationsFailed)}</span>`; return; }
-    const reg = await navigator.serviceWorker.ready;
-    let sub = await reg.pushManager.getSubscription();
-    if (!sub) {
-      sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY) });
-    }
-    const raw = sub.toJSON();
-    const { error } = await sb.from('admin_push_subscriptions').upsert({
-      owner_id: CURRENT_USER.id, endpoint: raw.endpoint, p256dh: raw.keys.p256dh, auth: raw.keys.auth
-    }, { onConflict: 'owner_id,endpoint' });
-    if (error) throw error;
-    uiEl.innerHTML = `<span class="ok">✓ ${esc(t.notificationsEnabled)}</span>`;
-  } catch (e) {
-    uiEl.innerHTML = `<span class="err">${esc(t.notificationsFailed)}</span>`;
-  }
-}
-
-function queueCheckin(token, teacherId) {
-  const q = getCheckinQueue();
-  q.push({ token, teacherId, ts: Date.now() });
-  setCheckinQueue(q);
-  const msg = document.getElementById('checkin-msg');
-  if (msg) msg.innerHTML = `<span class="ok">${esc(t.checkinOffline)}</span>`;
-}
-
-async function flushCheckinQueue() {
-  if (!navigator.onLine) return;
-  let q = getCheckinQueue();
-  if (!q.length) return;
-  const remaining = [];
-  let lastResult = null; // how the most recently-resolved queued item came back
-  for (const item of q) {
-    try {
-      const { data, error } = await sb.rpc('checkin_mark_present', { p_token: item.token, p_teacher_id: item.teacherId });
-      if (error) { remaining.push(item); continue; }
-      // 'ok' / 'already' / 'closed' / 'invalid' are all final answers straight from
-      // the server's own clock — none of them improve by retrying later, so the
-      // queued item is resolved (for better or worse) either way.
-      lastResult = data;
-    } catch(e) { remaining.push(item); }
-  }
-  setCheckinQueue(remaining);
-  // Refresh the on-screen message if the check-in page is still open.
-  const body = document.getElementById('checkin-body');
-  if (body && lastResult) {
-    const msg = document.getElementById('checkin-msg');
-    if (msg) {
-      if (lastResult === 'ok' || lastResult === 'already') {
-        msg.innerHTML = `<span class="ok">✓ ${esc(t.checkinSuccess)}</span>`;
-      } else if (lastResult === 'closed') {
-        msg.innerHTML = `<span class="err">${esc(t.checkinOutsideWindow)}</span>`;
-      } else {
-        msg.innerHTML = `<span class="err">${esc(t.checkinInvalid)}</span>`;
-      }
-    }
-  }
 }
 
 // ---------------- Class / Teacher Portal (public, no real login — reached via ?class=1) ----------------
@@ -12440,9 +12128,12 @@ function renderParentPortalResult(r, opts) {
     </div>` : `<p style="font-size:12px;opacity:.6;">${esc(t.parentNoFeeLinked)}</p>`;
 
   const results = r.results || [];
-  const resultsHtml = results.length ? `
-    <div class="section-title" style="margin-top:14px;">${esc(t.parentResults)}</div>
-    <div class="list-card">${results.map((res, i) => `
+  // Newest result first (by issue/update date when the server sends one; otherwise the server's own order is kept).
+  const ppResDate = x => String((x && (x.date_of_issue || x.updated_at || x.created_at)) || '');
+  const resOrder = results.map((_, i) => i).sort((a, b) => ppResDate(results[b]).localeCompare(ppResDate(results[a])) || a - b);
+  const ppResRow = i => {
+    const res = results[i];
+    return `
       <div class="list-row" style="cursor:pointer;flex-direction:column;align-items:stretch;" onclick="togglePpMarks(${i})">
         <div style="display:flex;justify-content:space-between;">
           <div>
@@ -12452,7 +12143,13 @@ function renderParentPortalResult(r, opts) {
           <span style="opacity:.5;">▾</span>
         </div>
         <div id="pp-marks-${i}" class="hidden" style="margin-top:8px;"></div>
-      </div>`).join('')}</div>` : `<p style="font-size:12px;opacity:.6;margin-top:14px;">${esc(t.parentNoResults)}</p>`;
+      </div>`;
+  };
+  const resultsHtml = results.length ? `
+    <div class="section-title" style="margin-top:14px;">${esc(t.parentResults)}</div>
+    <div class="list-card">${ppResRow(resOrder[0])}</div>
+    ${resOrder.length > 1 ? `<button type="button" class="btn-ghost" style="width:100%;margin-top:10px;" onclick="togglePpOldResults()">${esc(qt('Previous Results', 'پچھلے نتائج'))} (${resOrder.length - 1})</button>
+    <div id="pp-old-results" class="hidden" style="margin-top:8px;"><div class="list-card">${resOrder.slice(1).map(ppResRow).join('')}</div></div>` : ''}` : `<p style="font-size:12px;opacity:.6;margin-top:14px;">${esc(t.parentNoResults)}</p>`;
 
   body.innerHTML = `
     ${offlineBanner}
@@ -12477,6 +12174,11 @@ function togglePpFeeHistory() {
     <tbody>${rows.map(x => `<tr style="border-top:1px solid var(--line);"><td style="padding:4px 0;">${esc(monthLabel(x.month))}</td><td style="text-align:right;">₨${fmt(x.dues)}</td><td style="text-align:right;">₨${fmt(x.paid)}</td><td style="text-align:right;">₨${fmt(x.balance)}</td></tr>`).join('')}</tbody>
   </table>`;
   box.classList.remove('hidden');
+}
+
+function togglePpOldResults() {
+  const box = document.getElementById('pp-old-results');
+  if (box) box.classList.toggle('hidden');
 }
 
 function togglePpMarks(i) {
@@ -12952,7 +12654,7 @@ async function ppQuizReview(i) {
   } catch (e) { alert(qzErr(e)); renderParentPortalResult(PP_CURRENT); }
 }
 
-console.log('SchoolMS build: 2026-10-04-daily-quiz-7am'); // bump this string on every deploy to verify (in browser console) which version is actually running
+console.log('SchoolMS build: 2026-10-04-daily-quiz-7am-latest-result-lightsync-noqr'); // bump this string on every deploy to verify (in browser console) which version is actually running
 </script>
 </body>
 </html>
