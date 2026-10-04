@@ -1176,7 +1176,7 @@ const T = {
     classPortalAddSubject:'Add Subject', classPortalSubjectName:'Subject', classPortalSubjectTotal:'Total Marks',
     classPortalNoSubjects:'Add at least one subject first.', classPortalSaveMarks:'Save Marks', classPortalMarksSaved:'Marks saved.',
     classPortalNoStudents:'No students found for this class yet.', classPortalMarksExceed:'Marks cannot exceed the subject total.',
-    classPortalMenuAddStudent:'Add Student', classPortalAddStudentTitle:'Add Student', classPortalAddStudentDesc:"Enter the student's name and father's name to add them to this class.",
+    classPortalMenuAddStudent:'Add Student', classPortalAddStudentTitle:'Add Student', classPortalAddStudentDesc:"Enter the student's name to add them to this class. Father's name and contact are optional.",
     classPortalMenuManageStudents:'Manage Students', classPortalManageStudentsDesc:'If a student has left the school, strike them off here. They will be removed from attendance, register and marks, but their record and history stay safe and can be restored by the school.', classPortalNoStudents:'No students in this class yet.',
     classPortalStudentNamePlaceholder:'Student Name', classPortalAddStudentSaved:'Student added.', classPortalAddStudentOffline:'You are offline — connect to the internet to add a student.',
     classPortalFatherNameRequired:"Father's name is required.",
@@ -1369,7 +1369,7 @@ const T = {
     classPortalAddSubject:'مضمون شامل کریں', classPortalSubjectName:'مضمون', classPortalSubjectTotal:'کل نمبر',
     classPortalNoSubjects:'پہلے کم از کم ایک مضمون شامل کریں۔', classPortalSaveMarks:'نمبرات محفوظ کریں', classPortalMarksSaved:'نمبرات محفوظ ہو گئے۔',
     classPortalNoStudents:'اس کلاس کے لیے ابھی کوئی طالب علم نہیں ملا۔', classPortalMarksExceed:'نمبر مضمون کے کل نمبروں سے زیادہ نہیں ہو سکتے۔',
-    classPortalMenuAddStudent:'طالب علم شامل کریں', classPortalAddStudentTitle:'طالب علم شامل کریں', classPortalAddStudentDesc:'طالب علم کا نام اور والد کا نام درج کریں تاکہ اسے اس کلاس میں شامل کیا جا سکے۔',
+    classPortalMenuAddStudent:'طالب علم شامل کریں', classPortalAddStudentTitle:'طالب علم شامل کریں', classPortalAddStudentDesc:'اس کلاس میں شامل کرنے کے لیے طالب علم کا نام درج کریں۔ والد کا نام اور رابطہ نمبر اختیاری ہیں۔',
     classPortalMenuManageStudents:'طلبہ کا انتظام', classPortalManageStudentsDesc:'اگر کوئی طالب علم اسکول چھوڑ چکا ہے تو یہاں سے اسے نشان زد کریں۔ وہ حاضری، رجسٹر اور نمبروں سے ہٹ جائے گا، مگر اس کا ریکارڈ محفوظ رہے گا اور اسکول اسے دوبارہ بحال کر سکتا ہے۔', classPortalNoStudents:'اس کلاس میں ابھی کوئی طالب علم نہیں۔',
     classPortalStudentNamePlaceholder:'طالب علم کا نام', classPortalAddStudentSaved:'طالب علم شامل ہو گیا۔', classPortalAddStudentOffline:'آپ آف لائن ہیں — طالب علم شامل کرنے کے لیے انٹرنیٹ سے جڑیں۔',
     classPortalFatherNameRequired:'والد کا نام درج کرنا ضروری ہے۔',
@@ -3315,9 +3315,9 @@ function _renderTabInner() {
   else if (TAB==='notices') {
     // The form is NOT rebuilt if it is already on screen (same language): a background sync / 'online'
     // event used to wipe it and close the keyboard. Only the list underneath is refreshed.
-    if (document.getElementById('notice-details') && main.dataset.noticeLang === LANG) { noticeLoad(); updateAlertsBadge(); return; }
+    if (document.getElementById('notice-details') && main.dataset.noticeLang === LANG) { noticeLoad(); pmOwnerLoad(); updateAlertsBadge(); return; }
     main.dataset.noticeLang = LANG;
-    main.innerHTML = tplNotices(); noticeInit();
+    main.innerHTML = tplNotices(); noticeInit(); pmOwnerLoad();
   }
   else if (TAB==='admin') { main.innerHTML = tplAdmin(); loadAdminLists(); return; }
   main.insertAdjacentHTML('beforeend', `<div class="notice">${esc(t.sharedNotice)}</div>`);
@@ -11115,6 +11115,8 @@ function tplNotices() {
     </div>
     <div class="section-title" style="margin-top:16px;">${esc(qt('Published notices', 'شائع شدہ نوٹس'))}</div>
     <div id="notice-list"><div class="empty">…</div></div>
+    <div class="section-title" style="margin-top:16px;">${esc(qt('Messages from parents', 'والدین کے پیغامات'))}</div>
+    <div id="pm-owner-list"><div class="empty">…</div></div>
   `;
 }
 
@@ -11420,6 +11422,113 @@ function noticeOpenScreen(kind) {
   noticeRefresh('notice-portal-list', kind, 20);
 }
 
+// =====================================================================
+// PARENT MESSAGES — parents write to the school from the parent portal and tap
+// Teacher / Principal / Both. Teachers read them in the class portal, the owner
+// in the Notice Board tab. Needs parent_messages.sql to be run once in Supabase.
+// =====================================================================
+function ppContactBoxHtml() {
+  const btn = (k, label) => `<button type="button" class="btn-primary pp-send-btn" style="flex:1;padding:10px 4px;font-size:13px;" onclick="ppSendMessage('${k}')">${label}</button>`;
+  return `
+    <div class="section-title" style="margin-top:6px;">${esc(qt('Contact school', 'اسکول سے رابطہ'))}</div>
+    <div class="card" style="margin-bottom:14px;">
+      <textarea id="pp-msg-text" maxlength="500" rows="3" style="width:100%;box-sizing:border-box;" placeholder="${esc(qt('Write your message here…', 'اپنا پیغام یہاں لکھیں…'))}"></textarea>
+      <div style="font-size:12px;opacity:.7;margin:8px 0 6px;">${esc(qt('Send to', 'بھیجیں'))}</div>
+      <div style="display:flex;gap:8px;">
+        ${btn('teacher', '👩‍🏫 ' + esc(qt('Teacher', 'استاد')))}
+        ${btn('owner', '🏫 ' + esc(qt('Principal', 'پرنسپل')))}
+        ${btn('both', '👥 ' + esc(qt('Both', 'دونوں')))}
+      </div>
+      <div id="pp-contact-status" style="font-size:12px;margin-top:8px;"></div>
+    </div>`;
+}
+
+async function ppSendMessage(target) {
+  const box = document.getElementById('pp-msg-text'), out = document.getElementById('pp-contact-status');
+  if (!box || !out) return;
+  const text = box.value.trim();
+  const bad = m => { out.innerHTML = `<div class="err">${esc(m)}</div>`; };
+  if (!text) { bad(qt('Please write a message first.', 'پہلے پیغام لکھیں۔')); return; }
+  const c = getPpCache(); if (!c) return;
+  if (!navigator.onLine) { bad(qt('You are offline — connect to the internet to send.', 'آپ آف لائن ہیں — بھیجنے کے لیے انٹرنیٹ سے جڑیں۔')); return; }
+  const btns = document.querySelectorAll('.pp-send-btn');
+  btns.forEach(b => b.disabled = true);
+  out.textContent = '…';
+  try {
+    const { error } = await sb.rpc('parent_message_send', {
+      p_school_code: c.schoolCode, p_roll: String(c.roll), p_pin: String(c.pin), p_message: text,
+      p_to_teacher: target !== 'owner', p_to_owner: target !== 'teacher'
+    });
+    if (error) {
+      const m = String(error.message || '');
+      if (/too_many/.test(m)) bad(qt('Too many messages today. Please try again tomorrow.', 'آج بہت زیادہ پیغامات بھیج دیے ہیں۔ کل دوبارہ کوشش کریں۔'));
+      else if (/does not exist|could not find the function|schema cache/i.test(m)) bad(qt('Messaging is not set up yet. Please tell the school.', 'پیغام کی سہولت ابھی سیٹ اپ نہیں ہوئی۔ اسکول کو بتائیں۔'));
+      else bad(qt('Could not send. Please try again.', 'پیغام نہیں بھیجا جا سکا۔ دوبارہ کوشش کریں۔'));
+    } else {
+      box.value = '';
+      const who = target === 'teacher' ? qt('Teacher', 'استاد') : target === 'owner' ? qt('Principal', 'پرنسپل') : qt('Teacher and Principal', 'استاد اور پرنسپل');
+      out.innerHTML = `<span class="ok">✓ ${esc(qt('Sent to', 'بھیج دیا گیا:'))} ${esc(who)}</span>`;
+    }
+  } catch (e) { bad(qt('Could not send. Please check your connection.', 'پیغام نہیں بھیجا جا سکا۔ انٹرنیٹ چیک کریں۔')); }
+  btns.forEach(b => b.disabled = false);
+}
+
+function pmRowHtml(m, showClass) {
+  const who = m.to_teacher && m.to_owner ? qt('Teacher + Principal', 'استاد + پرنسپل') : m.to_owner ? qt('Principal', 'پرنسپل') : qt('Teacher', 'استاد');
+  return `
+    <div class="list-row" style="flex-direction:column;align-items:stretch;">
+      <div style="display:flex;justify-content:space-between;gap:8px;">
+        <div class="nm">${esc(m.student_name || '')}${showClass && m.class_name ? ' · ' + esc(m.class_name) : ''}</div>
+        <div class="sub" style="flex:none;">${esc(fmtDate((m.created_at || '').slice(0, 10)) || '')}</div>
+      </div>
+      <div class="sub">${m.father_name ? esc(t.fatherName) + ': ' + esc(m.father_name) + ' · ' : ''}${esc(who)}</div>
+      <div style="margin-top:6px;font-size:13px;line-height:1.5;white-space:pre-wrap;">${esc(m.message || '')}</div>
+      ${showClass ? `<button class="btn-ghost" style="align-self:flex-end;margin-top:6px;padding:4px 10px;font-size:11px;" onclick="pmOwnerDelete('${m.id}')">${esc(qt('Delete', 'حذف کریں'))}</button>` : ''}
+    </div>`;
+}
+function pmSetupMissing(msg) { return /parent_messages|parent_message_/.test(msg || '') && /(does not exist|schema cache|relation|could not find)/i.test(msg || ''); }
+
+// Teacher side (class portal)
+async function renderClassPortalParentMsgs() {
+  CLASS_PORTAL_SCREEN = 'parentMsgs';
+  const s = getClassSession();
+  const body = document.getElementById('class-portal-body');
+  if (!s || !body) return;
+  body.innerHTML = `
+    <button class="btn-ghost" style="padding:9px 14px;margin-bottom:10px;" onclick="CLASS_PORTAL_SCREEN='menu'; renderClassPortalMenu()">‹ ${esc(t.classPortalBackToMenu)}</button>
+    <h2 style="margin-top:0;">${esc(qt('Parent Messages', 'والدین کے پیغامات'))}</h2>
+    <div id="cp-pm-list"><p class="desc">…</p></div>`;
+  const box = document.getElementById('cp-pm-list');
+  if (!navigator.onLine) { box.innerHTML = `<div class="err">${esc(qt('You are offline.', 'آپ آف لائن ہیں۔'))}</div>`; return; }
+  try {
+    const { data, error } = await sb.rpc('parent_message_list_class', { p_school_code: s.schoolCode, p_login_id: s.loginId, p_password: s.password, p_limit: 50 });
+    if (error) {
+      box.innerHTML = `<div class="err">${esc(pmSetupMissing(error.message) ? qt('Not set up yet (run parent_messages.sql in Supabase).', 'ابھی سیٹ اپ نہیں ہوا (Supabase میں parent_messages.sql چلائیں)۔') : qt('Could not load messages.', 'پیغامات لوڈ نہیں ہو سکے۔'))}</div>`;
+      return;
+    }
+    box.innerHTML = (data && data.length) ? `<div class="list-card">${data.map(m => pmRowHtml(m, false)).join('')}</div>` : `<p class="desc">${esc(qt('No messages yet.', 'ابھی کوئی پیغام نہیں۔'))}</p>`;
+  } catch (e) { box.innerHTML = `<div class="err">${esc(qt('Could not load messages.', 'پیغامات لوڈ نہیں ہو سکے۔'))}</div>`; }
+}
+
+// Owner side (Notice Board tab)
+async function pmOwnerLoad() {
+  const box = document.getElementById('pm-owner-list'); if (!box || !CURRENT_USER) return;
+  if (!navigator.onLine) { box.innerHTML = `<p class="desc">${esc(qt('You are offline.', 'آپ آف لائن ہیں۔'))}</p>`; return; }
+  try {
+    const { data, error } = await sb.from('parent_messages').select('*').eq('owner_id', CURRENT_USER.id).eq('to_owner', true).order('created_at', { ascending: false }).limit(50);
+    if (error) {
+      box.innerHTML = `<div class="err">${esc(pmSetupMissing(error.message) ? qt('Not set up yet (run parent_messages.sql in Supabase).', 'ابھی سیٹ اپ نہیں ہوا (Supabase میں parent_messages.sql چلائیں)۔') : (error.message || ''))}</div>`;
+      return;
+    }
+    box.innerHTML = (data && data.length) ? `<div class="list-card">${data.map(m => pmRowHtml(m, true)).join('')}</div>` : `<p class="desc">${esc(qt('No messages yet.', 'ابھی کوئی پیغام نہیں۔'))}</p>`;
+  } catch (e) { box.innerHTML = `<p class="desc">…</p>`; }
+}
+async function pmOwnerDelete(id) {
+  if (!confirm(qt('Delete this message?', 'یہ پیغام حذف کریں؟'))) return;
+  try { await sb.from('parent_messages').delete().eq('id', id).eq('owner_id', CURRENT_USER.id); } catch (e) {}
+  pmOwnerLoad();
+}
+
 // Section shown at the top of the parent portal
 function noticeParentBoxHtml() {
   return `<div class="section-title" style="margin-top:6px;">${esc(qt('Notices from school', 'اسکول کے نوٹس'))}</div><div id="pp-notices" style="margin-bottom:14px;"></div>`;
@@ -11442,6 +11551,7 @@ function renderClassPortalMenu() {
     <button class="btn-primary" style="width:100%;margin-bottom:10px;" onclick="renderClassPortalMarks()">${esc(t.classPortalMenuMarks)}</button>
     <button class="btn-primary" style="width:100%;margin-bottom:10px;" onclick="renderClassPortalMarksView()">${esc(t.classPortalMenuMarksView)}</button>
     <button class="btn-primary" style="width:100%;margin-bottom:10px;" onclick="noticeOpenScreen('class')">📢 ${esc(qt('Notice Board', 'نوٹس بورڈ'))}</button>
+    <button class="btn-primary" style="width:100%;margin-bottom:10px;" onclick="renderClassPortalParentMsgs()">📩 ${esc(qt('Parent Messages', 'والدین کے پیغامات'))}</button>
     <button class="btn-ghost" style="width:100%;margin-bottom:10px;" onclick="renderClassPortalAddStudent()">${esc(t.classPortalMenuAddStudent)}</button>
     <button class="btn-ghost" style="width:100%;" onclick="renderClassPortalManageStudents()">${esc(t.classPortalMenuManageStudents)}</button>
     ${queue.length ? `<p style="font-size:11px;opacity:.6;margin-top:14px;">${esc(t.classPortalOffline)} (${queue.length})</p>` : ''}
@@ -11740,8 +11850,8 @@ function renderClassPortalAddStudent() {
     <h2 style="margin-top:0;">${esc(t.classPortalAddStudentTitle)}</h2>
     <p class="desc">${esc(t.classPortalAddStudentDesc)}</p>
     <label><span>${esc(t.classPortalStudentNamePlaceholder)}</span><input id="cp-add-name" placeholder="${esc(t.classPortalStudentNamePlaceholder)}"></label>
-    <label><span>${esc(t.fatherName)}</span><input id="cp-add-father" placeholder="${esc(t.fatherName)}"></label>
-    <label><span>${esc(t.contact)}</span><input id="cp-add-phone" type="tel" placeholder="03XXXXXXXXX"></label>
+    <label><span>${esc(t.fatherName)} <small style="opacity:.6;">(${LANG==='ur'?'اختیاری':'optional'})</small></span><input id="cp-add-father" placeholder="${esc(t.fatherName)}"></label>
+    <label><span>${esc(t.contact)} <small style="opacity:.6;">(${LANG==='ur'?'اختیاری':'optional'})</small></span><input id="cp-add-phone" type="tel" placeholder="03XXXXXXXXX"></label>
     <div id="cp-add-msg" style="font-size:12px;margin:8px 0;"></div>
     <button class="btn-primary" style="width:100%;" onclick="submitClassPortalAddStudent()">${esc(t.classPortalMenuAddStudent)}</button>
   `;
@@ -11769,8 +11879,6 @@ async function submitClassPortalAddStudent() {
   const fatherName = fatherInput ? fatherInput.value.trim() : '';
   const phone = phoneInput ? phoneInput.value.trim() : '';
   if (!session || !name) return;
-  if (!fatherName) { msg.innerHTML = `<div class="err">${esc(t.classPortalFatherNameRequired)}</div>`; return; }
-  if (!phone) { msg.innerHTML = `<div class="err">${esc(t.classPortalPhoneRequired)}</div>`; return; }
   msg.textContent = '…';
   if (!navigator.onLine) { queueOfflineAddStudent(session, name, fatherName, phone, msg, nameInput, fatherInput, phoneInput); return; }
   try {
@@ -12699,6 +12807,8 @@ function renderParentPortalResult(r, opts) {
   opts = opts || {};
   PP_CURRENT = r;
   const body = document.getElementById('parent-portal-body');
+  const ppDraftEl = document.getElementById('pp-msg-text');
+  const ppDraft = ppDraftEl ? ppDraftEl.value : '';
   const name = (LANG === 'ur' && r.student_name_ur) ? r.student_name_ur : r.student_name;
   const offlineBanner = opts.fromCache ? `<p style="font-size:11px;opacity:.65;margin-bottom:10px;">${esc(t.parentPortalOfflineNote)} ${esc(new Date(opts.ts).toLocaleString())}</p>` : '';
   const diaryEntries = r.diary_entries || [];
@@ -12760,6 +12870,7 @@ function renderParentPortalResult(r, opts) {
     <p class="desc">${esc(r.school_name || '')} · ${esc(r.class_admitted || '')}${r.father_name ? ' · ' + esc(r.father_name) : ''}</p>
     ${(admLine || dobLine) ? `<p class="desc" style="margin-top:-4px;">${[admLine, dobLine].filter(Boolean).join(' · ')}</p>` : ''}
     ${noticeParentBoxHtml()}
+    ${ppContactBoxHtml()}
     ${ppQuizHtml(r)}
     ${feeHtml}
     ${resultsHtml}
@@ -12767,6 +12878,7 @@ function renderParentPortalResult(r, opts) {
     <button class="btn-ghost" style="width:100%;margin-top:16px;" onclick="clearPpCache(); document.getElementById('parent-portal-body').innerHTML = parentPortalFormHtml()">${esc(t.parentPortalSwitchStudent)}</button>
   `;
   noticeRefresh('pp-notices', 'parent', 10);
+  if (ppDraft) { const ta = document.getElementById('pp-msg-text'); if (ta) ta.value = ppDraft; }
 }
 
 function togglePpFeeHistory() {
