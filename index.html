@@ -7667,6 +7667,29 @@ function dmcGradeColor(grade) {
   return map[grade] || '#1C2530';
 }
 
+// Width (in em) of the school name in the certificate font, measured with the real font so the
+// name can always be fitted inside the arch. Falls back to a character-count estimate.
+function dmcNameWidthEm(text) {
+  try {
+    if (!window._dmcMeasureCtx) window._dmcMeasureCtx = document.createElement('canvas').getContext('2d');
+    const ctx = window._dmcMeasureCtx;
+    ctx.font = "700 100px 'Aref Ruqaa', serif";
+    return (ctx.measureText(text || '').width / 100) * 1.05;   // 5% safety margin
+  } catch (e) { return (text || '').length * 0.5; }
+}
+// The first time the certificate is drawn the web font may not be loaded yet (so it would be
+// measured with a fallback font). Ask for it once and redraw the preview as soon as it arrives.
+function dmcEnsureNameFont() {
+  try {
+    if (!document.fonts || window._dmcFontAsked) return;
+    if (document.fonts.check("700 20px 'Aref Ruqaa'")) return;
+    window._dmcFontAsked = true;
+    document.fonts.load("700 20px 'Aref Ruqaa'").then(() => {
+      try { if (document.getElementById('dmc-preview') && dmcResults.length > 0) generateDMCPreview(); } catch (e) {}
+    }).catch(() => {});
+  } catch (e) {}
+}
+
 function renderDMCCertificate(result) {
   const totalObtained = dmcSubjects.reduce((a, s) => a + (Number(result.marks[s.name]) || 0), 0);
   const totalPossible = dmcSubjects.reduce((a,b) => a+b.total, 0);
@@ -7713,27 +7736,30 @@ function renderDMCCertificate(result) {
   const nameShadow = '1px 1px 0 rgba(255,255,255,.6),2px 2px 3px rgba(0,0,0,.4),3px 3px 5px rgba(0,0,0,.3)';
   const taglineShadow = '0.5px 0.5px 0 rgba(255,255,255,.6),1px 1px 2px rgba(0,0,0,.4),2px 2px 3px rgba(0,0,0,.3)';
   const panelBg = 'transparent';
+  // Soft white halo behind dark text so it stays crisp over the watermark / background picture.
+  const glow = '0 0 2px rgba(255,255,255,.95),0 0 5px rgba(255,255,255,.9)';
+  const lightPanel = 'background:rgba(255,255,255,.62);-webkit-print-color-adjust:exact;print-color-adjust:exact;';
 
   const subjectsHtml = dmcSubjects.map((s, i) => {
     const marks = Number(result.marks[s.name]) || 0;
     const subjPct = s.total ? (marks / s.total) * 100 : 0;
     const subjGrade = dmcGradeFor(subjPct);
     return `
-      <tr style="border-bottom:1px solid #E7E0CE;">
-        <td style="padding:6px 12px;text-align:center;font-size:13px;font-weight:800;color:#1C2530;">${i+1}</td>
-        <td style="padding:6px 12px;text-align:left;font-size:14px;font-weight:900;color:#1C2530;">${esc(s.name)}</td>
-        <td style="padding:6px 12px;text-align:center;font-size:14px;font-weight:800;color:#333;">${s.total}</td>
-        <td style="padding:6px 12px;text-align:center;font-size:14px;font-weight:900;color:#0F2740;">${marks}</td>
-        <td style="padding:6px 12px;text-align:center;font-size:13px;font-weight:900;color:#0F2740;">${subjGrade}</td>
+      <tr style="border-bottom:1px solid #C9C2A6;${lightPanel}">
+        <td style="padding:6px 12px;text-align:center;font-size:15px;font-weight:900;color:#000;text-shadow:${glow};">${i+1}</td>
+        <td style="padding:6px 12px;text-align:left;font-size:16px;font-weight:900;color:#000;text-shadow:${glow};">${esc(s.name)}</td>
+        <td style="padding:6px 12px;text-align:center;font-size:16px;font-weight:900;color:#000;text-shadow:${glow};">${s.total}</td>
+        <td style="padding:6px 12px;text-align:center;font-size:17px;font-weight:900;color:#000;text-shadow:${glow};">${marks}</td>
+        <td style="padding:6px 12px;text-align:center;font-size:16px;font-weight:900;color:#000;text-shadow:${glow};">${subjGrade}</td>
       </tr>`;
   }).join('');
 
   const infoField = (icon, label, value) => `
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
       <span style="flex-shrink:0;width:20px;text-align:center;">${icon}</span>
-      <span style="flex-shrink:0;width:108px;font-size:14px;font-weight:900;color:#0F2740;">${esc(label)}</span>
-      <span style="font-size:14px;font-weight:900;color:#1C2530;">:</span>
-      <span style="flex:1;font-size:15px;font-weight:900;color:#1C2530;border-bottom:1px solid #C9C2A6;padding-bottom:2px;">${esc(value || '\u2014')}</span>
+      <span style="flex-shrink:0;width:112px;font-size:15px;font-weight:900;color:#000;text-shadow:${glow};">${esc(label)}</span>
+      <span style="font-size:15px;font-weight:900;color:#000;">:</span>
+      <span style="flex:1;font-size:17px;font-weight:900;color:#000;text-shadow:${glow};border-bottom:1px solid #8a8466;padding-bottom:2px;">${esc(value || '\u2014')}</span>
     </div>`;
 
 
@@ -7742,35 +7768,70 @@ function renderDMCCertificate(result) {
   const nameLen = (dmcSchoolName || '').length;
   const nameFontSize = nameLen > 42 ? 22 : nameLen > 34 ? 26 : nameLen > 26 ? 30 : nameLen > 18 ? 34 : 40;
 
+  // Mihrab-style arched header: the school name follows a gentle arch instead of a
+  // straight line. Each end of the line tilts 20 degrees upward, so the two sides
+  // meet at the top at 140 degrees instead of 180 (a flat line).
+  // The name ALWAYS fits inside the arch: its font size is calculated from the real text
+  // width, and a very long name is split over two arched lines before it gets too small.
+  dmcEnsureNameFont();
+  const hdrW = 560, hdrX1 = 10, hdrX2 = 550, hdrHalfAng = 20 * Math.PI / 180;
+  const hdrR = ((hdrX2 - hdrX1) / 2) / Math.sin(hdrHalfAng);
+  const hdrSag = hdrR * (1 - Math.cos(hdrHalfAng));
+  const hdrMaxW = 470;                                  // usable text length along the arch
+  const hdrBaseFs = Math.round(nameFontSize * 1.3);     // SVG is shown ~25% smaller than its box
+  const hdrName = (dmcSchoolName || '').trim();
+  const fitFs = txt => Math.max(10, Math.min(hdrBaseFs, Math.floor(hdrMaxW / Math.max(dmcNameWidthEm(txt), 0.1))));
+  let hdrLines = [hdrName], hdrFs = fitFs(hdrName);
+  if (hdrFs < 26 && /\s/.test(hdrName)) {
+    const mid = hdrName.length / 2; let best = -1;
+    for (let k = 0; k < hdrName.length; k++) {
+      if (/\s/.test(hdrName[k]) && (best < 0 || Math.abs(k - mid) < Math.abs(best - mid))) best = k;
+    }
+    const l1 = hdrName.slice(0, best).trim(), l2 = hdrName.slice(best).trim();
+    const fs2 = Math.min(fitFs(l1), fitFs(l2));
+    if (l1 && l2 && fs2 > hdrFs) { hdrLines = [l1, l2]; hdrFs = fs2; }
+  }
+  const hdrLineGap = Math.round(hdrFs * 1.12);
+  const hdrEndY = hdrFs + 12 + hdrSag;
+  const hdrUp = Math.round(hdrFs * 0.95 + 8);
+  const hdrDown = (hdrLines.length - 1) * hdrLineGap + Math.round(hdrFs * 0.45) + 9;
+  const hdrH = Math.ceil(hdrEndY + hdrDown + 3);
+  const hdrArcId = 'dmcArc' + Math.random().toString(36).slice(2, 8);
+  const f2 = n => Number(n).toFixed(2);
+  const hdrArcAt = dy => `M ${hdrX1} ${f2(hdrEndY + dy)} A ${f2(hdrR)} ${f2(hdrR)} 0 0 1 ${hdrX2} ${f2(hdrEndY + dy)}`;
+  const hdrBand = `M ${hdrX1} ${f2(hdrEndY - hdrUp)} A ${f2(hdrR)} ${f2(hdrR)} 0 0 1 ${hdrX2} ${f2(hdrEndY - hdrUp)} L ${hdrX2} ${f2(hdrEndY + hdrDown)} A ${f2(hdrR)} ${f2(hdrR)} 0 0 0 ${hdrX1} ${f2(hdrEndY + hdrDown)} Z`;
+  const hdrPathsHtml = hdrLines.map((_, k) => `<path id="${hdrArcId}${k}" d="${hdrArcAt(k * hdrLineGap)}"/>`).join('');
+  const hdrTextHtml = hdrLines.map((ln, k) => `<text font-family="'Aref Ruqaa',serif" font-weight="900" font-size="${hdrFs}" fill="${nameColor}" stroke="${nameColor}" stroke-width=".4" text-anchor="middle"><textPath href="#${hdrArcId}${k}" startOffset="50%">${esc(ln)}</textPath></text>`).join('');
+
   return `
     <div class="dmc-cert" style="page-break-inside:avoid;break-inside:avoid;margin-bottom:24px;font-family:Inter,sans-serif;">
       <div style="max-width:800px;margin:0 auto;background:${pc};padding:8px;border-radius:22px;position:relative;overflow:hidden;">
         <div style="background:${bg};border:2px solid ${ac};border-radius:16px;padding:18px 26px 16px;position:relative;z-index:0;overflow:hidden;">
           ${dmcDesign.bgImage ? `<div style="position:absolute;inset:0;z-index:-1;pointer-events:none;background:url('${dmcDesign.bgImage}') center/${dmcDesign.bgImageFit === 'contain' ? 'contain' : 'cover'} no-repeat;opacity:${dmcDesign.bgImageOpacity == null ? 0.25 : dmcDesign.bgImageOpacity};-webkit-print-color-adjust:exact;print-color-adjust:exact;"></div>` : ''}
-          ${dmcLogo ? `<div style="position:absolute;inset:0;z-index:-1;display:flex;align-items:center;justify-content:center;pointer-events:none;overflow:hidden;"><img src="${dmcLogo}" style="width:63%;max-width:364px;object-fit:contain;opacity:.5;filter:blur(1px);"></div>` : ''}
+          ${dmcLogo ? `<div style="position:absolute;inset:0;z-index:-1;display:flex;align-items:center;justify-content:center;pointer-events:none;overflow:hidden;"><img src="${dmcLogo}" style="width:63%;max-width:364px;object-fit:contain;opacity:.13;filter:blur(1px);"></div>` : ''}
 
           <!-- Header: logo back on the side (as in the original layout), with
                the school name as a plain auto-sizing line so long names never
                get clipped. -->
-          <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:14px;">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:14px;">
             <div style="flex-shrink:0;width:62px;height:62px;">
               ${dmcLogo
                 ? `<img src="${dmcLogo}" style="width:62px;height:62px;object-fit:contain;border-radius:50%;border:2px solid ${ac};">`
                 : `<svg viewBox="0 0 64 64" width="62" height="62"><path d="M32 4 L58 12 V32 C58 46 47 56 32 60 C17 56 6 46 6 32 V12 Z" fill="${pc}" stroke="${ac}" stroke-width="2"/><circle cx="32" cy="26" r="10" fill="none" stroke="${acLight}" stroke-width="1.5"/><path d="M24 40 L40 40" stroke="${acLight}" stroke-width="1.5"/></svg>`}
             </div>
-            <div style="flex:1;padding-top:2px;">
-              <div style="display:flex;align-items:center;justify-content:center;gap:8px;">
-                <span style="color:${ac};font-size:${Math.max(nameFontSize*0.45,12)}px;flex-shrink:0;">✦</span>
-                <div style="font-family:'Aref Ruqaa',serif;font-weight:900;line-height:1.3;letter-spacing:.02em;font-size:${nameFontSize}px;color:${nameColor};text-align:center;text-shadow:${nameShadow};">${esc(dmcSchoolName)}</div>
-                <span style="color:${ac};font-size:${Math.max(nameFontSize*0.45,12)}px;flex-shrink:0;">✦</span>
-              </div>
-              ${dmcTagline ? `<div style="display:flex;align-items:center;justify-content:center;gap:8px;margin-top:5px;"><span style="color:${ac};font-size:10px;flex-shrink:0;">✦</span><div style="font-size:11px;font-weight:900;letter-spacing:.12em;text-transform:uppercase;color:${nameColor};text-align:center;text-shadow:${taglineShadow};">${esc(dmcTagline)}</div><span style="color:${ac};font-size:10px;flex-shrink:0;">✦</span></div>` : ''}
+            <div style="flex:1;min-width:0;">
+              <svg viewBox="0 0 ${hdrW} ${hdrH}" xmlns="http://www.w3.org/2000/svg" style="display:block;width:100%;height:auto;overflow:visible;-webkit-print-color-adjust:exact;print-color-adjust:exact;">
+                <defs>${hdrPathsHtml}</defs>
+                <path d="${hdrBand}" fill="rgba(255,255,255,.88)" stroke="${ac}" stroke-width="1.5" stroke-linejoin="round"/>
+                ${hdrTextHtml}
+              </svg>
             </div>
             <div style="flex-shrink:0;width:42px;height:54px;">
               <svg viewBox="0 0 44 56" width="42" height="54"><path d="M6 0 H38 V34 L22 24 L6 34 Z" fill="${pc}"/><circle cx="22" cy="16" r="12" fill="${acLight}" stroke="${ac}" stroke-width="1.5"/><path d="M16 16 L20 20 L28 11" stroke="${pc}" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
             </div>
           </div>
 
+          ${dmcTagline ? `<div style="text-align:center;margin-top:8px;"><span style="display:inline-block;background:rgba(255,255,255,.88);border:1px solid ${ac};border-radius:999px;padding:3px 16px;font-size:12px;font-weight:900;letter-spacing:.12em;text-transform:uppercase;color:#000;-webkit-print-color-adjust:exact;print-color-adjust:exact;"><span style="color:${ac};">✦</span> ${esc(dmcTagline)} <span style="color:${ac};">✦</span></span></div>` : ''}
           <div style="height:1px;background:linear-gradient(90deg,transparent,${ac},transparent);margin:10px 0 12px;"></div>
 
           <!-- Title banner -->
@@ -7783,7 +7844,7 @@ function renderDMCCertificate(result) {
           <div style="margin:14px 0 0;">
             <div style="display:inline-block;background:${pc};color:#fff;padding:7px 18px;font-size:13px;font-weight:900;letter-spacing:.05em;border-radius:4px 10px 4px 4px;">STUDENT INFORMATION</div>
           </div>
-          <div style="background:${panelBg};border:1px solid ${ac};border-radius:10px;padding:12px 18px 2px;margin-top:8px;">
+          <div style="${lightPanel}border:1px solid ${ac};border-radius:10px;padding:12px 18px 2px;margin-top:8px;">
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:0 20px;">
               <div>
                 ${infoField('&#128100;','Student Name', result.studentName)}
@@ -7811,29 +7872,29 @@ function renderDMCCertificate(result) {
             </thead>
             <tbody>
               ${subjectsHtml}
-              <tr style="background:${acLight};font-weight:900;">
-                <td colspan="2" style="padding:8px 12px;text-align:left;color:#fff;">TOTAL</td>
-                <td style="padding:8px 12px;text-align:center;color:#fff;font-size:15px;">${totalPossible}</td>
-                <td style="padding:8px 12px;text-align:center;color:#fff;font-size:15px;">${totalObtained}</td>
-                <td style="padding:8px 12px;text-align:center;color:${dmcGradeColor(grade)};font-size:14px;">${grade}</td>
+              <tr style="background:${pc};font-weight:900;-webkit-print-color-adjust:exact;print-color-adjust:exact;">
+                <td colspan="2" style="padding:8px 12px;text-align:left;color:#fff;font-size:16px;">TOTAL</td>
+                <td style="padding:8px 12px;text-align:center;color:#fff;font-size:18px;">${totalPossible}</td>
+                <td style="padding:8px 12px;text-align:center;color:#fff;font-size:18px;">${totalObtained}</td>
+                <td style="padding:8px 12px;text-align:center;"><span style="display:inline-block;background:#fff;color:${dmcGradeColor(grade)};padding:1px 14px;border-radius:6px;font-size:16px;-webkit-print-color-adjust:exact;print-color-adjust:exact;">${grade}</span></td>
               </tr>
               <!-- Result summary row: kept column-aligned directly under the TOTAL
                    row above it — Percentage sits under TOTAL MARKS, Position sits
                    under OBTAINED MARKS, Grade sits under GRADE (same last column). -->
               <tr style="border-top:2px solid ${pc};font-weight:900;">
-                <td colspan="2" style="padding:8px 12px;text-align:left;color:${pc};font-size:11px;letter-spacing:.04em;text-shadow:${shadow3Dsm};">RESULT</td>
+                <td colspan="2" style="padding:8px 12px;text-align:left;vertical-align:top;"><span style="display:inline-block;background:rgba(255,255,255,.92);color:#000;padding:2px 9px;border-radius:5px;font-size:12px;letter-spacing:.04em;-webkit-print-color-adjust:exact;print-color-adjust:exact;">RESULT</span></td>
                 <td style="padding:8px 12px;text-align:center;color:${pc};">
-                  <div style="font-size:9px;letter-spacing:.04em;opacity:.75;text-shadow:${shadow3Dsm};">%AGE</div>
+                  <div style="font-size:11px;letter-spacing:.04em;font-weight:900;text-shadow:${glow};">%AGE</div>
                   <div style="font-size:16px;line-height:1;margin-top:2px;">&#128200;</div>
                   <div style="font-size:34px;line-height:1;text-shadow:${shadow3D};">${percentage}%</div>
                 </td>
                 <td style="padding:8px 12px;text-align:center;color:${pc};">
-                  <div style="font-size:9px;letter-spacing:.04em;opacity:.75;text-shadow:${shadow3Dsm};">POSITION</div>
+                  <div style="font-size:11px;letter-spacing:.04em;font-weight:900;text-shadow:${glow};">POSITION</div>
                   <div style="font-size:16px;line-height:1;margin-top:2px;">&#129351;</div>
                   <div style="font-size:62px;font-weight:900;line-height:1;-webkit-text-stroke:0.4px ${pc};text-shadow:${shadow3D};">${dmcDesign.showPosition ? ordinal(position) : '\u2014'}</div>
                 </td>
                 <td style="padding:8px 12px;text-align:center;color:${dmcGradeColor(grade)};">
-                  <div style="font-size:9px;letter-spacing:.04em;opacity:.75;text-shadow:${shadow3Dsm};">GRADE</div>
+                  <div style="font-size:11px;letter-spacing:.04em;font-weight:900;text-shadow:${glow};">GRADE</div>
                   <div style="font-size:16px;line-height:1;margin-top:2px;">&#127895;</div>
                   <div style="font-size:32px;line-height:1;text-shadow:${shadow3D};">${grade}</div>
                 </td>
@@ -7844,21 +7905,19 @@ function renderDMCCertificate(result) {
           <!-- Remarks -->
           <div style="display:flex;margin-top:10px;border:1px solid ${pc};border-radius:8px;overflow:hidden;">
             <div style="background:${pc};color:#fff;font-weight:900;font-size:13px;letter-spacing:.05em;padding:8px 22px;">REMARKS</div>
-            <div style="flex:1;background:${panelBg};display:flex;align-items:center;justify-content:center;gap:8px;font-weight:900;font-size:13px;letter-spacing:.05em;color:${dmcGradeColor(grade)};">${dmcRemarkFor(grade)}</div>
+            <div style="flex:1;${lightPanel}display:flex;align-items:center;justify-content:center;gap:8px;font-weight:900;font-size:16px;letter-spacing:.05em;text-shadow:${glow};color:${dmcGradeColor(grade)};">${dmcRemarkFor(grade)}</div>
           </div>
 
           <!-- Footer: signatures -->
-          <div style="display:flex;align-items:flex-end;justify-content:space-between;margin-top:10px;gap:12px;">
-            <div style="text-align:center;flex:1;background:${panelBg};border-radius:6px;padding:0;">
-              <div style="border-bottom:1px solid ${pc};margin-bottom:6px;"></div>
-              <div style="font-size:10px;font-weight:900;color:${pc};letter-spacing:.03em;">${esc((dmcDesign.teacherLabel || 'CLASS TEACHER SIGNATURE').toUpperCase())}</div>
+          <div style="display:flex;align-items:flex-end;justify-content:space-between;margin-top:10px;gap:12px;padding:0 9% 0 20%;box-sizing:border-box;">
+            <div style="text-align:center;flex:1;background:rgba(255,255,255,.92);border:1.5px solid ${pc};border-radius:8px;padding:30px 8px 5px;-webkit-print-color-adjust:exact;print-color-adjust:exact;">
+              <div style="border-top:1px solid #000;padding-top:4px;font-size:10px;font-weight:900;color:#000;letter-spacing:.03em;">${esc((dmcDesign.teacherLabel || 'CLASS TEACHER SIGNATURE').toUpperCase())}</div>
             </div>
             ${dmcDesign.showStamp ? `<div style="text-align:center;flex-shrink:0;width:70px;">
               <div style="width:56px;height:56px;border:1px dashed ${ac};border-radius:50%;background:${panelBg};display:flex;align-items:center;justify-content:center;font-size:8px;font-weight:900;color:${pc};opacity:.85;margin:0 auto;">SCHOOL<br>STAMP</div>
             </div>` : ''}
-            <div style="text-align:center;flex:1;background:${panelBg};border-radius:6px;padding:0;">
-              <div style="border-bottom:1px solid ${pc};margin-bottom:6px;"></div>
-              <div style="font-size:10px;font-weight:900;color:${pc};letter-spacing:.03em;">${esc((dmcDesign.principalLabel || 'PRINCIPAL SIGNATURE').toUpperCase())}</div>
+            <div style="text-align:center;flex:1;background:rgba(255,255,255,.92);border:1.5px solid ${pc};border-radius:8px;padding:30px 8px 5px;-webkit-print-color-adjust:exact;print-color-adjust:exact;">
+              <div style="border-top:1px solid #000;padding-top:4px;font-size:10px;font-weight:900;color:#000;letter-spacing:.03em;">${esc((dmcDesign.principalLabel || 'PRINCIPAL SIGNATURE').toUpperCase())}</div>
             </div>
           </div>
 
