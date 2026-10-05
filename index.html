@@ -11483,7 +11483,8 @@ async function ppSendMessage(target) {
   const bad = m => { out.innerHTML = `<div class="err">${esc(m)}</div>`; };
   if (!text) { bad(qt('Please write a message first.', 'پہلے پیغام لکھیں۔')); return; }
   const c = getPpCache(); if (!c) return;
-  if (!navigator.onLine) { bad(qt('You are offline — connect to the internet to send.', 'آپ آف لائن ہیں — بھیجنے کے لیے انٹرنیٹ سے جڑیں۔')); return; }
+  const subj = (target === 'owner') ? null : ((document.getElementById('pp-msg-subject') || {}).value || null);
+  if (!navigator.onLine) { ppQueueMsg(c, text, target, subj); box.value = ''; out.innerHTML = `<span class="ok">✓ ${esc(qt('Saved. It will be sent automatically when internet returns.', 'محفوظ ہو گیا۔ انٹرنیٹ آتے ہی خود بھیج دیا جائے گا۔'))}</span>`; return; }
   const btns = document.querySelectorAll('.pp-send-btn');
   btns.forEach(b => b.disabled = true);
   out.textContent = '…';
@@ -11497,6 +11498,7 @@ async function ppSendMessage(target) {
       const m = String(error.message || '');
       if (/too_many/.test(m)) bad(qt('Too many messages today. Please try again tomorrow.', 'آج بہت زیادہ پیغامات بھیج دیے ہیں۔ کل دوبارہ کوشش کریں۔'));
       else if (/does not exist|could not find the function|schema cache/i.test(m)) bad(qt('Messaging is not set up yet. Please tell the school.', 'پیغام کی سہولت ابھی سیٹ اپ نہیں ہوئی۔ اسکول کو بتائیں۔'));
+      else if (pmIsNet(error)) { ppQueueMsg(c, text, target, subj); box.value = ''; out.innerHTML = `<span class="ok">✓ ${esc(qt('Saved. It will be sent automatically when internet returns.', 'محفوظ ہو گیا۔ انٹرنیٹ آتے ہی خود بھیج دیا جائے گا۔'))}</span>`; }
       else bad(qt('Could not send. Please try again.', 'پیغام نہیں بھیجا جا سکا۔ دوبارہ کوشش کریں۔'));
     } else {
       box.value = '';
@@ -11552,7 +11554,13 @@ async function pmSendReply(id, role) {
   const text = ta.value.trim();
   const bad = m => { st.innerHTML = `<div class="err">${esc(m)}</div>`; };
   if (!text) { bad(qt('Please write a reply first.', 'پہلے جواب لکھیں۔')); return; }
-  if (!navigator.onLine) { bad(qt('You are offline — connect to the internet to send.', 'آپ آف لائن ہیں — بھیجنے کے لیے انٹرنیٹ سے جڑیں۔')); return; }
+  if (!navigator.onLine) {
+    if (role === 'owner') { bad(qt('You are offline — connect to the internet to send.', 'آپ آف لائن ہیں — بھیجنے کے لیے انٹرنیٹ سے جڑیں۔')); return; }
+    const s0 = getClassSession(); if (!s0) return;
+    queueClassWrite({ type: 'pm_reply', schoolCode: s0.schoolCode, loginId: s0.loginId, password: s0.password, messageId: id, text });
+    pmCacheAddReply('cp_pm_cache_' + s0.schoolCode + '_' + s0.loginId, id, text);
+    renderClassPortalParentMsgs(); return;
+  }
   st.textContent = '…';
   try {
     let res;
@@ -11582,6 +11590,7 @@ async function pmTeacherBadge() {
     const el = document.getElementById('cp-pm-badge');
     const n = Number(data) || 0;
     if (el) el.textContent = n > 0 ? ' (' + n + ')' : '';
+    try { const r = await sb.rpc('parent_message_list_class', Object.assign(pmTeacherArgs(s), { p_limit: 50 })); if (!r.error) pmCacheSet('cp_pm_cache_' + s.schoolCode + '_' + s.loginId, r.data || []); } catch (e2) {}
   } catch (e) {}
 }
 async function renderClassPortalParentMsgs() {
@@ -11589,19 +11598,33 @@ async function renderClassPortalParentMsgs() {
   const s = getClassSession();
   const body = document.getElementById('class-portal-body');
   if (!s || !body) return;
+  const ck = 'cp_pm_cache_' + s.schoolCode + '_' + s.loginId;
   body.innerHTML = `
     <button class="btn-ghost" style="padding:9px 14px;margin-bottom:10px;" onclick="CLASS_PORTAL_SCREEN='menu'; renderClassPortalMenu()">‹ ${esc(t.classPortalBackToMenu)}</button>
     <h2 style="margin-top:0;">${esc(qt('Parent Messages', 'والدین کے پیغامات'))}</h2>
     <div id="cp-pm-list"><p class="desc">…</p></div>`;
   const box = document.getElementById('cp-pm-list');
-  if (!navigator.onLine) { box.innerHTML = `<div class="err">${esc(qt('You are offline.', 'آپ آف لائن ہیں۔'))}</div>`; return; }
+  const showList = (list, offline) => {
+    box.innerHTML = (offline ? `<p class="desc">📴 ${esc(qt('Offline — showing saved messages.', 'آف لائن — محفوظ پیغامات دکھائے جا رہے ہیں۔'))}</p>` : '')
+      + (list.length ? `<div class="list-card">${list.map(m => pmRowHtml(m, 'teacher')).join('')}</div>` : `<p class="desc">${esc(qt('No messages yet.', 'ابھی کوئی پیغام نہیں۔'))}</p>`);
+  };
+  const offlineFallback = () => {
+    const c = pmCacheGet(ck);
+    if (c) showList(c, true);
+    else box.innerHTML = `<div class="err">${esc(qt('You are offline. Open this once with internet to save messages.', 'آپ آف لائن ہیں۔ پیغامات محفوظ کرنے کے لیے ایک بار انٹرنیٹ پر کھولیں۔'))}</div>`;
+  };
+  if (!navigator.onLine) { offlineFallback(); return; }
   try {
     const { data, error } = await sb.rpc('parent_message_list_class', Object.assign(pmTeacherArgs(s), { p_limit: 50 }));
-    if (error) { box.innerHTML = pmSetupMissing(error.message) ? pmSetupErr() : `<div class="err">${esc(qt('Could not load messages.', 'پیغامات لوڈ نہیں ہو سکے۔'))}</div>`; return; }
+    if (error) {
+      if (pmIsNet(error)) { offlineFallback(); return; }
+      box.innerHTML = pmSetupMissing(error.message) ? pmSetupErr() : `<div class="err">${esc(qt('Could not load messages.', 'پیغامات لوڈ نہیں ہو سکے۔'))}</div>`; return;
+    }
     const list = data || [];
-    box.innerHTML = list.length ? `<div class="list-card">${list.map(m => pmRowHtml(m, 'teacher')).join('')}</div>` : `<p class="desc">${esc(qt('No messages yet.', 'ابھی کوئی پیغام نہیں۔'))}</p>`;
+    pmCacheSet(ck, list);
+    showList(list, false);
     if (list.some(m => !m.teacher_read_at)) { try { await sb.rpc('parent_message_mark_read_class', pmTeacherArgs(s)); } catch (e) {} }
-  } catch (e) { box.innerHTML = `<div class="err">${esc(qt('Could not load messages.', 'پیغامات لوڈ نہیں ہو سکے۔'))}</div>`; }
+  } catch (e) { offlineFallback(); }
 }
 
 // ---- Owner side (Notice Board tab) ----
@@ -11660,13 +11683,57 @@ async function pmOwnerDelete(id) {
 let PP_MY = null;
 function ppMyKey() { const c = getPpCache(); return 'pp_reply_seen_' + (c ? c.schoolCode + '_' + c.roll : ''); }
 function ppMySeen() { return Number(localStorage.getItem(ppMyKey()) || 0); }
+// ---- Offline helpers for Parent Messages (saved copy on this phone) ----
+function pmCacheGet(k) { try { return JSON.parse(localStorage.getItem(k) || 'null'); } catch (e) { return null; } }
+function pmCacheSet(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} }
+function pmIsNet(e) { return /fetch|network|load failed|offline/i.test(String((e && e.message) || e || '')); }
+function pmCacheAddReply(k, id, text) {
+  const l = pmCacheGet(k); if (!l) return;
+  const m = l.find(x => x.id === id); if (!m) return;
+  (m.replies = m.replies || []).push({ from_role: 'teacher', reply: text, created_at: new Date().toISOString() });
+  pmCacheSet(k, l);
+}
+const PP_MSGQ_KEY = 'sms_pp_msg_queue';
+let PP_MSGQ_BUSY = false;
+function ppQueueMsg(c, text, target, subj) {
+  const q = pmCacheGet(PP_MSGQ_KEY) || [];
+  q.push({ schoolCode: c.schoolCode, roll: String(c.roll), pin: String(c.pin), text, toTeacher: target !== 'owner', toOwner: target !== 'teacher', subject: subj || null, ts: Date.now() });
+  pmCacheSet(PP_MSGQ_KEY, q);
+}
+async function ppFlushMsgQueue() {
+  if (PP_MSGQ_BUSY || !navigator.onLine) return;
+  const q = pmCacheGet(PP_MSGQ_KEY) || []; if (!q.length) return;
+  PP_MSGQ_BUSY = true;
+  const keep = [];
+  try {
+    for (const it of q) {
+      try {
+        const { error } = await sb.rpc('parent_message_send', {
+          p_school_code: it.schoolCode, p_roll: it.roll, p_pin: it.pin, p_message: it.text,
+          p_to_teacher: it.toTeacher, p_to_owner: it.toOwner, p_subject: it.subject
+        });
+        if (error && !/too_many|bad_message|invalid_parent|no_recipient|does not exist|could not find/i.test(String(error.message || ''))) keep.push(it);
+      } catch (e) { keep.push(it); }
+    }
+  } finally {
+    const cur = pmCacheGet(PP_MSGQ_KEY) || [];
+    const added = cur.filter(x => !q.some(y => y.ts === x.ts && y.text === x.text));
+    pmCacheSet(PP_MSGQ_KEY, keep.concat(added));
+    PP_MSGQ_BUSY = false;
+  }
+}
+window.addEventListener('online', ppFlushMsgQueue);
+setInterval(ppFlushMsgQueue, 20000);
+
 async function ppFetchMy() {
-  const c = getPpCache(); if (!c || !navigator.onLine) return null;
+  const c = getPpCache(); if (!c) return null;
+  const ck = 'pp_my_cache_' + c.schoolCode + '_' + c.roll;
+  if (!navigator.onLine) return pmCacheGet(ck);
   try {
     const { data, error } = await sb.rpc('parent_message_list_parent', { p_school_code: c.schoolCode, p_roll: String(c.roll), p_pin: String(c.pin), p_limit: 20 });
-    if (error) return null;
-    PP_MY = data || []; return PP_MY;
-  } catch (e) { return null; }
+    if (error) return pmCacheGet(ck);
+    PP_MY = data || []; pmCacheSet(ck, PP_MY); return PP_MY;
+  } catch (e) { return pmCacheGet(ck); }
 }
 function ppMyNewCount(list, seen) {
   let n = 0; (list || []).forEach(m => (m.replies || []).forEach(r => { if (new Date(r.created_at).getTime() > seen) n++; })); return n;
@@ -12438,6 +12505,12 @@ async function flushClassQueue() {
           p_exam_name: item.examName, p_marks: item.marks, p_subjects: item.subjects
         });
         if (error) remaining.push(item);
+      } else if (item.type === 'pm_reply') {
+        const { error } = await sb.rpc('parent_message_reply_class', {
+          p_school_code: item.schoolCode, p_login_id: item.loginId, p_password: item.password,
+          p_message_id: item.messageId, p_text: item.text
+        });
+        if (error && !/invalid_login|not_found|bad_message|too_many_replies/.test(error.message || '')) remaining.push(item);
       }
     } catch(e) { remaining.push(item); }
   }
@@ -12536,6 +12609,16 @@ function dpmErr(e) {
   if (/invalid_login|too_many/.test(m)) return qt('Login failed. Please login again.', 'دوبارہ لاگ اِن کریں۔');
   return qt('Something went wrong. Please try again.', 'کچھ غلط ہو گیا۔ دوبارہ کوشش کریں۔');
 }
+function dpmKey(s, kind, name) { return 'dpm_' + kind + '_' + s.schoolCode + (name ? '_' + String(name).toLowerCase().trim() : ''); }
+async function dpmFetchList(s, name) {
+  const k = dpmKey(s, 'list', name);
+  if (!navigator.onLine) return pmCacheGet(k);
+  let res;
+  try { res = await sb.rpc('parent_message_list_subject', Object.assign(dpmArgs(s), { p_subject: name })); }
+  catch (e) { return pmCacheGet(k); }
+  if (res.error) { if (pmIsNet(res.error)) return pmCacheGet(k); throw res.error; }
+  pmCacheSet(k, res.data || []); return res.data || [];
+}
 async function dpmOpen() {
   const s = getDiarySession(), body = document.getElementById('diary-portal-body');
   if (!s || !body) return;
@@ -12544,15 +12627,26 @@ async function dpmOpen() {
     <button class="btn-ghost" style="padding:9px 14px;margin-bottom:10px;" onclick="renderDiaryMenu()">‹ ${esc(qt('Back', 'واپس'))}</button>
     <h2 style="margin-top:0;">📩 ${esc(qt('Parent Messages', 'والدین کے پیغامات'))}</h2>
     <div id="dpm-body"><div style="opacity:.6;">…</div></div>`;
-  if (!navigator.onLine) { dpmBox().innerHTML = `<div class="err">${esc(qt('Internet is needed.', 'انٹرنیٹ ضروری ہے۔'))}</div>`; return; }
-  try {
-    const { data, error } = await sb.rpc('parent_message_subject_counts', dpmArgs(s));
-    if (error) throw error;
-    const unread = {}; (data || []).forEach(r => { unread[r.subject] = r.unread; });
-    DPM_NAMES = Array.from(new Set([...diarySubjectList(), ...Object.keys(unread)]));
-    dpmBox().innerHTML = `<div style="display:flex;flex-wrap:wrap;gap:8px;">${DPM_NAMES.map((n, i) =>
+  const ck = dpmKey(s, 'counts');
+  let data = null;
+  if (navigator.onLine) {
+    try {
+      const res = await sb.rpc('parent_message_subject_counts', dpmArgs(s));
+      if (res.error) { if (!pmIsNet(res.error)) throw res.error; }
+      else { data = res.data || []; pmCacheSet(ck, data); }
+    } catch (e) {
+      if (!pmIsNet(e)) { dpmBox().innerHTML = `<div class="err">${esc(dpmErr(e))}</div>`; return; }
+    }
+  }
+  const offline = data === null;
+  if (offline) data = pmCacheGet(ck) || [];
+  const unread = {}; data.forEach(r => { unread[r.subject] = r.unread; });
+  DPM_NAMES = Array.from(new Set([...diarySubjectList(), ...Object.keys(unread)]));
+  dpmBox().innerHTML = (offline ? `<p class="desc">📴 ${esc(qt('Offline — showing saved messages.', 'آف لائن — محفوظ پیغامات دکھائے جا رہے ہیں۔'))}</p>` : '')
+    + `<div style="display:flex;flex-wrap:wrap;gap:8px;">${DPM_NAMES.map((n, i) =>
       `<button class="btn-primary" style="flex:none;padding:9px 16px;" onclick="dpmSubject(${i})">${esc(n)}${unread[n] ? ` <span style="background:#d33;color:#fff;border-radius:10px;padding:1px 7px;font-size:12px;margin-inline-start:4px;">${unread[n]}</span>` : ''}</button>`).join('')}</div>`;
-  } catch (e) { dpmBox().innerHTML = `<div class="err">${esc(dpmErr(e))}</div>`; }
+  // save every subject's messages on this phone so they open without internet too
+  if (!offline) data.forEach(r => { dpmFetchList(s, r.subject).catch(() => {}); });
 }
 async function dpmSubject(i) {
   const s = getDiarySession(), body = document.getElementById('diary-portal-body');
@@ -12563,11 +12657,12 @@ async function dpmSubject(i) {
     <h2 style="margin-top:0;">${esc(name)}</h2>
     <div id="dpm-body"><div style="opacity:.6;">…</div></div>`;
   try {
-    const { data, error } = await sb.rpc('parent_message_list_subject', Object.assign(dpmArgs(s), { p_subject: name }));
-    if (error) throw error;
-    dpmBox().innerHTML = (data || []).length ? data.map(dpmRow).join('')
-      : `<p class="desc">${esc(qt('No messages yet.', 'ابھی کوئی پیغام نہیں۔'))}</p>`;
-    sb.rpc('parent_message_mark_read_subject', Object.assign(dpmArgs(s), { p_subject: name }));
+    const wasOnline = navigator.onLine;
+    const list = await dpmFetchList(s, name);
+    if (list === null) { dpmBox().innerHTML = `<div class="err">${esc(qt('Not saved on this phone yet. Open once with internet.', 'ابھی اس فون میں محفوظ نہیں۔ ایک بار انٹرنیٹ پر کھولیں۔'))}</div>`; return; }
+    dpmBox().innerHTML = (wasOnline && navigator.onLine ? '' : `<p class="desc">📴 ${esc(qt('Offline — showing saved messages.', 'آف لائن — محفوظ پیغامات دکھائے جا رہے ہیں۔'))}</p>`)
+      + (list.length ? list.map(dpmRow).join('') : `<p class="desc">${esc(qt('No messages yet.', 'ابھی کوئی پیغام نہیں۔'))}</p>`);
+    if (wasOnline && navigator.onLine) sb.rpc('parent_message_mark_read_subject', Object.assign(dpmArgs(s), { p_subject: name })).then(() => {}, () => {});
   } catch (e) { dpmBox().innerHTML = `<div class="err">${esc(dpmErr(e))}</div>`; }
 }
 function dpmRow(m) {
@@ -12597,13 +12692,18 @@ async function dpmSendReply(id) {
   const text = ta.value.trim();
   const bad = m => { st.innerHTML = `<div class="err">${esc(m)}</div>`; };
   if (!text) { bad(qt('Please write a reply first.', 'پہلے جواب لکھیں۔')); return; }
-  if (!navigator.onLine) { bad(qt('Internet is needed.', 'انٹرنیٹ ضروری ہے۔')); return; }
+  const saveOffline = () => {
+    queueDiaryWrite({ type: 'pm_reply_subject', schoolCode: s.schoolCode, password: s.password, messageId: id, text });
+    pmCacheAddReply(dpmKey(s, 'list', DPM_NAMES[DPM_IDX]), id, text);
+    dpmSubject(DPM_IDX);
+  };
+  if (!navigator.onLine) { saveOffline(); return; }
   st.textContent = '…';
   try {
     const { error } = await sb.rpc('parent_message_reply_subject', Object.assign(dpmArgs(s), { p_message_id: id, p_text: text }));
-    if (error) { bad(dpmErr(error)); return; }
+    if (error) { if (pmIsNet(error)) { saveOffline(); return; } bad(dpmErr(error)); return; }
     dpmSubject(DPM_IDX);
-  } catch (e) { bad(dpmErr(e)); }
+  } catch (e) { saveOffline(); }
 }
 
 function renderDiaryMenu() {
@@ -12804,6 +12904,13 @@ async function flushDiaryQueue() {
           p_kind: item.kind, p_session: item.session, p_requested_at: item.requestedAt
         });
         if (sErr && !/invalid_login|not_found|bad_input/.test(sErr.message || '')) remaining.push(item);
+        continue;
+      }
+      if (item.type === 'pm_reply_subject') {
+        const { error: pErr } = await sb.rpc('parent_message_reply_subject', {
+          p_school_code: item.schoolCode, p_password: item.password, p_message_id: item.messageId, p_text: item.text
+        });
+        if (pErr && !/invalid_login|not_found|bad_message|too_many_replies/.test(pErr.message || '')) remaining.push(item);
         continue;
       }
       const { error } = await sb.rpc('diary_add_entry', {
