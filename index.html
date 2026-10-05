@@ -11459,6 +11459,10 @@ function ppContactBoxHtml() {
     <div class="section-title" style="margin-top:6px;">${esc(qt('Contact school', 'اسکول سے رابطہ'))}</div>
     <div class="card" style="margin-bottom:14px;">
       <textarea id="pp-msg-text" maxlength="500" rows="3" style="width:100%;box-sizing:border-box;" placeholder="${esc(qt('Write your message here…', 'اپنا پیغام یہاں لکھیں…'))}"></textarea>
+      <select id="pp-msg-subject" style="width:100%;margin-top:8px;">
+        <option value="">${esc(qt('Subject: General / Other', 'مضمون: عمومی / دیگر'))}</option>
+        ${DIARY_DEFAULT_SUBJECTS.map(s => `<option value="${esc(s)}">${esc(s)}</option>`).join('')}
+      </select>
       <div style="font-size:12px;opacity:.7;margin:8px 0 6px;">${esc(qt('Send to', 'بھیجیں'))}</div>
       <div style="display:flex;gap:8px;">
         ${btn('teacher', '👩‍🏫 ' + esc(qt('Teacher', 'استاد')))}
@@ -11486,7 +11490,8 @@ async function ppSendMessage(target) {
   try {
     const { error } = await sb.rpc('parent_message_send', {
       p_school_code: c.schoolCode, p_roll: String(c.roll), p_pin: String(c.pin), p_message: text,
-      p_to_teacher: target !== 'owner', p_to_owner: target !== 'teacher'
+      p_to_teacher: target !== 'owner', p_to_owner: target !== 'teacher',
+      p_subject: target === 'owner' ? null : ((document.getElementById('pp-msg-subject') || {}).value || null)
     });
     if (error) {
       const m = String(error.message || '');
@@ -12521,6 +12526,86 @@ function diaryPopState(e) {
   else if (st && st.diary === 'entry') { DIARY_SUBJECT = st.subject; renderDiaryEntryForm(st.cls, true); }
   else renderDiaryMenu();
 }
+// ---- Parent Messages inside Diary Portal (subject-wise) ----
+let DPM_NAMES = [], DPM_IDX = 0;
+function dpmArgs(s) { return { p_school_code: s.schoolCode, p_password: s.password }; }
+function dpmBox() { return document.getElementById('dpm-body'); }
+function dpmErr(e) {
+  const m = String((e && e.message) || '');
+  if (/does not exist|schema cache|could not find/.test(m)) return qt('Not set up yet (run the SQL in Supabase).', 'ابھی سیٹ اپ نہیں ہوا۔');
+  if (/invalid_login|too_many/.test(m)) return qt('Login failed. Please login again.', 'دوبارہ لاگ اِن کریں۔');
+  return qt('Something went wrong. Please try again.', 'کچھ غلط ہو گیا۔ دوبارہ کوشش کریں۔');
+}
+async function dpmOpen() {
+  const s = getDiarySession(), body = document.getElementById('diary-portal-body');
+  if (!s || !body) return;
+  DIARY_SCREEN = 'pm';
+  body.innerHTML = `
+    <button class="btn-ghost" style="padding:9px 14px;margin-bottom:10px;" onclick="renderDiaryMenu()">‹ ${esc(qt('Back', 'واپس'))}</button>
+    <h2 style="margin-top:0;">📩 ${esc(qt('Parent Messages', 'والدین کے پیغامات'))}</h2>
+    <div id="dpm-body"><div style="opacity:.6;">…</div></div>`;
+  if (!navigator.onLine) { dpmBox().innerHTML = `<div class="err">${esc(qt('Internet is needed.', 'انٹرنیٹ ضروری ہے۔'))}</div>`; return; }
+  try {
+    const { data, error } = await sb.rpc('parent_message_subject_counts', dpmArgs(s));
+    if (error) throw error;
+    const unread = {}; (data || []).forEach(r => { unread[r.subject] = r.unread; });
+    DPM_NAMES = Array.from(new Set([...diarySubjectList(), ...Object.keys(unread)]));
+    dpmBox().innerHTML = `<div style="display:flex;flex-wrap:wrap;gap:8px;">${DPM_NAMES.map((n, i) =>
+      `<button class="btn-primary" style="flex:none;padding:9px 16px;" onclick="dpmSubject(${i})">${esc(n)}${unread[n] ? ` <span style="background:#d33;color:#fff;border-radius:10px;padding:1px 7px;font-size:12px;margin-inline-start:4px;">${unread[n]}</span>` : ''}</button>`).join('')}</div>`;
+  } catch (e) { dpmBox().innerHTML = `<div class="err">${esc(dpmErr(e))}</div>`; }
+}
+async function dpmSubject(i) {
+  const s = getDiarySession(), body = document.getElementById('diary-portal-body');
+  if (!s || !body) return;
+  DPM_IDX = i; const name = DPM_NAMES[i];
+  body.innerHTML = `
+    <button class="btn-ghost" style="padding:9px 14px;margin-bottom:10px;" onclick="dpmOpen()">‹ ${esc(qt('Back', 'واپس'))}</button>
+    <h2 style="margin-top:0;">${esc(name)}</h2>
+    <div id="dpm-body"><div style="opacity:.6;">…</div></div>`;
+  try {
+    const { data, error } = await sb.rpc('parent_message_list_subject', Object.assign(dpmArgs(s), { p_subject: name }));
+    if (error) throw error;
+    dpmBox().innerHTML = (data || []).length ? data.map(dpmRow).join('')
+      : `<p class="desc">${esc(qt('No messages yet.', 'ابھی کوئی پیغام نہیں۔'))}</p>`;
+    sb.rpc('parent_message_mark_read_subject', Object.assign(dpmArgs(s), { p_subject: name }));
+  } catch (e) { dpmBox().innerHTML = `<div class="err">${esc(dpmErr(e))}</div>`; }
+}
+function dpmRow(m) {
+  const unread = !m.subject_read_at;
+  return `
+    <div class="list-row" style="flex-direction:column;align-items:stretch;">
+      <div style="display:flex;justify-content:space-between;gap:8px;">
+        <div class="nm">${esc(m.student_name || '')}${m.class_name ? ' · ' + esc(m.class_name) : ''}${unread ? pmNewTag() : ''}</div>
+        <div class="sub" style="flex:none;">${esc(fmtDate((m.created_at || '').slice(0, 10)) || '')}</div>
+      </div>
+      ${m.father_name ? `<div class="sub">${esc(t.fatherName)}: ${esc(m.father_name)}</div>` : ''}
+      <div style="margin-top:6px;font-size:13px;line-height:1.5;white-space:pre-wrap;">${esc(m.message || '')}</div>
+      ${pmRepliesHtml(m)}
+      <div style="display:flex;justify-content:flex-end;margin-top:6px;">
+        <button class="btn-ghost" style="flex:none;padding:4px 12px;font-size:12px;" onclick="pmToggleReply('${m.id}')">↩ ${esc(qt('Reply', 'جواب'))}</button>
+      </div>
+      <div id="pm-rbox-${m.id}" class="hidden" style="margin-top:6px;">
+        <textarea id="pm-rtxt-${m.id}" maxlength="500" rows="2" style="width:100%;box-sizing:border-box;" placeholder="${esc(qt('Write your reply…', 'اپنا جواب لکھیں…'))}"></textarea>
+        <button class="btn-primary" style="width:100%;margin-top:6px;" onclick="dpmSendReply('${m.id}')">${esc(qt('Send reply', 'جواب بھیجیں'))}</button>
+        <div id="pm-rst-${m.id}" style="font-size:12px;margin-top:6px;"></div>
+      </div>
+    </div>`;
+}
+async function dpmSendReply(id) {
+  const s = getDiarySession(), ta = document.getElementById('pm-rtxt-' + id), st = document.getElementById('pm-rst-' + id);
+  if (!s || !ta || !st) return;
+  const text = ta.value.trim();
+  const bad = m => { st.innerHTML = `<div class="err">${esc(m)}</div>`; };
+  if (!text) { bad(qt('Please write a reply first.', 'پہلے جواب لکھیں۔')); return; }
+  if (!navigator.onLine) { bad(qt('Internet is needed.', 'انٹرنیٹ ضروری ہے۔')); return; }
+  st.textContent = '…';
+  try {
+    const { error } = await sb.rpc('parent_message_reply_subject', Object.assign(dpmArgs(s), { p_message_id: id, p_text: text }));
+    if (error) { bad(dpmErr(error)); return; }
+    dpmSubject(DPM_IDX);
+  } catch (e) { bad(dpmErr(e)); }
+}
+
 function renderDiaryMenu() {
   DIARY_SCREEN = 'menu';
   DIARY_EDIT_SUBJECTS = DIARY_EDIT_SUBJECTS && !!document.getElementById('diary-portal-body');
@@ -12545,6 +12630,7 @@ function renderDiaryMenu() {
     <button class="btn-primary" style="margin-bottom:12px;" onclick="renderStaffAttScreen()">🙋 ${esc(qt('My Attendance / Leave', 'میری حاضری / رخصت'))}</button>
     <button class="btn-primary" style="margin-bottom:12px;" onclick="qzOpen()">📝 ${esc(qt('Daily Quiz', 'روزانہ کوئز'))}</button>
     <button class="btn-primary" style="margin-bottom:12px;" onclick="noticeOpenScreen('diary')">📢 ${esc(qt('Notice Board', 'نوٹس بورڈ'))}</button>
+    <button class="btn-primary" style="margin-bottom:12px;" onclick="dpmOpen()">📩 ${esc(qt('Parent Messages', 'والدین کے پیغامات'))}</button>
     <button class="btn-ghost" style="font-size:12px;padding:7px 12px;" onclick="toggleDiaryEditSubjects()">${esc(editing ? t.diaryDone : t.diaryRemoveSubject)}</button>
     ${queue.length ? `<p style="font-size:11px;opacity:.6;margin-top:14px;">${esc(t.classPortalOffline)} (${queue.length})</p>` : ''}
   `;
