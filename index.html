@@ -884,6 +884,37 @@ body:not(.ur) .qpaper-print .pq-instruction::before{counter-increment:pqq;conten
      ============================================================================ -->
 
 <!-- ============================================================================
+     ONE-TIME SETUP for Vendors / Suppliers / Agents (payable & receivable) - run once in
+     the Supabase SQL editor. Safe to re-run.
+
+  create table if not exists fin_vendors (
+    id uuid primary key default gen_random_uuid(),
+    owner_id uuid not null references auth.users(id) on delete cascade,
+    name text not null,
+    kind text not null default 'vendor' check (kind in ('vendor','supplier','agent')),
+    contact text,
+    created_at timestamptz not null default now()
+  );
+  create table if not exists fin_vendor_entries (
+    id uuid primary key default gen_random_uuid(),
+    owner_id uuid not null references auth.users(id) on delete cascade,
+    vendor_id uuid not null references fin_vendors(id) on delete cascade,
+    entry_type text not null check (entry_type in ('bill','payment')),
+    amount numeric not null check (amount > 0),
+    entry_date date not null default current_date,
+    note text,
+    txn_id uuid,
+    created_at timestamptz not null default now()
+  );
+  alter table fin_vendors enable row level security;
+  alter table fin_vendor_entries enable row level security;
+  drop policy if exists "fin_vendors_all_own" on fin_vendors;
+  create policy "fin_vendors_all_own" on fin_vendors for all using (owner_id = auth.uid()) with check (owner_id = auth.uid());
+  drop policy if exists "fin_vendor_entries_all_own" on fin_vendor_entries;
+  create policy "fin_vendor_entries_all_own" on fin_vendor_entries for all using (owner_id = auth.uid()) with check (owner_id = auth.uid());
+     ============================================================================ -->
+
+<!-- ============================================================================
      ONE-TIME SETUP for Activity Log — run this once in the Supabase SQL editor
      (Project → SQL Editor → New query → paste → Run). Safe to re-run; it only
      creates things if they don't already exist yet.
@@ -7513,6 +7544,8 @@ function finPanel() {
       <div style="font-weight:700;color:var(--navy);">₨${fmt(finAccBalance(a))}</div></div>`).join('');
   const btn = (label, fn) => `<button class="btn-ghost" style="flex:none;padding:8px 12px;font-size:13px;" onclick="${fn}">${label}</button>`;
   return `<div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px;">
+      ${btn('📈 ' + esc(qt('Dashboard', 'ڈیش بورڈ')), 'openFinDashboard()')}
+      ${btn('🤝 ' + esc(qt('Vendors', 'وینڈرز')), 'openFinVendors()')}
       ${btn('📒 ' + esc(qt('Day Book', 'روزنامچہ')), "openFinReport('daybook')")}
       ${btn('📊 ' + esc(qt('Profit & Loss', 'منافع و نقصان')), "openFinReport('pl')")}
       ${btn('🏷️ ' + esc(qt('Heads', 'مدات')), 'openFinHeads()')}
@@ -7607,7 +7640,8 @@ function openFinReport(kind) {
     <div class="field-box" style="flex:1"><label><span>${esc(qt('To', 'تک'))}</span><input id="fr-to" type="date" value="${FINR.to}" onchange="finRefresh()"></label></div></div>
     <div class="field-box"><label><span>${esc(qt('Account', 'اکاؤنٹ'))}</span><select id="fr-acct" onchange="finRefresh()"><option value="all">${esc(qt('All', 'تمام'))}</option>${FIN.accounts.map(a => `<option value="${a.id}">${esc(a.name)}</option>`).join('')}</select></label></div>
     <div id="fr-body" class="fin-report" style="overflow-x:auto;margin-bottom:12px;"></div>
-    <button class="btn-primary" onclick="printFinReport()">🖨️ ${esc(qt('Print / Save PDF', 'پرنٹ / پی ڈی ایف'))}</button>`);
+    <button class="btn-primary" onclick="printFinReport()">🖨️ ${esc(qt('Print / Save PDF', 'پرنٹ / پی ڈی ایف'))}</button>
+    <button class="btn-ghost" style="width:100%;margin-top:8px;" onclick="exportFinReport()">📥 ${esc(qt('Download Excel', 'ایکسل ڈاؤن لوڈ'))}</button>`);
   finRefresh();
 }
 function finRefresh() {
@@ -7624,6 +7658,239 @@ function printFinReport() {
     <div class="foot" style="display:flex;justify-content:space-between;margin-top:40px;"><span>${esc(qt('Prepared By', 'تیار کردہ'))} ____________</span><span>${esc(qt('Approved By', 'منظور کردہ'))} ____________</span></div></div>`;
   // Not cleared on afterprint: Android Chrome fires it as soon as the print preview opens, which emptied the page before the PDF was made.
   window.print();
+}
+// ---- Excel export + Accounts dashboard (single-entry) ----
+function exportFinReport() {
+  if (typeof XLSX === 'undefined') { alert(qt('Excel library is not loaded yet. Connect to the internet once and try again.', 'ایکسل لائبریری لوڈ نہیں ہوئی۔ ایک بار انٹرنیٹ سے جڑ کر دوبارہ کوشش کریں۔')); return; }
+  const { kind, from, to, acct } = FINR, rows = finEntries(from, to, acct);
+  const inc = rows.filter(r => r.type === 'income'), exp = rows.filter(r => r.type === 'expense');
+  const sum = a => a.reduce((s, r) => s + r.amt, 0);
+  let aoa;
+  if (kind === 'daybook') {
+    aoa = [['Date', 'Head', 'Details', 'Account', 'Income', 'Expense']];
+    rows.forEach(r => aoa.push([fmtDate(r.d), r.head, r.desc, r.acc, r.type === 'income' ? r.amt : '', r.type === 'expense' ? r.amt : '']));
+    aoa.push(['Total', '', '', '', sum(inc), sum(exp)]);
+  } else {
+    const group = a => { const m = {}; a.forEach(r => m[r.head] = (m[r.head] || 0) + r.amt); return Object.entries(m).sort((x, y) => y[1] - x[1]); };
+    const net = sum(inc) - sum(exp);
+    aoa = [['Income', 'Amount']];
+    group(inc).forEach(([h, v]) => aoa.push([h, v]));
+    aoa.push(['Total Income', sum(inc)], [], ['Expenses', 'Amount']);
+    group(exp).forEach(([h, v]) => aoa.push([h, v]));
+    aoa.push(['Total Expenses', sum(exp)], [], [net >= 0 ? 'Net Profit' : 'Net Loss', Math.abs(net)]);
+  }
+  const wb = XLSX.utils.book_new(), ws = XLSX.utils.aoa_to_sheet(aoa);
+  ws['!cols'] = [{ wch: 18 }, { wch: 24 }, { wch: 30 }, { wch: 16 }, { wch: 12 }, { wch: 12 }];
+  XLSX.utils.book_append_sheet(wb, ws, kind === 'daybook' ? 'Day Book' : 'Profit and Loss');
+  const schoolPart = (CURRENT_PROFILE.school_name || 'school').replace(/[^a-z0-9]+/gi, '_');
+  XLSX.writeFile(wb, `${schoolPart}_${kind === 'daybook' ? 'DayBook' : 'ProfitLoss'}_${from}_to_${to}.xlsx`);
+}
+async function openFinDashboard() {
+  if (!FIN.loaded) await finLoad();
+  if (!FINV.loaded) await finvLoad();
+  const vt = finvTotals();
+  const now = new Date(), months = [];
+  for (let i = 11; i >= 0; i--) { const d = new Date(now.getFullYear(), now.getMonth() - i, 1); months.push(d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0')); }
+  const rows = finEntries(months[0] + '-01', todayISO(), 'all');
+  const sum = a => a.reduce((s, r) => s + r.amt, 0);
+  const inc = rows.filter(r => r.type === 'income'), exp = rows.filter(r => r.type === 'expense');
+  const net = sum(inc) - sum(exp);
+  const mi = {}, me = {};
+  months.forEach(k => { mi[k] = 0; me[k] = 0; });
+  rows.forEach(r => { const k = r.d.slice(0, 7); if (k in mi) { if (r.type === 'income') mi[k] += r.amt; else me[k] += r.amt; } });
+  const mx = Math.max(1, ...months.map(k => Math.max(mi[k], me[k])));
+  const MN = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const bars = months.map(k => `<div style="flex:1;min-width:0;text-align:center;">
+      <div style="height:100px;display:flex;align-items:flex-end;justify-content:center;gap:2px;">
+        <div title="${fmt(mi[k])}" style="width:42%;height:${Math.round(mi[k] / mx * 100)}px;background:#2e9e5b;border-radius:3px 3px 0 0;"></div>
+        <div title="${fmt(me[k])}" style="width:42%;height:${Math.round(me[k] / mx * 100)}px;background:#d9534f;border-radius:3px 3px 0 0;"></div>
+      </div><div style="font-size:9px;opacity:.7;margin-top:3px;">${MN[Number(k.slice(5)) - 1]}</div></div>`).join('');
+  const m = {}; exp.forEach(r => m[r.head] = (m[r.head] || 0) + r.amt);
+  let cats = Object.entries(m).sort((a, b) => b[1] - a[1]);
+  if (cats.length > 6) { const rest = cats.slice(5).reduce((s, c) => s + c[1], 0); cats = cats.slice(0, 5).concat([[qt('Others', 'دیگر'), rest]]); }
+  const COL = ['#1f4e8c', '#e8a33d', '#2e9e5b', '#d9534f', '#8e5bb5', '#17a2b8'];
+  const tot = Math.max(1, sum(exp)); let acc = 0;
+  const stops = cats.map((c, i) => { const a = acc / tot * 100; acc += c[1]; return `${COL[i % 6]} ${a}% ${acc / tot * 100}%`; }).join(',');
+  const legend = cats.map((c, i) => `<div style="display:flex;align-items:center;gap:6px;font-size:12px;margin:3px 0;"><span style="width:10px;height:10px;border-radius:2px;background:${COL[i % 6]};flex:none;"></span><span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;">${esc(c[0])}</span><b>${fmt(c[1])}</b></div>`).join('');
+  const bal = k => FIN.accounts.filter(a => (a.kind === 'bank') === k).reduce((s, a) => s + finAccBalance(a), 0);
+  const card = (label, val, color) => `<div class="card" style="padding:10px 12px;flex:1;min-width:120px;"><div style="font-size:11px;opacity:.65;">${esc(label)}</div><div style="font-weight:700;color:${color || 'var(--navy)'};">Rs${fmt(val)}</div></div>`;
+  let dues = 0; try { dues = computeStats().totalDuesAllTime || 0; } catch (e) { }
+  showModal(qt('Accounts Dashboard', 'اکاؤنٹس ڈیش بورڈ'), `
+    <div style="font-size:11px;opacity:.65;margin-bottom:6px;">${esc(qt('Last 12 months', 'پچھلے 12 مہینے'))}</div>
+    <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:8px;">
+      ${card(qt('Total Income', 'کل آمدن'), sum(inc), '#2e9e5b')}${card(qt('Total Expense', 'کل اخراجات'), sum(exp), '#d9534f')}${card(net >= 0 ? qt('Net Profit', 'خالص منافع') : qt('Net Loss', 'خالص نقصان'), Math.abs(net))}</div>
+    <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px;">
+      ${card(qt('Cash Balance', 'کیش بیلنس'), bal(false))}${card(qt('Bank Balance', 'بینک بیلنس'), bal(true))}${card(qt('Fee Receivable', 'فیس وصولی باقی'), dues, '#e8a33d')}${FINV.err ? '' : card(qt('Vendor Payable', 'وینڈرز کو ادا کرنا'), vt.pay, '#d9534f')}</div>
+    <div style="font-weight:700;font-size:13px;margin-bottom:6px;">${esc(qt('Monthly Cash Flow', 'ماہانہ کیش فلو'))} <span style="font-weight:400;font-size:11px;"><span style="color:#2e9e5b;">■</span> ${esc(qt('Income', 'آمدن'))} <span style="color:#d9534f;">■</span> ${esc(qt('Expense', 'اخراجات'))}</span></div>
+    <div style="display:flex;gap:3px;margin-bottom:14px;">${bars}</div>
+    <div style="font-weight:700;font-size:13px;margin-bottom:6px;">${esc(qt('Expense Categories', 'اخراجات کی اقسام'))}</div>
+    ${cats.length ? `<div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap;"><div style="width:110px;height:110px;border-radius:50%;background:conic-gradient(${stops});flex:none;"></div><div style="flex:1;min-width:150px;">${legend}</div></div>` : `<div style="font-size:12px;opacity:.7;">${esc(t.noTransactions)}</div>`}`);
+}
+// ---- Vendors / Suppliers / Agents: payable & receivable (single-entry) ----
+const FINV = { vendors: [], entries: [], loaded: false, err: false };
+let FINV_TYPE = 'bill', FINV_CUR = null;
+async function finvLoad() {
+  FINV.loaded = true;
+  try {
+    const [v, e] = await Promise.all([
+      sb.from('fin_vendors').select('*').order('name'),
+      sb.from('fin_vendor_entries').select('*').order('entry_date').order('created_at')
+    ]);
+    FINV.err = !!(v.error || e.error);
+    FINV.vendors = v.data || []; FINV.entries = e.data || [];
+  } catch (err) { FINV.err = true; }
+}
+function finvSum(id, type) { return FINV.entries.filter(x => x.vendor_id === id && x.entry_type === type).reduce((s, x) => s + Number(x.amount || 0), 0); }
+function finvBalance(id) { return Math.round((finvSum(id, 'bill') - finvSum(id, 'payment')) * 100) / 100; }
+function finvTotals() { let pay = 0, rec = 0; FINV.vendors.forEach(v => { const b = finvBalance(v.id); if (b > 0) pay += b; else rec -= b; }); return { pay, rec }; }
+function finvKindLabel(k) { return k === 'supplier' ? qt('Supplier', 'سپلائر') : k === 'agent' ? qt('Agent', 'ایجنٹ') : qt('Vendor', 'وینڈر'); }
+function finvSetupNote() {
+  return FINV.err ? `<div class="err">${esc(qt('Vendor tables are not set up yet. Run the "ONE-TIME SETUP for Vendors" SQL (top of index.html) in Supabase.', 'وینڈر ٹیبل ابھی نہیں بنے۔ index.html کے شروع میں دی گئی Vendors والی SQL سپابیس میں چلائیں۔'))}</div>` : '';
+}
+async function openFinVendors() {
+  if (!FINV.loaded) await finvLoad();
+  const tt = finvTotals();
+  const row = v => {
+    const b = finvBalance(v.id);
+    const lbl = b > 0 ? qt('Payable', 'ادا کرنا ہے') : b < 0 ? qt('Receivable', 'وصول کرنا ہے') : qt('Settled', 'برابر');
+    const col = b > 0 ? '#d9534f' : b < 0 ? '#2e9e5b' : 'inherit';
+    return `<div class="list-row" style="cursor:pointer;" onclick="openFinVendor('${v.id}')"><div><div class="nm">${esc(v.name)}</div><div class="sub">${esc(finvKindLabel(v.kind))}${v.contact ? ' · ' + esc(v.contact) : ''}</div></div>
+      <div style="text-align:right;margin-left:auto;"><div style="font-weight:700;color:${col};">Rs${fmt(Math.abs(b))}</div><div class="sub">${esc(lbl)}</div></div>
+      <button class="del-btn" onclick="event.stopPropagation();finvDeleteVendor('${v.id}')">✕</button></div>`;
+  };
+  const card = (label, val, color) => `<div class="card" style="padding:10px 12px;flex:1;min-width:120px;"><div style="font-size:11px;opacity:.65;">${esc(label)}</div><div style="font-weight:700;color:${color};">Rs${fmt(val)}</div></div>`;
+  showModal(qt('Vendors / Suppliers / Agents', 'وینڈرز / سپلائرز / ایجنٹس'), `${finvSetupNote()}
+    <div style="display:flex;gap:8px;margin-bottom:10px;">${card(qt('Net Payable', 'کل ادا کرنا ہے'), tt.pay, '#d9534f')}${card(qt('Net Receivable', 'کل وصول کرنا ہے'), tt.rec, '#2e9e5b')}</div>
+    <div class="field-box"><label><span>${esc(qt('Name', 'نام'))}</span><input id="vn-name"></label></div>
+    <div style="display:flex;gap:8px;"><div class="field-box" style="flex:1"><label><span>${esc(qt('Type', 'قسم'))}</span><select id="vn-kind"><option value="vendor">${esc(finvKindLabel('vendor'))}</option><option value="supplier">${esc(finvKindLabel('supplier'))}</option><option value="agent">${esc(finvKindLabel('agent'))}</option></select></label></div>
+    <div class="field-box" style="flex:1"><label><span>${esc(qt('Phone (optional)', 'فون (اختیاری)'))}</span><input id="vn-contact"></label></div></div>
+    <button class="btn-primary" onclick="guardedSubmit(this, finvAddVendor)">+ ${esc(qt('Add', 'شامل کریں'))}</button>
+    <div class="list-card" style="margin-top:12px;">${FINV.vendors.map(row).join('') || `<div class="empty">${esc(qt('No vendors yet.', 'ابھی کوئی وینڈر نہیں۔'))}</div>`}</div>
+    ${FINV.vendors.length ? `<button class="btn-ghost" style="width:100%;margin-top:10px;" onclick="exportVendorsSummary()">📥 ${esc(qt('Download Excel', 'ایکسل ڈاؤن لوڈ'))}</button>` : ''}`);
+}
+async function finvAddVendor() {
+  const name = (document.getElementById('vn-name').value || '').trim(); if (!name) return;
+  const { error } = await sb.from('fin_vendors').insert({ owner_id: CURRENT_USER.id, name, kind: document.getElementById('vn-kind').value, contact: (document.getElementById('vn-contact').value || '').trim() || null });
+  if (reportSaveError(error)) return;
+  await finvLoad(); openFinVendors();
+}
+async function finvDeleteVendor(id) {
+  if (!confirm(qt('Delete this vendor and all its entries? (Payments already in the Day Book stay there.)', 'یہ وینڈر اور اس کی تمام اندراجات حذف کریں؟ (ڈے بک میں درج ادائیگیاں رہیں گی۔)'))) return;
+  const { error } = await sb.from('fin_vendors').delete().eq('id', id);
+  if (reportSaveError(error)) return;
+  await finvLoad(); openFinVendors();
+}
+function finvType(ty) {
+  FINV_TYPE = ty;
+  document.getElementById('vd-bill').className = ty === 'bill' ? 'on-expense' : '';
+  document.getElementById('vd-pay').className = ty === 'payment' ? 'on-income' : '';
+  const a = document.getElementById('vd-accbox'); if (a) a.style.display = ty === 'payment' ? '' : 'none';
+}
+async function openFinVendor(id) {
+  if (!FIN.loaded) await finLoad();
+  const v = FINV.vendors.find(x => x.id === id); if (!v) return;
+  FINV_CUR = id; FINV_TYPE = 'bill';
+  let run = 0;
+  const rows = FINV.entries.filter(x => x.vendor_id === id).map(x => {
+    run += (x.entry_type === 'bill' ? 1 : -1) * Number(x.amount || 0);
+    return `<div class="list-row"><div><div class="nm">${x.entry_type === 'bill' ? esc(qt('Bill', 'بل')) : esc(qt('Paid', 'ادائیگی'))} · Rs${fmt(x.amount)}</div>
+      <div class="sub">${esc(fmtDate(x.entry_date))}${x.note ? ' · ' + esc(x.note) : ''} · ${esc(qt('Balance', 'بیلنس'))} Rs${fmt(Math.round(run * 100) / 100)}</div></div>
+      <button class="del-btn" onclick="finvDeleteEntry('${x.id}')">✕</button></div>`;
+  }).reverse();
+  const b = finvBalance(id);
+  const lbl = b > 0 ? qt('Payable', 'ادا کرنا ہے') : b < 0 ? qt('Receivable', 'وصول کرنا ہے') : qt('Settled', 'برابر');
+  const accOpts = FIN.accounts.map(a => `<option value="${a.id}">${esc(a.name)} (${a.kind === 'bank' ? esc(qt('Bank', 'بینک')) : esc(qt('Cash', 'کیش'))})</option>`).join('')
+    + `<option value="__none">${esc(qt('Day Book only (no account)', 'صرف ڈے بک (اکاؤنٹ کے بغیر)'))}</option><option value="__skip">${esc(qt('Do not record in Day Book', 'ڈے بک میں درج نہ کریں'))}</option>`;
+  showModal(v.name, `${finvSetupNote()}
+    <div class="sub" style="margin-bottom:6px;">${esc(finvKindLabel(v.kind))}${v.contact ? ' · ' + esc(v.contact) : ''}</div>
+    <div class="card" style="padding:10px 12px;margin-bottom:10px;"><div style="font-size:11px;opacity:.65;">${esc(lbl)}</div><div style="font-weight:700;font-size:18px;color:${b > 0 ? '#d9534f' : b < 0 ? '#2e9e5b' : 'inherit'};">Rs${fmt(Math.abs(b))}</div></div>
+    <div class="type-toggle"><button id="vd-bill" class="on-expense" onclick="finvType('bill')">${esc(qt('Bill (we owe)', 'بل (ہم نے دینا ہے)'))}</button><button id="vd-pay" onclick="finvType('payment')">${esc(qt('Payment (we paid)', 'ادائیگی (ہم نے دی)'))}</button></div>
+    <div style="display:flex;gap:8px;"><div class="field-box" style="flex:1"><label><span>${esc(qt('Amount (Rs)', 'رقم (روپے)'))}</span><input id="vd-amt" type="number" inputmode="decimal"></label></div>
+    <div class="field-box" style="flex:1"><label><span>${esc(qt('Date', 'تاریخ'))}</span><input id="vd-date" type="date" value="${todayISO()}"></label></div></div>
+    <div class="field-box"><label><span>${esc(qt('Note (optional)', 'نوٹ (اختیاری)'))}</span><input id="vd-note"></label></div>
+    <div class="field-box" id="vd-accbox" style="display:none;"><label><span>${esc(qt('Paid from', 'کہاں سے ادا کی'))}</span><select id="vd-acc">${accOpts}</select></label></div>
+    <button class="btn-primary" onclick="guardedSubmit(this, finvAddEntry)">+ ${esc(qt('Save Entry', 'اندراج محفوظ کریں'))}</button>
+    <div class="list-card" style="margin-top:12px;">${rows.join('') || `<div class="empty">${esc(qt('No entries yet.', 'ابھی کوئی اندراج نہیں۔'))}</div>`}</div>
+    <div style="display:flex;gap:8px;margin-top:10px;"><button class="btn-ghost" style="flex:1;" onclick="printVendorStatement()">🖨️ ${esc(qt('Print', 'پرنٹ'))}</button><button class="btn-ghost" style="flex:1;" onclick="exportVendorStatement()">📥 Excel</button></div>
+    <button class="btn-ghost" style="width:100%;margin-top:8px;" onclick="openFinVendors()">← ${esc(qt('All vendors', 'تمام وینڈرز'))}</button>`);
+}
+async function finvAddEntry() {
+  const amt = Number(document.getElementById('vd-amt').value || 0); if (!(amt > 0)) return;
+  const date = document.getElementById('vd-date').value || todayISO();
+  const note = (document.getElementById('vd-note').value || '').trim() || null;
+  const v = FINV.vendors.find(x => x.id === FINV_CUR); if (!v) return;
+  let txn_id = null;
+  if (FINV_TYPE === 'payment') {
+    const sel = document.getElementById('vd-acc').value;
+    if (sel !== '__skip') {
+      const payload = { owner_id: CURRENT_USER.id, type: 'expense', category: qt('Vendor Payments', 'وینڈر ادائیگیاں'), description: v.name + (note ? ' - ' + note : ''), amount: amt, txn_date: date };
+      if (sel && sel !== '__none') payload.account_id = sel;
+      const r = await sb.from('transactions').insert(payload).select('id').single();
+      if (reportSaveError(r.error)) return;
+      txn_id = r.data ? r.data.id : null;
+    }
+  }
+  const { error } = await sb.from('fin_vendor_entries').insert({ owner_id: CURRENT_USER.id, vendor_id: FINV_CUR, entry_type: FINV_TYPE, amount: amt, entry_date: date, note, txn_id });
+  if (reportSaveError(error)) { if (txn_id) await sb.from('transactions').delete().eq('id', txn_id); return; }
+  await finvLoad(); if (txn_id) await loadAllData();
+  openFinVendor(FINV_CUR);
+}
+async function finvDeleteEntry(id) {
+  const e = FINV.entries.find(x => x.id === id); if (!e) return;
+  if (!confirm(qt('Delete this entry?', 'یہ اندراج حذف کریں؟') + (e.txn_id ? '\n' + qt('Its Day Book payment will also be removed.', 'ڈے بک کی ادائیگی بھی ہٹ جائے گی۔') : ''))) return;
+  const { error } = await sb.from('fin_vendor_entries').delete().eq('id', id);
+  if (reportSaveError(error)) return;
+  if (e.txn_id) { await sb.from('transactions').delete().eq('id', e.txn_id); await loadAllData(); }
+  await finvLoad(); openFinVendor(FINV_CUR);
+}
+function finvStatementRows(id) {
+  let run = 0;
+  return FINV.entries.filter(x => x.vendor_id === id).map(x => {
+    const bill = x.entry_type === 'bill' ? Number(x.amount) : 0, paid = x.entry_type === 'payment' ? Number(x.amount) : 0;
+    run = Math.round((run + bill - paid) * 100) / 100;
+    return { d: String(x.entry_date).slice(0, 10), note: x.note || '', bill, paid, bal: run };
+  });
+}
+function printVendorStatement() {
+  const v = FINV.vendors.find(x => x.id === FINV_CUR); if (!v) return;
+  const rows = finvStatementRows(v.id), b = finvBalance(v.id);
+  const num = 'style="text-align:right;"';
+  document.getElementById('print-area').innerHTML = `<div class="fin-print">
+    <h2>${esc(CURRENT_PROFILE.school_name || 'School')}</h2>
+    <div class="sub">${esc(qt('Account Statement', 'اکاؤنٹ اسٹیٹمنٹ'))} · ${esc(v.name)} (${esc(finvKindLabel(v.kind))})${v.contact ? ' · ' + esc(v.contact) : ''}</div>
+    <table><tr><th style="text-align:left;">${esc(qt('Date', 'تاریخ'))}</th><th style="text-align:left;">${esc(qt('Details', 'تفصیل'))}</th><th ${num}>${esc(qt('Bill', 'بل'))}</th><th ${num}>${esc(qt('Paid', 'ادائیگی'))}</th><th ${num}>${esc(qt('Balance', 'بیلنس'))}</th></tr>
+    ${rows.map(r => `<tr><td>${esc(fmtDate(r.d))}</td><td>${esc(r.note)}</td><td ${num}>${r.bill ? fmt(r.bill) : ''}</td><td ${num}>${r.paid ? fmt(r.paid) : ''}</td><td ${num}>${fmt(r.bal)}</td></tr>`).join('')}
+    <tr style="font-weight:700;"><td colspan="4">${esc(b > 0 ? qt('Payable', 'ادا کرنا ہے') : b < 0 ? qt('Receivable', 'وصول کرنا ہے') : qt('Settled', 'برابر'))}</td><td ${num}>${fmt(Math.abs(b))}</td></tr></table>
+    <div class="foot" style="display:flex;justify-content:space-between;margin-top:40px;"><span>${esc(qt('Prepared By', 'تیار کردہ'))} ____________</span><span>${esc(qt('Approved By', 'منظور کنندہ'))} ____________</span></div></div>`;
+  window.print();
+}
+function finvXlsxOk() {
+  if (typeof XLSX === 'undefined') { alert(qt('Excel library is not loaded yet. Connect to the internet once and try again.', 'ایکسل لائبریری لوڈ نہیں ہوئی۔ ایک بار انٹرنیٹ سے جڑ کر دوبارہ کوشش کریں۔')); return false; }
+  return true;
+}
+function exportVendorStatement() {
+  const v = FINV.vendors.find(x => x.id === FINV_CUR); if (!v || !finvXlsxOk()) return;
+  const aoa = [['Date', 'Details', 'Bill', 'Paid', 'Balance']];
+  finvStatementRows(v.id).forEach(r => aoa.push([fmtDate(r.d), r.note, r.bill || '', r.paid || '', r.bal]));
+  const b = finvBalance(v.id);
+  aoa.push([b > 0 ? 'Payable' : b < 0 ? 'Receivable' : 'Settled', '', '', '', Math.abs(b)]);
+  const wb = XLSX.utils.book_new(), ws = XLSX.utils.aoa_to_sheet(aoa);
+  ws['!cols'] = [{ wch: 14 }, { wch: 30 }, { wch: 12 }, { wch: 12 }, { wch: 12 }];
+  XLSX.utils.book_append_sheet(wb, ws, 'Statement');
+  const schoolPart = (CURRENT_PROFILE.school_name || 'school').replace(/[^a-z0-9]+/gi, '_');
+  XLSX.writeFile(wb, `${schoolPart}_Vendor_${v.name.replace(/[^a-z0-9]+/gi, '_')}.xlsx`);
+}
+function exportVendorsSummary() {
+  if (!finvXlsxOk()) return;
+  const aoa = [['Name', 'Type', 'Phone', 'Billed', 'Paid', 'Balance', 'Status']];
+  FINV.vendors.forEach(v => { const b = finvBalance(v.id); aoa.push([v.name, v.kind, v.contact || '', finvSum(v.id, 'bill'), finvSum(v.id, 'payment'), Math.abs(b), b > 0 ? 'Payable' : b < 0 ? 'Receivable' : 'Settled']); });
+  const tt = finvTotals();
+  aoa.push([], ['Net Payable', '', '', '', '', tt.pay], ['Net Receivable', '', '', '', '', tt.rec]);
+  const wb = XLSX.utils.book_new(), ws = XLSX.utils.aoa_to_sheet(aoa);
+  ws['!cols'] = [{ wch: 24 }, { wch: 12 }, { wch: 14 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 12 }];
+  XLSX.utils.book_append_sheet(wb, ws, 'Vendors');
+  const schoolPart = (CURRENT_PROFILE.school_name || 'school').replace(/[^a-z0-9]+/gi, '_');
+  XLSX.writeFile(wb, `${schoolPart}_Vendors_${fmtDate(todayISO())}.xlsx`);
 }
 (function () { const s = document.createElement('style');
   s.textContent = '.fin-report table,.fin-print table{width:100%;border-collapse:collapse;}.fin-report th,.fin-report td,.fin-print th,.fin-print td{border:1px solid #bbb;padding:5px 7px;font-size:12px;}.fin-report th,.fin-print th{background:#0F2740;color:#E4C765;}.fin-print h2{font-family:Fraunces,serif;color:#0F2740;margin:0 0 2px;}.fin-print .sub{color:#555;font-size:12px;margin-bottom:10px;}';
