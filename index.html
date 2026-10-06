@@ -856,6 +856,34 @@ body:not(.ur) .qpaper-print .pq-instruction::before{counter-increment:pqq;conten
 <!-- ==================================================================================== -->
 
 <!-- ============================================================================
+     ONE-TIME SETUP for Accounts (custom heads, cash/bank accounts) — run once in
+     the Supabase SQL editor. Safe to re-run.
+
+  create table if not exists fin_heads (
+    id uuid primary key default gen_random_uuid(),
+    owner_id uuid not null references auth.users(id) on delete cascade,
+    name text not null,
+    type text not null check (type in ('income','expense')),
+    created_at timestamptz not null default now()
+  );
+  create table if not exists fin_accounts (
+    id uuid primary key default gen_random_uuid(),
+    owner_id uuid not null references auth.users(id) on delete cascade,
+    name text not null,
+    kind text not null check (kind in ('cash','bank')),
+    opening_balance numeric not null default 0,
+    created_at timestamptz not null default now()
+  );
+  alter table transactions add column if not exists account_id uuid references fin_accounts(id) on delete set null;
+  alter table fin_heads enable row level security;
+  alter table fin_accounts enable row level security;
+  drop policy if exists "fin_heads_all_own" on fin_heads;
+  create policy "fin_heads_all_own" on fin_heads for all using (owner_id = auth.uid()) with check (owner_id = auth.uid());
+  drop policy if exists "fin_accounts_all_own" on fin_accounts;
+  create policy "fin_accounts_all_own" on fin_accounts for all using (owner_id = auth.uid()) with check (owner_id = auth.uid());
+     ============================================================================ -->
+
+<!-- ============================================================================
      ONE-TIME SETUP for Activity Log — run this once in the Supabase SQL editor
      (Project → SQL Editor → New query → paste → Run). Safe to re-run; it only
      creates things if they don't already exist yet.
@@ -954,13 +982,63 @@ body:not(.ur) .qpaper-print .pq-instruction::before{counter-increment:pqq;conten
 // every call, present and future. An aborted request comes back as a normal
 // {data:null, error} result (same shape the rest of the code already
 // expects), not a hang and not an uncaught exception.
-function timeoutFetch(timeoutMs = 8000) {
-  return (url, options = {}) => {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), timeoutMs);
-    return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(timer));
+// ---- Hardened network layer -------------------------------------------------
+// 1) Concurrency limiter: browsers only run ~6 requests per host at once; the rest
+//    wait in the browser's own queue. The old 8s abort timer started BEFORE that
+//    wait, so under load (10 tables x paged requests at boot) perfectly healthy
+//    requests were being aborted just for waiting their turn. Now the timer starts
+//    only when a request really gets its slot.
+// 2) Retry with backoff + jitter for reads (GET/HEAD) on network errors, 429 and
+//    502/503/504. A timed-out read is retried once. Writes are never blindly
+//    retried after a timeout (they may already have been applied) — they go through
+//    offlineWrite/flushSyncQueue which are idempotent — except on 429/503, where
+//    the server certainly did not process them.
+// 3) Per-type timeouts: reads 15s, writes 12s, storage uploads 60s.
+// 4) The caller's own AbortSignal is honoured now.
+const NET = { active: 0, max: 6, waiters: [] };
+function _netAcquire() { return new Promise(res => { if (NET.active < NET.max) { NET.active++; res(); } else NET.waiters.push(res); }); }
+function _netRelease() { const n = NET.waiters.shift(); if (n) n(); else NET.active--; }
+const _sleep = ms => new Promise(r => setTimeout(r, ms));
+function timeoutFetch(timeoutMs) {
+  return async (url, options = {}) => {
+    options = options || {};
+    const method = String(options.method || (url && url.method) || 'GET').toUpperCase();
+    const u = String((url && url.url) || url);
+    const isRead = method === 'GET' || method === 'HEAD';
+    const perTry = timeoutMs || (u.indexOf('/storage/v1/') > -1 ? 60000 : isRead ? 15000 : 12000);
+    const maxRetries = isRead ? 2 : 1;
+    for (let attempt = 0; ; attempt++) {
+      await _netAcquire();
+      const controller = new AbortController();
+      let timedOut = false;
+      const timer = setTimeout(() => { timedOut = true; controller.abort(); }, perTry);
+      const ext = options.signal;
+      let onExtAbort = null;
+      if (ext) { if (ext.aborted) controller.abort(); else { onExtAbort = () => controller.abort(); ext.addEventListener('abort', onExtAbort); } }
+      let res = null, err = null;
+      try { res = await fetch(url, { ...options, signal: controller.signal }); }
+      catch (e) { err = e; }
+      finally { clearTimeout(timer); if (ext && onExtAbort) ext.removeEventListener('abort', onExtAbort); _netRelease(); }
+      if (err) {
+        if (ext && ext.aborted) throw err;                          // caller cancelled on purpose
+        const canRetry = isRead && attempt < maxRetries && (!timedOut || attempt === 0) && navigator.onLine !== false;
+        if (!canRetry) throw err;
+        await _sleep(400 * Math.pow(2, attempt) + Math.random() * 250);
+        continue;
+      }
+      const st = res.status;
+      const transient = isRead ? (st === 429 || st === 502 || st === 503 || st === 504) : (st === 429 || st === 503);
+      if (transient && attempt < maxRetries) {
+        const ra = parseFloat(res.headers && res.headers.get && res.headers.get('Retry-After'));
+        const wait = Number.isFinite(ra) ? Math.min(ra * 1000, 5000) : 400 * Math.pow(2, attempt) + Math.random() * 250;
+        await _sleep(wait);
+        continue;
+      }
+      return res;
+    }
   };
 }
+
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   global: { fetch: timeoutFetch() }
@@ -1501,6 +1579,20 @@ const bidi = s => `<bdi>${esc(s)}</bdi>`;
 const RTL_CHAR_RE = /[\u0590-\u08FF\uFB1D-\uFDFF\uFE70-\uFEFF]/;
 const qDir = s => RTL_CHAR_RE.test(s) ? 'rtl' : 'ltr';
 
+// Ring buffer of the last 30 client errors (kept in localStorage) — nothing is shown to the
+// user, but support can read them with: localStorage.getItem('sms_client_errors')
+function _logClientError(where, err) {
+  try {
+    console.error('[' + where + ']', err);
+    const k = 'sms_client_errors';
+    const l = JSON.parse(localStorage.getItem(k) || '[]');
+    l.push({ t: new Date().toISOString(), where, msg: String((err && err.message) || err).slice(0, 300) });
+    localStorage.setItem(k, JSON.stringify(l.slice(-30)));
+  } catch (e) {}
+}
+window.addEventListener('unhandledrejection', e => _logClientError('promise', e.reason));
+window.addEventListener('error', e => _logClientError('error', e.error || e.message));
+
 // Prevents double-submission (e.g. from impatient repeated tapping on a slow
 // connection): disables the clicked button for the duration of the async submit
 // function, so a second tap before the first save finishes is simply ignored
@@ -1654,21 +1746,48 @@ async function idbReplaceAll(store, rows) {
     });
   } catch (e) { console.error('idbReplaceAll failed', store, e); }
 }
+// All single-row helpers now wait for the transaction to actually COMMIT (the old
+// versions returned as soon as the write was queued — a tab closed or killed in that
+// instant lost the change, which for the sync queue means a lost offline save).
+function idbTx(store, mode, fn) {
+  return idbOpen().then(db => new Promise((resolve, reject) => {
+    const tx = db.transaction(store, mode);
+    let out;
+    try { out = fn(tx.objectStore(store)); } catch (e) { reject(e); return; }
+    tx.oncomplete = () => resolve(out && out.result !== undefined ? out.result : undefined);
+    tx.onerror = () => reject(tx.error);
+    tx.onabort = () => reject(tx.error);
+  }));
+}
 async function idbPutRow(store, row) {
-  try { const db = await idbOpen(); db.transaction(store, 'readwrite').objectStore(store).put(row); }
+  try { await idbTx(store, 'readwrite', os => os.put(row)); }
   catch (e) { console.error('idbPutRow failed', store, e); }
 }
 async function idbDeleteRow(store, id) {
-  try { const db = await idbOpen(); db.transaction(store, 'readwrite').objectStore(store).delete(id); }
+  try { await idbTx(store, 'readwrite', os => os.delete(id)); }
   catch (e) { console.error('idbDeleteRow failed', store, e); }
 }
+// If IndexedDB itself is unavailable/full (private mode, quota, broken WebView), the
+// queued change is parked in localStorage instead of being dropped; flushSyncQueue
+// moves it back into IndexedDB / replays it on the next run.
+const SYNC_FALLBACK_KEY = 'sms_sync_queue_fallback';
+function _fallbackRead() { try { return JSON.parse(localStorage.getItem(SYNC_FALLBACK_KEY) || '[]') || []; } catch (e) { return []; } }
+function _fallbackWrite(list) { try { if (list.length) localStorage.setItem(SYNC_FALLBACK_KEY, JSON.stringify(list)); else localStorage.removeItem(SYNC_FALLBACK_KEY); } catch (e) { console.error('fallback queue write failed', e); } }
 async function idbQueueAdd(entry) {
-  try { const db = await idbOpen(); db.transaction('sync_queue', 'readwrite').objectStore('sync_queue').add(entry); }
-  catch (e) { console.error('idbQueueAdd failed', e); }
+  try { await idbTx('sync_queue', 'readwrite', os => os.add(entry)); return true; }
+  catch (e) {
+    console.error('idbQueueAdd failed — parking in localStorage', e);
+    const l = _fallbackRead(); l.push(entry); _fallbackWrite(l);
+    return false;
+  }
 }
 async function idbQueueRemove(qid) {
-  try { const db = await idbOpen(); db.transaction('sync_queue', 'readwrite').objectStore('sync_queue').delete(qid); }
+  try { await idbTx('sync_queue', 'readwrite', os => os.delete(qid)); }
   catch (e) { console.error('idbQueueRemove failed', e); }
+}
+async function idbQueueUpdate(item) {
+  try { await idbTx('sync_queue', 'readwrite', os => os.put(item)); }
+  catch (e) { console.error('idbQueueUpdate failed', e); }
 }
 
 // Mirrors every READ_CACHE_TABLES table into IndexedDB after a successful
@@ -1879,6 +1998,7 @@ function logActivity(table, action, payload, id, baseRow) {
 
 async function offlineWrite({ table, action, payload, id, onConflict, baseRow, run, optimisticApply }) {
   optimisticApply();
+  bumpIdx();
   logActivity(table, action, payload, id, baseRow);
   if (navigator.onLine) {
     try {
@@ -1941,27 +2061,89 @@ document.addEventListener('focusout', (e) => {
   setTimeout(() => { if (TAB) renderTab(); }, 0);
 });
 
+let _syncRetryMs = 0, _syncRetryTimer = null;
+function scheduleSyncRetry() {
+  clearTimeout(_syncRetryTimer);
+  _syncRetryMs = Math.min(_syncRetryMs ? _syncRetryMs * 2 : 5000, 120000);
+  _syncRetryTimer = setTimeout(() => { flushSyncQueue(); }, _syncRetryMs);
+}
+function isDupKey(error) { return !!error && (error.code === '23505' || /duplicate key/i.test(error.message || '')); }
+// Runs ONE queued change against Supabase and returns the real result object
+// ({ error, status }). The old code never looked at the result: supabase-js does
+// not throw on failure, it returns { error } — so a failed replay was treated as
+// success and the queued change was DELETED from the queue (silent data loss).
+async function execQueueItem(item) {
+  const q = sb.from(item.table);
+  if (item.action === 'upsert') return await q.upsert(item.payload, { onConflict: item.onConflict });
+  if (item.action === 'update') return await q.update(item.payload).eq('id', item.id);
+  if (item.action === 'bulk_update') return await q.update(item.payload).in('id', item.ids);
+  if (item.action === 'delete') return await q.delete().eq('id', item.id);
+  if (item.action === 'insert') return await q.insert(item.payload);
+  return { error: null };
+}
+function isTransientResult(r) {
+  if (!r || !r.error) return false;
+  if (isNetworkError(r.error)) return true;
+  const st = r.status;
+  return st === 408 || st === 429 || (st >= 500 && st <= 599);
+}
+const MAX_SYNC_ATTEMPTS = 4;
 async function flushSyncQueue() {
   if (SYNCING || !navigator.onLine) return;
   SYNCING = true;
-  const queue = await idbGetAll('sync_queue');
   const conflicts = [];
-  for (const item of queue) {
-    try {
-      let serverRow = null;
-      if (item.id) { const { data } = await sb.from(item.table).select('*').eq('id', item.id).maybeSingle(); serverRow = data; }
-      const changed = item.baseRow && serverRow && JSON.stringify(serverRow) !== JSON.stringify(item.baseRow);
-      if (changed) { conflicts.push({ ...item, serverRow }); continue; } // held for the user, not overwritten
-      if (item.action === 'upsert') await sb.from(item.table).upsert(item.payload, { onConflict: item.onConflict });
-      else if (item.action === 'update') await sb.from(item.table).update(item.payload).eq('id', item.id);
-      else if (item.action === 'bulk_update') await sb.from(item.table).update(item.payload).in('id', item.ids);
-      else if (item.action === 'delete') await sb.from(item.table).delete().eq('id', item.id);
-      else if (item.action === 'insert') await sb.from(item.table).insert(item.payload);
-      await idbQueueRemove(item.qid);
-    } catch (e) { console.error('sync failed for item', item, e); }
+  let stoppedEarly = false;
+  try {
+    // Move anything parked in localStorage (IndexedDB was unavailable) back into the queue.
+    const parked = _fallbackRead();
+    if (parked.length) {
+      let ok = true;
+      for (const e of parked) { if (!(await idbQueueAdd(e))) { ok = false; break; } }
+      if (ok) _fallbackWrite([]);
+    }
+    const queue = await idbGetAll('sync_queue');
+    for (const item of queue) {
+      if (item.failed) continue;                       // waiting for the user (see openFailedSync)
+      try {
+        let serverRow = null;
+        if (item.id && item.baseRow) {
+          const r = await sb.from(item.table).select('*').eq('id', item.id).maybeSingle();
+          if (r.error) {
+            if (isTransientResult(r)) { stoppedEarly = true; break; }   // keep order, retry later
+          } else serverRow = r.data;
+        }
+        const changed = item.baseRow && serverRow && JSON.stringify(serverRow) !== JSON.stringify(item.baseRow);
+        if (changed) { conflicts.push({ ...item, serverRow }); continue; } // held for the user, not overwritten
+        const r = await execQueueItem(item);
+        if (!r.error || (item.action === 'insert' && isDupKey(r.error))) {
+          await idbQueueRemove(item.qid);              // genuinely applied (or was already applied)
+          continue;
+        }
+        if (isTransientResult(r)) { stoppedEarly = true; break; }       // connectivity/server load — retry later, in order
+        // A real rejection from the server (permission, constraint, bad data). Retrying forever
+        // would block the banner; discarding silently would lose data. Count it, and after a few
+        // attempts park it as "failed" so the user can see, retry, export or discard it.
+        item.attempts = (item.attempts || 0) + 1;
+        item.lastError = String((r.error && r.error.message) || r.error).slice(0, 300);
+        if (item.attempts >= MAX_SYNC_ATTEMPTS) item.failed = true;
+        await idbQueueUpdate(item);
+        console.error('sync rejected by server', item, r.error);
+      } catch (e) {
+        console.error('sync failed for item', item, e);
+        stoppedEarly = true; break;                    // request never completed — keep it, retry later
+      }
+    }
+  } catch (e) {
+    console.error('flushSyncQueue crashed', e);
+    stoppedEarly = true;
+  } finally {
+    SYNCING = false;                                   // can never get stuck on true again
   }
-  SYNCING = false;
-  renderOfflineBanner();
+  await renderOfflineBanner();
+  const remaining = (await idbGetAll('sync_queue')).filter(x => !x.failed);
+  if (stoppedEarly || (remaining.length && !conflicts.length && remaining.some(x => !x.failed))) {
+    if (remaining.length) scheduleSyncRetry();
+  } else { _syncRetryMs = 0; }
   if (conflicts.length) { PENDING_CONFLICTS = conflicts; renderSyncConflictModal(); }
   else { await loadAllData(); if (TAB) safeRenderTab(); }
 }
@@ -1986,32 +2168,79 @@ function renderSyncConflictModal() {
   `);
 }
 async function resolveConflict(choice) {
-  const c = PENDING_CONFLICTS.shift();
+  const c = PENDING_CONFLICTS[0];
   if (!c) return;
   if (choice === 'mine') {
-    if (c.action === 'upsert') await sb.from(c.table).upsert(c.payload, { onConflict: c.onConflict });
-    else if (c.action === 'update') await sb.from(c.table).update(c.payload).eq('id', c.id);
-    else if (c.action === 'delete') await sb.from(c.table).delete().eq('id', c.id);
-    else if (c.action === 'insert') await sb.from(c.table).insert(c.payload);
+    let r;
+    try { r = await execQueueItem(c); } catch (e) { r = { error: e }; }
+    if (r.error && !(c.action === 'insert' && isDupKey(r.error))) {
+      // Not applied — keep it in the queue instead of throwing the user's version away.
+      alert(LANG === 'ur' ? 'ابھی محفوظ نہیں ہو سکا۔ تبدیلی قطار میں موجود ہے، بعد میں دوبارہ کوشش ہوگی۔' : 'Could not apply your version right now. It stays queued and will be retried.');
+      PENDING_CONFLICTS.shift();
+      closeModal();
+      scheduleSyncRetry();
+      if (PENDING_CONFLICTS.length) renderSyncConflictModal();
+      return;
+    }
   }
+  PENDING_CONFLICTS.shift();
   await idbQueueRemove(c.qid);
   closeModal();
   if (PENDING_CONFLICTS.length) renderSyncConflictModal();
   else { await loadAllData(); if (TAB) safeRenderTab(); }
 }
 
+// Changes the server refused several times in a row. Shown instead of being lost.
+async function openFailedSync() {
+  const items = (await idbGetAll('sync_queue')).filter(x => x.failed);
+  if (!items.length) { closeModal(); return; }
+  const rows = items.map(x => `<div class="list-row" style="display:block;"><div style="font-weight:600;font-size:13px;">${esc(x.table)} · ${esc(x.action)}</div><div style="font-size:11px;opacity:.7;word-break:break-word;">${esc(x.lastError || '')}</div></div>`).join('');
+  showModal(LANG === 'ur' ? 'جو تبدیلیاں sync نہیں ہو سکیں' : 'Changes that could not sync', `
+    <div style="font-size:12px;opacity:.75;margin-bottom:10px;">${esc(LANG === 'ur' ? 'سرور نے یہ تبدیلیاں قبول نہیں کیں۔ دوبارہ کوشش کریں، فائل میں محفوظ کریں، یا ختم کریں۔' : 'The server refused these changes. Retry them, save them to a file, or discard them.')}</div>
+    ${rows}
+    <div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap;">
+      <button class="btn-primary" style="flex:1;" onclick="retryFailedSync()">${esc(LANG === 'ur' ? 'دوبارہ کوشش' : 'Retry')}</button>
+      <button class="btn-ghost" style="flex:1;" onclick="exportFailedSync()">${esc(LANG === 'ur' ? 'فائل' : 'Save file')}</button>
+      <button class="btn-ghost" style="flex:1;" onclick="discardFailedSync()">${esc(LANG === 'ur' ? 'ختم' : 'Discard')}</button>
+    </div>`);
+}
+async function retryFailedSync() {
+  const items = (await idbGetAll('sync_queue')).filter(x => x.failed);
+  for (const x of items) { x.failed = false; x.attempts = 0; await idbQueueUpdate(x); }
+  closeModal(); _syncRetryMs = 0; flushSyncQueue();
+}
+async function exportFailedSync() {
+  const items = (await idbGetAll('sync_queue')).filter(x => x.failed);
+  const blob = new Blob([JSON.stringify(items, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+  a.download = 'failed-sync-' + new Date().toISOString().slice(0, 10) + '.json';
+  document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+}
+async function discardFailedSync() {
+  if (!confirm(LANG === 'ur' ? 'یہ تبدیلیاں مستقل ختم ہو جائیں گی۔ جاری رکھیں؟' : 'These changes will be permanently discarded. Continue?')) return;
+  const items = (await idbGetAll('sync_queue')).filter(x => x.failed);
+  for (const x of items) await idbQueueRemove(x.qid);
+  closeModal(); renderOfflineBanner(); await loadAllData(); if (TAB) safeRenderTab();
+}
+
 async function renderOfflineBanner() {
   const el = document.getElementById('offline-banner');
   if (!el) return;
   // The "Offline — changes are saved..." message is intentionally removed
-  // per request. The "Syncing..." message (once back online, queued
-  // changes are being pushed) is kept — that one wasn't asked to go.
+  // per request. The "Syncing..." message is kept, and a warning now shows if the
+  // server refused some changes (previously those were silently deleted).
   const q = await idbGetAll('sync_queue');
-  if (navigator.onLine && q.length) {
-    el.style.display = 'block';
-    el.textContent = LANG==='ur' ? `⏳ Sync ہو رہا ہے (${q.length})...` : `⏳ Syncing (${q.length})...`;
+  const failed = q.filter(x => x.failed).length;
+  const pending = q.length - failed;
+  if (failed) {
+    el.style.display = 'block'; el.style.cursor = 'pointer';
+    el.onclick = openFailedSync;
+    el.textContent = LANG === 'ur' ? `⚠ ${failed} تبدیلیاں sync نہیں ہو سکیں — دیکھنے کے لیے ٹیپ کریں` : `⚠ ${failed} change(s) could not sync — tap to review`;
+  } else if (navigator.onLine && pending) {
+    el.style.display = 'block'; el.style.cursor = ''; el.onclick = null;
+    el.textContent = LANG === 'ur' ? `⏳ Sync ہو رہا ہے (${pending})...` : `⏳ Syncing (${pending})...`;
   } else {
-    el.style.display = 'none';
+    el.style.display = 'none'; el.onclick = null;
   }
 }
 // Self-heal: the moment signal comes back, always pull fresh data from the
@@ -2652,6 +2881,39 @@ async function reloadTable(table) {
   } catch (e) { return loadAllData(); }
 }
 
+// The localStorage snapshot re-serialises EVERY table, so it must not run on each save.
+// Batch bursts of saves into one write a few seconds later (IndexedDB is already updated per row).
+let _snapTimer = null;
+function saveOfflineSnapshotSoon() {
+  clearTimeout(_snapTimer);
+  _snapTimer = setTimeout(() => { _snapTimer = null; saveOfflineSnapshot(); }, 4000);
+}
+
+// After a fee save, confirm ONLY that student+month row against the server (one tiny query)
+// instead of re-downloading the whole fee_payments table. The server row is the truth:
+// if another device already created this student+month, the DB keeps THEIR id, so we swap
+// our optimistic copy for it. Any problem -> fall back to the old full reload (never worse).
+async function reloadFeeRow(studentId, month) {
+  if (!navigator.onLine) return;
+  try {
+    const r = await sb.from('fee_payments').select('*').eq('student_id', studentId).eq('month', month).maybeSingle();
+    if (r.error) return reloadTable('fee_payments');
+    const row = r.data;
+    const stale = DATA.feePayments.filter(x => x.student_id === studentId && x.month === month && (!row || x.id !== row.id));
+    if (stale.length) {
+      const staleIds = new Set(stale.map(x => x.id));
+      DATA.feePayments = DATA.feePayments.filter(x => !staleIds.has(x.id));
+      stale.forEach(x => idbDeleteRow('fee_payments', x.id));
+    }
+    if (row) {
+      const i = DATA.feePayments.findIndex(x => x.id === row.id);
+      if (i >= 0) DATA.feePayments[i] = row; else DATA.feePayments.push(row);
+      idbPutRow('fee_payments', row);
+    }
+    saveOfflineSnapshotSoon();
+  } catch (e) { return reloadTable('fee_payments'); }
+}
+
 async function loadAllData() {
   // No signal at all — skip the network round-trip and use the last-synced
   // snapshot straight away instead of waiting for every request to time out.
@@ -2689,7 +2951,7 @@ async function loadAllData() {
       // reach the server — without this, that case hangs on "Loading your
       // data…" for as long as the browser's own (often very long) request
       // timeout, instead of falling back to the cache in a few seconds.
-      new Promise((resolve) => setTimeout(() => resolve(TIMED_OUT), 20000)),
+      new Promise((resolve) => setTimeout(() => resolve(TIMED_OUT), 35000)),
     ]);
     if (result === TIMED_OUT) { await offlineCacheRestore(); renderOfflineBanner(); return; }
     [s, fp, tc, sp, tx, ar, ta, hd, cl, sa] = result;
@@ -2891,8 +3153,23 @@ function openFeeRequestReminders() {
   `);
 }
 
-function studentPayments(id){ return DATA.feePayments.filter(p=>p.student_id===id); }
-function teacherPayments(id){ return DATA.salaryPayments.filter(p=>p.teacher_id===id); }
+// Lookup indexes. The dashboard calls studentPayments()/teacherPayments() for every
+// student/teacher several times per render; each call used to scan the WHOLE payments
+// array (students x payments = tens of millions of comparisons for a big school, freezing
+// phones). Now each array is grouped once and reused until it changes. It rebuilds when the
+// array is replaced, its length changes, or bumpIdx() is called (offlineWrite does this
+// right after every optimistic edit, so in-place updates are covered too).
+let _IDX_EPOCH = 0;
+function bumpIdx() { _IDX_EPOCH++; }
+const _IDX = {};
+function _groupBy(arr, key) { const m = new Map(); for (const r of arr) { const k = r[key]; const a = m.get(k); if (a) a.push(r); else m.set(k, [r]); } return m; }
+function _indexed(name, arr, key) {
+  const c = _IDX[name];
+  if (!c || c.arr !== arr || c.len !== arr.length || c.epoch !== _IDX_EPOCH) { _IDX[name] = { arr, len: arr.length, epoch: _IDX_EPOCH, map: _groupBy(arr, key) }; }
+  return _IDX[name].map;
+}
+function studentPayments(id){ return (_indexed('fp', DATA.feePayments, 'student_id').get(id) || []).slice(); }
+function teacherPayments(id){ return (_indexed('sp', DATA.salaryPayments, 'teacher_id').get(id) || []).slice(); }
 
 // Running ledger balance for a student (positive = amount still due, negative = credit)
 function studentBalance(id) {
@@ -3373,7 +3650,14 @@ function renderTab() {
   const lib = document.getElementById('kgLib'), ls = lib ? lib.scrollTop : 0, ws = window.scrollY || 0;
   const mEl = document.getElementById('main'), ms = mEl ? mEl.scrollTop : 0, aEl = document.getElementById('app'), as = aEl ? aEl.scrollTop : 0;
   if (keep && mEl) mEl.style.minHeight = mEl.offsetHeight + 'px';
-  _renderTabInner();
+  try { _renderTabInner(); }
+  catch (e) {
+    // One broken screen must never blank the whole app: log it and show a retry card.
+    _logClientError('render:' + TAB, e);
+    const m = document.getElementById('main');
+    if (m) m.innerHTML = `<div class="card" style="margin:16px;text-align:center;"><div style="font-weight:700;margin-bottom:6px;">${esc(LANG === 'ur' ? 'یہ صفحہ لوڈ نہیں ہو سکا' : 'This screen could not load')}</div><div style="font-size:12px;opacity:.7;margin-bottom:12px;">${esc(String((e && e.message) || e).slice(0, 200))}</div><button class="btn-primary" onclick="renderTab()">${esc(LANG === 'ur' ? 'دوبارہ کوشش' : 'Try again')}</button></div>`;
+    return;
+  }
   if (!keep) return;
   try { pqScheduleSave(); } catch (e) {}
   const fix = () => { const l = document.getElementById('kgLib'); if (l && lib) l.scrollTop = ls;
@@ -5726,7 +6010,7 @@ async function submitFeePayment(studentId) {
     const msg = paidReceiptMessage(student.name, monthLabel(month), payload, row ? row.balance : 0);
     openFatherWhatsapp(student.contact, msg); // opens the phone's Messages app, pre-filled, ready to send
   }
-  if (!queued) await reloadTable('fee_payments');
+  if (!queued) await reloadFeeRow(studentId, month);
   openStudentDetail(studentId);
 }
 
@@ -5774,12 +6058,14 @@ function printReceipt(studentId, entryId) {
 }
 async function deleteFeePayment(paymentId, studentId) {
   const baseRow = DATA.feePayments.find(x => x.id === paymentId) || null;
-  const { queued } = await offlineWrite({
+  const { queued, error } = await offlineWrite({
     table: 'fee_payments', action: 'delete', payload: null, id: paymentId, baseRow,
     run: () => sb.from('fee_payments').delete().eq('id', paymentId),
     optimisticApply: () => { DATA.feePayments = DATA.feePayments.filter(x => x.id !== paymentId); idbDeleteRow('fee_payments', paymentId); }
   });
-  if (!queued) await reloadTable('fee_payments');
+  // Delete already applied locally; only re-read the table if the server rejected it
+  // (so the row reappears instead of silently differing from the database).
+  if (!queued && error) await reloadTable('fee_payments'); else if (!queued) saveOfflineSnapshotSoon();
   openStudentDetail(studentId);
 }
 
@@ -7018,6 +7304,7 @@ function tplFinance() {
       <div style="display:flex;justify-content:flex-end;margin-bottom:12px;">
         <button class="btn-primary" style="width:auto;padding:9px 16px;" onclick="openAddTxn()">+ ${esc(t.addTransaction)}</button>
       </div>
+      ${finPanel()}
       ${tplIncomeExpenseChart()}
       ${DATA.transactions.length===0 ? `<div class="empty">${esc(t.noTransactions)}</div>` :
         `<div class="list-card">` + DATA.transactions.map(x=>`
@@ -7044,6 +7331,7 @@ function openAddTxn() {
     </div>
     <div id="txn-items"></div>
     <div class="field-box"><label><span>${esc(t.category)}</span><select id="f-cat"></select></label></div>
+    ${finAccountSelectHtml()}
     <div class="field-box"><label><span>${esc(t.date)}</span><input id="f-date" type="date" value="${todayISO()}"></label></div>
     <div class="flexgap">
       <button class="btn-ghost" onclick="closeModal()">${esc(t.cancel)}</button>
@@ -7060,7 +7348,8 @@ function setTxnType(type) {
   fillCatOptions();
 }
 function fillCatOptions() {
-  const cats = txnType==='income' ? INCOME_CATS : EXPENSE_CATS;
+  const base = txnType==='income' ? INCOME_CATS : EXPENSE_CATS;
+  const cats = base.concat(FIN.heads.filter(h => h.type === txnType && !base.includes(h.name)).map(h => h.name));
   document.getElementById('f-cat').innerHTML = cats.map(c=>`<option>${c}</option>`).join('');
 }
 function txnItemsTotal() {
@@ -7123,7 +7412,8 @@ async function submitAddTxn() {
     id: crypto.randomUUID ? crypto.randomUUID() : `local-${Date.now()}`,
     owner_id: CURRENT_USER.id,
     type: txnType, category: document.getElementById('f-cat').value, description: desc,
-    amount: amt, txn_date: dateVal('f-date')
+    amount: amt, txn_date: dateVal('f-date'),
+    ...(document.getElementById('f-acc') && document.getElementById('f-acc').value ? { account_id: document.getElementById('f-acc').value } : {})
   };
   // Offline-aware: a brand-new transaction, so there's nothing on the server
   // yet to conflict with — safe to just insert once the connection is back.
@@ -7191,6 +7481,153 @@ function printTxnVoucher(id) {
     </div>`;
   window.print();
 }
+
+// ---------------- Accounts module: custom heads, cash/bank accounts, Day Book, P&L ----------------
+const FIN = { heads: [], accounts: [], loaded: false, err: false };
+let FINR = { kind: 'daybook', from: '', to: '', acct: 'all' };
+async function finLoad() {
+  FIN.loaded = true;
+  try {
+    const [h, a] = await Promise.all([
+      sb.from('fin_heads').select('*').order('name'),
+      sb.from('fin_accounts').select('*').order('created_at')
+    ]);
+    FIN.err = !!(h.error || a.error);
+    FIN.heads = h.data || []; FIN.accounts = a.data || [];
+  } catch (e) { FIN.err = true; }
+}
+function finAccName(id) { const a = FIN.accounts.find(x => x.id === id); return a ? a.name : '—'; }
+function finAccBalance(a) {
+  return DATA.transactions.filter(x => x.account_id === a.id)
+    .reduce((s, x) => s + (x.type === 'income' ? 1 : -1) * Number(x.amount || 0), Number(a.opening_balance || 0));
+}
+function finAccountSelectHtml() {
+  if (!FIN.accounts.length) return '';
+  return `<div class="field-box"><label><span>${esc(qt('Account (Cash / Bank)', 'اکاؤنٹ (کیش / بینک)'))}</span><select id="f-acc">` +
+    FIN.accounts.map(a => `<option value="${a.id}">${esc(a.name)} (${a.kind === 'bank' ? qt('Bank', 'بینک') : qt('Cash', 'کیش')})</option>`).join('') + `</select></label></div>`;
+}
+function finPanel() {
+  if (!FIN.loaded) finLoad().then(() => { if (TAB === 'finance') renderTab(); });
+  const cards = FIN.accounts.map(a => `<div class="card" style="padding:10px 14px;min-width:130px;flex:1;">
+      <div style="font-size:11px;opacity:.65;">${a.kind === 'bank' ? '🏦' : '💵'} ${esc(a.name)}</div>
+      <div style="font-weight:700;color:var(--navy);">₨${fmt(finAccBalance(a))}</div></div>`).join('');
+  const btn = (label, fn) => `<button class="btn-ghost" style="flex:none;padding:8px 12px;font-size:13px;" onclick="${fn}">${label}</button>`;
+  return `<div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px;">
+      ${btn('📒 ' + esc(qt('Day Book', 'روزنامچہ')), "openFinReport('daybook')")}
+      ${btn('📊 ' + esc(qt('Profit & Loss', 'منافع و نقصان')), "openFinReport('pl')")}
+      ${btn('🏷️ ' + esc(qt('Heads', 'مدات')), 'openFinHeads()')}
+      ${btn('🏦 ' + esc(qt('Accounts', 'اکاؤنٹس')), 'openFinAccounts()')}
+    </div>${cards ? `<div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px;">${cards}</div>` : ''}`;
+}
+function finSetupNote() {
+  return FIN.err ? `<div class="err">${esc(qt('Accounts tables are not set up yet. Run the "ONE-TIME SETUP for Accounts" SQL (top of index.html) in Supabase.', 'اکاؤنٹس ٹیبل ابھی نہیں بنے۔ index.html کے شروع میں دی گئی SQL سپابیس میں چلائیں۔'))}</div>` : '';
+}
+// ---- Custom heads ----
+function openFinHeads() {
+  const row = h => `<div class="list-row"><div><div class="nm">${esc(h.name)}</div><div class="sub">${h.type === 'income' ? esc(t.income) : esc(t.expense)}</div></div>
+    <button class="del-btn" onclick="finDelete('fin_heads','${h.id}')">✕</button></div>`;
+  showModal(qt('Custom Heads', 'اپنی مدات'), `${finSetupNote()}
+    <div class="type-toggle"><button id="fh-income" onclick="finHeadType('income')">${esc(t.income)}</button><button id="fh-expense" class="on-expense" onclick="finHeadType('expense')">${esc(t.expense)}</button></div>
+    <div class="field-box"><label><span>${esc(qt('Head name', 'مد کا نام'))}</span><input id="fh-name"></label></div>
+    <button class="btn-primary" onclick="guardedSubmit(this, finAddHead)">+ ${esc(qt('Add Head', 'مد شامل کریں'))}</button>
+    <div class="list-card" style="margin-top:12px;">${FIN.heads.map(row).join('') || `<div class="empty">${esc(qt('No custom heads yet.', 'ابھی کوئی مد نہیں۔'))}</div>`}</div>`);
+}
+let finHT = 'expense';
+function finHeadType(ty) { finHT = ty; document.getElementById('fh-income').className = ty === 'income' ? 'on-income' : ''; document.getElementById('fh-expense').className = ty === 'expense' ? 'on-expense' : ''; }
+async function finAddHead() {
+  const name = (document.getElementById('fh-name').value || '').trim(); if (!name) return;
+  const { error } = await sb.from('fin_heads').insert({ owner_id: CURRENT_USER.id, name, type: finHT });
+  if (reportSaveError(error)) return;
+  await finLoad(); openFinHeads();
+}
+async function finDelete(table, id) {
+  if (!confirm(qt('Delete this?', 'حذف کریں؟'))) return;
+  const { error } = await sb.from(table).delete().eq('id', id);
+  if (reportSaveError(error)) return;
+  if (table === 'fin_accounts') DATA.transactions.forEach(x => { if (x.account_id === id) x.account_id = null; });
+  await finLoad(); table === 'fin_heads' ? openFinHeads() : openFinAccounts();
+}
+// ---- Cash / bank accounts ----
+function openFinAccounts() {
+  const row = a => `<div class="list-row"><div><div class="nm">${a.kind === 'bank' ? '🏦' : '💵'} ${esc(a.name)}</div>
+    <div class="sub">${esc(qt('Opening', 'ابتدائی'))} ₨${fmt(a.opening_balance)} · ${esc(qt('Balance', 'بیلنس'))} ₨${fmt(finAccBalance(a))}</div></div>
+    <button class="del-btn" onclick="finDelete('fin_accounts','${a.id}')">✕</button></div>`;
+  showModal(qt('Cash & Bank Accounts', 'کیش اور بینک اکاؤنٹس'), `${finSetupNote()}
+    <div class="field-box"><label><span>${esc(qt('Account name', 'اکاؤنٹ کا نام'))}</span><input id="fa-name"></label></div>
+    <div class="field-box"><label><span>${esc(qt('Type', 'قسم'))}</span><select id="fa-kind"><option value="cash">${esc(qt('Cash in Hand', 'کیش ان ہینڈ'))}</option><option value="bank">${esc(qt('Bank', 'بینک'))}</option></select></label></div>
+    <div class="field-box"><label><span>${esc(qt('Opening balance (Rs)', 'ابتدائی بیلنس (روپے)'))}</span><input id="fa-open" type="number" value="0"></label></div>
+    <button class="btn-primary" onclick="guardedSubmit(this, finAddAccount)">+ ${esc(qt('Add Account', 'اکاؤنٹ شامل کریں'))}</button>
+    <div class="list-card" style="margin-top:12px;">${FIN.accounts.map(row).join('') || `<div class="empty">${esc(qt('No accounts yet.', 'ابھی کوئی اکاؤنٹ نہیں۔'))}</div>`}</div>`);
+}
+async function finAddAccount() {
+  const name = (document.getElementById('fa-name').value || '').trim(); if (!name) return;
+  const { error } = await sb.from('fin_accounts').insert({ owner_id: CURRENT_USER.id, name,
+    kind: document.getElementById('fa-kind').value, opening_balance: Number(document.getElementById('fa-open').value || 0) });
+  if (reportSaveError(error)) return;
+  await finLoad(); openFinAccounts();
+}
+// ---- Day Book & Profit/Loss ----
+function finEntries(from, to, acct) {
+  const inR = d => { d = String(d || '').slice(0, 10); return d >= from && d <= to; };
+  const out = [];
+  DATA.transactions.forEach(x => { if (inR(x.txn_date) && (acct === 'all' || x.account_id === acct))
+    out.push({ d: String(x.txn_date).slice(0, 10), type: x.type, head: x.category || '—', desc: x.description || '', amt: Number(x.amount || 0), acc: finAccName(x.account_id) }); });
+  if (acct === 'all') {
+    DATA.feePayments.forEach(p => { if (inR(p.pay_date)) { const s = DATA.students.find(z => z.id === p.student_id);
+      out.push({ d: String(p.pay_date).slice(0, 10), type: 'income', head: qt('Fee Collection', 'فیس وصولی'), desc: s ? s.name : '', amt: Number(p.amount || 0), acc: '—' }); } });
+    DATA.salaryPayments.forEach(p => { if (inR(p.pay_date)) { const tc = DATA.teachers.find(z => z.id === p.teacher_id);
+      out.push({ d: String(p.pay_date).slice(0, 10), type: 'expense', head: qt('Salaries', 'تنخواہیں'), desc: tc ? tc.name : '', amt: Number(p.amount || 0), acc: '—' }); } });
+  }
+  return out.sort((a, b) => a.d < b.d ? -1 : a.d > b.d ? 1 : 0);
+}
+function finReportHtml() {
+  const { kind, from, to, acct } = FINR, rows = finEntries(from, to, acct);
+  const inc = rows.filter(r => r.type === 'income'), exp = rows.filter(r => r.type === 'expense');
+  const sum = a => a.reduce((s, r) => s + r.amt, 0);
+  const th = 'style="text-align:left;"', num = 'style="text-align:right;"';
+  if (kind === 'daybook') {
+    return `<table><tr><th ${th}>${esc(t.dateCol)}</th><th ${th}>${esc(qt('Head', 'مد'))}</th><th ${th}>${esc(qt('Details', 'تفصیل'))}</th><th ${th}>${esc(qt('Account', 'اکاؤنٹ'))}</th><th ${num}>${esc(qt('Receipt', 'آمد'))}</th><th ${num}>${esc(qt('Payment', 'خرچ'))}</th></tr>` +
+      (rows.map(r => `<tr><td>${esc(fmtDate(r.d))}</td><td>${esc(r.head)}</td><td>${esc(r.desc)}</td><td>${esc(r.acc)}</td><td ${num}>${r.type === 'income' ? fmt(r.amt) : ''}</td><td ${num}>${r.type === 'expense' ? fmt(r.amt) : ''}</td></tr>`).join('') ||
+        `<tr><td colspan="6" style="text-align:center;">${esc(t.noTransactions)}</td></tr>`) +
+      `<tr style="font-weight:700;"><td colspan="4">${esc(qt('Total', 'کل'))}</td><td ${num}>${fmt(sum(inc))}</td><td ${num}>${fmt(sum(exp))}</td></tr></table>`;
+  }
+  const group = a => { const m = {}; a.forEach(r => m[r.head] = (m[r.head] || 0) + r.amt); return Object.entries(m).sort((x, y) => y[1] - x[1]); };
+  const sec = (title, a) => `<tr><th colspan="2" ${th}>${esc(title)}</th></tr>` + group(a).map(([h, v]) => `<tr><td>${esc(h)}</td><td ${num}>${fmt(v)}</td></tr>`).join('') +
+    `<tr style="font-weight:700;"><td>${esc(qt('Total', 'کل'))}</td><td ${num}>${fmt(sum(a))}</td></tr>`;
+  const net = sum(inc) - sum(exp);
+  return `<table>${sec(qt('Income', 'آمدنی'), inc)}${sec(qt('Expenses', 'اخراجات'), exp)}
+    <tr style="font-weight:700;"><td>${esc(net >= 0 ? qt('Net Profit', 'خالص منافع') : qt('Net Loss', 'خالص نقصان'))}</td><td ${num}>${fmt(Math.abs(net))}</td></tr></table>`;
+}
+function openFinReport(kind) {
+  const d = new Date(), y = d.getFullYear(), m = String(d.getMonth() + 1).padStart(2, '0');
+  FINR = { kind, from: `${y}-${m}-01`, to: todayISO(), acct: 'all' };
+  const title = kind === 'daybook' ? qt('Day Book', 'روزنامچہ') : qt('Profit & Loss', 'منافع و نقصان');
+  showModal(title, `
+    <div style="display:flex;gap:8px;"><div class="field-box" style="flex:1"><label><span>${esc(qt('From', 'سے'))}</span><input id="fr-from" type="date" value="${FINR.from}" onchange="finRefresh()"></label></div>
+    <div class="field-box" style="flex:1"><label><span>${esc(qt('To', 'تک'))}</span><input id="fr-to" type="date" value="${FINR.to}" onchange="finRefresh()"></label></div></div>
+    <div class="field-box"><label><span>${esc(qt('Account', 'اکاؤنٹ'))}</span><select id="fr-acct" onchange="finRefresh()"><option value="all">${esc(qt('All', 'تمام'))}</option>${FIN.accounts.map(a => `<option value="${a.id}">${esc(a.name)}</option>`).join('')}</select></label></div>
+    <div id="fr-body" class="fin-report" style="overflow-x:auto;margin-bottom:12px;"></div>
+    <button class="btn-primary" onclick="printFinReport()">🖨️ ${esc(qt('Print / Save PDF', 'پرنٹ / پی ڈی ایف'))}</button>`);
+  finRefresh();
+}
+function finRefresh() {
+  FINR.from = document.getElementById('fr-from').value; FINR.to = document.getElementById('fr-to').value; FINR.acct = document.getElementById('fr-acct').value;
+  document.getElementById('fr-body').innerHTML = finReportHtml();
+}
+function printFinReport() {
+  const title = FINR.kind === 'daybook' ? qt('Day Book', 'روزنامچہ') : qt('Profit & Loss Statement', 'منافع و نقصان کا گوشوارہ');
+  const acc = FINR.acct === 'all' ? qt('All accounts', 'تمام اکاؤنٹس') : finAccName(FINR.acct);
+  document.getElementById('print-area').innerHTML = `<div class="fin-print">
+    <h2>${esc(CURRENT_PROFILE.school_name || 'School')}</h2>
+    <div class="sub">${esc(title)} · ${esc(fmtDate(FINR.from))} – ${esc(fmtDate(FINR.to))} · ${esc(acc)}</div>
+    ${finReportHtml()}
+    <div class="foot" style="display:flex;justify-content:space-between;margin-top:40px;"><span>${esc(qt('Prepared By', 'تیار کردہ'))} ____________</span><span>${esc(qt('Approved By', 'منظور کردہ'))} ____________</span></div></div>`;
+  // Not cleared on afterprint: Android Chrome fires it as soon as the print preview opens, which emptied the page before the PDF was made.
+  window.print();
+}
+(function () { const s = document.createElement('style');
+  s.textContent = '.fin-report table,.fin-print table{width:100%;border-collapse:collapse;}.fin-report th,.fin-report td,.fin-print th,.fin-print td{border:1px solid #bbb;padding:5px 7px;font-size:12px;}.fin-report th,.fin-print th{background:#0F2740;color:#E4C765;}.fin-print h2{font-family:Fraunces,serif;color:#0F2740;margin:0 0 2px;}.fin-print .sub{color:#555;font-size:12px;margin-bottom:10px;}';
+  document.head.appendChild(s); })();
 
 // ---------------- Reports ----------------
 function tplReports() {
