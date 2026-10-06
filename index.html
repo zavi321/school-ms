@@ -14,10 +14,10 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https:; media-src 'self' data: blob:; connect-src 'self' https://*.supabase.co wss://*.supabase.co; manifest-src 'self' blob:; frame-ancestors 'none'; base-uri 'self'; form-action 'self';">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' https://cdn.jsdelivr.net; worker-src 'self' blob: https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https:; media-src 'self' data: blob:; connect-src 'self' https://*.supabase.co wss://*.supabase.co https://cdn.jsdelivr.net https://tessdata.projectnaptha.com; manifest-src 'self' blob:; base-uri 'self'; form-action 'self';">
 <meta name="referrer" content="strict-origin-when-cross-origin">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, interactive-widget=resizes-visual">
-<title>School Finance & Records</title>
+<title>SchoolMS</title>
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#0F2740">
 <meta name="mobile-web-app-capable" content="yes">
@@ -483,6 +483,26 @@ html, body{overscroll-behavior:none;}
     .receipt-box .lbl{color:#555;}
     .receipt-box .total-row td{font-weight:700;font-size:16px;border-top:2px solid #0F2740;border-bottom:none;}
     .receipt-box .foot{margin-top:24px;font-size:12px;color:#777;text-align:center;}
+    /* ---- Bulk fee vouchers (challan): A4 landscape, 2 students per page, tear-off copies side by side ---- */
+    .fv-sheet{font-family:Inter,'Noto Nastaliq Urdu','Noto Naskh Arabic',sans-serif;color:#000;}
+    .fv-page{width:281mm;break-after:page;page-break-after:always;}
+    .fv-page:last-child{break-after:auto;page-break-after:auto;}
+    .fv-row{display:grid;grid-template-columns:repeat(var(--fvc,3),1fr);height:96mm;box-sizing:border-box;border-bottom:1.5px dashed #444;overflow:hidden;}
+    .fv-row:last-child{border-bottom:none;}
+    .fv-copy{box-sizing:border-box;padding:3mm 4mm;border-right:1.5px dashed #444;display:flex;flex-direction:column;font-size:12px;line-height:1.4;overflow:hidden;}
+    .fv-copy:last-child{border-right:none;}
+    .fv-top{display:flex;justify-content:space-between;align-items:flex-start;gap:6px;border-bottom:2px solid #0F2740;padding-bottom:2px;}
+    .fv-school{font-family:Fraunces,serif;font-weight:700;font-size:15px;color:#0F2740;line-height:1.15;}
+    .fv-tag{font-size:9.5px;font-weight:700;letter-spacing:.4px;border:1px solid #0F2740;border-radius:3px;padding:1px 4px;white-space:nowrap;}
+    .fv-sub{font-size:11.5px;color:#333;margin:3px 0 4px;font-weight:600;}
+    .fv-t{width:100%;border-collapse:collapse;}
+    .fv-t td{padding:2.2px 0;border-bottom:1px solid #ddd;font-size:12px;}
+    .fv-t td:first-child{color:#444;width:44%;}
+    .fv-t td:last-child{text-align:right;font-weight:600;}
+    .fv-t tr.fv-total td{font-size:14px;font-weight:800;border-top:1.5px solid #0F2740;border-bottom:1.5px solid #0F2740;}
+    .fv-bank{margin-top:4px;font-size:10.5px;border:1px solid #999;border-radius:3px;padding:2px 4px;line-height:1.3;}
+    .fv-sign{margin-top:auto;display:flex;justify-content:space-between;gap:10px;font-size:10px;color:#444;padding-top:6px;}
+    .fv-sign span{border-top:1px solid #000;padding-top:1px;flex:1;text-align:center;}
 
     .thermal-receipt{width:72mm;margin:0 auto;font-family:'Courier New',monospace;font-size:11px;color:#000;padding:4mm 3mm;}
     .thermal-receipt .tr-center{text-align:center;}
@@ -1175,7 +1195,7 @@ const T = {
     classPortalExamName:'Exam Name', classPortalExamNamePlaceholder:'e.g. Mid-Term 2026',
     classPortalAddSubject:'Add Subject', classPortalSubjectName:'Subject', classPortalSubjectTotal:'Total Marks',
     classPortalNoSubjects:'Add at least one subject first.', classPortalSaveMarks:'Save Marks', classPortalMarksSaved:'Marks saved.',
-    classPortalNoStudents:'No students found for this class yet.', classPortalMarksExceed:'Marks cannot exceed the subject total.',
+    classPortalMarksExceed:'Marks cannot exceed the subject total.',
     classPortalMenuAddStudent:'Add Student', classPortalAddStudentTitle:'Add Student', classPortalAddStudentDesc:"Enter the student's name to add them to this class. Father's name and contact are optional.",
     classPortalMenuManageStudents:'Manage Students', classPortalManageStudentsDesc:'If a student has left the school, strike them off here. They will be removed from attendance, register and marks, but their record and history stay safe and can be restored by the school.', classPortalNoStudents:'No students in this class yet.',
     classPortalStudentNamePlaceholder:'Student Name', classPortalAddStudentSaved:'Student added.', classPortalAddStudentOffline:'You are offline — connect to the internet to add a student.',
@@ -1368,7 +1388,7 @@ const T = {
     classPortalExamName:'امتحان کا نام', classPortalExamNamePlaceholder:'مثال: مڈ ٹرم 2026',
     classPortalAddSubject:'مضمون شامل کریں', classPortalSubjectName:'مضمون', classPortalSubjectTotal:'کل نمبر',
     classPortalNoSubjects:'پہلے کم از کم ایک مضمون شامل کریں۔', classPortalSaveMarks:'نمبرات محفوظ کریں', classPortalMarksSaved:'نمبرات محفوظ ہو گئے۔',
-    classPortalNoStudents:'اس کلاس کے لیے ابھی کوئی طالب علم نہیں ملا۔', classPortalMarksExceed:'نمبر مضمون کے کل نمبروں سے زیادہ نہیں ہو سکتے۔',
+    classPortalMarksExceed:'نمبر مضمون کے کل نمبروں سے زیادہ نہیں ہو سکتے۔',
     classPortalMenuAddStudent:'طالب علم شامل کریں', classPortalAddStudentTitle:'طالب علم شامل کریں', classPortalAddStudentDesc:'اس کلاس میں شامل کرنے کے لیے طالب علم کا نام درج کریں۔ والد کا نام اور رابطہ نمبر اختیاری ہیں۔',
     classPortalMenuManageStudents:'طلبہ کا انتظام', classPortalManageStudentsDesc:'اگر کوئی طالب علم اسکول چھوڑ چکا ہے تو یہاں سے اسے نشان زد کریں۔ وہ حاضری، رجسٹر اور نمبروں سے ہٹ جائے گا، مگر اس کا ریکارڈ محفوظ رہے گا اور اسکول اسے دوبارہ بحال کر سکتا ہے۔', classPortalNoStudents:'اس کلاس میں ابھی کوئی طالب علم نہیں۔',
     classPortalStudentNamePlaceholder:'طالب علم کا نام', classPortalAddStudentSaved:'طالب علم شامل ہو گیا۔', classPortalAddStudentOffline:'آپ آف لائن ہیں — طالب علم شامل کرنے کے لیے انٹرنیٹ سے جڑیں۔',
@@ -1411,13 +1431,19 @@ const EXPENSE_CATS = ['Electricity','Rent','Stationery','Salary','Transport','Ma
 const INCOME_CATS = ['Donation','Grant','Sale','Fundraiser','Other'];
 
 const fmt = n => Number(n||0).toLocaleString('en-US');
+// Money maths in JS floats can leave dust like 0.30000000000000004, which would show a
+// student as owing a few paisa forever. Round every running balance to 2 decimals.
+const money2 = n => Math.round((Number(n) || 0) * 100) / 100;
 // Used on the dashboard to show "—" instead of a real-looking number/amount
 // when there is no cached data to show at all (see CACHE_UNAVAILABLE) — so
 // "we have nothing cached yet" never reads as "your balance is ₨0".
 const dv = (str) => CACHE_UNAVAILABLE ? '—' : str;
 const monthKey = (d=new Date()) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
 const monthLabel = mk => { const [y,m]=mk.split('-').map(Number); return new Date(y,m-1,1).toLocaleDateString(LANG==='ur'?'ur-PK':'en-US',{month:'short',year:'numeric'}); };
-const todayISO = () => new Date().toISOString().slice(0,10);
+// Local calendar date as YYYY-MM-DD. NOT toISOString(): that is UTC, which in Pakistan (UTC+5)
+// gives YESTERDAY between 00:00 and 05:00, and shifts any local-midnight Date back by a day.
+const localISO = (d) => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+const todayISO = () => localISO(new Date());
 
 // ============================================================================
 // SAFE DATE FIELD READING — mandatory pattern for every <input type="date">
@@ -2546,10 +2572,91 @@ async function logOut() {
 // Full history is fetched on first load (and again every 30 min); in between, only
 // the last two days are fetched and merged into the cached older rows.
 let SA_SYNC = { owner: null, ts: 0 };
+// Academic session runs Feb-Jan (same rule as the fee card). Student attendance is only
+// loaded for the session containing the given date, so old sessions never slow the app down.
+// First day of the current month (local). Only this month's attendance is kept as day-by-day
+// rows; earlier months are rolled up into per-student totals (student_attendance_totals).
+function monthStartISO() { const n = new Date(); return n.getFullYear() + '-' + String(n.getMonth() + 1).padStart(2, '0') + '-01'; }
+// Once per month (idempotent), asks the server to fold all earlier months' attendance rows into
+// totals and delete those rows. Failure is harmless: the app just keeps working as before.
+async function maybeRollupAttendance() {
+  try {
+    const key = 'sa_rollup_' + CURRENT_USER.id, mk = monthKey();
+    if (localStorage.getItem(key) === mk) return;
+    const { error } = await sb.rpc('rollup_student_attendance');
+    if (!error) localStorage.setItem(key, mk);
+  } catch (e) {}
+}
+function sessionStartISO(iso) {
+  const d = iso ? new Date(iso + 'T00:00:00') : new Date();
+  const y = (d.getMonth() + 1) >= 2 ? d.getFullYear() : d.getFullYear() - 1;
+  return y + '-02-01';
+}
+// ---------------------------------------------------------------------------
+// fetchAll(): Supabase/PostgREST returns at most 1000 rows per request. Plain
+// .select('*') therefore SILENTLY dropped everything past row 1000 (fee
+// payments, attendance, transactions...), which makes fee balances wrong once
+// a school grows. This pulls every page and returns the same { data, error }
+// shape the rest of the app already expects. Pass a FUNCTION that builds a
+// fresh query each time (a query object can't be reused for a second page).
+// ---------------------------------------------------------------------------
+async function fetchAll(makeQuery, pageSize = 1000) {
+  // Stable ordering (by id) is needed so pages never overlap or skip rows.
+  // If a table has no "id" column the server says so; then retry without it.
+  let useId = true;
+  const all = [];
+  const page = (from) => { let q = makeQuery(); if (useId) q = q.order('id'); return q.range(from, from + pageSize - 1); };
+  // First page on its own (handles the no-"id"-column fallback).
+  let res = await page(0);
+  if (res.error && useId && /column|42703|does not exist/i.test((res.error.message || '') + (res.error.code || ''))) {
+    useId = false;
+    res = await page(0);
+  }
+  if (res.error) return { data: null, error: res.error };
+  let rows = res.data || [];
+  all.push(...rows);
+  if (rows.length < pageSize) return { data: all, error: null };
+  // Remaining pages: 4 at a time instead of one after another (much faster for big tables).
+  const WAVE = 4;
+  for (let from = pageSize; ; from += pageSize * WAVE) {
+    const wave = await Promise.all(Array.from({ length: WAVE }, (_, i) => page(from + i * pageSize)));
+    let done = false;
+    for (const r of wave) {
+      if (r.error) return { data: null, error: r.error };
+      const rr = r.data || [];
+      all.push(...rr);
+      if (rr.length < pageSize) { done = true; break; }
+    }
+    if (done) break;
+  }
+  return { data: all, error: null };
+}
+
+// After a save, the change is already applied locally (optimisticApply). Re-reading just the
+// ONE table that changed confirms it against the server without downloading and re-caching
+// all ten tables. If anything goes wrong we fall back to the full reload, so behaviour
+// is never worse than before.
+const TABLE_RELOAD = {
+  fee_payments: { key: 'feePayments', q: () => sb.from('fee_payments').select('*') },
+  students:     { key: 'students',    q: () => sb.from('students').select('*').order('created_at') },
+};
+async function reloadTable(table) {
+  const cfg = TABLE_RELOAD[table];
+  if (!cfg || !navigator.onLine) return loadAllData();
+  try {
+    const r = await fetchAll(cfg.q);
+    if (r.error || !Array.isArray(r.data)) return loadAllData();
+    DATA[cfg.key] = r.data;
+    await idbReplaceAll(table, r.data);
+    saveOfflineSnapshot();
+  } catch (e) { return loadAllData(); }
+}
+
 async function loadAllData() {
   // No signal at all — skip the network round-trip and use the last-synced
   // snapshot straight away instead of waiting for every request to time out.
   if (!navigator.onLine) { await offlineCacheRestore(); renderOfflineBanner(); return; }
+  await maybeRollupAttendance();
   let s, fp, tc, sp, tx, ar, ta, hd, cl, sa;
   const saFresh = SA_SYNC.owner === CURRENT_USER.id && (Date.now() - SA_SYNC.ts) < 30 * 60 * 1000
     && Array.isArray(DATA.studentAttendance) && DATA.studentAttendance.length > 0;
@@ -2559,30 +2666,30 @@ async function loadAllData() {
   try {
     const result = await Promise.race([
       Promise.all([
-        sb.from('students').select('*').order('created_at'),
-        sb.from('fee_payments').select('*'),
-        sb.from('teachers').select('*').order('created_at'),
-        sb.from('salary_payments').select('*'),
-        sb.from('transactions').select('*').order('txn_date',{ascending:false}),
+        fetchAll(() => sb.from('students').select('*').order('created_at')),
+        fetchAll(() => sb.from('fee_payments').select('*')),
+        fetchAll(() => sb.from('teachers').select('*').order('created_at')),
+        fetchAll(() => sb.from('salary_payments').select('*')),
+        fetchAll(() => sb.from('transactions').select('*').order('txn_date',{ascending:false})),
         // Admission & Withdrawal Register: a standalone record, unrelated to the
         // students/fee-finance tables above — it is never joined or cross-referenced.
-        sb.from('admission_register').select('*').order('serial_no'),
-        sb.from('teacher_attendance').select('*'),
-        sb.from('holidays').select('*'),
+        fetchAll(() => sb.from('admission_register').select('*').order('serial_no')),
+        fetchAll(() => sb.from('teacher_attendance').select('*')),
+        fetchAll(() => sb.from('holidays').select('*')),
         // Class Logins: one login per class, used by teachers on a shared class
         // device (no real Supabase Auth session — see class_login_verify etc.).
         // The owner reads this table directly; only the RPCs can write to it.
-        sb.from('class_logins').select('*').order('created_at'),
+        fetchAll(() => sb.from('class_logins').select('*').order('created_at')),
         // Daily student attendance taken via the Class Portal — cached here
         // purely for read access (e.g. the Admission Register's attendance
         // calculator below), never written from the owner side.
-        saFresh ? sb.from('student_attendance').select('*').gte('date', saCutoff) : sb.from('student_attendance').select('*'),
+        saFresh ? fetchAll(() => sb.from('student_attendance').select('*').gte('date', saCutoff)) : fetchAll(() => sb.from('student_attendance').select('*').gte('date', monthStartISO())),
       ]),
       // navigator.onLine can be true on a signal that's actually too weak to
       // reach the server — without this, that case hangs on "Loading your
       // data…" for as long as the browser's own (often very long) request
       // timeout, instead of falling back to the cache in a few seconds.
-      new Promise((resolve) => setTimeout(() => resolve(TIMED_OUT), 8000)),
+      new Promise((resolve) => setTimeout(() => resolve(TIMED_OUT), 20000)),
     ]);
     if (result === TIMED_OUT) { await offlineCacheRestore(); renderOfflineBanner(); return; }
     [s, fp, tc, sp, tx, ar, ta, hd, cl, sa] = result;
@@ -2793,7 +2900,7 @@ function studentBalance(id) {
   let running = 0;
   entries.forEach(e => {
     const totalDues = running + Number(e.school_fee||0) + Number(e.sports_fund||0) + Number(e.admission_fee||0) + Number(e.exam_fee||0) + Number(e.other_fee||0);
-    running = totalDues - Number(e.amount||0);
+    running = money2(totalDues - Number(e.amount||0));
   });
   return running;
 }
@@ -3601,9 +3708,9 @@ async function loadSubscriptionsAdmin() {
   const pendEl = document.getElementById('pending-list');
   if (!el && !pendEl) return;
   const [{ data: profs, error: e1 }, { data: subs, error: e2 }, { data: pending, error: e3 }] = await Promise.all([
-    sb.from('profiles').select('id,school_name,school_code').eq('is_admin', false).order('school_name'),
-    sb.from('subscriptions').select('*'),
-    sb.from('payment_submissions').select('*').eq('status', 'pending').order('submitted_at', { ascending: false })
+    fetchAll(() => sb.from('profiles').select('id,school_name,school_code').eq('is_admin', false).order('school_name')),
+    fetchAll(() => sb.from('subscriptions').select('*')),
+    fetchAll(() => sb.from('payment_submissions').select('*').eq('status', 'pending').order('submitted_at', { ascending: false }))
   ]);
   // Profiles feed both cards (names + the school list), so if that query
   // itself fails, neither card can render — show the error in both.
@@ -3688,7 +3795,7 @@ async function approvePending(submissionId, schoolId) {
   // inserted a duplicate row per approval instead of extending the real one.
   const { data, error } = await sb.from('subscriptions')
     .upsert({ school_id: schoolId, plan_type: sub ? sub.plan_type : 'monthly', monthly_price: sub ? sub.monthly_price : 0,
-      paid_until: base.toISOString().slice(0, 10), status: 'active', updated_at: new Date().toISOString() }, { onConflict: 'school_id' })
+      paid_until: localISO(base), status: 'active', updated_at: new Date().toISOString() }, { onConflict: 'school_id' })
     .select();
   if (reportSaveError(error)) return;
   if (!data || !data.length) { reportSaveError({ message: LANG === 'ur' ? 'اجازت نہیں ملی — کوئی ریکارڈ محفوظ نہیں ہوا (RLS چیک کریں)۔' : 'No row was saved — likely blocked by a database permission (RLS) rule.' }); return; }
@@ -3731,7 +3838,7 @@ async function loadWhitelist() {
   // running forever instead of ever being swapped for real content or an
   // error. That reads as the panel "wobbling" nonstop with nothing ever
   // loading, saving, or deleting.
-  const { data, error } = await withTimeout(sb.from('whitelist_emails').select('*').order('created_at', { ascending: false }));
+  const { data, error } = await withTimeout(fetchAll(() => sb.from('whitelist_emails').select('*').order('created_at', { ascending: false })));
   if (error) { smoothSwapHtml(el, `<div class="err">${esc(error.message)}</div>`); return; }
   if (!data || !data.length) { smoothSwapHtml(el, `<div class="notice">${esc(t.noWhitelistYet)}</div>`); return; }
   const statusLabel = s => s==='verified' ? t.statusVerified : s==='signup_attempted' ? t.statusAttempted : t.statusWhitelisted;
@@ -4216,7 +4323,7 @@ function exportBackup() {
       }
       const totalDues = lastBalance + Number(e.school_fee||0) + Number(e.sports_fund||0) + Number(e.admission_fee||0) + Number(e.exam_fee||0) + Number(e.other_fee||0);
       const totalPaid = Number(e.amount||0);
-      const balance = totalDues - totalPaid;
+      const balance = money2(totalDues - totalPaid);
       running = balance;
       return {
         Month: monthLabel(mk), 'Last Balance': lastBalance, 'School Fee': Number(e.school_fee||0),
@@ -4763,6 +4870,162 @@ function toggleClassSection(cls) {
   classCollapsed[cls] = !classCollapsed[cls];
   renderTab();
 }
+// ============================================================================
+// BULK FEE VOUCHERS (CHALLAN)
+// One click prints every fee-paying student's voucher for a month (whole school or one
+// class) on A4 landscape: 2 students per page, each with tear-off Bank / School / Student
+// copies side by side. Amount payable = previous balance (from the same fee ledger the
+// student card uses) + this month's monthly fee. Students who already paid this month in
+// full, free/orphan students and students with no fee set are skipped and counted.
+// ============================================================================
+const FV_L = {
+  en: {
+    title: 'Fee Vouchers (Challan)', voucher: 'Fee Voucher', month: 'Fee month', cls: 'Class', all: 'All classes',
+    due: 'Due date', fine: 'Late fee after due date (optional)', copies: 'Copies on each voucher',
+    c3: 'Bank + School + Student', c2: 'Bank + School', bankName: 'Bank name', bankTitle: 'Account title',
+    bankNo: 'Account no. / IBAN', print: 'Print vouchers',
+    count: (n, paid, free, nofee) => n + ' voucher(s) ready' + (paid ? ' \u00b7 ' + paid + ' already paid' : '') + (free ? ' \u00b7 ' + free + ' free/orphan skipped' : '') + (nofee ? ' \u00b7 ' + nofee + ' with no fee set' : ''),
+    bankCopy: 'BANK COPY', schoolCopy: 'SCHOOL COPY', studentCopy: 'STUDENT COPY',
+    vno: 'Voucher No', student: 'Student', father: 'Father', klass: 'Class', monthFee: 'Fee for month',
+    prev: 'Previous balance', payable: 'Payable by due date', dueOn: 'Due date', afterDue: 'After due date',
+    bankDetails: 'Deposit to', cashier: 'Cashier / Stamp', depositor: 'Depositor sign', rs: 'Rs'
+  },
+  ur: {
+    title: '\u0641\u06cc\u0633 \u0648\u0627\u0624\u0686\u0631 (\u0686\u0627\u0644\u0627\u0646)', voucher: '\u0641\u06cc\u0633 \u0648\u0627\u0624\u0686\u0631', month: '\u0641\u06cc\u0633 \u06a9\u0627 \u0645\u06c1\u06cc\u0646\u06c1', cls: '\u062c\u0645\u0627\u0639\u062a', all: '\u062a\u0645\u0627\u0645 \u062c\u0645\u0627\u0639\u062a\u06cc\u06ba',
+    due: '\u0622\u062e\u0631\u06cc \u062a\u0627\u0631\u06cc\u062e', fine: '\u062a\u0627\u062e\u06cc\u0631 \u067e\u0631 \u062c\u0631\u0645\u0627\u0646\u06c1 (\u0627\u062e\u062a\u06cc\u0627\u0631\u06cc)', copies: '\u06c1\u0631 \u0648\u0627\u0624\u0686\u0631 \u06a9\u06cc \u06a9\u0627\u067e\u06cc\u0627\u06ba',
+    c3: '\u0628\u06cc\u0646\u06a9 + \u0633\u06a9\u0648\u0644 + \u0637\u0627\u0644\u0628 \u0639\u0644\u0645', c2: '\u0628\u06cc\u0646\u06a9 + \u0633\u06a9\u0648\u0644', bankName: '\u0628\u06cc\u0646\u06a9 \u06a9\u0627 \u0646\u0627\u0645', bankTitle: '\u0627\u06a9\u0627\u0624\u0646\u0679 \u0679\u0627\u0626\u0679\u0644',
+    bankNo: '\u0627\u06a9\u0627\u0624\u0646\u0679 \u0646\u0645\u0628\u0631 / IBAN', print: '\u0648\u0627\u0624\u0686\u0631 \u067e\u0631\u0646\u0679 \u06a9\u0631\u06cc\u06ba',
+    count: (n, paid, free, nofee) => n + ' \u0648\u0627\u0624\u0686\u0631 \u062a\u06cc\u0627\u0631' + (paid ? ' \u00b7 ' + paid + ' \u0627\u062f\u0627 \u0634\u062f\u06c1' : '') + (free ? ' \u00b7 ' + free + ' \u0645\u0641\u062a/\u06cc\u062a\u06cc\u0645 \u0634\u0627\u0645\u0644 \u0646\u06c1\u06cc\u06ba' : '') + (nofee ? ' \u00b7 ' + nofee + ' \u0645\u06cc\u06ba \u0641\u06cc\u0633 \u0645\u0642\u0631\u0631 \u0646\u06c1\u06cc\u06ba' : ''),
+    bankCopy: '\u0628\u06cc\u0646\u06a9 \u06a9\u0627\u067e\u06cc', schoolCopy: '\u0633\u06a9\u0648\u0644 \u06a9\u0627\u067e\u06cc', studentCopy: '\u0637\u0627\u0644\u0628 \u0639\u0644\u0645 \u06a9\u0627\u067e\u06cc',
+    vno: '\u0648\u0627\u0624\u0686\u0631 \u0646\u0645\u0628\u0631', student: '\u0637\u0627\u0644\u0628 \u0639\u0644\u0645', father: '\u0648\u0627\u0644\u062f', klass: '\u062c\u0645\u0627\u0639\u062a', monthFee: '\u0645\u06c1\u06cc\u0646\u06d2 \u06a9\u06cc \u0641\u06cc\u0633',
+    prev: '\u0633\u0627\u0628\u0642\u06c1 \u0628\u0642\u0627\u06cc\u0627', payable: '\u0622\u062e\u0631\u06cc \u062a\u0627\u0631\u06cc\u062e \u062a\u06a9 \u0642\u0627\u0628\u0644\u0650 \u0627\u062f\u0627', dueOn: '\u0622\u062e\u0631\u06cc \u062a\u0627\u0631\u06cc\u062e', afterDue: '\u0622\u062e\u0631\u06cc \u062a\u0627\u0631\u06cc\u062e \u06a9\u06d2 \u0628\u0639\u062f',
+    bankDetails: '\u062c\u0645\u0639 \u06a9\u0631\u0627\u0626\u06cc\u06ba', cashier: '\u06a9\u06cc\u0634\u0626\u06cc\u0631 / \u0645\u06c1\u0631', depositor: '\u062c\u0645\u0639 \u06a9\u0631\u0627\u0646\u06d2 \u0648\u0627\u0644\u06d2 \u06a9\u06d2 \u062f\u0633\u062a\u062e\u0637', rs: '\u0631\u0648\u067e\u06d2'
+  }
+};
+const fvL = k => (FV_L[LANG] && FV_L[LANG][k] !== undefined) ? FV_L[LANG][k] : FV_L.en[k];
+const fvBankKey = () => 'fv_bank_' + ((CURRENT_USER && CURRENT_USER.id) || '');
+function fvLoadBank() { try { return JSON.parse(localStorage.getItem(fvBankKey()) || 'null') || {}; } catch (e) { return {}; } }
+function fvSaveBank(b) { try { localStorage.setItem(fvBankKey(), JSON.stringify(b)); } catch (e) {} }
+const fvClassIdx = c => { const i = CLASS_OPTIONS.indexOf(c); return i < 0 ? 999 : i; };
+
+// Running balance from the fee ledger, counting entries BEFORE month mk (or up to and including it).
+function fvBalance(studentId, mk, inclusive) {
+  const entries = studentPayments(studentId)
+    .filter(e => inclusive ? e.month <= mk : e.month < mk)
+    .sort((a, b) => (a.month > b.month ? 1 : a.month < b.month ? -1 : 0) || (new Date(a.pay_date) - new Date(b.pay_date)));
+  let running = 0;
+  entries.forEach(e => {
+    running = money2(running + Number(e.school_fee || 0) + Number(e.sports_fund || 0) + Number(e.admission_fee || 0)
+      + Number(e.exam_fee || 0) + Number(e.other_fee || 0) - Number(e.amount || 0));
+  });
+  return running;
+}
+
+function fvBuild(cls, mk) {
+  const rows = []; let paid = 0, free = 0, nofee = 0;
+  DATA.students.forEach(s => {
+    if (s.status === 'inactive') return;
+    if (cls !== '*' && s.class_name !== cls) return;
+    if (!isFeePaying(s)) { free++; return; }
+    const hasEntry = studentPayments(s.id).some(e => e.month === mk);
+    const arrears = fvBalance(s.id, mk, false);
+    let fee, payable;
+    if (hasEntry) { payable = fvBalance(s.id, mk, true); fee = money2(payable - arrears); }   // month already recorded: bill what is still outstanding
+    else { fee = Number(s.monthly_fee || 0); payable = money2(arrears + fee); }
+    if (payable <= 0) { if (!hasEntry && fee === 0 && arrears === 0) nofee++; else paid++; return; }
+    rows.push({ s, arrears, fee, payable });
+  });
+  rows.sort((a, b) => fvClassIdx(a.s.class_name) - fvClassIdx(b.s.class_name) || String(a.s.name || '').localeCompare(String(b.s.name || '')));
+  return { rows, paid, free, nofee };
+}
+
+function fvHtml(rows, o) {
+  const ur = LANG === 'ur';
+  const school = (ur ? schoolNameUrdu() : (CURRENT_PROFILE.school_name || '')) || CURRENT_PROFILE.school_name || 'School';
+  const labels = o.copies === 2 ? ['bankCopy', 'schoolCopy'] : ['bankCopy', 'schoolCopy', 'studentCopy'];
+  const money = n => esc(fvL('rs')) + ' ' + fmt(n);
+  const hasBank = o.bank && (o.bank.name || o.bank.title || o.bank.no);
+  const bankHtml = hasBank ? `<div class="fv-bank"><b>${esc(fvL('bankDetails'))}:</b> ${esc(o.bank.name || '')}${o.bank.title ? '<br>' + esc(o.bank.title) : ''}${o.bank.no ? '<br>' + esc(o.bank.no) : ''}</div>` : '';
+  const copy = (r, lbl) => {
+    const vno = 'FV-' + o.mk.replace('-', '') + '-' + String(r.s.id).replace(/-/g, '').slice(0, 5).toUpperCase();
+    return `<div class="fv-copy">
+      <div class="fv-top"><div class="fv-school">${esc(school)}</div><div class="fv-tag">${esc(fvL(lbl))}</div></div>
+      <div class="fv-sub">${esc(fvL('voucher'))} \u2014 ${esc(monthLabel(o.mk))}</div>
+      <table class="fv-t">
+        <tr><td>${esc(fvL('vno'))}</td><td>${esc(vno)}</td></tr>
+        <tr><td>${esc(fvL('student'))}</td><td>${esc(ur ? studentNameUrdu(r.s) : r.s.name)}</td></tr>
+        <tr><td>${esc(fvL('father'))}</td><td>${esc(r.s.father_name || '')}</td></tr>
+        <tr><td>${esc(fvL('klass'))}</td><td>${esc(r.s.class_name || '')}</td></tr>
+        <tr><td>${esc(fvL('monthFee'))}</td><td>${money(r.fee)}</td></tr>
+        <tr><td>${esc(fvL('prev'))}</td><td>${money(r.arrears)}</td></tr>
+        <tr class="fv-total"><td>${esc(fvL('payable'))}</td><td>${money(r.payable)}</td></tr>
+        <tr><td>${esc(fvL('dueOn'))}</td><td>${esc(fmtDate(o.due) || '')}</td></tr>
+        ${o.fine > 0 ? `<tr><td>${esc(fvL('afterDue'))}</td><td>${money(money2(r.payable + o.fine))}</td></tr>` : ''}
+      </table>
+      ${bankHtml}
+      <div class="fv-sign"><span>${esc(fvL('depositor'))}</span><span>${esc(fvL('cashier'))}</span></div>
+    </div>`;
+  };
+  const row = r => `<div class="fv-row" style="--fvc:${labels.length}">${labels.map(l => copy(r, l)).join('')}</div>`;
+  const pages = [];
+  for (let i = 0; i < rows.length; i += 2) pages.push(`<div class="fv-page">${row(rows[i])}${rows[i + 1] ? row(rows[i + 1]) : ''}</div>`);
+  return `<div class="fv-sheet">${pages.join('')}</div>`;
+}
+
+function openFeeVouchers() {
+  const bank = fvLoadBank();
+  const mk = monthKey();
+  const classes = Array.from(new Set(DATA.students.filter(s => s.status !== 'inactive').map(s => s.class_name).filter(Boolean)))
+    .sort((a, b) => fvClassIdx(a) - fvClassIdx(b) || String(a).localeCompare(String(b)));
+  showModal(fvL('title'), `
+    <div class="row2">
+      <label style="margin-bottom:0;"><span>${esc(fvL('month'))}</span><input id="fv-month" type="month" value="${mk}" onchange="fvMonthChanged()"></label>
+      <label style="margin-bottom:0;"><span>${esc(fvL('cls'))}</span><select id="fv-class" onchange="fvPreview()"><option value="*">${esc(fvL('all'))}</option>${classes.map(c => `<option value="${esc(c)}">${esc(c)}</option>`).join('')}</select></label>
+    </div>
+    <div class="row2" style="margin-top:10px;">
+      <label style="margin-bottom:0;"><span>${esc(fvL('due'))}</span><input id="fv-due" type="date" value="${mk}-10"></label>
+      <label style="margin-bottom:0;"><span>${esc(fvL('fine'))}</span><input id="fv-fine" type="number" min="0" placeholder="0"></label>
+    </div>
+    <label style="margin-top:10px;"><span>${esc(fvL('copies'))}</span><select id="fv-copies"><option value="3">${esc(fvL('c3'))}</option><option value="2">${esc(fvL('c2'))}</option></select></label>
+    <label><span>${esc(fvL('bankName'))}</span><input id="fv-bank-name" value="${esc(bank.name || '')}"></label>
+    <label><span>${esc(fvL('bankTitle'))}</span><input id="fv-bank-title" value="${esc(bank.title || '')}"></label>
+    <label><span>${esc(fvL('bankNo'))}</span><input id="fv-bank-no" value="${esc(bank.no || '')}"></label>
+    <div id="fv-preview" style="font-size:13px;margin:6px 0 12px;opacity:.85;"></div>
+    <div class="flexgap">
+      <button class="btn-ghost" onclick="closeModal()">${esc(t.cancel)}</button>
+      <button class="btn-primary" id="fv-print-btn" onclick="fvPrint()">${esc(fvL('print'))}</button>
+    </div>`);
+  fvPreview();
+}
+function fvMonthChanged() {
+  const m = document.getElementById('fv-month'), d = document.getElementById('fv-due');
+  if (m && m.value && d) d.value = m.value + '-10';
+  fvPreview();
+}
+function fvPreview() {
+  const m = document.getElementById('fv-month'), c = document.getElementById('fv-class');
+  if (!m || !c) return;
+  const r = fvBuild(c.value, m.value || monthKey());
+  const el = document.getElementById('fv-preview'); if (el) el.textContent = fvL('count')(r.rows.length, r.paid, r.free, r.nofee);
+  const btn = document.getElementById('fv-print-btn'); if (btn) btn.disabled = r.rows.length === 0;
+}
+function fvPrint() {
+  const mk = document.getElementById('fv-month').value || monthKey();
+  const cls = document.getElementById('fv-class').value;
+  const val = id => (document.getElementById(id) ? document.getElementById(id).value.trim() : '');
+  const bank = { name: val('fv-bank-name'), title: val('fv-bank-title'), no: val('fv-bank-no') };
+  fvSaveBank(bank);
+  const { rows } = fvBuild(cls, mk);
+  if (!rows.length) return;
+  const o = { mk, due: dateVal('fv-due', mk + '-10'), fine: Math.max(0, Number(document.getElementById('fv-fine').value) || 0),
+              copies: Number(document.getElementById('fv-copies').value) === 2 ? 2 : 3, bank };
+  document.getElementById('print-area').innerHTML = fvHtml(rows, o);
+  closeModal();
+  const clear = () => { const pa = document.getElementById('print-area'); if (pa) pa.innerHTML = ''; window.removeEventListener('afterprint', clear); };
+  window.addEventListener('afterprint', clear);
+  printWithOrientation('A4 landscape');
+}
+
 function tplStudents() {
   return `
     <div style="padding-top:16px;">
@@ -4777,6 +5040,9 @@ function tplStudents() {
         <input id="student-search-input" placeholder="${esc(t.search)}" value="${esc(studentSearch)}" oninput="studentSearch=this.value; classPage={}; updateStudentsResults();">
         <button class="icon-btn" title="${esc(t.quickAdmission)}" onclick="openQuickAdmission()" style="background:var(--gold);">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#0F2740" stroke-width="2.5"><path d="M13 2 3 14h7l-1 8 10-12h-7l1-8z"/></svg>
+        </button>
+        <button class="icon-btn" title="${esc(fvL('title'))}" onclick="openFeeVouchers()">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#E4C765" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2h9l5 5v15H6z"/><path d="M14 2v6h6M9 13h6M9 17h6"/></svg>
         </button>
         <button class="icon-btn" title="${esc(t.addStudent)}" onclick="openAddStudent()">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#E4C765" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg>
@@ -5152,7 +5418,12 @@ function buildAcademicYearLedger(studentId, overrideStartYear) {
     return `${y}-${String(m).padStart(2,'0')}`;
   });
 
+  // Opening balance = whatever was still due (or credit) from all months BEFORE this
+  // academic year, so the card/ledger always agrees with studentBalance().
   let running = 0;
+  entries.filter(e => e.month < monthKeys[0]).forEach(e => {
+    running = money2(running + Number(e.school_fee||0) + Number(e.sports_fund||0) + Number(e.admission_fee||0) + Number(e.exam_fee||0) + Number(e.other_fee||0) - Number(e.amount||0));
+  });
   const currentMk = todayISO().slice(0,7);
   const rows = [];
   monthKeys.forEach(mk => {
@@ -5170,7 +5441,7 @@ function buildAcademicYearLedger(studentId, overrideStartYear) {
       const lastBalance = running;
       const totalDues = lastBalance + Number(e.school_fee||0) + Number(e.sports_fund||0) + Number(e.admission_fee||0) + Number(e.exam_fee||0) + Number(e.other_fee||0);
       const totalPaid = Number(e.amount||0);
-      const balance = totalDues - totalPaid;
+      const balance = money2(totalDues - totalPaid);
       running = balance;
       // dup marks any 2nd+ entry recorded for the same month — flagged in the UI
       // so an accidental duplicate (e.g. from repeated tapping) is easy to spot
@@ -5368,21 +5639,21 @@ async function updateStudentType(studentId) {
   if (type !== 'paying') update.monthly_fee = 0;
   const { queued, error } = await offlineUpdateStudent(studentId, update);
   if (!queued && reportSaveError(error)) return;
-  if (!queued) await loadAllData(); openStudentDetail(studentId);
+  if (!queued) await reloadTable('students'); openStudentDetail(studentId);
 }
 
 async function updateStudentNameUr(studentId) {
   const nameUr = document.getElementById('d-name-ur').value.trim();
   const { queued, error } = await offlineUpdateStudent(studentId, { name_ur: nameUr || null });
   if (!queued && reportSaveError(error)) return;
-  if (!queued) await loadAllData(); openStudentDetail(studentId);
+  if (!queued) await reloadTable('students'); openStudentDetail(studentId);
 }
 
 async function updateStudentClass(studentId) {
   const cls = document.getElementById('d-class').value;
   const { queued, error } = await offlineUpdateStudent(studentId, { class_name: cls });
   if (!queued && reportSaveError(error)) return;
-  if (!queued) await loadAllData(); openStudentDetail(studentId);
+  if (!queued) await reloadTable('students'); openStudentDetail(studentId);
 }
 
 async function submitFeePayment(studentId) {
@@ -5395,7 +5666,13 @@ async function submitFeePayment(studentId) {
   const amount = document.getElementById('p-amount').value;
   const receiptNo = document.getElementById('p-receipt').value;
   const date = dateVal('p-date');
-  if (!month || amount === '') return;
+  if (!month || amount === '' || !Number.isFinite(Number(amount))) {
+    alert(LANG === 'ur' ? '\u0645\u06c1\u06cc\u0646\u06c1 \u0627\u0648\u0631 \u0627\u062f\u0627 \u0634\u062f\u06c1 \u0631\u0642\u0645 \u062f\u0631\u062c \u06a9\u0631\u06cc\u06ba\u06d4' : 'Please choose the month and enter the amount paid.');
+    return;
+  }
+  for (const v of [schoolFee, sportsFund, admissionFee, examFee, otherFee]) {
+    if (!Number.isFinite(Number(v))) { alert(LANG === 'ur' ? '\u0641\u06cc\u0633 \u06a9\u06cc \u0631\u0642\u0645 \u0645\u06cc\u06ba \u063a\u0644\u0637\u06cc \u06c1\u06d2\u06d4' : 'One of the fee amounts is not a valid number.'); return; }
+  }
 
   // Looked up from the local cache (works offline too) — this is purely for
   // the parent-notification decision below (new entry vs. correcting an
@@ -5449,7 +5726,7 @@ async function submitFeePayment(studentId) {
     const msg = paidReceiptMessage(student.name, monthLabel(month), payload, row ? row.balance : 0);
     openFatherWhatsapp(student.contact, msg); // opens the phone's Messages app, pre-filled, ready to send
   }
-  if (!queued) await loadAllData();
+  if (!queued) await reloadTable('fee_payments');
   openStudentDetail(studentId);
 }
 
@@ -5460,7 +5737,7 @@ function printReceipt(studentId, entryId) {
   entries.forEach(e => {
     const lastBalance = running;
     const totalDues = lastBalance + Number(e.school_fee||0) + Number(e.sports_fund||0) + Number(e.admission_fee||0) + Number(e.exam_fee||0) + Number(e.other_fee||0);
-    const balance = totalDues - Number(e.amount||0);
+    const balance = money2(totalDues - Number(e.amount||0));
     running = balance;
     if (e.id === entryId) target = { e, lastBalance, totalDues, balance };
   });
@@ -5502,7 +5779,7 @@ async function deleteFeePayment(paymentId, studentId) {
     run: () => sb.from('fee_payments').delete().eq('id', paymentId),
     optimisticApply: () => { DATA.feePayments = DATA.feePayments.filter(x => x.id !== paymentId); idbDeleteRow('fee_payments', paymentId); }
   });
-  if (!queued) await loadAllData();
+  if (!queued) await reloadTable('fee_payments');
   openStudentDetail(studentId);
 }
 
@@ -6430,15 +6707,22 @@ async function renderClassAttendanceView(className) {
   if (!body) return;
   body.innerHTML = '…';
   const dates = datesInMonth(classRegMonth);
-  const { data, error } = await sb.from('student_attendance').select('*')
+  const { data, error } = await fetchAll(() => sb.from('student_attendance').select('*')
     .eq('class_name', className)
-    .gte('date', dates[0]).lte('date', dates[dates.length-1]);
+    .gte('date', dates[0]).lte('date', dates[dates.length-1]));
   if (error) { body.innerHTML = `<div class="err">${esc(error.message)}</div>`; return; }
   // All attendance recorded before this month, for the "Previous Months" total column.
-  const { data: prevData, error: prevError } = await sb.from('student_attendance').select('*')
+  const { data: prevData, error: prevError } = await fetchAll(() => sb.from('student_attendance').select('*')
     .eq('class_name', className)
-    .lt('date', dates[0]);
+    .gte('date', sessionStartISO(dates[0]))
+    .lt('date', dates[0]));
   if (prevError) { body.innerHTML = `<div class="err">${esc(prevError.message)}</div>`; return; }
+  // Totals of months already rolled up (only meaningful when viewing the current month).
+  const rolledTotals = {};
+  if (dates[0] >= monthStartISO()) {
+    const tr = await fetchAll(() => sb.from('student_attendance_totals').select('student_id,present_days').eq('session_start', sessionStartISO(dates[0])));
+    if (!tr.error) (tr.data || []).forEach(r => { rolledTotals[r.student_id] = (rolledTotals[r.student_id] || 0) + (r.present_days || 0); });
+  }
   const students = DATA.students.filter(s => s.class_name === className && s.status === 'active');
   if (!students.length) { body.innerHTML = `<div class="empty">${esc(t.noAttendanceRecords)}</div>`; return; }
   const recFor = (studentId, date) => (data || []).find(r => r.student_id === studentId && r.date === date) || {};
@@ -6457,7 +6741,7 @@ async function renderClassAttendanceView(className) {
         <div style="font-size:10px;color:${registerCellColor(rec.status_pm)};">${esc(cellCode(rec.status_pm))}</div>
       </td>`;
     }).join('');
-    const prevDays = attendanceDaysCount((prevData || []).filter(r => r.student_id === s.id));
+    const prevDays = attendanceDaysCount((prevData || []).filter(r => r.student_id === s.id)) + (rolledTotals[s.id] || 0);
     const thisMonthDays = attendanceDaysCount((data || []).filter(r => r.student_id === s.id));
     const totalDays = prevDays + thisMonthDays;
     return `<tr><td class="date-col" style="text-align:left;white-space:nowrap;">${esc(s.name)}</td>${cells}
@@ -6488,7 +6772,7 @@ async function openClassMarksView(className) {
   const body = document.getElementById('cmv-body');
   let data = null, error = null;
   if (navigator.onLine) {
-    const res = await sb.from('class_exam_marks').select('*').eq('class_name', className).order('updated_at', { ascending: false });
+    const res = await fetchAll(() => sb.from('class_exam_marks').select('*').eq('class_name', className).order('updated_at', { ascending: false }));
     data = res.data; error = res.error;
     if (!error && data) await idbPutRow('class_exam_marks', { class_name: className, exams: data });
   } else {
@@ -8044,8 +8328,8 @@ async function saveDMCRecords(results) {
 async function viewSavedDMCRecord(id) {
   const { data: rec, error } = await sb.from('dmc_records').select('*').eq('id', id).eq('owner_id', CURRENT_USER.id).maybeSingle();
   if (error || !rec) { alert('Record not found'); return; }
-  const { data: cohort } = await sb.from('dmc_records').select('student_name,marks,class_name')
-    .eq('owner_id', CURRENT_USER.id).eq('academic_year', rec.academic_year).eq('class_name', rec.class_name);
+  const { data: cohort } = await fetchAll(() => sb.from('dmc_records').select('student_name,marks,class_name')
+    .eq('owner_id', CURRENT_USER.id).eq('academic_year', rec.academic_year).eq('class_name', rec.class_name));
 
   const backup = { subjects: dmcSubjects, session: dmcAcademicSession, section: dmcBatchSection, date: dmcBatchDateOfIssue, results: dmcResults };
   dmcSubjects = (rec.subjects && rec.subjects.length) ? rec.subjects : dmcSubjects;
@@ -8074,8 +8358,8 @@ async function viewSavedDMCRecord(id) {
 async function printSavedDMCRecord(id) {
   const { data: rec, error } = await sb.from('dmc_records').select('*').eq('id', id).eq('owner_id', CURRENT_USER.id).maybeSingle();
   if (error || !rec) { alert('Record not found'); return; }
-  const { data: cohort } = await sb.from('dmc_records').select('student_name,marks,class_name')
-    .eq('owner_id', CURRENT_USER.id).eq('academic_year', rec.academic_year).eq('class_name', rec.class_name);
+  const { data: cohort } = await fetchAll(() => sb.from('dmc_records').select('student_name,marks,class_name')
+    .eq('owner_id', CURRENT_USER.id).eq('academic_year', rec.academic_year).eq('class_name', rec.class_name));
 
   const backup = { subjects: dmcSubjects, session: dmcAcademicSession, section: dmcBatchSection, date: dmcBatchDateOfIssue, results: dmcResults };
   dmcSubjects = (rec.subjects && rec.subjects.length) ? rec.subjects : dmcSubjects;
@@ -8223,7 +8507,7 @@ function msBackupDownload() {
     const blob = new Blob([JSON.stringify({ app: 'SchoolMS-MarksSheet', version: 1, exported_at: new Date().toISOString(), lastYear: db.lastYear, years: db.years })], { type: 'application/json' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    a.download = 'marks-sheet-backup-' + new Date().toISOString().slice(0, 10) + '.json';
+    a.download = 'marks-sheet-backup-' + todayISO() + '.json';
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(a.href), 4000);
   } catch (e) { alert('Backup nahi ban saka: ' + (e && e.message || e)); }
@@ -10397,14 +10681,28 @@ async function calcAdmissionAttendance() {
   if (!studentId) { if (msgEl) msgEl.textContent = LANG==='ur' ? 'پہلے طالب علم منتخب کریں' : 'Link a student first'; return; }
   const start = dateVal('ar-admission-date') || todayISO();
   const end = dateVal('ar-withdrawal-date', null) || todayISO();
-  // Reads from the last-synced cache (same data every other offline feature in
-  // this app uses) — works with no internet, but will only be as fresh as the
-  // last time this device successfully loaded data.
-  const records = DATA.studentAttendance.filter(r => r.student_id === studentId && r.date >= start && r.date <= end);
-  const actual = attendanceDaysCount(records);
+  const monthStart = monthStartISO();
+  // This month: day-by-day rows from the cache already in memory.
+  let actual = attendanceDaysCount(DATA.studentAttendance.filter(r => r.student_id === studentId && r.date >= start && r.date <= end));
+  // Earlier months: totals (rolled up) + any rows not rolled up yet. Needs internet.
+  if (start < monthStart) {
+    try {
+      const oldRows = await fetchAll(() => sb.from('student_attendance').select('status_am,status_pm,date')
+        .eq('student_id', studentId).gte('date', start).lt('date', monthStart).lte('date', end));
+      if (oldRows.error) throw oldRows.error;
+      actual += attendanceDaysCount(oldRows.data || []);
+      const tot = await fetchAll(() => sb.from('student_attendance_totals').select('present_days')
+        .eq('student_id', studentId).gte('session_start', sessionStartISO(start)).lte('session_start', end));
+      if (tot.error && !/does not exist|schema cache|PGRST205|42P01/i.test((tot.error.message || '') + (tot.error.code || ''))) throw tot.error;
+      (tot.data || []).forEach(r => { actual += (r.present_days || 0); });
+    } catch (e) {
+      if (msgEl) msgEl.textContent = '✗ ' + (e && e.message ? e.message : 'internet?');
+      return;
+    }
+  }
   let possible = 0;
   for (let d = new Date(start + 'T00:00:00'); d <= new Date(end + 'T00:00:00'); d.setDate(d.getDate() + 1)) {
-    if (!isHoliday(d.toISOString().slice(0, 10))) possible += 2;
+    if (!isHoliday(localISO(d))) possible += 2;
   }
   document.getElementById('ar-attendance-possible').value = possible;
   document.getElementById('ar-attendance-actual').value = actual;
@@ -12273,8 +12571,8 @@ async function renderClassPortalMarks() {
   let savedExams = [];
   if (navigator.onLine) {
     try {
-      const { data } = await sb.from('class_exam_marks').select('exam_name,marks,subjects')
-        .eq('owner_id', session.ownerId).eq('class_name', session.className);
+      const { data } = await fetchAll(() => sb.from('class_exam_marks').select('exam_name,marks,subjects')
+        .eq('owner_id', session.ownerId).eq('class_name', session.className));
       // A class login has no table SELECT rights of its own (see RLS policy —
       // only the owner can read directly), so this will simply come back
       // empty for the class device; kept here in case that policy is ever
@@ -14078,7 +14376,7 @@ async function chPlay(id) {
   } catch (e) { b.disabled = false; b.textContent = '▶'; }
 }
 
-console.log('SchoolMS build: 2026-10-04-daily-quiz-7am-latest-result-lightsync-staffreq-chat-voice'); // bump this string on every deploy to verify (in browser console) which version is actually running
+console.log('SchoolMS build: 2026-10-06b-money-round-single-table-reload-csp-blob-img-fix-daily-quiz-7am-latest-result-lightsync-staffreq-chat-voice'); // bump this string on every deploy to verify (in browser console) which version is actually running
 </script>
 </body>
 </html>
