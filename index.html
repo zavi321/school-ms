@@ -28,7 +28,28 @@
 <link rel="icon" href="icon-192.png">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,500;0,9..144,600;0,9..144,700;1,9..144,500;1,9..144,600;1,9..144,700&family=Berkshire+Swash&family=Aref+Ruqaa:wght@400;700&family=Inter:wght@400;500;600;700&family=Noto+Nastaliq+Urdu:wght@600;700&family=Noto+Sans+Urdu:wght@400;500;600&display=swap">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.4/dist/umd/supabase.js" integrity="sha384-ysv13JVP3fufiEXfjML9OdCa/rRbMJvUBOWyor82wfuK8INNZAvmbxHgKIHi+oqz" crossorigin="anonymous"></script>
-<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js" integrity="sha384-vtjasyidUo0kW94K5MXDXntzOJpQgBKXmE7e2Ga4LG0skTTLeBi97eFAXsqewJjw" crossorigin="anonymous"></script>
+<script>
+/* Excel library (xlsx, ~900 KB) is only needed for Excel import/export, so it no longer blocks the app from opening.
+   It is fetched right after the first screen is up (browser idle time) — same file, same integrity check, still cached
+   by the service worker for offline use. If the phone is offline at that moment it retries as soon as internet returns. */
+(function () {
+  function load() {
+    if (window.XLSX || document.getElementById('xlsx-lib')) return;
+    var s = document.createElement('script');
+    s.id = 'xlsx-lib';
+    s.src = 'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js';
+    s.integrity = 'sha384-vtjasyidUo0kW94K5MXDXntzOJpQgBKXmE7e2Ga4LG0skTTLeBi97eFAXsqewJjw';
+    s.crossOrigin = 'anonymous';
+    s.async = true;
+    s.onerror = function () { if (s.parentNode) s.parentNode.removeChild(s); };
+    document.head.appendChild(s);
+  }
+  window.loadXLSXLib = load;
+  function later() { if (window.requestIdleCallback) requestIdleCallback(load, { timeout: 3000 }); else setTimeout(load, 1500); }
+  if (document.readyState === 'complete') later(); else window.addEventListener('load', later);
+  window.addEventListener('online', load);
+})();
+</script>
 <style>
   :root{
     --navy:#0F2740; --navy-deep:#0A1B2C; --gold:#C9A227; --gold-soft:#E4C765;
@@ -144,8 +165,9 @@ html, body{overscroll-behavior:none;}
   .notice{margin-top:24px;font-size:11px;text-align:center;padding:8px 12px;border-radius:8px;color:var(--navy);opacity:.55;background:#F0EAD6;}
 
   nav.bottom{position:fixed;left:0;right:0;bottom:0;padding:12px;z-index:40;}
-  nav.bottom .bar{max-width:420px;margin:0 auto;background:var(--navy);border-radius:16px;display:flex;padding:6px;box-shadow:0 8px 24px rgba(0,0,0,.25);overflow-x:auto;-webkit-overflow-scrolling:touch;}
-  nav.bottom button{flex:1;min-width:70px;flex-shrink:0;background:transparent;border:none;border-radius:12px;padding:8px 4px;display:flex;flex-direction:column;align-items:center;gap:2px;color:#8FA3B8;font-size:10px;font-weight:500;}
+  nav.bottom .bar{max-width:420px;margin:0 auto;background:var(--navy);border-radius:16px;display:flex;padding:6px;box-shadow:0 8px 24px rgba(0,0,0,.25);overflow-x:auto;overflow-y:hidden;-webkit-overflow-scrolling:touch;overscroll-behavior-x:contain;scrollbar-width:none;}
+  nav.bottom .bar::-webkit-scrollbar{display:none;}
+  nav.bottom button{flex:1 0 auto;min-width:56px;flex-shrink:0;background:transparent;border:none;border-radius:12px;padding:8px 4px;display:flex;flex-direction:column;align-items:center;gap:2px;color:#8FA3B8;font-size:10px;font-weight:500;}
   nav.bottom button.active{background:rgba(201,162,39,.18);color:var(--gold-soft);}
   nav.bottom button svg{width:18px;height:18px;}
 
@@ -3473,14 +3495,26 @@ function confirmSidebarLogout() {
 function renderNav() {
   const tabs = ['dashboard','students','teachers','finance','reports','dmc','marksSheet','admissionRegister','papers','timetable','datesheet','notices','syllabus'];
   if (CURRENT_PROFILE && CURRENT_PROFILE.is_admin) tabs.push('admin');
-  document.getElementById('navbar').innerHTML = tabs.map(k => `
+  const _nb = document.getElementById('navbar');
+  if (_nb && _nb.children.length) NAV_SCROLL = _nb.scrollLeft;   // remember where the bar was scrolled to
+  _nb.innerHTML = tabs.map(k => `
     <button class="${TAB===k?'active':''}" onclick="setTab('${k}')">
       ${NAV_ICONS[k]}<span>${k==='timetable' ? (LANG==='ur'?'ٹائم ٹیبل':'Timetable') : k==='datesheet' ? esc(qt('Date Sheet','ڈیٹ شیٹ')) : k==='notices' ? esc(qt('Notices','نوٹس')) : k==='syllabus' ? esc(qt('Syllabus','نصاب')) : esc(t[k] || t.admin)}</span>
     </button>`).join('');
+  // Putting the buttons back used to snap the bar to the start — restore the old position.
+  _nb.scrollLeft = NAV_SCROLL;
+  if (!_nb.__navScrollBound) { _nb.__navScrollBound = true; _nb.addEventListener('scroll', () => { NAV_SCROLL = _nb.scrollLeft; }, { passive: true }); }
 }
+let NAV_SCROLL = 0;
 
 function setTab(k){
   TAB = k; renderNav(); renderSidebar(); renderTab();
+  try { // tapped tab: only nudge the bar if that tab is partly off-screen
+    const nb = document.getElementById('navbar'), ab = nb && nb.querySelector('button.active');
+    if (ab) { const l = ab.offsetLeft - nb.offsetLeft, r = l + ab.offsetWidth;
+      if (l < nb.scrollLeft) nb.scrollLeft = l - 8; else if (r > nb.scrollLeft + nb.clientWidth) nb.scrollLeft = r - nb.clientWidth + 8;
+      NAV_SCROLL = nb.scrollLeft; }
+  } catch (e) {}
   const main = document.getElementById('main');
   main.classList.remove('tab-fade'); void main.offsetWidth; main.classList.add('tab-fade');
 }
@@ -3806,7 +3840,22 @@ function _renderTabInner() {
     // pulls the school logo/name used on the printed pages (once per session)
     if (!window.__dsCfgLoaded) { window.__dsCfgLoaded = true; Promise.resolve(loadDMCConfig()).catch(() => {}); }
   }
-  else if (TAB==='syllabus') { main.innerHTML = tplSyllabus(); sylpLoad(); sylLoad(); }
+  else if (TAB==='syllabus') {
+    // Already showing the Syllabus tab (same language)? A background redraw (sync finishing, internet coming back…)
+    // must NOT wipe the page — that was the "disappears for a second, then comes back" bug. Just refresh the grid in place.
+    if (document.getElementById('sylp-box') && main.contains(document.getElementById('sylp-box')) && main.dataset.sylLang === LANG) {
+      if (SYLP_READY || SYLP_ERR) sylpRender();
+    } else {
+      main.innerHTML = tplSyllabus();
+      main.dataset.sylLang = LANG;
+      // Paint what we already have straight away, so a background redraw never leaves the page blank/flickering.
+      if (SYLP_READY || SYLP_ERR) sylpRender();
+    }
+    // Only hit the network again if the last load is older than 30s (or never happened).
+    // school logo/name for the printed chart (once per session, same as Date Sheet)
+    if (!window.__dsCfgLoaded) { window.__dsCfgLoaded = true; Promise.resolve(loadDMCConfig()).catch(() => {}); }
+    if (!window.__sylpLastLoad || Date.now() - window.__sylpLastLoad > 30000) { window.__sylpLastLoad = Date.now(); sylpLoad(); }
+  }
   else if (TAB==='notices') {
     // The form is NOT rebuilt if it is already on screen (same language): a background sync / 'online'
     // event used to wipe it and close the keyboard. Only the list underneath is refreshed.
@@ -3815,8 +3864,11 @@ function _renderTabInner() {
     main.innerHTML = tplNotices(); noticeInit(); pmOwnerLoad();
   }
   else if (TAB==='admin') { main.innerHTML = tplAdmin(); loadAdminLists(); return; }
-  main.insertAdjacentHTML('beforeend', `<div class="notice">${esc(t.sharedNotice)}</div>`);
-  main.insertAdjacentHTML('beforeend', `<div class="notice" style="margin-top:8px;font-size:10px;">${esc(t.copyrightNotice)}</div>`);
+  // Keep exactly ONE copy of the footer notices: screens that are refreshed in place (Syllabus, Notices) are not rebuilt,
+  // so the old copies are still there and would otherwise pile up on every background redraw.
+  main.querySelectorAll('.foot-notice').forEach(el => el.remove());
+  main.insertAdjacentHTML('beforeend', `<div class="notice foot-notice">${esc(t.sharedNotice)}</div>`);
+  main.insertAdjacentHTML('beforeend', `<div class="notice foot-notice" style="margin-top:8px;font-size:10px;">${esc(t.copyrightNotice)}</div>`);
   updateAlertsBadge();
   pmOwnerBadgeRefresh();
 }
@@ -15474,7 +15526,7 @@ function tplSyllabus() {
     .concat(CLASS_OPTIONS.map(c => `<option value="${esc(c)}" ${SYL_FILTER === c ? 'selected' : ''}>${esc(c)}</option>`)).join('');
   return `
     <style>
-      .sylp-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;border:1px solid var(--line);border-radius:12px;background:#fff;margin-bottom:12px;}
+      .sylp-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;overscroll-behavior-x:contain;touch-action:pan-x pan-y;direction:ltr;max-width:100%;border:1px solid var(--line);border-radius:12px;background:#fff;margin-bottom:12px;}
       .sylp-table{border-collapse:collapse;table-layout:fixed;width:1334px;}
       .sylp-table th,.sylp-table td{border:1px solid var(--line);padding:8px 6px;text-align:center;vertical-align:middle;font-size:12px;}
       .sylp-table thead th{background:var(--navy);color:#fff;font-size:11px;font-weight:600;}
@@ -15491,14 +15543,7 @@ function tplSyllabus() {
     </style>
     <h2>${esc(qt('Syllabus', 'نصاب'))}</h2>
     <p class="desc">${esc(qt('Month-wise syllabus for each class — same layout as the printed syllabus chart.', 'ہر کلاس کا ماہ وار نصاب — پرنٹ شدہ نصاب چارٹ جیسا ہی۔'))}</p>
-    <div id="sylp-box"></div>
-    <div id="syl-legacy" style="display:none;margin-top:18px;">
-      <details>
-        <summary style="font-size:13px;font-weight:600;cursor:pointer;padding:8px 0;">${esc(qt('Old syllabus (written without months)', 'پرانا نصاب (مہینوں کے بغیر لکھا ہوا)'))}</summary>
-        <div class="field-box"><label><span>${esc(qt('Class', 'کلاس'))}</span><select onchange="SYL_FILTER=this.value;sylRender()">${opts}</select></label></div>
-        <div id="syl-list"></div>
-      </details>
-    </div>`;
+    <div id="sylp-box"></div>`;
 }
 
 async function sylLoad() {
@@ -15625,18 +15670,125 @@ const SYLP_COLS = [
 ];
 const SYLP_SUGGEST = ['Maths', 'Science', 'English', 'English Grammar', 'G. Knowledge', 'Social Studies', 'Computer', 'Urdu', 'Islamiyat', 'Nazra', 'اردو', 'اردو گرامر', 'اسلامیات', 'ناظرہ', 'معاشرتی علوم', 'ریاضی', 'سائنس', 'انگلش', 'عام معلومات'];
 let SYLP_ALL = {}, SYLP_CLASS = '', SYLP_READY = false, SYLP_ERR = '';
+// Sideways scroll position of the month grid. Every redraw (background sync, 'online' event, 30s refresh) rebuilds the
+// table from scratch and a fresh table always starts at scrollLeft 0 — that was the "scrolls, then snaps back" bug.
+// We remember the position and put it back after each redraw, and we never redraw while a finger is on the grid.
+let SYLP_SCROLL = 0, SYLP_TOUCH = 0, SYLP_PENDING = false;
+document.addEventListener('scroll', (e) => {
+  const el = e.target;
+  if (el && el.classList && el.classList.contains('sylp-wrap')) SYLP_SCROLL = el.scrollLeft;
+}, true);
+document.addEventListener('touchstart', (e) => {
+  if (e.target && e.target.closest && e.target.closest('.sylp-wrap')) SYLP_TOUCH = Date.now();
+}, { capture: true, passive: true });
+['touchend', 'touchcancel'].forEach(ev => document.addEventListener(ev, () => {
+  if (!SYLP_TOUCH) return;
+  SYLP_TOUCH = 0;
+  if (SYLP_PENDING) setTimeout(() => { if (SYLP_PENDING && !SYLP_TOUCH) { SYLP_PENDING = false; sylpRender(); } }, 450);
+}, { capture: true, passive: true }));
 
 function sylpKey() { return 'syllabus_plan_' + (CURRENT_USER ? CURRENT_USER.id : ''); }
 function sylpDefaultSession() { const d = new Date(), y = d.getMonth() >= 1 ? d.getFullYear() : d.getFullYear() - 1; return y + '-' + String((y + 1) % 100).padStart(2, '0'); }
 function sylpSharedSession() { for (const k in SYLP_ALL) if (SYLP_ALL[k].session) return SYLP_ALL[k].session; return ''; }
 function sylpSharedFooter() { for (const k in SYLP_ALL) if (SYLP_ALL[k].footer) return SYLP_ALL[k].footer; return ''; }
 function sylpJanYear(session) { const m = /(\d{4})/.exec(session || ''); return m ? String(Number(m[1]) + 1) : ''; }
+// Shared chart settings (column dates/months, school name, logo) live in cells._meta of every class row — no SQL change needed.
+function sylpMetaGet(key) {
+  const cur = SYLP_ALL[SYLP_CLASS];
+  if (cur && cur.cells && cur.cells._meta && cur.cells._meta[key] !== undefined) return cur.cells._meta[key];
+  for (const k in SYLP_ALL) { const m = SYLP_ALL[k].cells && SYLP_ALL[k].cells._meta; if (m && m[key] !== undefined) return m[key]; }
+  return undefined;
+}
+function sylpMetaSet(key, val) {
+  const ks = Object.keys(SYLP_ALL).filter(k => SYLP_ALL[k].subjects.length); if (ks.indexOf(SYLP_CLASS) < 0) ks.push(SYLP_CLASS);
+  ks.forEach(k => {
+    const d = sylpData(k);
+    if (!d.cells._meta || typeof d.cells._meta !== 'object') d.cells._meta = {};
+    if (val === undefined || val === null || val === '' || (typeof val === 'object' && !Object.keys(val).length)) delete d.cells._meta[key]; else d.cells._meta[key] = val;
+  });
+  ks.forEach(k => sylpPersist(k));
+}
+function sylpSchool() { return sylpMetaGet('school') || ((typeof dsSchoolName === 'function') ? dsSchoolName() : ((CURRENT_PROFILE && CURRENT_PROFILE.school_name) || 'School')); }
+function sylpLogo() { const l = sylpMetaGet('logo'); return l || dmcLogo || ''; }
+function sylpEditFixed(k) {
+  const col = SYLP_COLS.find(x => x.k === k); if (!col) return;
+  showModal(qt('Edit text', 'متن ایڈیٹ کریں'), `
+    <label><span>${esc(qt('Text shown in this block (all classes)', 'اس بلاک میں لکھا متن (تمام کلاسوں کے لیے)'))}</span><input id="sylp-fx-txt" dir="auto" maxlength="40" value="${esc(sylpFixedText(col))}"></label>
+    <div class="flexgap" style="margin-top:10px;">
+      <button class="btn-ghost" onclick="sylpSaveFixed('${k}',true)">${esc(qt('Reset', 'اصل حالت'))}</button>
+      <button class="btn-primary" style="flex:1" onclick="sylpSaveFixed('${k}',false)">${esc(qt('Save', 'محفوظ کریں'))}</button>
+    </div>`);
+}
+function sylpSaveFixed(k, reset) {
+  const fx = Object.assign({}, sylpMetaGet('fixed') || {});
+  const v = reset ? '' : document.getElementById('sylp-fx-txt').value.trim();
+  if (v) fx[k] = v; else delete fx[k];
+  closeModal(); sylpMetaSet('fixed', fx); sylpRender();
+}
+function sylpEditCol(k) {
+  const col = SYLP_COLS.find(x => x.k === k); if (!col) return;
+  const d = sylpData(SYLP_CLASS);
+  showModal(qt('Edit date / month', 'تاریخ / مہینہ ایڈیٹ کریں'), `
+    <label><span>${esc(qt('Heading shown on this column (all classes)', 'اس کالم کا عنوان (تمام کلاسوں کے لیے)'))}</span><input id="sylp-col-txt" dir="auto" maxlength="40" value="${esc(sylpColLabel(col, d.session))}"></label>
+    <div class="flexgap" style="margin-top:10px;">
+      <button class="btn-ghost" onclick="sylpSaveCol('${k}',true)">${esc(qt('Reset', 'اصل حالت'))}</button>
+      <button class="btn-primary" style="flex:1" onclick="sylpSaveCol('${k}',false)">${esc(qt('Save', 'محفوظ کریں'))}</button>
+    </div>`);
+}
+function sylpSaveCol(k, reset) {
+  const labels = Object.assign({}, sylpMetaGet('labels') || {});
+  const v = reset ? '' : document.getElementById('sylp-col-txt').value.trim();
+  if (v) labels[k] = v; else delete labels[k];
+  closeModal(); sylpMetaSet('labels', labels); sylpRender();
+}
+let SYLP_LOGO_TMP;
+function sylpSettings() {
+  SYLP_LOGO_TMP = undefined;
+  const logo = sylpLogo();
+  showModal(qt('Chart settings', 'چارٹ سیٹنگز'), `
+    <label><span>${esc(qt('School name', 'اسکول کا نام'))}</span><input id="sylp-set-school" dir="auto" maxlength="80" value="${esc(sylpSchool())}"></label>
+    <div style="margin:12px 0 4px;font-size:13px;font-weight:600;">${esc(qt('School logo', 'اسکول کا لوگو'))}</div>
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
+      <img id="sylp-set-logo" src="${logo ? esc(logo) : ''}" style="height:56px;width:56px;object-fit:contain;border:1px solid var(--line);border-radius:8px;background:#fff;${logo ? '' : 'visibility:hidden;'}">
+      <input type="file" accept="image/*" onchange="sylpPickLogo(this)" style="flex:1;font-size:12px;">
+      <button class="btn-ghost" onclick="sylpClearLogo()">${esc(qt('Remove', 'ہٹائیں'))}</button>
+    </div>
+    <p style="font-size:11px;opacity:.65;margin:0 0 12px;">${esc(qt('Dates / months: tap a column heading in the table. Year: change the Session box.', 'تاریخیں / مہینے: ٹیبل میں کالم کے عنوان پر ٹیپ کریں۔ سال: سیشن والا خانہ بدلیں۔'))}</p>
+    <button class="btn-primary" style="width:100%;" onclick="sylpSaveSettings()">${esc(qt('Save', 'محفوظ کریں'))}</button>`);
+}
+function sylpPickLogo(inp) {
+  const f = inp.files && inp.files[0]; if (!f) return;
+  const fr = new FileReader();
+  fr.onload = () => {
+    const im = new Image();
+    im.onload = () => {
+      const m = 220, r = Math.min(1, m / Math.max(im.width, im.height));
+      const cv = document.createElement('canvas'); cv.width = Math.max(1, Math.round(im.width * r)); cv.height = Math.max(1, Math.round(im.height * r));
+      cv.getContext('2d').drawImage(im, 0, 0, cv.width, cv.height);
+      SYLP_LOGO_TMP = cv.toDataURL('image/png');
+      const el = document.getElementById('sylp-set-logo'); if (el) { el.src = SYLP_LOGO_TMP; el.style.visibility = 'visible'; }
+    };
+    im.src = fr.result;
+  };
+  fr.readAsDataURL(f);
+}
+function sylpClearLogo() { SYLP_LOGO_TMP = null; const el = document.getElementById('sylp-set-logo'); if (el) el.style.visibility = 'hidden'; }
+function sylpSaveSettings() {
+  const name = document.getElementById('sylp-set-school').value.trim();
+  const logoChanged = SYLP_LOGO_TMP !== undefined;
+  closeModal();
+  sylpMetaSet('school', name);
+  if (logoChanged) sylpMetaSet('logo', SYLP_LOGO_TMP || '');
+  sylpRender();
+}
 function sylpColLabel(c, session) {
   const ur = LANG === 'ur';
+  const _lab = sylpMetaGet('labels'); if (_lab && _lab[c.k]) return _lab[c.k];
   if (c.k === 'v2') return (ur ? 'جنوری ' : 'January ') + sylpJanYear(session);
   return ur ? c.ur : c.en;
 }
 function sylpFixedText(col) {
+  const _fx = sylpMetaGet('fixed'); if (_fx && _fx[col.k]) return _fx[col.k];
   if (col.type === 'exam') return qt('RESULT + EXAM', 'رزلٹ + امتحان');
   return col.vac === 'summer' ? qt('SUMMER VACATION', 'گرمیوں کی چھٹیاں') : qt('WINTER VACATION', 'سردیوں کی چھٹیاں');
 }
@@ -15646,7 +15798,7 @@ function sylpData(c) {
 }
 function sylpSaveCache() {
   try {
-    const rows = Object.keys(SYLP_ALL).map(k => SYLP_ALL[k]).filter(r => r.subjects.length || r.footer);
+    const rows = Object.keys(SYLP_ALL).map(k => SYLP_ALL[k]).filter(r => r.subjects.length || r.footer || (r.cells && r.cells._meta));
     localStorage.setItem(sylpKey(), JSON.stringify(rows));
   } catch (e) {}
 }
@@ -15687,21 +15839,28 @@ async function sylpLoad() {
   sylpRender();
 }
 
-function sylpPick(c) { SYLP_CLASS = c; sylpRender(); }
+function sylpPick(c) { SYLP_CLASS = c; SYLP_SCROLL = 0; sylpRender(); }
 
 function sylpRender() {
   const box = document.getElementById('sylp-box'); if (!box) return;
+  if (SYLP_TOUCH && Date.now() - SYLP_TOUCH < 5000) { SYLP_PENDING = true; return; }   // finger is on the grid — redraw after it lifts
+  SYLP_PENDING = false;
+  // Nothing changed since the last draw → leave the screen exactly as it is (no flicker, no scroll loss, no lost focus).
+  let sig = '';
+  try { sig = JSON.stringify([SYLP_CLASS, LANG, SYLP_ERR, SYLP_READY, SYLP_ALL, dmcLogo ? 1 : 0, (typeof dsSchoolName === 'function') ? dsSchoolName() : '']); } catch (e) {}
+  if (sig && box.dataset.sig === sig && box.firstElementChild) return;
+  box.dataset.sig = sig;
   if (SYLP_ERR) { box.innerHTML = `<div class="err">${esc(SYLP_ERR)}</div>`; return; }
   if (!SYLP_READY) { box.innerHTML = `<div class="empty">${esc(qt('Loading…', 'لوڈ ہو رہا ہے…'))}</div>`; return; }
   const c = SYLP_CLASS, d = sylpData(c), subs = d.subjects;
   const clsOpts = CLASS_OPTIONS.map(x => `<option value="${esc(x)}" ${x === c ? 'selected' : ''}>${esc(x)}${SYLP_ALL[x] && SYLP_ALL[x].subjects.length ? ' ✓' : ''}</option>`).join('');
   const colgroup = `<col style="width:112px">` + SYLP_COLS.map(col => `<col style="width:${col.type ? 46 : 132}px">`).join('');
-  const head = `<th>${esc(qt('Subjects', 'مضامین'))}</th>` + SYLP_COLS.map(col => `<th>${esc(sylpColLabel(col, d.session))}</th>`).join('');
+  const head = `<th>${esc(qt('Subjects', 'مضامین'))}</th>` + SYLP_COLS.map(col => `<th style="cursor:pointer;" onclick="sylpEditCol('${col.k}')">${esc(sylpColLabel(col, d.session))}<small style="display:block;font-size:9px;opacity:.55;">✏️</small></th>`).join('');
   const body = subs.map((s, i) => {
     const cells = SYLP_COLS.map(col => {
       if (col.type) {
         if (i > 0) return '';
-        return `<td class="sylp-fixed sylp-${col.type}" rowspan="${subs.length}"><span>${esc(sylpFixedText(col))}</span></td>`;
+        return `<td class="sylp-fixed sylp-${col.type}" rowspan="${subs.length}" style="cursor:pointer;" onclick="sylpEditFixed('${col.k}')"><span>${esc(sylpFixedText(col))}</span></td>`;
       }
       const v = (d.cells[s.id] || {})[col.k] || '';
       return `<td class="sylp-cell" onclick="sylpEditCell('${s.id}','${col.k}')">${v ? `<div dir="auto">${esc(v)}</div>` : '<span class="sylp-plus">＋</span>'}</td>`;
@@ -15713,22 +15872,28 @@ function sylpRender() {
     <div class="field-box"><label><span>${esc(qt('Session', 'سیشن'))}</span><input value="${esc(d.session)}" maxlength="12" placeholder="2026-27" onchange="sylpSetSession(this.value)"></label></div>
     <div style="display:flex;gap:8px;margin-bottom:10px;">
       <button class="btn-primary" style="flex:1;" onclick="sylpEditSubject('')">＋ ${esc(qt('Add subject', 'مضمون شامل کریں'))}</button>
+      <button class="btn-ghost" style="flex:1;" onclick="sylpSettings()">⚙ ${esc(qt('School / Logo', 'اسکول / لوگو'))}</button>
       <button class="btn-ghost" style="flex:1;" onclick="sylpPrint()">🖨 ${esc(qt('Print', 'پرنٹ'))}</button>
     </div>
     <div id="sylp-status" style="font-size:11px;opacity:.65;min-height:14px;margin-bottom:6px;"></div>
     ${subs.length ? `
-      <div style="font-size:11px;opacity:.6;margin-bottom:6px;">${esc(qt('Tap a box to write the syllabus. Scroll sideways to see all months.', 'نصاب لکھنے کے لیے خانے پر ٹیپ کریں۔ تمام مہینے دیکھنے کے لیے سائیڈ میں سکرول کریں۔'))}</div>
+      <div style="font-size:11px;opacity:.6;margin-bottom:6px;">${esc(qt('Tap a box to write the syllabus. Tap a heading to edit its date/month, or tap RESULT + EXAM / VACATION to change that text. Scroll sideways to see all months.', 'نصاب لکھنے کے لیے خانے پر ٹیپ کریں۔ تمام مہینے دیکھنے کے لیے سائیڈ میں سکرول کریں۔'))}</div>
       <div class="sylp-wrap"><table class="sylp-table"><colgroup>${colgroup}</colgroup><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div>
     ` : `<div class="empty">${esc(qt('No subjects yet for this class. Tap "Add subject" to start.', 'اس کلاس کے لیے ابھی کوئی مضمون نہیں۔ شروع کرنے کے لیے "مضمون شامل کریں" دبائیں۔'))}</div>`}
     <div class="field-box" style="margin-top:12px;"><label><span>${esc(qt('Holidays / notes (shown at the bottom of the printed chart)', 'چھٹیاں / نوٹس (پرنٹ چارٹ کے نیچے دکھائے جاتے ہیں)'))}</span>
       <textarea dir="auto" rows="5" maxlength="1200" style="width:100%;padding:9px 0 0;border:none;font-family:inherit;font-size:13px;resize:vertical;background:transparent;" onchange="sylpSetFooter(this.value)">${esc(d.footer || sylpSharedFooter())}</textarea></label></div>`;
+  const w = box.querySelector('.sylp-wrap');
+  if (w && SYLP_SCROLL) {
+    w.scrollLeft = SYLP_SCROLL;
+    requestAnimationFrame(() => { if (w.isConnected && Math.abs(w.scrollLeft - SYLP_SCROLL) > 1) w.scrollLeft = SYLP_SCROLL; });
+  }
 }
 
 function sylpStatus(txt) { const el = document.getElementById('sylp-status'); if (el) el.textContent = txt || ''; }
 
-async function sylpPersist() {
+async function sylpPersist(cn) {
   if (!CURRENT_USER) return;
-  const c = SYLP_CLASS, d = sylpData(c), now = new Date().toISOString();
+  const c = (typeof cn === 'string' && cn) ? cn : SYLP_CLASS, d = sylpData(c), now = new Date().toISOString();
   sylpSaveCache();
   const payload = { owner_id: CURRENT_USER.id, class_name: c, session: d.session, subjects: d.subjects, cells: d.cells, footer: d.footer || null, updated_at: now };
   sylpStatus(qt('Saving…', 'محفوظ ہو رہا ہے…'));
@@ -15815,11 +15980,42 @@ function sylpDeleteSubject(sid) {
 }
 
 // Printed chart — landscape A4 (rotated onto a portrait page, same trick as the Timetable / Date Sheet).
-function sylpPrint() {
+// Light page tint taken from the logo's main colour (ignores white / grey / transparent pixels). Returns [r,g,b] or null.
+function sylpLogoColor(src) {
+  return new Promise(res => {
+    if (!src) return res(null);
+    const im = new Image();
+    im.onload = () => {
+      try {
+        const n = 48, cv = document.createElement('canvas'); cv.width = n; cv.height = n;
+        const cx = cv.getContext('2d'); cx.drawImage(im, 0, 0, n, n);
+        const px = cx.getImageData(0, 0, n, n).data, bk = {};
+        for (let i = 0; i < px.length; i += 4) {
+          const r = px[i], g = px[i + 1], b = px[i + 2], a = px[i + 3];
+          if (a < 128) continue;
+          if (r > 235 && g > 235 && b > 235) continue;
+          if (Math.max(r, g, b) - Math.min(r, g, b) < 28) continue;
+          const key = (r >> 5) + ',' + (g >> 5) + ',' + (b >> 5);
+          const o = bk[key] || (bk[key] = { n: 0, r: 0, g: 0, b: 0 });
+          o.n++; o.r += r; o.g += g; o.b += b;
+        }
+        let best = null; for (const k in bk) if (!best || bk[k].n > best.n) best = bk[k];
+        res(best ? [Math.round(best.r / best.n), Math.round(best.g / best.n), Math.round(best.b / best.n)] : null);
+      } catch (e) { res(null); }
+    };
+    im.onerror = () => res(null);
+    im.src = src;
+  });
+}
+function sylpMix(rgb, w) { return 'rgb(' + rgb.map(v => Math.round(v * (1 - w) + 255 * w)).join(',') + ')'; }
+
+async function sylpPrint() {
   const c = SYLP_CLASS, d = sylpData(c), subs = d.subjects;
   if (!subs.length) { alert(qt('Add at least one subject first.', 'پہلے کم از کم ایک مضمون شامل کریں۔')); return; }
-  const school = (typeof dsSchoolName === 'function') ? dsSchoolName() : ((CURRENT_PROFILE && CURRENT_PROFILE.school_name) || 'School');
+  const school = sylpSchool(), logoSrc = sylpLogo();
   const footer = d.footer || sylpSharedFooter();
+  const tint = await sylpLogoColor(logoSrc);
+  const bgPage = tint ? sylpMix(tint, 0.9) : '#DCEEFA', bgTable = tint ? 'rgba(255,255,255,.4)' : 'rgba(255,255,255,.45)', lineCol = tint ? sylpMix(tint, 0.45) : '#7FA6C9';
   const colgroup = `<col style="width:9%">` + SYLP_COLS.map(col => `<col style="width:${col.type ? '4.4%' : '9.2%'}">`).join('');
   const head = `<th>${esc(qt('Subjects', 'مضامین'))}</th>` + SYLP_COLS.map(col => `<th>${esc(sylpColLabel(col, d.session))}</th>`).join('');
   const rows = subs.map((s, i) => {
@@ -15832,24 +16028,26 @@ function sylpPrint() {
   }).join('');
   document.getElementById('print-area').innerHTML = `
     <style>
-      .sylp-pr{font-family:Inter,'Noto Nastaliq Urdu','Noto Naskh Arabic',sans-serif;width:100%;height:100%;box-sizing:border-box;padding:5mm;background:#DCEEFA;border:1.5px solid #1C2A6B;display:flex;flex-direction:column;color:#1C2A6B;}
-      .sylp-pr-head{display:flex;align-items:center;gap:4mm;flex:0 0 auto;margin-bottom:2.5mm;}
+      .sylp-pr{-webkit-text-size-adjust:none;text-size-adjust:none;font-family:Inter,'Noto Nastaliq Urdu','Noto Naskh Arabic',sans-serif;width:100%;height:100%;box-sizing:border-box;padding:5mm;background:${bgPage};border:1.5px solid #1C2A6B;display:flex;position:relative;flex-direction:column;color:#1C2A6B;overflow:hidden;--sf:1;}
+      .sylp-pr-wm{position:absolute;left:50%;top:50%;width:60%;height:60%;transform:translate(-50%,-50%);object-fit:contain;opacity:.2;filter:blur(2px);z-index:0;pointer-events:none;}
+      .sylp-pr-head{position:relative;z-index:1;display:flex;align-items:center;gap:4mm;flex:0 0 auto;margin-bottom:2.5mm;}
       .sylp-pr-logo{height:20mm;width:20mm;object-fit:contain;}
       .sylp-pr-school{font-family:Fraunces,serif;font-weight:800;font-size:21px;letter-spacing:.4px;text-transform:uppercase;line-height:1.15;}
       .sylp-pr-title{color:#D7263D;font-weight:800;font-size:18px;line-height:1.3;}
-      .sylp-pr-table{flex:1 1 auto;width:100%;border-collapse:collapse;table-layout:fixed;background:#EAF5FC;}
-      .sylp-pr-table th,.sylp-pr-table td{border:1px solid #7FA6C9;padding:1.2mm;text-align:center;vertical-align:middle;font-size:8.5px;line-height:1.5;white-space:pre-wrap;overflow:hidden;}
-      .sylp-pr-table thead th{font-weight:700;font-size:9px;}
-      .sylp-pr-table th.sj{color:#D7263D;font-weight:800;font-size:11px;}
-      .sylp-pr-table td.fx{font-weight:800;font-size:12px;letter-spacing:1px;}
+      .sylp-pr-table{flex:1 1 auto;width:100%;border-collapse:collapse;table-layout:fixed;background:${bgTable};position:relative;z-index:1;}
+      .sylp-pr-table th,.sylp-pr-table td{border:1px solid ${lineCol};padding:calc(1.2mm*var(--sf));text-align:center;vertical-align:middle;font-size:calc(8.5px*var(--sf));line-height:1.35;white-space:pre-wrap;overflow:hidden;}
+      .sylp-pr-table thead th{font-weight:700;font-size:calc(9px*var(--sf));}
+      .sylp-pr-table th.sj{color:#D7263D;font-weight:800;font-size:calc(11px*var(--sf));}
+      .sylp-pr-table td.fx{font-weight:800;font-size:calc(12px*var(--sf));letter-spacing:1px;}
       .sylp-pr-table td.fx.exam{color:#D7263D;}
       .sylp-pr-table td.fx span{display:inline-block;writing-mode:vertical-rl;transform:rotate(180deg);white-space:nowrap;}
-      .sylp-pr-foot{flex:0 0 auto;background:#2A2F8F;color:#fff;border-radius:2mm;padding:2mm 4mm;margin-top:2.5mm;font-size:10px;line-height:1.7;column-count:3;column-gap:6mm;white-space:pre-line;}
+      .sylp-pr-foot{position:relative;z-index:1;flex:0 0 auto;background:#2A2F8F;color:#fff;border-radius:2mm;padding:2mm 4mm;margin-top:2.5mm;font-size:calc(10px*var(--sf));line-height:1.5;column-count:3;column-gap:6mm;white-space:pre-line;}
     </style>
-    <div class="tt-print-page"><div class="tt-print-rotate">
+    <div class="tt-print-page" style="position:fixed;left:0;top:0;right:0;bottom:0;width:auto;height:auto;container-type:size;overflow:hidden;break-after:avoid;page-break-after:avoid;"><div class="tt-print-rotate" style="width:100vh;height:100vw;width:100cqh;height:100cqw;">
       <div class="sylp-pr">
+        ${logoSrc ? `<img class="sylp-pr-wm" src="${logoSrc}">` : ''}
         <div class="sylp-pr-head">
-          ${dmcLogo ? `<img class="sylp-pr-logo" src="${dmcLogo}">` : ''}
+          ${logoSrc ? `<img class="sylp-pr-logo" src="${logoSrc}">` : ''}
           <div>
             <div class="sylp-pr-school">${esc(school)}</div>
             <div class="sylp-pr-title">SYLLABUS GRADE ${esc(c)} Session ${esc(d.session)}</div>
@@ -15859,10 +16057,38 @@ function sylpPrint() {
         ${footer ? `<div class="sylp-pr-foot" dir="auto">${esc(footer)}</div>` : ''}
       </div>
     </div></div>`;
-  printAsA4(0);
+  // Shrink the text until the whole chart fits inside ONE landscape-on-A4 box (297 x 210 mm), so it never spills to a 2nd page.
+  try {
+    const pa = document.getElementById('print-area'), pr = pa.querySelector('.sylp-pr');
+    const keep = pa.getAttribute('style');
+    pa.style.cssText = 'display:block;position:absolute;left:-20000px;top:0;visibility:hidden;width:297mm;';
+    const rot = pa.querySelector('.tt-print-rotate'), pg = pa.querySelector('.tt-print-page');
+    const sv = [rot.getAttribute('style'), pg.getAttribute('style')];
+    pg.style.cssText = 'position:relative;width:279mm;height:210mm;';
+    rot.style.cssText = 'position:absolute;left:0;top:0;width:279mm;height:210mm;';
+    for (let f = 1; f >= 0.4; f -= 0.04) {
+      pr.style.setProperty('--sf', f.toFixed(2));
+      if (pr.scrollHeight <= pr.clientHeight + 1 && pr.scrollWidth <= pr.clientWidth + 1) break;
+    }
+    pg.setAttribute('style', sv[1] || ''); if (sv[0] == null) rot.removeAttribute('style'); else rot.setAttribute('style', sv[0]);
+    if (keep == null) pa.removeAttribute('style'); else pa.setAttribute('style', keep);
+  } catch (e) {}
+  sylpPrintFull();
+}
+// Real full-bleed A4: zero page margin (printAsA4(0) actually gives a 10 mm margin because 0 counts as "not set"),
+// so the chart fills the whole sheet edge to edge.
+function sylpPrintFull() {
+  const styleEl = document.createElement('style');
+  styleEl.id = 'print-pagesize-override';
+  styleEl.textContent = '@media print { @page{ size:A4 portrait; margin:0; } html,body{margin:0 !important;padding:0 !important;} }';
+  document.head.appendChild(styleEl);
+  const cleanup = () => { styleEl.remove(); window.removeEventListener('afterprint', cleanup); };
+  window.addEventListener('afterprint', cleanup);
+  window.print();
+  setTimeout(cleanup, 3000);
 }
 
-console.log('SchoolMS build: 2026-10-07-syllabus-monthwise-grid-money-round-single-table-reload-csp-blob-img-fix-daily-quiz-7am-latest-result-lightsync-staffreq-chat-voice-syllabus'); // bump this string on every deploy to verify (in browser console) which version is actually running
+console.log('SchoolMS build: 2026-10-08a-xlsx-lazy-load-fit-any-paper-print-logo-tint-watermark-fixed-text-editable-footer-single-syllabus-no-flicker-editable-headings-school-logo-no-legacy-syllabus-monthwise-grid-money-round-single-table-reload-csp-blob-img-fix-daily-quiz-7am-latest-result-lightsync-staffreq-chat-voice-syllabus'); // bump this string on every deploy to verify (in browser console) which version is actually running
 </script>
 </body>
 </html>
