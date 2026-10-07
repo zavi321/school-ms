@@ -250,6 +250,9 @@
       <input type="text" id="schoolAddress" placeholder="e.g. Martung, District Shangla, KPK">
       <label>School Phone</label>
       <input type="tel" id="schoolPhone" placeholder="e.g. 0346-1234567">
+      <label>School Website (QR only)</label>
+      <input type="text" id="schoolWebsite" placeholder="e.g. https://yourschool.edu.pk">
+      <p class="hint">Not printed on the card. It is added inside the QR code, so scanning shows the card data plus this link.</p>
       <p class="hint">Card colour is drawn automatically from the logo. Branding stays the same for every card you add.</p>
     </div>
 
@@ -306,7 +309,7 @@
 <script>
   // ---- PER-CLIENT SCHOOL CONFIG ----
   // Optional. Set once per deployed school; fields are then locked.
-  // window.SCHOOL_CONFIG = { name:'...', logo:'https://.../logo.png', address:'...', phone:'...' };
+  // window.SCHOOL_CONFIG = { name:'...', logo:'https://.../logo.png', address:'...', phone:'...', website:'https://...' };
 
   const $ = id => document.getElementById(id);
   const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -389,9 +392,17 @@
     return d;
   }
   // QR holds no CNIC or phone numbers.
+  // School website: goes inside the QR only (never drawn on the card).
+  function withWebsite(base){
+    let u = ($('schoolWebsite') && $('schoolWebsite').value || '').trim();
+    if(!u) return base;
+    if(!/^https?:\/\//i.test(u)) u = 'https://' + u;
+    return base + '\n' + u;
+  }
   function currentQRData(){
-    return [$('name').value, $('designation').value, $('staffId').value,
+    const base = [$('name').value, $('designation').value, $('staffId').value,
             $('qualification').value, $('schoolName').value].join(' | ') || 'teacher';
+    return withWebsite(base);
   }
   function currentData(){
     return {
@@ -558,7 +569,7 @@
     readImage(f, src => setLogo(src, false));
   });
   $('cnic').addEventListener('input', () => { $('cnic').value = fmtCnic($('cnic').value); });
-  ['name','designation','qualification','staffId','joining','cnic','contact','bloodGroup','schoolName','schoolAddress','schoolPhone']
+  ['name','designation','qualification','staffId','joining','cnic','contact','bloodGroup','schoolName','schoolAddress','schoolPhone','schoolWebsite']
     .forEach(id => $(id).addEventListener('input', renderLive));
 
 
@@ -568,6 +579,7 @@
     if(cfg.name){ $('schoolName').value = cfg.name; $('schoolName').readOnly = true; }
     if(cfg.address){ $('schoolAddress').value = cfg.address; $('schoolAddress').readOnly = true; }
     if(cfg.phone){ $('schoolPhone').value = cfg.phone; $('schoolPhone').readOnly = true; }
+    if(cfg.website){ $('schoolWebsite').value = cfg.website; $('schoolWebsite').readOnly = true; }
     if(cfg.logo){ setLogo(cfg.logo, true); $('schoolLogo').disabled = true; }
   })();
 
