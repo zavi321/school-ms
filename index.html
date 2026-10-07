@@ -975,6 +975,117 @@ body:not(.ur) .qpaper-print .pq-instruction::before{counter-increment:pqq;conten
      ============================================================================ -->
 
 <!-- ============================================================================
+     ONE-TIME SETUP for Lesson Plans - run once in the Supabase SQL editor. Safe to re-run.
+     Needs class_login_verify (already used by the Class Portal).
+
+  create table if not exists lesson_plans (
+    id uuid primary key default gen_random_uuid(),
+    owner_id uuid not null references auth.users(id) on delete cascade,
+    class_name text not null,
+    teacher_name text,
+    subject text not null,
+    plan_type text not null check (plan_type in ('weekly','monthly')),
+    period_start date not null,
+    content text not null,
+    status text not null default 'submitted' check (status in ('submitted','seen')),
+    principal_note text,
+    seen_at timestamptz,
+    created_at timestamptz not null default now(),
+    updated_at timestamptz not null default now(),
+    unique (owner_id, class_name, subject, plan_type, period_start)
+  );
+  alter table lesson_plans enable row level security;
+  drop policy if exists "lesson_plans_all_own" on lesson_plans;
+  create policy "lesson_plans_all_own" on lesson_plans for all using (owner_id = auth.uid()) with check (owner_id = auth.uid());
+
+  create or replace function lesson_plan_owner(p_school_code text, p_login_id text, p_password text)
+  returns table(owner_id uuid, class_name text, teacher_name text)
+  language plpgsql security definer set search_path = public as $$
+  declare r jsonb;
+  begin
+    select to_jsonb(c) into r from class_login_verify(p_school_code, p_login_id, p_password) as c limit 1;
+    if r is not null and jsonb_typeof(r) = 'array' then r := r -> 0; end if;
+    if r is null or r->>'owner_id' is null then return; end if;
+    return query select (r->>'owner_id')::uuid, (r->>'class_name')::text, (r->>'teacher_name')::text;
+  end $$;
+  revoke all on function lesson_plan_owner(text, text, text) from public, anon, authenticated;
+
+  create or replace function lesson_plan_save(p_school_code text, p_login_id text, p_password text, p_subject text, p_plan_type text, p_period_start date, p_content text)
+  returns boolean language plpgsql security definer set search_path = public as $$
+  declare o record;
+  begin
+    select * into o from lesson_plan_owner(p_school_code, p_login_id, p_password);
+    if o.owner_id is null then return false; end if;
+    if p_plan_type not in ('weekly','monthly') or coalesce(trim(p_subject),'') = '' or coalesce(trim(p_content),'') = '' then return false; end if;
+    insert into lesson_plans (owner_id, class_name, teacher_name, subject, plan_type, period_start, content)
+    values (o.owner_id, o.class_name, o.teacher_name, trim(p_subject), p_plan_type, p_period_start, p_content)
+    on conflict (owner_id, class_name, subject, plan_type, period_start)
+    do update set content = excluded.content, teacher_name = excluded.teacher_name, status = 'submitted', seen_at = null, updated_at = now();
+    return true;
+  end $$;
+
+  create or replace function lesson_plan_list(p_school_code text, p_login_id text, p_password text)
+  returns table(id uuid, subject text, plan_type text, period_start date, content text, status text, principal_note text, updated_at timestamptz)
+  language plpgsql security definer set search_path = public as $$
+  declare o record;
+  begin
+    select * into o from lesson_plan_owner(p_school_code, p_login_id, p_password);
+    if o.owner_id is null then return; end if;
+    return query select lp.id, lp.subject, lp.plan_type, lp.period_start, lp.content, lp.status, lp.principal_note, lp.updated_at
+      from lesson_plans lp where lp.owner_id = o.owner_id and lp.class_name = o.class_name
+      order by lp.period_start desc, lp.updated_at desc limit 60;
+  end $$;
+     ============================================================================ -->
+
+<!-- ============================================================================
+     ONE-TIME SETUP for Staff Leave & Salary Advance - run once in the Supabase SQL
+     editor. Safe to re-run.
+
+  create table if not exists staff_leaves (
+    id uuid primary key default gen_random_uuid(),
+    owner_id uuid not null references auth.users(id) on delete cascade,
+    teacher_id text not null,
+    from_date date not null,
+    to_date date not null,
+    days int not null default 1,
+    reason text,
+    status text not null default 'pending' check (status in ('pending','approved','rejected')),
+    decided_at timestamptz,
+    created_at timestamptz not null default now()
+  );
+  create table if not exists staff_advances (
+    id uuid primary key default gen_random_uuid(),
+    owner_id uuid not null references auth.users(id) on delete cascade,
+    teacher_id text not null,
+    amount numeric not null check (amount > 0),
+    given_date date not null default current_date,
+    recover_from text not null,
+    installment numeric,
+    note text,
+    created_at timestamptz not null default now()
+  );
+  create table if not exists staff_advance_recoveries (
+    id uuid primary key default gen_random_uuid(),
+    owner_id uuid not null references auth.users(id) on delete cascade,
+    advance_id uuid not null references staff_advances(id) on delete cascade,
+    teacher_id text not null,
+    month text not null,
+    amount numeric not null check (amount > 0),
+    created_at timestamptz not null default now(),
+    unique (advance_id, month)
+  );
+  alter table staff_leaves enable row level security;
+  alter table staff_advances enable row level security;
+  alter table staff_advance_recoveries enable row level security;
+  drop policy if exists "staff_leaves_all_own" on staff_leaves;
+  create policy "staff_leaves_all_own" on staff_leaves for all using (owner_id = auth.uid()) with check (owner_id = auth.uid());
+  drop policy if exists "staff_advances_all_own" on staff_advances;
+  create policy "staff_advances_all_own" on staff_advances for all using (owner_id = auth.uid()) with check (owner_id = auth.uid());
+  drop policy if exists "staff_adv_rec_all_own" on staff_advance_recoveries;
+  create policy "staff_adv_rec_all_own" on staff_advance_recoveries for all using (owner_id = auth.uid()) with check (owner_id = auth.uid());
+     ============================================================================ -->
+
+<!-- ============================================================================
      ONE-TIME SETUP for Activity Log — run this once in the Supabase SQL editor
      (Project → SQL Editor → New query → paste → Run). Safe to re-run; it only
      creates things if they don't already exist yet.
@@ -6314,6 +6425,9 @@ function tplTeachers() {
         <button class="icon-btn" title="${esc(t.classLoginsBtn)}" onclick="openClassLogins()">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#E4C765" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 11-7.778 7.778 5.5 5.5 0 017.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3"/></svg>
         </button>
+        <button class="icon-btn" title="${esc(qt('Leave & Advance', 'چھٹی اور ایڈوانس'))}" onclick="openStaffLeaves()">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#E4C765" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+        </button>
         <button class="icon-btn" onclick="openAddTeacher()">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#E4C765" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg>
         </button>
@@ -6544,6 +6658,7 @@ function updateAttendanceSalaryInfo(teacherId) {
     ? `${esc(t.present)}: ${r.present} · ${esc(t.leave)}: ${r.leave} · ${esc(t.absent)}: ${r.absent}${r.deductedDays > 0 ? ` (-${r.deductedDays}d)` : ''} — ${esc(t.suggestedSalary)}: ₨${fmt(r.amount)}`
     : esc(t.noAttendanceMarked);
   amountEl.value = r.hasRecords ? r.amount : (tc && tc.monthly_salary || '');
+  const advEl = document.getElementById('p-adv'); if (advEl) advEl.value = stfDueDeduction(teacherId, monthInput.value);
 }
 
 // ---------------- Teacher Attendance Register (month grid, Morning + Afternoon per date) ----------------
@@ -7257,6 +7372,10 @@ function openTeacherDetail(id) {
   const totalPaid = payments.reduce((a,b)=>a+Number(b.amount),0);
   const curMonth = monthKey();
   const attInfo = calcAttendanceSalary(id, curMonth);
+  if (!STF.loaded && !STF.loading && navigator.onLine) {
+    STF.loading = true;
+    stfLoad().then(() => { STF.loading = false; if (STF.loaded && document.getElementById('p-month')) openTeacherDetail(id); });
+  }
   showModal(tc.name, `
     <div style="font-size:12px;opacity:.7;margin-bottom:12px;display:flex;flex-wrap:wrap;gap:12px;">
       <span>${esc(t.subject)}: ${esc(tc.subject||'')}</span>
@@ -7264,7 +7383,11 @@ function openTeacherDetail(id) {
       <span>${esc(t.monthlySalary)}: ₨${fmt(tc.monthly_salary)}</span>
     </div>
     <div class="greenbox"><div class="lbl">${esc(t.totalSalariesAllTime)}</div><div class="val">₨${fmt(totalPaid)}</div></div>
-    <div class="section-title" style="margin-top:0;">${esc(t.payMonth)}</div>
+    <div class="flexgap" style="margin:10px 0;">
+       <button class="btn-ghost" onclick="openStaffAdvances('${id}')">💸 ${esc(qt('Advance / Loan', 'ایڈوانس / قرض'))}${(STF.loaded && !STF.err && stfTeacherOutstanding(id) > 0) ? ' · ₨' + fmt(stfTeacherOutstanding(id)) : ''}</button>
+       <button class="btn-ghost" onclick="openStaffLeaves('${id}')">🗓 ${esc(qt('Leave', 'چھٹی'))}</button>
+     </div>
+     <div class="section-title" style="margin-top:0;">${esc(t.payMonth)}</div>
     <div class="row2">
       <input id="p-month" type="month" value="${curMonth}" onchange="updateAttendanceSalaryInfo('${id}')">
       <label style="margin-bottom:0;"><span>${esc(t.baseSalary)}</span><input id="p-amount" type="number" placeholder="${esc(t.enterAmount)}" value="${attInfo.hasRecords ? attInfo.amount : (tc.monthly_salary||'')}"></label>
@@ -7274,6 +7397,7 @@ function openTeacherDetail(id) {
       <label style="margin-bottom:0;"><span>${esc(t.attendanceBonus)}</span><input id="p-bonus" type="number" value="0"></label>
       <label style="margin-bottom:0;"><span>${esc(t.extraClass)}</span><input id="p-extra" type="number" value="0"></label>
     </div>
+    ${stfAdvRowHtml(id, curMonth)}
     <div style="margin-top:8px;"><input id="p-date" type="date" value="${todayISO()}"></div>
     <div style="margin-top:8px;"><button class="btn-primary" onclick="guardedSubmit(this, ()=>submitSalaryPayment('${id}'))">+ ${esc(t.save)}</button></div>
     <div class="section-title">${esc(t.salaryLedger)}</div>
@@ -7281,8 +7405,9 @@ function openTeacherDetail(id) {
       ${payments.length===0 ? `<div style="padding:10px;text-align:center;font-size:12px;opacity:.5;">—</div>` :
         payments.map(p=>{
           const bonus = Number(p.attendance_bonus||0), extra = Number(p.extra_class_fee||0);
-          const breakdown = (bonus || extra)
-            ? `<div style="font-size:11px;opacity:.6;">${bonus?esc(t.attendanceBonus)+': ₨'+fmt(bonus)+'  ':''}${extra?esc(t.extraClass)+': ₨'+fmt(extra):''}</div>`
+          const ded = stfRecoveredIn(id, p.month);
+          const breakdown = (bonus || extra || ded)
+            ? `<div style="font-size:11px;opacity:.6;">${bonus?esc(t.attendanceBonus)+': ₨'+fmt(bonus)+'  ':''}${extra?esc(t.extraClass)+': ₨'+fmt(extra)+'  ':''}${ded?esc(qt('Advance recovered','ایڈوانس کٹوتی'))+': -₨'+fmt(ded):''}</div>`
             : '';
           return `
           <div class="ledger-row">
@@ -7311,8 +7436,16 @@ async function submitSalaryPayment(teacherId) {
   const bonus = Number(document.getElementById('p-bonus').value || 0);
   const extra = Number(document.getElementById('p-extra').value || 0);
   const date = dateVal('p-date');
-  const amount = base + bonus + extra;
-  if (!amount) return;
+  const gross = base + bonus + extra;
+  if (!gross) return;
+  const advEl = document.getElementById('p-adv');
+  let ded = advEl ? Math.max(0, Number(advEl.value || 0)) : 0;
+  ded = Math.min(ded, gross, stfTeacherOutstanding(teacherId, month));
+  if (advEl && !navigator.onLine && (ded > 0 || stfRecoveredIn(teacherId, month) > 0)) {
+    alert(qt('Advance recovery needs an internet connection. Connect and try again, or set the recovery to 0 to save offline.', 'ایڈوانس کی کٹوتی کے لیے انٹرنیٹ ضروری ہے۔ انٹرنیٹ سے جڑیں، یا آف لائن محفوظ کرنے کے لیے کٹوتی 0 کر دیں۔'));
+    return;
+  }
+  const amount = gross - ded;
 
   // Looked up from the local cache (works offline too) — doubles as the
   // "before" snapshot for conflict checks when the queue is later replayed.
@@ -7344,6 +7477,10 @@ async function submitSalaryPayment(teacherId) {
     }
   });
   if (!queued && reportSaveError(error)) return;
+  if (advEl && navigator.onLine) {
+    const rErr = await stfApplyRecovery(teacherId, month, ded);
+    if (rErr) alert(qt('Salary was saved, but the advance recovery could not be recorded (' + rErr.message + '). Open this teacher and save the same month again.', 'تنخواہ محفوظ ہو گئی، مگر ایڈوانس کی کٹوتی درج نہیں ہو سکی (' + rErr.message + ')۔ اسی استاد کو کھول کر وہی مہینہ دوبارہ محفوظ کریں۔'));
+  }
   const tc = DATA.teachers.find(x=>x.id===teacherId);
   // No longer skipped while queued offline — the sms: link opens the phone's
   // own Messages app with no internet needed at all (unlike the old wa.me link).
@@ -7351,6 +7488,7 @@ async function submitSalaryPayment(teacherId) {
     const parts = [`${t.baseSalary}: ${LANG==='ur'?'روپے':'Rs'} ${fmt(base)}`];
     if (bonus > 0) parts.push(`${t.attendanceBonus}: ${LANG==='ur'?'روپے':'Rs'} ${fmt(bonus)}`);
     if (extra > 0) parts.push(`${t.extraClass}: ${LANG==='ur'?'روپے':'Rs'} ${fmt(extra)}`);
+    if (ded > 0) parts.push(`${qt('Advance recovered','ایڈوانس کٹوتی')}: -${LANG==='ur'?'روپے':'Rs'} ${fmt(ded)}`);
     const breakdown = parts.map(p => `- ${p}`).join('\n');
     const msg = LANG==='ur'
       ? `السلام علیکم ${tc.name}،\nآپ کی تنخواہ ماہ ${monthLabel(month)} کے لیے ادا کر دی گئی ہے:\n${breakdown}\nکل: روپے ${fmt(amount)}\nشکریہ۔`
@@ -7363,6 +7501,12 @@ async function submitSalaryPayment(teacherId) {
 }
 async function deleteSalaryPayment(paymentId, teacherId) {
   const baseRow = DATA.salaryPayments.find(x => x.id === paymentId) || null;
+  if (baseRow && stfRecoveredIn(teacherId, baseRow.month) > 0) {
+    if (!navigator.onLine) { alert(qt('This salary included an advance recovery, so it can only be deleted while online.', 'اس تنخواہ میں ایڈوانس کی کٹوتی شامل تھی، اس لیے یہ صرف آن لائن حذف ہو سکتی ہے۔')); return; }
+    const { error: rErr } = await sb.from('staff_advance_recoveries').delete().eq('teacher_id', String(teacherId)).eq('month', baseRow.month);
+    if (reportSaveError(rErr)) return;
+    await stfLoad();
+  }
   const { queued } = await offlineWrite({
     table: 'salary_payments', action: 'delete', payload: null, id: paymentId, baseRow,
     run: () => sb.from('salary_payments').delete().eq('id', paymentId),
@@ -7377,7 +7521,8 @@ function printSalaryVoucher(paymentId, teacherId) {
   const p = teacherPayments(teacherId).find(x => x.id === paymentId);
   if (!tc || !p) return;
   const bonus = Number(p.attendance_bonus || 0), extra = Number(p.extra_class_fee || 0);
-  const base = Number(p.amount || 0) - bonus - extra;
+  const ded = stfRecoveredIn(teacherId, p.month);
+  const base = Number(p.amount || 0) + ded - bonus - extra;
   const voucherNo = 'SV-' + String(p.id).replace(/-/g, '').slice(0, 8).toUpperCase();
   const title = LANG === 'ur' ? 'تنخواہ ادائیگی واؤچر' : 'Salary Payment Voucher';
 
@@ -7392,6 +7537,7 @@ function printSalaryVoucher(paymentId, teacherId) {
         <tr><td class="lbl">${esc(t.baseSalary)}</td><td style="text-align:right;">₨${fmt(base)}</td></tr>
         ${bonus ? `<tr><td class="lbl">${esc(t.attendanceBonus)}</td><td style="text-align:right;">₨${fmt(bonus)}</td></tr>` : ''}
         ${extra ? `<tr><td class="lbl">${esc(t.extraClass)}</td><td style="text-align:right;">₨${fmt(extra)}</td></tr>` : ''}
+        ${ded ? `<tr><td class="lbl">${esc(LANG==='ur'?'ایڈوانس کٹوتی':'Advance Recovered')}</td><td style="text-align:right;">-₨${fmt(ded)}</td></tr>` : ''}
         <tr><td class="lbl">${esc(t.dateCol)}</td><td style="text-align:right;">${esc(fmtDate(p.pay_date)||'')}</td></tr>
         <tr class="total-row"><td>${esc(t.totalAmount)}</td><td style="text-align:right;">₨${fmt(p.amount)}</td></tr>
       </table>
@@ -7401,6 +7547,393 @@ function printSalaryVoucher(paymentId, teacherId) {
       </div>
     </div>`;
   window.print();
+}
+
+// ---------------- Lesson Plans (teacher writes in the Class Portal, principal reads in the Syllabus tab) ----------------
+// Needs the "ONE-TIME SETUP for Lesson Plans" SQL (top of this file). Online only.
+// Teachers have no real login, so they save/read through lesson_plan_save / lesson_plan_list, which re-check the
+// class login (class_login_verify) on every call - same idea as the diary. The principal reads the table directly.
+let LP_TYPE = 'weekly', LP_LIST = [];
+function lpMonday(iso) { const d = new Date(iso + 'T00:00:00'); d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); return localISO(d); }
+function lpPeriodLabel(type, start) {
+  start = String(start).slice(0, 10);
+  if (type === 'monthly') return monthLabel(start.slice(0, 7));
+  const a = new Date(start + 'T00:00:00'), b = new Date(a); b.setDate(b.getDate() + 5);
+  const f = d => d.toLocaleDateString(LANG === 'ur' ? 'ur-PK' : 'en-GB', { day: '2-digit', month: 'short' });
+  return f(a) + ' – ' + f(b) + ' ' + b.getFullYear();
+}
+const lpTypeLabel = tp => tp === 'monthly' ? qt('Monthly', 'ماہانہ') : qt('Weekly', 'ہفتہ وار');
+const lpStatusPill = st => `<span class="pill ${st === 'seen' ? 'good' : 'free'}">${esc(st === 'seen' ? qt('Seen', 'دیکھ لیا') : qt('Submitted', 'جمع شدہ'))}</span>`;
+function lpErrText(error) {
+  const m = (error && error.message) || '';
+  return /lesson_plan|does not exist|schema cache|function/i.test(m)
+    ? qt('Lesson plans are not set up yet. Ask the principal to run the "ONE-TIME SETUP for Lesson Plans" SQL in Supabase.', 'لیسن پلان ابھی سیٹ اپ نہیں ہوا۔ پرنسپل سے کہیں کہ سپابیس میں Lesson Plans والی SQL چلائیں۔')
+    : m;
+}
+
+// ----- Teacher side (Class Portal) -----
+function renderClassPortalLessonPlan() {
+  const session = getClassSession(), body = document.getElementById('class-portal-body');
+  if (!session || !body) return;
+  CLASS_PORTAL_SCREEN = 'lessonplan';
+  const subs = diarySubjectList().map(x => `<option value="${esc(x)}"></option>`).join('');
+  body.innerHTML = `
+    <button class="btn-ghost" style="padding:9px 14px;margin-bottom:10px;" onclick="CLASS_PORTAL_SCREEN='menu'; renderClassPortalMenu()">‹ ${esc(t.classPortalBackToMenu)}</button>
+    <h2 style="margin-top:0;">📝 ${esc(qt('Lesson Plan', 'لیسن پلان'))} — ${esc(session.className)}</h2>
+    <div style="display:flex;gap:8px;margin-bottom:12px;">
+      <button id="lp-t-weekly" style="flex:1;padding:10px;" onclick="lpSetType('weekly')">${esc(lpTypeLabel('weekly'))}</button>
+      <button id="lp-t-monthly" style="flex:1;padding:10px;" onclick="lpSetType('monthly')">${esc(lpTypeLabel('monthly'))}</button>
+    </div>
+    <div id="lp-period"></div>
+    <div class="field-box"><label><span>${esc(qt('Subject', 'مضمون'))}</span><input id="lp-subject" list="lp-subjects" autocomplete="off"><datalist id="lp-subjects">${subs}</datalist></label></div>
+    <div class="field-box"><label><span>${esc(qt('Plan (topics, activities, homework…)', 'پلان (ٹاپکس، سرگرمیاں، ہوم ورک…)'))}</span><textarea id="lp-content" rows="9" dir="auto" style="width:100%;border:none;padding:6px 0 0;font:inherit;font-size:14px;outline:none;resize:vertical;background:transparent;color:inherit;"></textarea></label></div>
+    <div id="lp-msg"></div>
+    <button class="btn-primary" onclick="guardedSubmit(this, lpSave)">${esc(qt('Submit to principal', 'پرنسپل کو بھیجیں'))}</button>
+    <div class="section-title">${esc(qt('My plans', 'میرے پلان'))}</div>
+    <div id="lp-mine" class="ledger"><div style="padding:10px;text-align:center;font-size:12px;opacity:.5;">…</div></div>`;
+  lpSetType(LP_TYPE);
+  lpLoadMine();
+}
+function lpSetType(tp) {
+  LP_TYPE = tp;
+  const w = document.getElementById('lp-t-weekly'), m = document.getElementById('lp-t-monthly'), box = document.getElementById('lp-period');
+  if (!w || !m || !box) return;
+  w.className = tp === 'weekly' ? 'btn-primary' : 'btn-ghost';
+  m.className = tp === 'monthly' ? 'btn-primary' : 'btn-ghost';
+  box.innerHTML = tp === 'weekly'
+    ? `<div class="field-box"><label><span>${esc(qt('Any day of that week', 'اس ہفتے کا کوئی بھی دن'))}</span><input id="lp-date" type="date" value="${todayISO()}" oninput="lpWeekHint()" onchange="lpWeekHint()"></label><div id="lp-hint" style="font-size:11px;opacity:.65;margin-top:4px;"></div></div>`
+    : `<div class="field-box"><label><span>${esc(qt('Month', 'مہینہ'))}</span><input id="lp-month" type="month" value="${monthKey()}"></label></div>`;
+  lpWeekHint();
+}
+function lpWeekHint() {
+  const h = document.getElementById('lp-hint'); if (!h) return;
+  h.textContent = lpPeriodLabel('weekly', lpMonday(dateVal('lp-date')));
+}
+async function lpLoadMine() {
+  const s = getClassSession(), box = document.getElementById('lp-mine'); if (!s || !box) return;
+  if (!navigator.onLine) { box.innerHTML = `<div class="err" style="padding:10px;">${esc(qt('You are offline.', 'آپ آف لائن ہیں۔'))}</div>`; return; }
+  const { data, error } = await sb.rpc('lesson_plan_list', { p_school_code: s.schoolCode, p_login_id: s.loginId, p_password: s.password });
+  if (error) { box.innerHTML = `<div class="err" style="padding:10px;">${esc(lpErrText(error))}</div>`; return; }
+  LP_LIST = data || [];
+  box.innerHTML = LP_LIST.length ? LP_LIST.map((r, i) => `
+    <div class="ledger-row" style="flex-direction:column;align-items:stretch;gap:6px;">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
+        <div><div style="font-size:14px;font-weight:600;">${esc(r.subject)}</div>
+          <div style="font-size:12px;opacity:.75;">${esc(lpTypeLabel(r.plan_type))} · ${esc(lpPeriodLabel(r.plan_type, r.period_start))}</div></div>
+        ${lpStatusPill(r.status)}
+      </div>
+      ${r.principal_note ? `<div dir="auto" style="font-size:12px;background:#FBF1DA;border-radius:8px;padding:8px;">💬 ${esc(r.principal_note)}</div>` : ''}
+      <button class="btn-ghost" style="padding:7px;font-size:12px;" onclick="lpEdit(${i})">✎ ${esc(qt('Edit', 'ترمیم'))}</button>
+    </div>`).join('') : `<div style="padding:10px;text-align:center;font-size:12px;opacity:.5;">—</div>`;
+}
+function lpEdit(i) {
+  const r = LP_LIST[i]; if (!r) return;
+  lpSetType(r.plan_type);
+  if (r.plan_type === 'weekly') { document.getElementById('lp-date').value = String(r.period_start).slice(0, 10); lpWeekHint(); }
+  else document.getElementById('lp-month').value = String(r.period_start).slice(0, 7);
+  document.getElementById('lp-subject').value = r.subject;
+  document.getElementById('lp-content').value = r.content;
+  window.scrollTo(0, 0);
+}
+async function lpSave() {
+  const s = getClassSession(), msg = document.getElementById('lp-msg'); if (!s || !msg) return;
+  if (!navigator.onLine) { msg.innerHTML = `<div class="err">${esc(qt('You are offline. Your text is still here - connect and press Submit again.', 'آپ آف لائن ہیں۔ آپ کا لکھا ہوا یہیں ہے - انٹرنیٹ سے جڑ کر دوبارہ بھیجیں۔'))}</div>`; return; }
+  const subject = (document.getElementById('lp-subject').value || '').trim();
+  const content = (document.getElementById('lp-content').value || '').trim();
+  if (!subject || !content) { msg.innerHTML = `<div class="err">${esc(qt('Please enter the subject and the plan.', 'براہ کرم مضمون اور پلان لکھیں۔'))}</div>`; return; }
+  const start = LP_TYPE === 'weekly' ? lpMonday(dateVal('lp-date')) : ((document.getElementById('lp-month').value || monthKey()) + '-01');
+  const { data, error } = await sb.rpc('lesson_plan_save', {
+    p_school_code: s.schoolCode, p_login_id: s.loginId, p_password: s.password,
+    p_subject: subject, p_plan_type: LP_TYPE, p_period_start: start, p_content: content
+  });
+  if (error) { msg.innerHTML = `<div class="err">${esc(lpErrText(error))}</div>`; return; }
+  if (data === false) { msg.innerHTML = `<div class="err">${esc(qt('Could not verify this class login. Please log in again.', 'اس کلاس لاگ ان کی تصدیق نہیں ہو سکی۔ دوبارہ لاگ ان کریں۔'))}</div>`; return; }
+  msg.innerHTML = `<div class="ok">${esc(qt('Submitted. The principal can now see it.', 'جمع ہو گیا۔ اب پرنسپل دیکھ سکتے ہیں۔'))}</div>`;
+  document.getElementById('lp-content').value = '';
+  lpLoadMine();
+}
+
+// ----- Principal side -----
+const LPV = { rows: [], cls: '', type: '', st: '', err: false, loaded: false };
+async function openLessonPlans(useCache) {
+  showModal(qt('Lesson Plans', 'لیسن پلان'), `<div id="lpv-body" style="padding:10px 0;text-align:center;opacity:.6;">…</div>`);
+  if (!useCache || !LPV.loaded) {
+    if (!navigator.onLine) { document.getElementById('lpv-body').innerHTML = `<div class="err">${esc(qt('You are offline. Connect to the internet to view lesson plans.', 'آپ آف لائن ہیں۔ لیسن پلان دیکھنے کے لیے انٹرنیٹ سے جڑیں۔'))}</div>`; return; }
+    const { data, error } = await sb.from('lesson_plans').select('*').order('updated_at', { ascending: false }).limit(300);
+    LPV.err = !!error; LPV.rows = data || []; LPV.loaded = !error;
+  }
+  lpvRender();
+}
+function lpvRender() {
+  const body = document.getElementById('lpv-body'); if (!body) return;
+  if (LPV.err) { body.innerHTML = `<div class="err" style="text-align:left;">${esc(qt('Lesson plan table is not set up yet. Run the "ONE-TIME SETUP for Lesson Plans" SQL (top of index.html) in Supabase.', 'لیسن پلان کا ٹیبل ابھی نہیں بنا۔ index.html کے شروع میں دی گئی Lesson Plans والی SQL سپابیس میں چلائیں۔'))}</div>`; return; }
+  const classes = Array.from(new Set(LPV.rows.map(r => r.class_name))).sort();
+  const rows = LPV.rows.filter(r => (!LPV.cls || r.class_name === LPV.cls) && (!LPV.type || r.plan_type === LPV.type) && (!LPV.st || r.status === LPV.st));
+  const unseen = LPV.rows.filter(r => r.status !== 'seen').length;
+  const sel = (key, opts) => `<select style="flex:1;min-width:0;" onchange="LPV.${key}=this.value;lpvRender()">${opts.map(o => `<option value="${esc(o[0])}" ${LPV[key] === o[0] ? 'selected' : ''}>${esc(o[1])}</option>`).join('')}</select>`;
+  body.style.cssText = '';
+  body.innerHTML = `
+    <div class="greenbox"><div class="lbl">${esc(qt('Not yet seen', 'ابھی نہیں دیکھے'))}</div><div class="val">${unseen}</div></div>
+    <div style="display:flex;gap:6px;margin:10px 0;">
+      ${sel('cls', [['', qt('All classes', 'تمام کلاسیں')]].concat(classes.map(c => [c, c])))}
+      ${sel('type', [['', qt('All types', 'تمام اقسام')], ['weekly', lpTypeLabel('weekly')], ['monthly', lpTypeLabel('monthly')]])}
+      ${sel('st', [['', qt('All', 'سب')], ['submitted', qt('Not seen', 'نہیں دیکھے')], ['seen', qt('Seen', 'دیکھ لیے')]])}
+    </div>
+    ${rows.length ? rows.map(r => `
+      <button class="card-btn" onclick="openLessonPlan('${r.id}')">
+        <div><div class="nm">${esc(r.class_name)} · ${esc(r.subject)}</div>
+          <div class="sub">${esc(lpTypeLabel(r.plan_type))} · ${esc(lpPeriodLabel(r.plan_type, r.period_start))}${r.teacher_name ? ' · ' + esc(r.teacher_name) : ''}</div></div>
+        ${lpStatusPill(r.status)}
+      </button>`).join('') : `<div class="empty">${esc(qt('No lesson plans yet.', 'ابھی کوئی لیسن پلان نہیں۔'))}</div>`}`;
+}
+function openLessonPlan(id) {
+  const r = LPV.rows.find(x => x.id === id); if (!r) return;
+  showModal(r.class_name + ' · ' + r.subject, `
+    <div style="font-size:12px;opacity:.7;margin-bottom:8px;">${esc(lpTypeLabel(r.plan_type))} · ${esc(lpPeriodLabel(r.plan_type, r.period_start))}${r.teacher_name ? ' · ' + esc(r.teacher_name) : ''}<br>${esc(qt('Updated', 'اپ ڈیٹ'))}: ${esc(fmtDate(String(r.updated_at).slice(0, 10)))}</div>
+    <div dir="auto" style="white-space:pre-wrap;background:#fff;border:1px solid var(--line);border-radius:10px;padding:12px;font-size:14px;line-height:1.7;">${esc(r.content)}</div>
+    <div class="field-box" style="margin-top:12px;"><label><span>${esc(qt("Principal's note (optional)", 'پرنسپل کا نوٹ (اختیاری)'))}</span><input id="lpv-note" dir="auto" value="${esc(r.principal_note || '')}"></label></div>
+    <button class="btn-primary" onclick="guardedSubmit(this, ()=>lpvMarkSeen('${r.id}'))">✓ ${esc(r.status === 'seen' ? qt('Save note', 'نوٹ محفوظ کریں') : qt('Mark as seen', 'دیکھ لیا'))}</button>
+    <button class="btn-ghost" style="width:100%;margin-top:8px;" onclick="openLessonPlans(true)">← ${esc(qt('All lesson plans', 'تمام لیسن پلان'))}</button>`);
+}
+async function lpvMarkSeen(id) {
+  if (!navigator.onLine) { alert(qt('You are offline.', 'آپ آف لائن ہیں۔')); return; }
+  const note = (document.getElementById('lpv-note').value || '').trim() || null;
+  const patch = { status: 'seen', seen_at: new Date().toISOString(), principal_note: note };
+  const { error } = await sb.from('lesson_plans').update(patch).eq('id', id).eq('owner_id', CURRENT_USER.id);
+  if (reportSaveError(error)) return;
+  const r = LPV.rows.find(x => x.id === id); if (r) Object.assign(r, patch);
+  openLessonPlans(true);
+}
+
+// ---------------- Staff Leave & Salary Advance ----------------
+// Leave: requests are approved here; approved working days are written into the Teacher
+// Attendance register as "leave", so they are never counted as absences (no deduction).
+// Advance: recorded per teacher, then recovered from salary. The salary form suggests the
+// amount due for that month and saves NET (salary - recovery) as the salary payment.
+// Needs the "ONE-TIME SETUP for Staff Leave & Salary Advance" SQL (top of this file). Online only.
+const STF = { leaves: [], advances: [], recoveries: [], loaded: false, err: false, loading: false };
+let STF_LV_TEACHER = '', STF_AD_TEACHER = '';
+async function stfLoad() {
+  if (!navigator.onLine || !CURRENT_USER) return;
+  try {
+    const [l, a, r] = await Promise.all([
+      sb.from('staff_leaves').select('*').order('created_at', { ascending: false }),
+      sb.from('staff_advances').select('*').order('given_date', { ascending: false }),
+      sb.from('staff_advance_recoveries').select('*')
+    ]);
+    STF.err = !!(l.error || a.error || r.error);
+    STF.leaves = l.data || []; STF.advances = a.data || []; STF.recoveries = r.data || [];
+    STF.loaded = true;
+  } catch (e) { STF.loaded = false; }
+}
+function stfNote() {
+  if (STF.err) return `<div class="err">${esc(qt('Leave & Advance tables are not set up yet. Run the "ONE-TIME SETUP for Staff Leave & Salary Advance" SQL (top of index.html) in Supabase.', 'چھٹی اور ایڈوانس کے ٹیبل ابھی نہیں بنے۔ index.html کے شروع میں دی گئی Staff Leave & Salary Advance والی SQL سپابیس میں چلائیں۔'))}</div>`;
+  if (!STF.loaded) return `<div class="err">${esc(qt('You are offline. Connect to the internet to use this.', 'آپ آف لائن ہیں۔ اسے استعمال کرنے کے لیے انٹرنیٹ سے جڑیں۔'))}</div>`;
+  return '';
+}
+const stfName = id => { const tc = DATA.teachers.find(x => String(x.id) === String(id)); return tc ? tc.name : '—'; };
+const stfTeacherOpts = sel => DATA.teachers.map(tc => `<option value="${esc(tc.id)}" ${String(tc.id) === String(sel) ? 'selected' : ''}>${esc(tc.name)}</option>`).join('');
+function stfNextMonth() { const d = new Date(); return monthKey(new Date(d.getFullYear(), d.getMonth() + 1, 1)); }
+function stfDatesBetween(a, b) {
+  const out = [], d = new Date(a + 'T00:00:00'), e = new Date(b + 'T00:00:00');
+  while (d <= e && out.length < 366) { out.push(localISO(d)); d.setDate(d.getDate() + 1); }
+  return out;
+}
+function stfTeacherAdvances(teacherId) { return STF.advances.filter(a => String(a.teacher_id) === String(teacherId)); }
+function stfRecovered(advId, exceptMonth) { return STF.recoveries.filter(r => r.advance_id === advId && r.month !== exceptMonth).reduce((s, r) => s + Number(r.amount || 0), 0); }
+function stfOutstanding(a, exceptMonth) { return Math.max(0, Math.round((Number(a.amount || 0) - stfRecovered(a.id, exceptMonth)) * 100) / 100); }
+function stfTeacherOutstanding(teacherId, exceptMonth) { return stfTeacherAdvances(teacherId).reduce((s, a) => s + stfOutstanding(a, exceptMonth), 0); }
+function stfRecoveredIn(teacherId, month) { return STF.recoveries.filter(r => String(r.teacher_id) === String(teacherId) && r.month === month).reduce((s, r) => s + Number(r.amount || 0), 0); }
+// What should be cut from this month's salary: every advance whose recovery month has arrived,
+// limited by its per-month instalment when one was set.
+function stfDueDeduction(teacherId, month) {
+  let total = 0;
+  stfTeacherAdvances(teacherId).filter(a => String(a.recover_from) <= month).forEach(a => {
+    const out = stfOutstanding(a, month);
+    total += a.installment ? Math.min(out, Number(a.installment)) : out;
+  });
+  return Math.round(total * 100) / 100;
+}
+function stfAdvRowHtml(teacherId, month) {
+  if (!STF.loaded || STF.err) return '';
+  const out = stfTeacherOutstanding(teacherId, month);
+  if (out <= 0 && stfRecoveredIn(teacherId, month) <= 0) return '';
+  return `<div class="field-box" style="margin-top:8px;margin-bottom:0;"><label><span>${esc(qt('Advance recovery — outstanding', 'ایڈوانس کی کٹوتی — باقی'))} ₨${fmt(out)}</span><input id="p-adv" type="number" min="0" value="${stfDueDeduction(teacherId, month)}"></label></div>`;
+}
+// Spreads the recovery over the teacher's advances (oldest first) and replaces whatever was
+// recorded for that month before, so saving the same month twice never double-counts.
+async function stfApplyRecovery(teacherId, month, ded) {
+  const tid = String(teacherId);
+  const mine = STF.recoveries.filter(r => String(r.teacher_id) === tid && r.month === month);
+  let left = ded; const rows = [];
+  const advs = stfTeacherAdvances(tid).slice().sort((a, b) => String(a.given_date).localeCompare(String(b.given_date)));
+  for (const a of advs) {
+    if (left <= 0) break;
+    const take = Math.round(Math.min(stfOutstanding(a, month), left) * 100) / 100;
+    if (take > 0) { rows.push({ owner_id: CURRENT_USER.id, advance_id: a.id, teacher_id: tid, month, amount: take }); left -= take; }
+  }
+  if (mine.length) { const r = await sb.from('staff_advance_recoveries').delete().in('id', mine.map(x => x.id)); if (r.error) return r.error; }
+  if (rows.length) { const r = await sb.from('staff_advance_recoveries').insert(rows); if (r.error) return r.error; }
+  await stfLoad();
+  return null;
+}
+
+// ----- Leave requests -----
+async function openStaffLeaves(teacherId) {
+  if (navigator.onLine) await stfLoad();
+  STF_LV_TEACHER = teacherId ? String(teacherId) : '';
+  const only = x => !STF_LV_TEACHER || String(x.teacher_id) === STF_LV_TEACHER;
+  const pending = STF.leaves.filter(x => only(x) && x.status === 'pending');
+  const history = STF.leaves.filter(x => only(x) && x.status !== 'pending').slice(0, 15);
+  const yr = String(new Date().getFullYear());
+  const yearDays = STF.leaves.filter(x => only(x) && x.status === 'approved' && String(x.from_date).slice(0, 4) === yr).reduce((s, x) => s + Number(x.days || 0), 0);
+  const pill = st => `<span class="pill ${st === 'approved' ? 'good' : st === 'rejected' ? 'bad' : 'free'}">${esc(st === 'approved' ? qt('Approved', 'منظور') : st === 'rejected' ? qt('Rejected', 'مسترد') : qt('Pending', 'زیر غور'))}</span>`;
+  const row = (lv, actions) => `<div class="ledger-row" style="flex-direction:column;align-items:stretch;gap:8px;">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
+        <div>
+          <div style="font-size:14px;font-weight:600;">${esc(stfName(lv.teacher_id))}</div>
+          <div style="font-size:12px;opacity:.75;">${esc(fmtDate(lv.from_date))}${lv.to_date !== lv.from_date ? ' → ' + esc(fmtDate(lv.to_date)) : ''} · ${esc(String(lv.days))} ${esc(qt('day(s)', 'دن'))}</div>
+          ${lv.reason ? `<div style="font-size:11px;opacity:.6;">${esc(lv.reason)}</div>` : ''}
+        </div>
+        ${pill(lv.status)}
+      </div>${actions}</div>`;
+  const pendActions = lv => `<div style="display:flex;gap:8px;">
+      <button class="btn-primary" style="flex:1;padding:8px;" onclick="guardedSubmit(this, ()=>stfDecideLeave('${lv.id}','approved'))">${esc(qt('Approve', 'منظور'))}</button>
+      <button class="btn-ghost" style="flex:1;padding:8px;" onclick="guardedSubmit(this, ()=>stfDecideLeave('${lv.id}','rejected'))">${esc(qt('Reject', 'مسترد'))}</button>
+    </div>`;
+  const ok = STF.loaded && !STF.err;
+  const form = !ok ? '' : `
+    <div class="field-box"><label><span>${esc(qt('Teacher', 'استاد'))}</span><select id="sl-teacher">${stfTeacherOpts(STF_LV_TEACHER)}</select></label></div>
+    <div class="row2">
+      <label><span>${esc(qt('From', 'سے'))}</span><input id="sl-from" type="date" value="${todayISO()}"></label>
+      <label><span>${esc(qt('To', 'تک'))}</span><input id="sl-to" type="date" value="${todayISO()}"></label>
+    </div>
+    <div class="field-box"><label><span>${esc(qt('Reason (optional)', 'وجہ (اختیاری)'))}</span><input id="sl-reason"></label></div>
+    <button class="btn-primary" onclick="guardedSubmit(this, stfAddLeave)">+ ${esc(qt('Add leave request', 'چھٹی کی درخواست شامل کریں'))}</button>`;
+  showModal(qt('Staff Leave', 'اسٹاف کی چھٹی') + (STF_LV_TEACHER ? ' — ' + stfName(STF_LV_TEACHER) : ''), `
+    ${stfNote()}
+    ${ok && STF_LV_TEACHER ? `<div class="greenbox"><div class="lbl">${esc(qt('Approved leave this year', 'اس سال منظور شدہ چھٹیاں'))}</div><div class="val">${yearDays} ${esc(qt('day(s)', 'دن'))}</div></div>` : ''}
+    ${form}
+    ${ok ? `<div class="section-title">${esc(qt('Pending requests', 'زیر غور درخواستیں'))}</div>
+      <div class="ledger">${pending.length ? pending.map(lv => row(lv, pendActions(lv))).join('') : `<div style="padding:10px;text-align:center;font-size:12px;opacity:.5;">—</div>`}</div>
+      ${history.length ? `<div class="section-title">${esc(qt('Recent decisions', 'حالیہ فیصلے'))}</div><div class="ledger">${history.map(lv => row(lv, '')).join('')}</div>` : ''}` : ''}`);
+}
+async function stfAddLeave() {
+  if (!navigator.onLine) { alert(qt('You are offline.', 'آپ آف لائن ہیں۔')); return; }
+  const tid = document.getElementById('sl-teacher').value;
+  const from = dateVal('sl-from'), to = dateVal('sl-to');
+  if (!tid) return;
+  if (to < from) { alert(qt('"To" date cannot be before "From" date.', '"تک" کی تاریخ "سے" سے پہلے نہیں ہو سکتی۔')); return; }
+  const days = stfDatesBetween(from, to).filter(d => !isHoliday(d)).length;
+  if (!days) { alert(qt('All these dates are Sundays or holidays.', 'یہ تمام تاریخیں اتوار یا چھٹی کے دن ہیں۔')); return; }
+  const { error } = await sb.from('staff_leaves').insert({
+    owner_id: CURRENT_USER.id, teacher_id: String(tid), from_date: from, to_date: to, days,
+    reason: (document.getElementById('sl-reason').value || '').trim() || null
+  });
+  if (reportSaveError(error)) return;
+  await openStaffLeaves(STF_LV_TEACHER);
+}
+async function stfDecideLeave(id, decision) {
+  if (!navigator.onLine) { alert(qt('You are offline.', 'آپ آف لائن ہیں۔')); return; }
+  const lv = STF.leaves.find(x => x.id === id);
+  if (!lv || lv.status !== 'pending') { await openStaffLeaves(STF_LV_TEACHER); return; }
+  let skipped = 0;
+  if (decision === 'approved') {
+    const dates = stfDatesBetween(lv.from_date, lv.to_date).filter(d => !isHoliday(d));
+    const { data: ex, error: e0 } = await sb.from('teacher_attendance').select('*').eq('teacher_id', lv.teacher_id).gte('date', lv.from_date).lte('date', lv.to_date);
+    if (reportSaveError(e0)) return;
+    const exMap = new Map((ex || []).map(r => [r.date, r]));
+    const rows = [];
+    dates.forEach(d => {
+      const r = exMap.get(d);
+      if (r && r.status === 'present') { skipped++; return; } // already worked that day: leave it alone
+      rows.push({
+        id: r ? r.id : (crypto.randomUUID ? crypto.randomUUID() : `local-${Date.now()}-${rows.length}`),
+        owner_id: CURRENT_USER.id, teacher_id: lv.teacher_id, date: d, status_am: 'leave', status_pm: 'leave', status: 'leave'
+      });
+    });
+    if (rows.length) {
+      const { error: e1 } = await sb.from('teacher_attendance').upsert(rows, { onConflict: 'teacher_id,date' });
+      if (reportSaveError(e1)) return;
+      rows.forEach(p => {
+        const idx = DATA.teacherAttendance.findIndex(x => String(x.teacher_id) === String(p.teacher_id) && x.date === p.date);
+        if (idx >= 0) DATA.teacherAttendance[idx] = { ...DATA.teacherAttendance[idx], ...p }; else DATA.teacherAttendance.push(p);
+        try { idbPutRow('teacher_attendance', p); } catch (e) {}
+      });
+    }
+  }
+  const { error: e2 } = await sb.from('staff_leaves').update({ status: decision, decided_at: new Date().toISOString() }).eq('id', id).eq('owner_id', CURRENT_USER.id);
+  if (reportSaveError(e2)) return;
+  await stfLoad();
+  if (skipped) alert(qt(`${skipped} day(s) already marked Present were left unchanged.`, `${skipped} دن پہلے سے حاضر لگے تھے، انہیں تبدیل نہیں کیا گیا۔`));
+  await openStaffLeaves(STF_LV_TEACHER);
+}
+
+// ----- Advances / loans -----
+async function openStaffAdvances(teacherId) {
+  if (navigator.onLine) await stfLoad();
+  STF_AD_TEACHER = teacherId ? String(teacherId) : '';
+  const list = STF.advances.filter(a => !STF_AD_TEACHER || String(a.teacher_id) === STF_AD_TEACHER);
+  const outTotal = list.reduce((s, a) => s + stfOutstanding(a), 0);
+  const row = a => {
+    const rec = stfRecovered(a.id), out = stfOutstanding(a);
+    return `<div class="ledger-row" style="flex-direction:column;align-items:stretch;gap:4px;">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
+        <div>
+          <div style="font-size:14px;font-weight:600;">${esc(stfName(a.teacher_id))}</div>
+          <div style="font-size:12px;opacity:.75;">₨${fmt(a.amount)} · ${esc(fmtDate(a.given_date))}</div>
+          <div style="font-size:11px;opacity:.6;">${esc(qt('Recover from', 'کٹوتی کا آغاز'))}: ${esc(monthLabel(a.recover_from))}${a.installment ? ' · ' + esc(qt('per month', 'ماہانہ')) + ' ₨' + fmt(a.installment) : ''}${a.note ? ' · ' + esc(a.note) : ''}</div>
+        </div>
+        <div style="text-align:right;white-space:nowrap;">
+          <span class="pill ${out > 0 ? 'bad' : 'good'}">${out > 0 ? '₨' + fmt(out) + ' ' + esc(qt('left', 'باقی')) : esc(qt('Cleared', 'ادا'))}</span>
+          ${rec <= 0 ? `<button class="del-btn" onclick="stfDeleteAdvance('${a.id}')">✕</button>` : ''}
+        </div>
+      </div></div>`;
+  };
+  const ok = STF.loaded && !STF.err;
+  const form = !ok ? '' : `
+    <div class="field-box"><label><span>${esc(qt('Teacher', 'استاد'))}</span><select id="sa-teacher">${stfTeacherOpts(STF_AD_TEACHER)}</select></label></div>
+    <div class="row2">
+      <label><span>${esc(qt('Amount (Rs)', 'رقم (روپے)'))}</span><input id="sa-amount" type="number" min="0"></label>
+      <label><span>${esc(qt('Date given', 'تاریخ'))}</span><input id="sa-date" type="date" value="${todayISO()}"></label>
+    </div>
+    <div class="row2">
+      <label><span>${esc(qt('Recover from month', 'کٹوتی کس مہینے سے'))}</span><input id="sa-from" type="month" value="${stfNextMonth()}"></label>
+      <label><span>${esc(qt('Max per month (optional)', 'ماہانہ زیادہ سے زیادہ (اختیاری)'))}</span><input id="sa-inst" type="number" min="0"></label>
+    </div>
+    <div class="field-box"><label><span>${esc(qt('Note (optional)', 'نوٹ (اختیاری)'))}</span><input id="sa-note"></label></div>
+    <button class="btn-primary" onclick="guardedSubmit(this, stfAddAdvance)">+ ${esc(qt('Give advance', 'ایڈوانس دیں'))}</button>`;
+  showModal(qt('Salary Advance / Loan', 'تنخواہ ایڈوانس / قرض') + (STF_AD_TEACHER ? ' — ' + stfName(STF_AD_TEACHER) : ''), `
+    ${stfNote()}
+    ${ok ? `<div class="greenbox"><div class="lbl">${esc(qt('Outstanding to recover', 'وصول طلب رقم'))}</div><div class="val">₨${fmt(outTotal)}</div></div>` : ''}
+    ${form}
+    ${ok ? `<div class="section-title">${esc(qt('Advances', 'ایڈوانس'))}</div>
+      <div class="ledger">${list.length ? list.map(row).join('') : `<div style="padding:10px;text-align:center;font-size:12px;opacity:.5;">—</div>`}</div>` : ''}`);
+}
+async function stfAddAdvance() {
+  if (!navigator.onLine) { alert(qt('You are offline.', 'آپ آف لائن ہیں۔')); return; }
+  const tid = document.getElementById('sa-teacher').value;
+  const amount = Number(document.getElementById('sa-amount').value || 0);
+  const given = dateVal('sa-date');
+  const from = (document.getElementById('sa-from').value || '').trim() || stfNextMonth();
+  const inst = Number(document.getElementById('sa-inst').value || 0);
+  const note = (document.getElementById('sa-note').value || '').trim();
+  if (!tid || !(amount > 0)) { alert(qt('Please choose a teacher and enter the amount.', 'براہ کرم استاد منتخب کریں اور رقم لکھیں۔')); return; }
+  const { error } = await sb.from('staff_advances').insert({
+    owner_id: CURRENT_USER.id, teacher_id: String(tid), amount, given_date: given, recover_from: from,
+    installment: inst > 0 ? inst : null, note: note || null
+  });
+  if (reportSaveError(error)) return;
+  await stfLoad();
+  await openStaffAdvances(STF_AD_TEACHER);
+}
+async function stfDeleteAdvance(id) {
+  if (!navigator.onLine) { alert(qt('You are offline.', 'آپ آف لائن ہیں۔')); return; }
+  if (!confirm(qt('Delete this advance?', 'یہ ایڈوانس حذف کریں؟'))) return;
+  const { error } = await sb.from('staff_advances').delete().eq('id', id).eq('owner_id', CURRENT_USER.id);
+  if (reportSaveError(error)) return;
+  await stfLoad();
+  await openStaffAdvances(STF_AD_TEACHER);
 }
 
 // ---------------- Finance ----------------
@@ -12284,6 +12817,7 @@ async function doDelete(kind, id) {
     // Offline-aware: queues the teacher's salary_payments + attendance deletes
     // and the teacher delete itself; all applied to the local cache immediately
     // (mirrors the student/fee_payments cascade above).
+    try { if (navigator.onLine) { await sb.from('staff_advances').delete().eq('teacher_id', String(id)); await sb.from('staff_leaves').delete().eq('teacher_id', String(id)); STF.loaded = false; } } catch (e) {}
     const relatedSalary = DATA.salaryPayments.filter(x => x.teacher_id === id);
     for (const sp of relatedSalary) {
       const r1 = await offlineWrite({
@@ -13245,6 +13779,7 @@ function renderClassPortalMenu() {
     <button class="btn-primary" style="width:100%;margin-bottom:10px;" onclick="renderClassPortalRegister()">${esc(t.classPortalMenuRegister)}</button>
     <button class="btn-primary" style="width:100%;margin-bottom:10px;" onclick="renderClassPortalMarks()">${esc(t.classPortalMenuMarks)}</button>
     <button class="btn-primary" style="width:100%;margin-bottom:10px;" onclick="renderClassPortalMarksView()">${esc(t.classPortalMenuMarksView)}</button>
+    <button class="btn-primary" style="width:100%;margin-bottom:10px;" onclick="renderClassPortalLessonPlan()">📝 ${esc(qt('Lesson Plan', 'لیسن پلان'))}</button>
     <button class="btn-primary" style="width:100%;margin-bottom:10px;" onclick="noticeOpenScreen('class')">📢 ${esc(qt('Notice Board', 'نوٹس بورڈ'))}</button>
     <button class="btn-primary" style="width:100%;margin-bottom:10px;" onclick="renderClassPortalParentMsgs()">📩 ${esc(qt('Parent Messages', 'والدین کے پیغامات'))}<span id="cp-pm-badge"></span></button>
     <button class="btn-primary" style="width:100%;margin-bottom:10px;" onclick="chOpen('teacher')">💬 ${esc(qt('Chat & voice message', 'چیٹ اور وائس میسج'))}</button>
@@ -15543,6 +16078,7 @@ function tplSyllabus() {
     </style>
     <h2>${esc(qt('Syllabus', 'نصاب'))}</h2>
     <p class="desc">${esc(qt('Month-wise syllabus for each class — same layout as the printed syllabus chart.', 'ہر کلاس کا ماہ وار نصاب — پرنٹ شدہ نصاب چارٹ جیسا ہی۔'))}</p>
+    <button class="btn-ghost" style="width:100%;margin-bottom:12px;" onclick="openLessonPlans()">📝 ${esc(qt('Teachers\' Lesson Plans', 'اساتذہ کے لیسن پلان'))}</button>
     <div id="sylp-box"></div>`;
 }
 
@@ -16088,7 +16624,7 @@ function sylpPrintFull() {
   setTimeout(cleanup, 3000);
 }
 
-console.log('SchoolMS build: 2026-10-08a-xlsx-lazy-load-fit-any-paper-print-logo-tint-watermark-fixed-text-editable-footer-single-syllabus-no-flicker-editable-headings-school-logo-no-legacy-syllabus-monthwise-grid-money-round-single-table-reload-csp-blob-img-fix-daily-quiz-7am-latest-result-lightsync-staffreq-chat-voice-syllabus'); // bump this string on every deploy to verify (in browser console) which version is actually running
+console.log('SchoolMS build: 2026-10-08c-lesson-plan-staff-leave-advance-xlsx-lazy-load-fit-any-paper-print-logo-tint-watermark-fixed-text-editable-footer-single-syllabus-no-flicker-editable-headings-school-logo-no-legacy-syllabus-monthwise-grid-money-round-single-table-reload-csp-blob-img-fix-daily-quiz-7am-latest-result-lightsync-staffreq-chat-voice-syllabus'); // bump this string on every deploy to verify (in browser console) which version is actually running
 </script>
 </body>
 </html>
