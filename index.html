@@ -732,6 +732,44 @@ html, body{overscroll-behavior:none;}
     .cc-foot .box .line{border-bottom:1px solid #333;margin-bottom:7px;height:30px;}
     .cc-foot .box.seal .line{border-bottom-style:dashed;}
   }
+  /* ---- Exam Date Sheet & Roll Number Slips ---- */
+  .ds-btns{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0 0;}
+  .ds-btns button{flex:1 1 150px;}
+  .ds-warn{background:#FFF4E0;border:1px solid #E8C97A;border-radius:10px;padding:9px 11px;font-size:12px;margin:0 0 10px;line-height:1.5;}
+
+  /* Printed roll number slips: 4 per A4 page (2 x 2), cut along the dashed lines */
+  .rs-page{width:100%;height:279mm;display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;break-after:page;page-break-after:always;overflow:hidden;font-family:Inter,'Noto Nastaliq Urdu',sans-serif;color:#1C2530;}
+  .rs-page:last-child{break-after:auto;page-break-after:auto;}
+  .rs-slip,.rs-slip *{-webkit-print-color-adjust:exact;print-color-adjust:exact;}
+  .rs-slip{box-sizing:border-box;border:1px dashed #888;padding:2.5mm;overflow:hidden;display:flex;font-size:10pt;}
+  .rs-card{flex:1;min-height:0;display:flex;flex-direction:column;border:.5mm solid #C9A227;border-radius:2.5mm;overflow:hidden;background:#fff;}
+  .rs-head{display:flex;align-items:center;gap:3mm;background:#0F2740;padding:3mm 3.5mm;border-bottom:.7mm solid #C9A227;}
+  .rs-logo{height:13mm;width:13mm;object-fit:contain;background:#fff;border-radius:50%;padding:.8mm;flex-shrink:0;}
+  .rs-school{font-family:Fraunces,serif;font-weight:700;font-size:12pt;color:#fff;line-height:1.15;}
+  .rs-title{font-size:7.5pt;font-weight:700;letter-spacing:.12em;color:#E4C765;margin-top:1mm;text-transform:uppercase;}
+  .rs-body{flex:1;min-height:0;display:flex;flex-direction:column;padding:3mm 3.5mm 2.5mm;}
+  .rs-info{display:flex;gap:3mm;align-items:stretch;margin-bottom:3mm;}
+  .rs-who{flex:1;min-width:0;display:grid;grid-template-columns:1fr 1fr;gap:1.2mm 3mm;align-content:center;}
+  .rs-who div{display:flex;flex-direction:column;min-width:0;}
+  .rs-who .rs-full{grid-column:1 / -1;}
+  .rs-who span{font-size:6.5pt;letter-spacing:.08em;text-transform:uppercase;color:#8A6200;font-weight:600;}
+  .rs-who b{font-size:11pt;color:#0F2740;line-height:1.2;overflow-wrap:anywhere;}
+  .rs-roll{width:26mm;flex-shrink:0;background:#0F2740;border:.5mm solid #C9A227;border-radius:2.5mm;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:1.5mm;}
+  .rs-roll span{font-size:6.5pt;letter-spacing:.1em;text-transform:uppercase;color:#E4C765;}
+  .rs-roll b{font-family:Fraunces,serif;font-size:26pt;line-height:1.05;color:#fff;}
+  .rs-table{width:100%;border-collapse:collapse;table-layout:auto;font-size:8.5pt;}
+  .rs-table th{background:#0F2740;color:#E4C765;border:none;padding:1.3mm 1mm;text-align:center;font-size:7pt;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap;}
+  .rs-table td{border:none;border-bottom:.3mm solid #E7E0CE;padding:1.3mm 1mm;text-align:center;color:#1C2530;white-space:normal;}
+  .rs-table tbody tr:nth-child(even) td{background:#FAF6EC;}
+  .rs-table td:nth-child(1),.rs-table td:nth-child(4){white-space:nowrap;}
+  .rs-table td:nth-child(3){font-weight:600;color:#0F2740;}
+  .rs-tight .rs-table{font-size:7.3pt;}
+  .rs-tight .rs-table th,.rs-tight .rs-table td{padding:.6mm 1mm;}
+  .rs-nosheet{font-size:9pt;opacity:.6;text-align:center;padding:6mm 0;}
+  .rs-foot{margin-top:auto;display:flex;justify-content:space-between;align-items:flex-end;gap:4mm;padding-top:3mm;font-size:7pt;color:#666;}
+  .rs-foot em{font-style:normal;max-width:50mm;line-height:1.3;}
+  .rs-foot span{border-top:.3mm solid #0F2740;min-width:30mm;text-align:center;padding-top:1mm;font-size:8pt;color:#0F2740;}
+  .ds-instr{font-size:10.5px;line-height:1.5;margin-top:10px;padding:8px 12px;background:#fff;border:1px solid #E7E0CE;border-left:3px solid #C9A227;border-radius:6px;color:#1C2530;}
 </style>
 <style>
 .qpaper-print .kg-trace{font-size:34px;letter-spacing:.35em;font-weight:700;color:transparent;-webkit-text-stroke:1.2px #444;margin:6px 0;font-family:Inter,sans-serif;}
@@ -3327,6 +3365,7 @@ const NAV_ICONS = {
   marksSheet: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="18" rx="2"/><path d="M9 8h6M3 13h18M3 18h18"/></svg>`,
   admissionRegister: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 016.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"/><path d="M9 7h7M9 11h7"/></svg>`,
   timetable: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M3 9h18M9 4v18"/></svg>`,
+  datesheet: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18M8 15h3M8 18h6"/></svg>`,
   admin: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l8 4v6c0 5-3.5 8.5-8 10-4.5-1.5-8-5-8-10V6l8-4z"/></svg>`,
   suggestions: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18h6M10 22h4M12 2a6 6 0 00-4 10.5c.6.6 1 1.4 1 2.5h6c0-1.1.4-1.9 1-2.5A6 6 0 0012 2z"/></svg>`,
   papers: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/><path d="M9 13h1M9 17h1M14 13h1M14 17h1"/></svg>`,
@@ -3369,6 +3408,7 @@ function renderSidebar() {
     link('admissionRegister', t.admissionRegister, NAV_ICONS.admissionRegister, "setTab('admissionRegister')", 'admissionRegister'),
     link('papers', t.papers, NAV_ICONS.papers, "setTab('papers')", 'papers'),
     link('timetable', LANG==='ur' ? 'ٹائم ٹیبل' : 'Timetable', NAV_ICONS.timetable, "setTab('timetable')", 'timetable'),
+    link('datesheet', qt('Date Sheet & Slips', 'ڈیٹ شیٹ اور سلپس'), NAV_ICONS.datesheet, "setTab('datesheet')", 'datesheet'),
     link('notices', qt('Notice Board', 'نوٹس بورڈ'), NAV_ICONS.notices, "setTab('notices')", 'notices'),
     (CURRENT_PROFILE && CURRENT_PROFILE.is_admin) ? link('admin', t.admin, NAV_ICONS.admin, "setTab('admin')", 'admin') : '',
   ].join('');
@@ -3407,11 +3447,11 @@ function confirmSidebarLogout() {
 }
 
 function renderNav() {
-  const tabs = ['dashboard','students','teachers','finance','reports','dmc','marksSheet','admissionRegister','papers','timetable','notices'];
+  const tabs = ['dashboard','students','teachers','finance','reports','dmc','marksSheet','admissionRegister','papers','timetable','datesheet','notices'];
   if (CURRENT_PROFILE && CURRENT_PROFILE.is_admin) tabs.push('admin');
   document.getElementById('navbar').innerHTML = tabs.map(k => `
     <button class="${TAB===k?'active':''}" onclick="setTab('${k}')">
-      ${NAV_ICONS[k]}<span>${k==='timetable' ? (LANG==='ur'?'ٹائم ٹیبل':'Timetable') : k==='notices' ? esc(qt('Notices','نوٹس')) : esc(t[k] || t.admin)}</span>
+      ${NAV_ICONS[k]}<span>${k==='timetable' ? (LANG==='ur'?'ٹائم ٹیبل':'Timetable') : k==='datesheet' ? esc(qt('Date Sheet','ڈیٹ شیٹ')) : k==='notices' ? esc(qt('Notices','نوٹس')) : esc(t[k] || t.admin)}</span>
     </button>`).join('');
 }
 
@@ -3733,6 +3773,14 @@ function _renderTabInner() {
     main.innerHTML = tplTimetable();
     _regBookRestoreScroll();
     if (ttStatus === 'idle') loadTimetableGrid();
+  }
+  else if (TAB==='datesheet') {
+    main.innerHTML = tplDateSheet();
+    // keep the grid's sideways scroll position through any redraw (it used to snap back to the start)
+    _regBookRestoreScroll();
+    requestAnimationFrame(_regBookRestoreScroll);
+    // pulls the school logo/name used on the printed pages (once per session)
+    if (!window.__dsCfgLoaded) { window.__dsCfgLoaded = true; Promise.resolve(loadDMCConfig()).catch(() => {}); }
   }
   else if (TAB==='notices') {
     // The form is NOT rebuilt if it is already on screen (same language): a background sync / 'online'
@@ -8088,6 +8136,317 @@ function filteredRegisterList() {
       || String(r.serial_no||'').includes(registerSearch.trim()))
     .slice()
     .sort((a,b) => Number(a.serial_no||0) - Number(b.serial_no||0));
+}
+
+// =========================================================================
+// Exam Date Sheet (one sheet for the whole school: classes = rows, exam
+// dates = columns, like the Timetable) + Roll Number Slips
+// =========================================================================
+// The date sheet lives only on this phone/browser (localStorage), the same
+// way the Timetable does — nothing new is needed in Supabase.
+// Roll number printed on a slip = the student's Admission Register Serial No
+// (linked by the register's "Link student" field, else matched by name +
+// father's name).
+let dsData = null;        // { examName, instructions, cols:[{id,date,start,end}], cells:{ [className]: { [colId]: subject } } }
+let dsSlipClass = 'all';  // 'all' or one class — which students get slips
+
+function dsKey() { return 'ds_local_v2_' + (CURRENT_USER ? CURRENT_USER.id : 'guest'); }
+function dsLoad() {
+  let d = null;
+  try { d = JSON.parse(localStorage.getItem(dsKey())); } catch (e) { d = null; }
+  if (!d || typeof d !== 'object') d = {};
+  dsData = {
+    examName: d.examName || '',
+    instructions: d.instructions || '',
+    cols: Array.isArray(d.cols) ? d.cols : [],
+    cells: (d.cells && typeof d.cells === 'object') ? d.cells : {}
+  };
+}
+function dsSave() {
+  try { localStorage.setItem(dsKey(), JSON.stringify(dsData)); }
+  catch (e) { alert(qt('Could not save: ', 'محفوظ نہیں ہوا: ') + e.message); }
+}
+function dsNewId() { return 'c' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
+
+function dsDayName(iso) {
+  if (!iso) return '';
+  const d = new Date(iso + 'T00:00:00');
+  if (isNaN(d)) return '';
+  return d.toLocaleDateString(LANG === 'ur' ? 'ur-PK' : 'en-GB', { weekday: 'long' });
+}
+function dsTime12(v) {
+  const m = /^(\d{1,2}):(\d{2})/.exec(v || '');
+  if (!m) return '';
+  let h = Number(m[1]);
+  const ap = h >= 12 ? 'PM' : 'AM';
+  h = h % 12 || 12;
+  return h + ':' + m[2] + ' ' + ap;
+}
+function dsTimeRange(r) {
+  const a = dsTime12(r.start), b = dsTime12(r.end);
+  return a && b ? a + ' – ' + b : (a || b || '');
+}
+function dsSchoolName() {
+  return (dmcSchoolName && dmcSchoolName !== 'SCHOOL NAME') ? dmcSchoolName : ((CURRENT_PROFILE && CURRENT_PROFILE.school_name) || 'School');
+}
+// Exam dates in date order (the editor keeps entry order so columns don't jump while editing).
+function dsSortedCols() {
+  return ((dsData && dsData.cols) || []).slice().sort((a, b) => (a.date || '9999').localeCompare(b.date || '9999'));
+}
+// The subjects one class sits, in date order — used for that class's roll number slips.
+function dsSortedRows(cls) {
+  const cells = (dsData && dsData.cells[cls]) || {};
+  return dsSortedCols()
+    .filter(c => (cells[c.id] || '').trim())
+    .map(c => ({ date: c.date, subject: cells[c.id].trim(), start: c.start, end: c.end }));
+}
+// Classes shown as rows: every class that has active students, plus any class that already has data.
+function dsClassList() {
+  const withStudents = DATA.students.filter(s => s.status !== 'inactive').map(s => s.class_name).filter(Boolean);
+  const withData = Object.keys(dsData.cells).filter(c => Object.values(dsData.cells[c] || {}).some(v => (v || '').trim()));
+  const all = [...new Set([...withStudents, ...withData])];
+  if (!all.length) return CLASS_OPTIONS.slice();
+  const order = c => { const i = CLASS_OPTIONS.indexOf(c); return i < 0 ? 999 : i; };
+  return all.sort((a, b) => order(a) - order(b) || String(a).localeCompare(String(b)));
+}
+
+// ---------- editor actions ----------
+function dsSetMeta(field, value) { dsData[field] = value; dsSave(); }
+function dsSetCol(id, field, value) {
+  const c = dsData.cols.find(x => x.id === id);
+  if (!c) return;
+  c[field] = value;
+  dsSave();
+  if (field === 'date') {
+    const el = document.getElementById('ds-day-' + id);
+    if (el) el.textContent = dsDayName(value);
+  }
+}
+function dsSetCell(cls, colId, value) {
+  if (!dsData.cells[cls]) dsData.cells[cls] = {};
+  dsData.cells[cls][colId] = value;
+  dsSave();
+}
+function dsAddCol() {
+  let date = '';
+  const last = dsData.cols.map(c => c.date).filter(Boolean).sort().pop();
+  if (last) {
+    const d = new Date(last + 'T00:00:00');
+    d.setDate(d.getDate() + 1);
+    if (d.getDay() === 0) d.setDate(d.getDate() + 1); // skip Sunday
+    date = localISO(d);
+  }
+  const prev = dsData.cols[dsData.cols.length - 1];
+  dsData.cols.push({ id: dsNewId(), date, start: prev ? prev.start : '', end: prev ? prev.end : '' });
+  dsSave();
+  renderTab();
+  // show the newly added date column (scroll the grid to the far right)
+  const _w = document.querySelector('#main .tt-scroll-wrap');
+  if (_w) { _w.scrollLeft = _w.scrollWidth; _regBookScrollPositions[_w.className + '_0'] = _w.scrollLeft; }
+}
+function dsDeleteCol(id) {
+  const filled = Object.values(dsData.cells).some(m => m && (m[id] || '').trim());
+  if (filled && !confirm(qt('Remove this date and the subjects entered under it?', 'یہ تاریخ اور اس کے نیچے درج مضامین ہٹا دیں؟'))) return;
+  dsData.cols = dsData.cols.filter(c => c.id !== id);
+  Object.values(dsData.cells).forEach(m => { if (m) delete m[id]; });
+  dsSave();
+  renderTab();
+}
+// Re-draws only the slips card (warnings/counts) so typing in the grid is never interrupted.
+function dsRefreshSlips() {
+  const el = document.getElementById('ds-slips');
+  if (el) el.innerHTML = tplDsSlips();
+}
+
+// ---------- roll numbers ----------
+// One running sequence across the whole school, class by class, following the
+// Students (fee) list: Nursery 1–10, KG 11–30, 1st 31–… and so on to the last
+// class. Active students only, classes in CLASS_OPTIONS order, A→Z by name
+// inside a class. The number is for the slip only — it is not saved on the student.
+function dsSlipStudents(scope) {
+  const order = c => { const i = CLASS_OPTIONS.indexOf(c); return i < 0 ? 999 : i; };
+  return DATA.students
+    .filter(s => s.status !== 'inactive')
+    .slice()
+    .sort((a, b) => order(a.class_name) - order(b.class_name)
+      || String(a.class_name || '').localeCompare(String(b.class_name || ''))
+      || normName(a.name).localeCompare(normName(b.name)))
+    .map((s, i) => ({ s, roll: String(i + 1) }))
+    .filter(x => scope === 'all' || x.s.class_name === scope);
+}
+// 4 slips per A4 page (2 x 2), and every class starts on a fresh page so slips can be handed out class by class.
+function dsSlipPages(list) {
+  const groups = [];
+  list.forEach(x => {
+    const last = groups[groups.length - 1];
+    if (last && last.cls === x.s.class_name) last.items.push(x);
+    else groups.push({ cls: x.s.class_name, items: [x] });
+  });
+  const pages = [];
+  groups.forEach(g => { for (let i = 0; i < g.items.length; i += 4) pages.push({ cls: g.cls, items: g.items.slice(i, i + 4) }); });
+  return pages;
+}
+
+// ---------- the tab ----------
+function tplDsSlips() {
+  const classes = dsClassList();
+  if (dsSlipClass !== 'all' && !classes.includes(dsSlipClass)) dsSlipClass = 'all';
+  const counts = {};
+  DATA.students.forEach(s => { if (s.status !== 'inactive') counts[s.class_name] = (counts[s.class_name] || 0) + 1; });
+  const totalStudents = Object.values(counts).reduce((a, b) => a + b, 0);
+  const slip = dsSlipStudents(dsSlipClass);
+  const pages = dsSlipPages(slip).length;
+  const noSheet = [...new Set(slip.map(x => x.s.class_name))].filter(c => !dsSortedRows(c).length);
+  const range = slip.length ? slip[0].roll + ' – ' + slip[slip.length - 1].roll : '';
+
+  const warnSheet = noSheet.length ? `
+    <div class="ds-warn">${esc(qt('No subjects entered in the date sheet for: ', 'ڈیٹ شیٹ میں ان کلاسوں کے مضامین درج نہیں: '))}<b>${noSheet.map(c => esc(c)).join('، ')}</b></div>` : '';
+
+  return `
+    <p style="font-size:12px;opacity:.7;margin:0 0 10px;">${esc(qt('Roll numbers run in one sequence through the whole school, class by class (Nursery first), A–Z by name inside each class. Each slip also shows that class\'s subjects from the date sheet above.', 'رول نمبر پورے اسکول میں کلاس وار ایک ہی ترتیب میں چلتے ہیں (نرسری سے شروع)، ہر کلاس میں نام کی ترتیب سے۔ ہر سلپ پر اوپر والی ڈیٹ شیٹ سے اس کلاس کے مضامین بھی چھپیں گے۔'))}</p>
+    <label><span>${esc(qt('Print slips for', 'سلپس کس کے لیے'))}</span>
+      <select onchange="dsSlipClass=this.value;dsRefreshSlips();">
+        <option value="all" ${dsSlipClass === 'all' ? 'selected' : ''}>${esc(qt('All classes', 'تمام کلاسیں'))} (${totalStudents})</option>
+        ${classes.filter(c => counts[c]).map(c => `<option value="${esc(c)}" ${dsSlipClass === c ? 'selected' : ''}>${esc(c)} (${counts[c]})</option>`).join('')}
+      </select></label>
+    <p style="font-size:12px;opacity:.7;margin:0 0 10px;">${esc(qt(`${slip.length} slips · Roll No. ${range} · 4 per A4 page · ${pages} page(s)`, `${slip.length} سلپس · رول نمبر ${range} · ہر A4 صفحے پر 4 · ${pages} صفحات`))}</p>
+    ${warnSheet}
+    <button class="btn-primary" onclick="dsPrintSlips()" ${slip.length ? '' : 'disabled'}>🎫 ${esc(qt('Print Roll Number Slips', 'رول نمبر سلپس پرنٹ کریں'))}</button>`;
+}
+
+function tplDateSheet() {
+  if (!dsData) dsLoad();
+  const classes = dsClassList();
+  const cols = dsData.cols;
+  const ur = LANG === 'ur';
+
+  const headCell = c => `
+    <th>
+      <div style="display:flex;align-items:center;gap:2px;margin-bottom:3px;">
+        <input type="date" value="${esc(c.date || '')}" style="flex:1;min-width:0;font-size:11px;padding:2px;" onchange="dsSetCol('${c.id}','date',this.value)">
+        <button class="del-x" style="padding:0 4px;" onclick="dsDeleteCol('${c.id}')">✕</button>
+      </div>
+      <div class="tt-period-label" id="ds-day-${c.id}">${esc(dsDayName(c.date))}</div>
+      <div class="tt-period-time">
+        <input type="time" value="${esc(c.start || '')}" onchange="dsSetCol('${c.id}','start',this.value)">
+        <span>${esc(qt('to', 'تا'))}</span>
+        <input type="time" value="${esc(c.end || '')}" onchange="dsSetCol('${c.id}','end',this.value)">
+      </div>
+    </th>`;
+  const bodyRow = cl => `<tr><td class="tt-class-name">${esc(cl)}</td>${cols.map(c => `
+      <td class="tt-cell"><input type="text" class="tt-subject" autocomplete="off" placeholder="${esc(qt('Subject', 'مضمون'))}"
+        value="${esc(((dsData.cells[cl] || {})[c.id]) || '')}"
+        oninput="dsSetCell('${escJs(cl)}','${c.id}',this.value)" onchange="dsRefreshSlips()"></td>`).join('')}</tr>`;
+
+  const gridHtml = cols.length ? `
+    <div class="tt-scroll-wrap">
+      <table class="tt-grid" style="width:${70 + 150 * cols.length}px;">
+        <colgroup><col style="width:70px">${cols.map(() => '<col style="width:150px">').join('')}</colgroup>
+        <tr><th>${esc(qt('Class', 'جماعت'))}</th>${cols.map(headCell).join('')}</tr>
+        ${classes.map(bodyRow).join('')}
+      </table>
+    </div>` : `<div class="empty">${esc(qt('No exam dates yet. Tap "Add Date" to start.', 'ابھی کوئی امتحانی تاریخ نہیں۔ شروع کرنے کے لیے "تاریخ شامل کریں" دبائیں۔'))}</div>`;
+
+  return `
+    <div style="padding-top:16px;">
+      <div class="section-title" style="margin-top:0;display:flex;justify-content:space-between;align-items:center;">
+        <span>${esc(qt('Exam Date Sheet', 'امتحانی ڈیٹ شیٹ'))}</span>
+        <button onclick="dsPrintDateSheet()" style="border:none;background:var(--navy);color:var(--gold-soft);border-radius:8px;padding:5px 12px;font-size:11px;font-weight:600;">🖨️ ${esc(t.print)}</button>
+      </div>
+      <div class="list-card" style="padding:14px;margin-bottom:12px;">
+        <label><span>${esc(qt('Exam Name', 'امتحان کا نام'))}</span>
+          <input type="text" autocomplete="off" value="${esc(dsData.examName)}" placeholder="${esc(qt('e.g. Mid-Term Exam 2026', 'مثال: مڈ ٹرم امتحان 2026'))}" oninput="dsSetMeta('examName',this.value)"></label>
+        <label style="margin-bottom:0;"><span>${esc(qt('Instructions (printed under the date sheet)', 'ہدایات (ڈیٹ شیٹ کے نیچے چھپیں گی)'))}</span>
+          <textarea rows="2" placeholder="${esc(qt('e.g. Reach 15 minutes early. Bring your own pen.', 'مثال: 15 منٹ پہلے پہنچیں۔ اپنا قلم ساتھ لائیں۔'))}" oninput="dsSetMeta('instructions',this.value)">${esc(dsData.instructions)}</textarea></label>
+      </div>
+      ${gridHtml}
+      <div class="ds-btns"><button class="btn-ghost" onclick="dsAddCol()">+ ${esc(qt('Add Date', 'تاریخ شامل کریں'))}</button></div>
+
+      <div class="section-title">${esc(qt('Roll Number Slips', 'رول نمبر سلپس'))}</div>
+      <div class="list-card" style="padding:14px;" id="ds-slips">${tplDsSlips()}</div>
+    </div>`;
+}
+
+// ---------- printing ----------
+// Same landscape-on-portrait A4 layout the Timetable uses (see .tt-print-rotate).
+function dsPrintDateSheet() {
+  if (!dsData) dsLoad();
+  const cols = dsSortedCols().filter(c => c.date);
+  if (!cols.length) {
+    alert(qt('Add at least one exam date first.', 'پہلے کم از کم ایک امتحانی تاریخ شامل کریں۔'));
+    return;
+  }
+  const ur = LANG === 'ur';
+  const school = dsSchoolName();
+  const headerRow = `<tr><th>${esc(qt('Class', 'جماعت'))}</th>${cols.map(c => `<th>${esc(fmtDate(c.date))}<span class="tt-print-time">${esc(dsDayName(c.date))}</span>${dsTimeRange(c) ? `<span class="tt-print-time">${esc(dsTimeRange(c))}</span>` : ''}</th>`).join('')}</tr>`;
+  const rows = dsClassList().map(cl => `<tr><td class="tt-print-classname">${esc(cl)}</td>${cols.map(c => {
+    const v = (((dsData.cells[cl] || {})[c.id]) || '').trim();
+    return `<td>${v ? `<span class="tt-print-subject">${esc(v)}</span>` : `<span class="tt-print-empty">—</span>`}</td>`;
+  }).join('')}</tr>`).join('');
+  document.getElementById('print-area').innerHTML = `
+    <div class="tt-print-page"><div class="tt-print-rotate">
+    <div class="tt-print" dir="${ur ? 'rtl' : 'ltr'}">
+      <div class="tt-print-head">
+        ${dmcLogo ? `<img class="tt-print-logo" src="${dmcLogo}">` : ''}
+        <div class="eyebrow">${esc(qt('Exam Date Sheet', 'امتحانی ڈیٹ شیٹ'))}</div>
+        <h2>${esc(school)}</h2>
+        ${dsData.examName ? `<div class="tt-print-sub">${esc(dsData.examName)}</div>` : ''}
+      </div>
+      <table class="tt-print-table"><thead>${headerRow}</thead><tbody>${rows}</tbody></table>
+      ${dsData.instructions ? `<div class="ds-instr"><b>${esc(qt('Instructions', 'ہدایات'))}:</b> ${esc(dsData.instructions).replace(/\n/g, '<br>')}</div>` : ''}
+      <div class="tt-print-foot">
+        <span class="tt-print-brand">${esc(school)}</span>
+        <span>${esc(qt('Principal', 'پرنسپل'))}: ______________</span>
+      </div>
+    </div>
+    </div></div>`;
+  printAsA4(0);
+}
+
+function dsSlipHtml(x, cls) {
+  const s = x.s, ur = LANG === 'ur';
+  const rows = dsSortedRows(cls);
+  const name = (ur && s.name_ur) ? s.name_ur : s.name;
+  const table = rows.length ? `
+    <table class="rs-table">
+      <thead><tr><th>${esc(qt('Date', 'تاریخ'))}</th><th>${esc(qt('Day', 'دن'))}</th><th>${esc(qt('Subject', 'مضمون'))}</th><th>${esc(qt('Time', 'وقت'))}</th></tr></thead>
+      <tbody>${rows.map(r => `<tr><td>${esc(fmtDate(r.date) || '')}</td><td>${esc(dsDayName(r.date))}</td><td>${esc(r.subject || '')}</td><td>${esc(dsTimeRange(r))}</td></tr>`).join('')}</tbody>
+    </table>` : `<div class="rs-nosheet">${esc(qt('Date sheet not entered yet', 'ڈیٹ شیٹ ابھی درج نہیں'))}</div>`;
+  return `
+    <div class="rs-slip${rows.length > 10 ? ' rs-tight' : ''}" dir="${ur ? 'rtl' : 'ltr'}"><div class="rs-card">
+      <div class="rs-head">
+        ${dmcLogo ? `<img class="rs-logo" src="${dmcLogo}">` : ''}
+        <div>
+          <div class="rs-school">${esc(dsSchoolName())}</div>
+          <div class="rs-title">${esc(qt('Roll Number Slip', 'رول نمبر سلپ'))}${dsData.examName ? ' · ' + esc(dsData.examName) : ''}</div>
+        </div>
+      </div>
+      <div class="rs-body">
+        <div class="rs-info">
+          <div class="rs-who">
+            <div class="rs-full"><span>${esc(qt('Name', 'نام'))}</span><b>${esc(name || '')}</b></div>
+            <div><span>${esc(qt('Father', 'والد'))}</span><b>${esc(s.father_name || '--')}</b></div>
+            <div><span>${esc(qt('Class', 'جماعت'))}</span><b>${esc(cls || '--')}</b></div>
+          </div>
+          <div class="rs-roll"><span>${esc(qt('Roll No.', 'رول نمبر'))}</span><b>${esc(x.roll || '--')}</b></div>
+        </div>
+        ${table}
+        <div class="rs-foot"><em>${esc(qt('Bring this slip to the exam hall.', 'یہ پرچی امتحانی ہال میں ساتھ لائیں۔'))}</em><span>${esc(qt('Principal', 'پرنسپل'))}</span></div>
+      </div>
+    </div></div>`;
+}
+function dsPrintSlips() {
+  const list = dsSlipStudents(dsSlipClass);
+  if (!list.length) {
+    alert(qt('No students found.', 'کوئی طالب علم نہیں ملا۔'));
+    return;
+  }
+  const noSheet = [...new Set(list.map(x => x.s.class_name))].filter(c => !dsSortedRows(c).length);
+  if (noSheet.length && !confirm(qt(`No date sheet entered for: ${noSheet.join(', ')}. Print anyway?`,
+                                    `ان کلاسوں کی ڈیٹ شیٹ درج نہیں: ${noSheet.join('، ')}۔ پھر بھی پرنٹ کریں؟`))) return;
+  document.getElementById('print-area').innerHTML = dsSlipPages(list)
+    .map(p => `<div class="rs-page">${p.items.map(x => dsSlipHtml(x, p.cls)).join('')}</div>`).join('');
+  printAsA4(8);
 }
 
 // --------- DMC (Detail Marks Certificate) Generator ---------
