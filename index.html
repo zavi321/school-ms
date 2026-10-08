@@ -2758,7 +2758,9 @@ async function afterLogin() {
   if (loadingEl) loadingEl.textContent = t.loadingData || 'Loading your data…';
   await loadAllData();
   document.getElementById('loading').classList.add('hidden');
+  applySavedSetup();
   renderApp();
+  maybeShowSetupWizard();
   startStaffReqPolling();
   maybeRunExamRecordsCleanup(); // fire-and-forget safety net (see function below)
 }
@@ -4137,7 +4139,14 @@ function _renderTabInner() {
     main.dataset.noticeLang = LANG;
     main.innerHTML = tplNotices(); noticeInit(); pmOwnerLoad();
   }
-  else if (TAB==='admin') { main.innerHTML = tplAdmin(); loadAdminLists(); return; }
+  else if (TAB==='admin') {
+    // Admin page already on screen (same language)? A background redraw (sync finishing, internet coming back…)
+    // must NOT rebuild it — that reset the scroll to the top and flashed the skeleton, so the page "jumped".
+    // Just refresh the school list in place.
+    if (document.getElementById('admin-lists') && main.contains(document.getElementById('admin-lists')) && main.dataset.adminLang === LANG) { loadWhitelist(); return; }
+    main.dataset.adminLang = LANG;
+    main.innerHTML = tplAdmin(); loadAdminLists(); return;
+  }
   // Keep exactly ONE copy of the footer notices: screens that are refreshed in place (Syllabus, Notices) are not rebuilt,
   // so the old copies are still there and would otherwise pile up on every background redraw.
   main.querySelectorAll('.foot-notice').forEach(el => el.remove());
@@ -4397,7 +4406,7 @@ function tplAdmin() {
     <div id="admin-lists">
       <div class="card">
         <h3 style="margin-top:0;">${esc(t.whitelistedSchools)}</h3>
-        <div id="wl-list"><div class="skel-line" style="width:60%;"></div><div class="skel-line" style="width:40%;"></div></div>
+        <div id="wl-list" style="min-height:120px;"><div class="skel-line" style="width:60%;"></div><div class="skel-line" style="width:40%;"></div></div>
       </div>
     </div>
   `;
@@ -5119,6 +5128,141 @@ async function submitSettings() {
   msg.innerHTML = `<div class="ok">${esc(t.settingsSaved)}</div>`;
   document.querySelector('header .eyebrow').textContent = CURRENT_PROFILE.school_name;
   setTimeout(closeModal, 800);
+}
+
+
+// ---------------- First-time Setup Wizard ----------------
+// Shown once to a brand-new school (no students yet, wizard never finished):
+// 1 School name -> 2 Logo -> 3 Classes -> 4 Monthly fee per class.
+// Name saves to the profile, logo to the certificate config, and the classes /
+// fees are kept on this device (localStorage, per account).
+let SETUP = { step: 1, name: '', nameUr: '', logo: null, classes: [], fees: {} };
+function setupKey() { return 'schoolSetup_' + (CURRENT_USER ? CURRENT_USER.id : ''); }
+function setupLoad() { try { return JSON.parse(localStorage.getItem(setupKey()) || 'null'); } catch (e) { return null; } }
+function applySavedSetup() {
+  const sv = setupLoad();
+  if (!sv || !Array.isArray(sv.classes) || !sv.classes.length) return;
+  const keep = CLASS_OPTIONS.filter(c => sv.classes.includes(c));
+  if (keep.length) CLASS_OPTIONS.splice(0, CLASS_OPTIONS.length, ...keep);
+}
+function setupDefaultFee(cls) { const sv = setupLoad(); return (sv && sv.fees && sv.fees[cls]) || 0; }
+function maybeShowSetupWizard() {
+  try {
+    if (!CURRENT_USER || !CURRENT_PROFILE || CURRENT_PROFILE.is_admin) return;
+    applySavedSetup();
+    const sv = setupLoad();
+    if (sv && sv.done) return;
+    if (DATA && Array.isArray(DATA.students) && DATA.students.length > 0) return; // existing school
+    SETUP = { step: 1, name: CURRENT_PROFILE.school_name || '', nameUr: CURRENT_PROFILE.school_name_ur || '', logo: null, classes: ['Nursery','KG','1st','2nd','3rd','4th','5th'], fees: {} };
+    renderSetupWizard();
+  } catch (e) { console.error('setup wizard', e); }
+}
+function setupDots() {
+  return `<div style="display:flex;gap:6px;justify-content:center;margin:0 0 14px;">${[1,2,3,4].map(i =>
+    `<span style="height:6px;flex:1;border-radius:4px;background:${i<=SETUP.step?'var(--gold,#C9A227)':'#E3DCCB'};"></span>`).join('')}</div>`;
+}
+function renderSetupWizard() {
+  const ur = LANG === 'ur';
+  const tt = (en, u) => esc(ur ? u : en);
+  let body = '';
+  if (SETUP.step === 1) {
+    body = `<p style="font-size:13px;opacity:.7;margin:0 0 10px;">${tt('Step 1 of 4 — Your school name','مرحلہ 1 / 4 — اسکول کا نام')}</p>
+      <label><span>${tt('School Name','اسکول کا نام')}</span><input id="sw-name" value="${esc(SETUP.name)}" placeholder="e.g., ISLAMIA SCHOOL & COLLEGE"></label>
+      <label><span>${tt('School name in Urdu (optional)','اردو میں اسکول کا نام (اختیاری)')}</span><input id="sw-name-ur" dir="rtl" value="${esc(SETUP.nameUr)}"></label>`;
+  } else if (SETUP.step === 2) {
+    body = `<p style="font-size:13px;opacity:.7;margin:0 0 10px;">${tt('Step 2 of 4 — School logo (optional)','مرحلہ 2 / 4 — اسکول لوگو (اختیاری)')}</p>
+      <div style="text-align:center;margin:8px 0 14px;">
+        <div id="sw-logo-prev" style="width:110px;height:110px;margin:0 auto 12px;border-radius:24px;background:#EFEAE0;display:grid;place-items:center;overflow:hidden;font-size:12px;opacity:.8;">${SETUP.logo ? `<img src="${SETUP.logo}" style="max-width:100%;max-height:100%;">` : tt('No logo','لوگو نہیں')}</div>
+        <label class="btn-ghost" style="display:inline-block;cursor:pointer;padding:10px 18px;">📷 ${tt('Choose logo from phone','فون سے لوگو چنیں')}
+          <input type="file" accept="image/*" style="display:none;" onchange="setupPickLogo(this)"></label>
+      </div>`;
+  } else if (SETUP.step === 3) {
+    body = `<p style="font-size:13px;opacity:.7;margin:0 0 10px;">${tt('Step 3 of 4 — Tap the classes your school has','مرحلہ 3 / 4 — اپنے اسکول کی کلاسیں چنیں')}</p>
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;">${setupAllClasses().map(c => {
+        const on = SETUP.classes.includes(c);
+        return `<button type="button" onclick="setupToggleClass('${c}')" style="padding:12px 0;border-radius:14px;border:1.5px solid ${on?'#1B3A57':'#DDD5C0'};background:${on?'#1B3A57':'#fff'};color:${on?'#fff':'inherit'};font:inherit;font-size:14px;">${c}</button>`;
+      }).join('')}</div>`;
+  } else {
+    body = `<p style="font-size:13px;opacity:.7;margin:0 0 10px;">${tt('Step 4 of 4 — Monthly fee per class (new students get this fee automatically; you can still change it per student)','مرحلہ 4 / 4 — ہر کلاس کی ماہانہ فیس')}</p>
+      ${SETUP.classes.map(c => `<label style="display:flex;align-items:center;gap:10px;margin-bottom:8px;"><span style="width:64px;">${c}</span>
+        <input type="number" inputmode="numeric" min="0" placeholder="0" value="${SETUP.fees[c]||''}" oninput="SETUP.fees['${c}']=Number(this.value)||0" style="flex:1;"></label>`).join('')}`;
+  }
+  const last = SETUP.step === 4;
+  showModal(tt('Welcome! Quick Setup','خوش آمدید! فوری سیٹ اپ'), `
+    ${setupDots()}${body}
+    <div id="sw-msg"></div>
+    <div style="display:flex;gap:8px;margin-top:14px;">
+      ${SETUP.step > 1 ? `<button class="btn-ghost" style="flex:1;" onclick="setupBack()">‹ ${tt('Back','پیچھے')}</button>` : ''}
+      <button class="btn-primary" style="flex:2;" onclick="setupNext()">${last ? tt('Finish ✓','مکمل ✓') : tt('Next ›','آگے ›')}</button>
+    </div>
+    <button class="btn-ghost" style="width:100%;margin-top:8px;font-size:12px;" onclick="setupSkip()">${tt('Skip for now','ابھی چھوڑیں')}</button>`);
+}
+function setupAllClasses() { return ['Nursery','KG','1st','2nd','3rd','4th','5th','6th','7th','8th','9th','10th','11th','12th']; }
+function setupToggleClass(c) {
+  const i = SETUP.classes.indexOf(c);
+  if (i >= 0) SETUP.classes.splice(i, 1); else SETUP.classes.push(c);
+  SETUP.classes.sort((a, b) => setupAllClasses().indexOf(a) - setupAllClasses().indexOf(b));
+  renderSetupWizard();
+}
+function setupPickLogo(input) {
+  const f = input.files && input.files[0]; if (!f) return;
+  const rd = new FileReader();
+  rd.onload = () => {
+    const img = new Image();
+    img.onload = () => {
+      const m = 300, r = Math.min(1, m / Math.max(img.width, img.height));
+      const cv = document.createElement('canvas'); cv.width = Math.round(img.width * r); cv.height = Math.round(img.height * r);
+      cv.getContext('2d').drawImage(img, 0, 0, cv.width, cv.height);
+      SETUP.logo = cv.toDataURL('image/png'); renderSetupWizard();
+    };
+    img.src = rd.result;
+  };
+  rd.readAsDataURL(f);
+}
+function setupBack() { if (SETUP.step > 1) { setupCapture(); SETUP.step--; renderSetupWizard(); } }
+function setupCapture() {
+  const n = document.getElementById('sw-name'); if (n) SETUP.name = n.value.trim();
+  const u = document.getElementById('sw-name-ur'); if (u) SETUP.nameUr = u.value.trim();
+}
+async function setupNext() {
+  setupCapture();
+  const msg = document.getElementById('sw-msg');
+  if (SETUP.step === 1 && !SETUP.name) { msg.innerHTML = `<div class="err">${esc(LANG==='ur'?'اسکول کا نام لکھیں':'Please enter the school name')}</div>`; return; }
+  if (SETUP.step === 3 && !SETUP.classes.length) { msg.innerHTML = `<div class="err">${esc(LANG==='ur'?'کم از کم ایک کلاس چنیں':'Pick at least one class')}</div>`; return; }
+  if (SETUP.step < 4) { SETUP.step++; renderSetupWizard(); return; }
+  await setupFinish();
+}
+async function setupFinish() {
+  const msg = document.getElementById('sw-msg');
+  try {
+    if (SETUP.name && SETUP.name !== CURRENT_PROFILE.school_name) {
+      const { error } = await sb.from('profiles').update({ school_name: SETUP.name }).eq('id', CURRENT_USER.id);
+      if (error) throw error;
+      CURRENT_PROFILE.school_name = SETUP.name;
+    }
+    if (SETUP.nameUr !== (CURRENT_PROFILE.school_name_ur || '')) {
+      const { error } = await sb.from('profiles').update({ school_name_ur: SETUP.nameUr || null }).eq('id', CURRENT_USER.id);
+      if (error) throw error;
+      CURRENT_PROFILE.school_name_ur = SETUP.nameUr;
+    }
+    try { localStorage.setItem('sms_cached_profile_' + CURRENT_USER.id, JSON.stringify(CURRENT_PROFILE)); } catch (e) {}
+    if (SETUP.logo || SETUP.name) {
+      try { await loadDMCConfig(); } catch (e) {}
+      dmcSchoolName = SETUP.name || dmcSchoolName;
+      if (SETUP.logo) dmcLogo = SETUP.logo;
+      await saveDMCConfig();
+    }
+    localStorage.setItem(setupKey(), JSON.stringify({ done: true, classes: SETUP.classes, fees: SETUP.fees }));
+    applySavedSetup();
+    closeModal();
+    renderApp();
+  } catch (e) {
+    msg.innerHTML = `<div class="err">${esc(friendlyErrorMsg ? friendlyErrorMsg(e) : String(e.message || e))}</div>`;
+  }
+}
+function setupSkip() {
+  try { localStorage.setItem(setupKey(), JSON.stringify({ done: true, classes: [], fees: {} })); } catch (e) {}
+  closeModal();
 }
 
 // ---------------- Dashboard ----------------
@@ -6193,7 +6337,7 @@ function openAddStudent() {
     <label><span>${esc(t.studentName)}</span><input id="f-name"></label>
     <label><span>${esc(t.studentNameUr)}</span><input id="f-name-ur" dir="rtl"></label>
     <label><span>${esc(t.fatherName)}</span><input id="f-father"></label>
-    <label><span>${esc(t.className)}</span><select id="f-class">${CLASS_OPTIONS.map(c=>`<option>${c}</option>`).join('')}</select></label>
+    <label><span>${esc(t.className)}</span><select id="f-class" onchange="onAddClassChange()">${CLASS_OPTIONS.map(c=>`<option>${c}</option>`).join('')}</select></label>
     <label><span>${esc(t.studentType)}</span><select id="f-type" onchange="onAddTypeChange()">${STUDENT_TYPES.map(v=>`<option value="${v}">${esc(typeLabel(v))}</option>`).join('')}</select></label>
     <label><span>${esc(t.admissionDate)}</span><input id="f-admission" type="date" value="${todayISO()}"></label>
     <label><span>${esc(t.contact)}</span><input id="f-contact" type="tel" placeholder="03XXXXXXXXX"></label>
@@ -6203,6 +6347,10 @@ function openAddStudent() {
       <button class="btn-primary" style="flex:1" onclick="guardedSubmit(this, submitAddStudent)">${esc(t.save)}</button>
     </div>
   `);
+}
+function onAddClassChange() {
+  const f = document.getElementById('f-fee'), c = document.getElementById('f-class'), ty = document.getElementById('f-type');
+  if (f && c && !f.disabled && (!ty || ty.value === 'paying')) { const d = setupDefaultFee(c.value); if (d) f.value = d; }
 }
 function onAddTypeChange() {
   const type = document.getElementById('f-type').value;
