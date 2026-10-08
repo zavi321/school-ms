@@ -1398,6 +1398,7 @@ const T = {
     concHafiz:'Hafiz-e-Quran', concOther:'Other', concSave:'Save Concession', concSaved:'Concession saved', concNetFee:'Fee after concession',
     concFullFee:'Full fee', concReport:'Concession Report', concTotalMonthly:'Total monthly concession', concStudents:'students with concession',
     concNoStudents:'No student has a concession yet.', concByReason:'By reason',
+    feeInvalid:'Please enter a valid monthly fee.', concFeeTooLow:'The fixed concession is not less than this fee. Lower the concession first.', feeNote:'Used for new fee entries and fee vouchers from now on. Months already recorded are not changed.',
     concNote:'Applies to new fee entries and fee vouchers from now on. Months already recorded are not changed.',
     concBadPercent:'Percent must be more than 0 and less than 100. For a 100% concession, set the student type to Free.',
     concBadFixed:'The concession must be more than 0 and less than the monthly fee. For the full fee, set the student type to Free.',
@@ -1604,6 +1605,7 @@ const T = {
     concHafiz:'حافظِ قرآن', concOther:'دیگر', concSave:'رعایت محفوظ کریں', concSaved:'رعایت محفوظ ہو گئی', concNetFee:'رعایت کے بعد فیس',
     concFullFee:'پوری فیس', concReport:'رعایت کی رپورٹ', concTotalMonthly:'ماہانہ کل رعایت', concStudents:'طلباء کو رعایت',
     concNoStudents:'ابھی کسی طالب علم کو رعایت نہیں دی گئی۔', concByReason:'وجہ کے مطابق',
+    feeInvalid:'براہ کرم ماہانہ فیس درست درج کریں۔', concFeeTooLow:'مقررہ رعایت اس فیس سے کم نہیں ہے۔ پہلے رعایت کم کریں۔', feeNote:'یہ فیس اب سے نئی فیس انٹری اور فیس واؤچر پر لاگو ہوگی۔ پہلے سے درج مہینے تبدیل نہیں ہوں گے۔',
     concNote:'یہ رعایت اب سے نئی فیس انٹری اور فیس واؤچر پر لاگو ہوگی۔ پہلے سے درج مہینے تبدیل نہیں ہوں گے۔',
     concBadPercent:'فیصد 0 سے زیادہ اور 100 سے کم ہونا چاہیے۔ 100 فیصد رعایت کے لیے طالب علم کی قسم "مفت" کر دیں۔',
     concBadFixed:'رعایت 0 سے زیادہ اور ماہانہ فیس سے کم ہونی چاہیے۔ پوری فیس معاف کرنے کے لیے قسم "مفت" کر دیں۔',
@@ -6724,6 +6726,13 @@ function openStudentDetail(id, viewYear) {
       <button class="btn-ghost" onclick="updateStudentType('${id}')">${esc(t.updateType)}</button>
     </div>
     ${isFeePaying(s) ? `
+    <div class="row2" style="align-items:end;margin-bottom:4px;">
+      <label style="margin-bottom:0;"><span>${esc(t.monthlyFee)}</span><input id="d-fee" type="number" min="0" inputmode="numeric" value="${Number(s.monthly_fee) || ''}" placeholder="${Number(setupDefaultFee(s.class_name)) || '0'}"></label>
+      <button class="btn-ghost" onclick="updateStudentMonthlyFee('${id}')">${esc(t.save)}</button>
+    </div>
+    <div style="font-size:12px;opacity:.7;margin:0 0 16px;">${esc(t.feeNote)}</div>
+    ` : ''}
+    ${isFeePaying(s) ? `
     <h4 class="section-title" style="margin-top:0;">🏷 ${esc(t.concession)}</h4>
     <div class="row2" style="align-items:end;">
       <label style="margin-bottom:0;"><span>${esc(t.concessionType)}</span>
@@ -6891,6 +6900,19 @@ async function updateStudentType(studentId) {
   const { queued, error } = await offlineUpdateStudent(studentId, update);
   if (!queued && reportSaveError(error)) return;
   if (!queued) await reloadTable('students'); openStudentDetail(studentId);
+}
+
+async function updateStudentMonthlyFee(studentId) {
+  const st = DATA.students.find(x => x.id === studentId);
+  if (!st) return;
+  const raw = document.getElementById('d-fee').value;
+  const fee = Number(raw);
+  if (raw === '' || !Number.isFinite(fee) || fee < 0) { alert(t.feeInvalid); return; }
+  if (fee > 0 && st.concession_type === 'fixed' && Number(st.concession_value) >= fee) { alert(t.concFeeTooLow); return; }
+  const { queued, error } = await offlineUpdateStudent(studentId, { monthly_fee: fee });
+  if (!queued && reportSaveError(error)) return;
+  if (!queued) await reloadTable('students');
+  openStudentDetail(studentId);
 }
 
 async function updateStudentConcession(studentId) {
