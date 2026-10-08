@@ -548,18 +548,25 @@ html, body{overscroll-behavior:none;}
     .fv-t tr.fv-total td{font-size:14px;font-weight:800;border-top:1.5px solid #0F2740;border-bottom:1.5px solid #0F2740;}
     .fv-bank{margin-top:4px;font-size:10.5px;border:1px solid #999;border-radius:3px;padding:2px 4px;line-height:1.3;}
     .fv-row-fam{height:192mm;}
+    .fv-bq{display:flex;align-items:flex-end;gap:3mm;margin-top:4px;}
+    .fv-bq .fv-bank{flex:1;margin-top:0;}
+    .fv-qr{margin-inline-start:auto;line-height:0;}
+    .fv-qr svg{width:19mm;height:19mm;display:block;}
     .fv-page.fv-p3{width:194mm;}
     .fv-p3 .fv-row{height:93mm;}
     .fv-p3 .fv-row-fam{height:140mm;}
-    .fv-p3 .fv-copy{padding:2.5mm 3mm;font-size:10.5px;line-height:1.3;}
-    .fv-p3 .fv-school{font-size:12px;}
+    .fv-p3 .fv-copy{padding:2mm 3mm;font-size:10.5px;line-height:1.25;}
+    .fv-p3 .fv-school{font-size:11px;}
     .fv-p3 .fv-tag{font-size:8.5px;}
-    .fv-p3 .fv-sub{font-size:10.5px;margin:3px 0 5px;}
-    .fv-p3 .fv-t td{font-size:10.5px;padding:3px 0;}
-    .fv-p3 .fv-t tr.fv-total td{font-size:12.5px;padding:4px 0;}
+    .fv-p3 .fv-sub{font-size:10px;margin:2px 0 3px;}
+    .fv-p3 .fv-t td{font-size:10.5px;padding:1.5px 0;}
+    .fv-p3 .fv-t tr.fv-total td{font-size:12px;padding:2.5px 0;}
     .fv-p3 .fv-t.fv-ft td{font-size:10px;}
     .fv-p3 .fv-bank{font-size:9.5px;margin-top:6px;}
-    .fv-p3 .fv-sign{font-size:9px;}
+    .fv-p3 .fv-bq{margin-top:4px;}
+    .fv-p3 .fv-bq .fv-bank{margin-top:0;}
+    .fv-p3 .fv-qr svg{width:20mm;height:20mm;}
+    .fv-p3 .fv-sign{font-size:9px;padding-top:4px;}
     .fv-t.fv-ft th{font-size:9.5px;color:#444;text-align:right;padding:2px 0;border-bottom:1.5px solid #0F2740;font-weight:700;}
     .fv-t.fv-ft th:first-child{text-align:left;}
     .fv-t.fv-ft td{font-size:11px;text-align:right;width:auto;}
@@ -6133,7 +6140,7 @@ const FV_L = {
     prev: 'Previous balance', payable: 'Payable by due date', dueOn: 'Due date', afterDue: 'After due date',
     bankDetails: 'Deposit to', cashier: 'Cashier / Stamp', depositor: 'Depositor sign', rs: 'Rs',
     mode: 'Voucher type', perStudent: 'One per student', perFamily: 'Family (siblings together)',
-    familyVoucher: 'Family Fee Voucher', members: 'Children', famTotal: 'Total family payable', studentCol: 'Student', feeCol: 'Fee', prevCol: 'Previous', totalCol: 'Total', perPage: 'Vouchers per page', per2: '2 per page (larger)', per3: '3 per page (A4 portrait)'
+    familyVoucher: 'Family Fee Voucher', members: 'Children', famTotal: 'Total family payable', studentCol: 'Student', feeCol: 'Fee', prevCol: 'Previous', totalCol: 'Total', qr: 'QR code', qrYes: 'Show on voucher', qrNo: 'Do not show', perPage: 'Vouchers per page', per2: '2 per page (larger)', per3: '3 per page (A4 portrait)'
   },
   ur: {
     title: '\u0641\u06cc\u0633 \u0648\u0627\u0624\u0686\u0631 (\u0686\u0627\u0644\u0627\u0646)', voucher: '\u0641\u06cc\u0633 \u0648\u0627\u0624\u0686\u0631', month: '\u0641\u06cc\u0633 \u06a9\u0627 \u0645\u06c1\u06cc\u0646\u06c1', cls: '\u062c\u0645\u0627\u0639\u062a', all: '\u062a\u0645\u0627\u0645 \u062c\u0645\u0627\u0639\u062a\u06cc\u06ba',
@@ -6146,7 +6153,7 @@ const FV_L = {
     prev: '\u0633\u0627\u0628\u0642\u06c1 \u0628\u0642\u0627\u06cc\u0627', payable: '\u0622\u062e\u0631\u06cc \u062a\u0627\u0631\u06cc\u062e \u062a\u06a9 \u0642\u0627\u0628\u0644\u0650 \u0627\u062f\u0627', dueOn: '\u0622\u062e\u0631\u06cc \u062a\u0627\u0631\u06cc\u062e', afterDue: '\u0622\u062e\u0631\u06cc \u062a\u0627\u0631\u06cc\u062e \u06a9\u06d2 \u0628\u0639\u062f',
     bankDetails: '\u062c\u0645\u0639 \u06a9\u0631\u0627\u0626\u06cc\u06ba', cashier: '\u06a9\u06cc\u0634\u0626\u06cc\u0631 / \u0645\u06c1\u0631', depositor: '\u062c\u0645\u0639 \u06a9\u0631\u0627\u0646\u06d2 \u0648\u0627\u0644\u06d2 \u06a9\u06d2 \u062f\u0633\u062a\u062e\u0637', rs: '\u0631\u0648\u067e\u06d2',
     mode: 'واؤچر کی قسم', perStudent: 'ہر طالب علم کا الگ', perFamily: 'فیملی (بہن بھائی اکٹھے)',
-    familyVoucher: 'فیملی فیس واؤچر', members: 'بچے', famTotal: 'کل فیملی واجب الادا', studentCol: 'طالب علم', feeCol: 'فیس', prevCol: 'سابقہ', totalCol: 'کل', perPage: 'فی صفحہ واؤچر', per2: 'ہر صفحے پر 2 (بڑے)', per3: 'ہر صفحے پر 3 (A4 پورٹریٹ)'
+    familyVoucher: 'فیملی فیس واؤچر', members: 'بچے', famTotal: 'کل فیملی واجب الادا', studentCol: 'طالب علم', feeCol: 'فیس', prevCol: 'سابقہ', totalCol: 'کل', qr: 'کیو آر کوڈ', qrYes: 'واؤچر پر دکھائیں', qrNo: 'نہ دکھائیں', perPage: 'فی صفحہ واؤچر', per2: 'ہر صفحے پر 2 (بڑے)', per3: 'ہر صفحے پر 3 (A4 پورٹریٹ)'
   }
 };
 const fvL = k => (FV_L[LANG] && FV_L[LANG][k] !== undefined) ? FV_L[LANG][k] : FV_L.en[k];
@@ -6166,6 +6173,69 @@ function fvBalance(studentId, mk, inclusive) {
       + Number(e.exam_fee || 0) + Number(e.other_fee || 0) - Number(e.amount || 0));
   });
   return running;
+}
+
+// ---- Minimal offline QR code generator (byte mode, ECC level M, versions 1-10) -> inline SVG ----
+function fvQrSvg(text) {
+  const EC = [0,10,16,26,18,24,16,18,22,22,26], NB = [0,1,1,1,2,2,4,4,4,5,5];
+  const bytes = Array.from(new TextEncoder().encode(String(text)));
+  let ver = 1;
+  const rawMods = v => { let r = (16 * v + 128) * v + 64; if (v >= 2) { const a = Math.floor(v / 7) + 2; r -= (25 * a - 10) * a - 55; } if (v >= 7) r -= 36; return r; };
+  const dataCap = v => Math.floor(rawMods(v) / 8) - EC[v] * NB[v];
+  while (ver <= 10 && (bytes.length + 2) > dataCap(ver)) ver++;
+  if (ver > 10) return '';
+  const size = ver * 4 + 17, nData = dataCap(ver);
+  // data codewords
+  const bits = []; const put = (val, len) => { for (let i = len - 1; i >= 0; i--) bits.push((val >>> i) & 1); };
+  put(4, 4); put(bytes.length, 8); bytes.forEach(b => put(b, 8));
+  put(0, Math.min(4, nData * 8 - bits.length)); while (bits.length % 8) bits.push(0);
+  const data = []; for (let i = 0; i < bits.length; i += 8) { let v = 0; for (let j = 0; j < 8; j++) v = (v << 1) | bits[i + j]; data.push(v); }
+  for (let pad = 0xEC; data.length < nData; pad ^= 0xEC ^ 0x11) data.push(pad);
+  // Reed-Solomon
+  const exp = new Array(512), log = new Array(256); { let x = 1; for (let i = 0; i < 255; i++) { exp[i] = x; log[x] = i; x <<= 1; if (x & 256) x ^= 0x11D; } for (let i = 255; i < 512; i++) exp[i] = exp[i - 255]; }
+  const gmul = (a, b) => (a && b) ? exp[log[a] + log[b]] : 0;
+  const ecLen = EC[ver], gen = [1];
+  for (let i = 0; i < ecLen; i++) { const next = new Array(gen.length + 1).fill(0); gen.forEach((c, j) => { next[j] ^= c; next[j + 1] ^= gmul(c, exp[i]); }); gen.length = 0; next.forEach(c => gen.push(c)); }
+  const rs = d => { const r = new Array(ecLen).fill(0); d.forEach(b => { const f = b ^ r.shift(); r.push(0); gen.slice(1).forEach((g, i) => { r[i] ^= gmul(g, f); }); }); return r; };
+  const nb = NB[ver], raw = Math.floor(rawMods(ver) / 8), nShort = nb - raw % nb, shortLen = Math.floor(raw / nb);
+  const blocks = []; let k = 0;
+  for (let i = 0; i < nb; i++) { const dl = shortLen - ecLen + (i < nShort ? 0 : 1); const d = data.slice(k, k + dl); k += dl; blocks.push({ d, e: rs(d) }); }
+  const all = [];
+  for (let i = 0; i < blocks[blocks.length - 1].d.length; i++) blocks.forEach(b => { if (i < b.d.length) all.push(b.d[i]); });
+  for (let i = 0; i < ecLen; i++) blocks.forEach(b => all.push(b.e[i]));
+  // matrix
+  const M = Array.from({ length: size }, () => new Array(size).fill(false)), F = Array.from({ length: size }, () => new Array(size).fill(false));
+  const set = (x, y, v) => { M[y][x] = !!v; F[y][x] = true; };
+  for (let i = 0; i < size; i++) { set(6, i, i % 2 === 0); set(i, 6, i % 2 === 0); }
+  [[3, 3], [size - 4, 3], [3, size - 4]].forEach(([cx, cy]) => { for (let dy = -4; dy <= 4; dy++) for (let dx = -4; dx <= 4; dx++) { const x = cx + dx, y = cy + dy; if (x < 0 || y < 0 || x >= size || y >= size) continue; const d = Math.max(Math.abs(dx), Math.abs(dy)); set(x, y, d !== 2 && d !== 4); } });
+  if (ver >= 2) {
+    const na = Math.floor(ver / 7) + 2, step = Math.ceil((ver * 4 + 4) / (na * 2 - 2)) * 2, pos = [6];
+    for (let p = size - 7; pos.length < na; p -= step) pos.splice(1, 0, p);
+    pos.forEach((cy, i) => pos.forEach((cx, j) => { if ((i === 0 && j === 0) || (i === 0 && j === na - 1) || (i === na - 1 && j === 0)) return; for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) set(cx + dx, cy + dy, Math.max(Math.abs(dx), Math.abs(dy)) !== 1); }));
+  }
+  const fmt = mask => { const d = (0 << 3) | mask; let r = d; for (let i = 0; i < 10; i++) r = (r << 1) ^ ((r >>> 9) * 0x537); const b = ((d << 10) | r) ^ 0x5412, g = i => ((b >>> i) & 1) === 1;
+    for (let i = 0; i <= 5; i++) set(8, i, g(i)); set(8, 7, g(6)); set(8, 8, g(7)); set(7, 8, g(8)); for (let i = 9; i < 15; i++) set(14 - i, 8, g(i));
+    for (let i = 0; i < 8; i++) set(size - 1 - i, 8, g(i)); for (let i = 8; i < 15; i++) set(8, size - 15 + i, g(i)); set(8, size - 8, true); };
+  fmt(0);
+  if (ver >= 7) { let r = ver; for (let i = 0; i < 12; i++) r = (r << 1) ^ ((r >>> 11) * 0x1F25); const b = (ver << 12) | r; for (let i = 0; i < 18; i++) { const a = size - 11 + i % 3, c = Math.floor(i / 3), v = ((b >>> i) & 1) === 1; set(a, c, v); set(c, a, v); } }
+  // codewords placement
+  const base = M.map(r => r.slice()); let bi = 0;
+  for (let right = size - 1; right >= 1; right -= 2) { if (right === 6) right = 5;
+    for (let vert = 0; vert < size; vert++) for (let j = 0; j < 2; j++) { const x = right - j, y = ((right + 1) & 2) === 0 ? size - 1 - vert : vert;
+      if (!F[y][x] && bi < all.length * 8) { base[y][x] = ((all[bi >>> 3] >>> (7 - (bi & 7))) & 1) === 1; bi++; } } }
+  const maskFn = [(x, y) => (x + y) % 2 === 0, (x, y) => y % 2 === 0, (x, y) => x % 3 === 0, (x, y) => (x + y) % 3 === 0, (x, y) => (Math.floor(x / 3) + Math.floor(y / 2)) % 2 === 0, (x, y) => x * y % 2 + x * y % 3 === 0, (x, y) => (x * y % 2 + x * y % 3) % 2 === 0, (x, y) => ((x + y) % 2 + x * y % 3) % 2 === 0];
+  const build = m => base.map((row, y) => row.map((v, x) => F[y][x] ? v : (v !== maskFn[m](x, y))));
+  const penalty = g => { let p = 0, dark = 0;
+    for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) { if (g[y][x]) dark++; if (x + 1 < size && y + 1 < size && g[y][x] === g[y][x + 1] && g[y][x] === g[y + 1][x] && g[y][x] === g[y + 1][x + 1]) p += 3; }
+    for (let t = 0; t < 2; t++) for (let a = 0; a < size; a++) { let run = 1; for (let b = 1; b < size; b++) { const cur = t ? g[b][a] : g[a][b], prev = t ? g[b - 1][a] : g[a][b - 1]; if (cur === prev) { run++; if (run === 5) p += 3; else if (run > 5) p++; } else run = 1; } }
+    return p + Math.floor(Math.abs(dark * 20 - size * size * 10) / (size * size)) * 10; };
+  let best = null, bestP = Infinity, bestM = 0;
+  for (let m = 0; m < 8; m++) { const g = build(m), p = penalty(g); if (p < bestP) { bestP = p; best = g; bestM = m; } }
+  // write real format bits for the chosen mask
+  fmt(bestM); for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) if (F[y][x]) { /* function modules: take from M (format re-drawn) */ best[y][x] = M[y][x]; }
+  let d = ''; for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) if (best[y][x]) d += 'M' + (x + 1) + ' ' + (y + 1) + 'h1v1h-1z';
+  const n = size + 2;
+  return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ' + n + ' ' + n + '" shape-rendering="crispEdges"><rect width="' + n + '" height="' + n + '" fill="#fff"/><path d="' + d + '" fill="#000"/></svg>';
 }
 
 function fvFamilyKey(s) {
@@ -6210,6 +6280,8 @@ function fvHtml(units, o) {
   const money = n => esc(fvL('rs')) + ' ' + fmt(n);
   const hasBank = o.bank && (o.bank.name || o.bank.title || o.bank.no);
   const bankHtml = hasBank ? `<div class="fv-bank"><b>${esc(fvL('bankDetails'))}:</b> ${esc(o.bank.name || '')}${o.bank.title ? '<br>' + esc(o.bank.title) : ''}${o.bank.no ? '<br>' + esc(o.bank.no) : ''}</div>` : '';
+  const qrBlock = txt => o.qr ? `<div class="fv-qr">${fvQrSvg(txt)}</div>` : '';
+  const tail = txt => (bankHtml || o.qr) ? `<div class="fv-bq">${bankHtml}${qrBlock(txt)}</div>` : '';
   const copy = (r, lbl) => {
     const vno = 'FV-' + o.mk.replace('-', '') + '-' + String(r.s.id).replace(/-/g, '').slice(0, 5).toUpperCase();
     return `<div class="fv-copy">
@@ -6226,7 +6298,7 @@ function fvHtml(units, o) {
         <tr><td>${esc(fvL('dueOn'))}</td><td>${esc(fmtDate(o.due) || '')}</td></tr>
         ${o.fine > 0 ? `<tr><td>${esc(fvL('afterDue'))}</td><td>${money(money2(r.payable + o.fine))}</td></tr>` : ''}
       </table>
-      ${bankHtml}
+      ${tail(['SMS1', 'S', r.s.id, o.mk, r.payable].join('|'))}
       <div class="fv-sign"><span>${esc(fvL('depositor'))}</span><span>${esc(fvL('cashier'))}</span></div>
     </div>`;
   };
@@ -6253,7 +6325,7 @@ function fvHtml(units, o) {
         <tr><td>${esc(fvL('dueOn'))}</td><td>${esc(fmtDate(o.due) || '')}</td></tr>
         ${o.fine > 0 ? `<tr><td>${esc(fvL('afterDue'))}</td><td>${money(money2(payable + o.fine))}</td></tr>` : ''}
       </table>
-      ${bankHtml}
+      ${tail(['SMS1', 'F', ms.map(m => String(m.s.id).slice(0, 12)).join(','), o.mk, payable].join('|'))}
       <div class="fv-sign"><span>${esc(fvL('depositor'))}</span><span>${esc(fvL('cashier'))}</span></div>
     </div>`;
   };
@@ -6267,6 +6339,286 @@ function fvHtml(units, o) {
   flush();
   return `<div class="fv-sheet">${pages.join('')}</div>`;
 }
+
+// ===================== QR SCAN → ONE-TAP FEE COLLECTION =====================
+// Scans the QR printed on a fee voucher (any copy), opens that child's (or the
+// whole family's) outstanding fee, and records the payment with one tap.
+// Amounts are always RE-CALCULATED live from the ledger — the QR only carries
+// WHO and WHICH MONTH, so a stale/edited voucher can never post a wrong amount.
+const SCAN_L = {
+  en: { title:'Scan voucher & collect', hint:'Point the camera at the QR code on the school copy', manual:'Or type / scan code here', go:'Open',
+        noCam:'Camera not available. Use the code box below.', camDenied:'Camera permission denied. Allow camera for this site, or use the code box.',
+        notFound:'This QR does not match any student. Reprint the voucher.', ambiguous:'Code matches more than one student — open from the Students list.',
+        notSchool:'This is not a SchoolMS voucher QR.', month:'Voucher month', arrears:'Previous', fee:'This month', payable:'Payable now',
+        collect:'Collect', collectAll:'Collect family total', amount:'Amount received', paidAlready:'Already fully paid for this month',
+        free:'This student is not fee-paying', changed:'Amount differs from the printed voucher (printed', changed2:'). Showing the current amount.',
+        over:'Amount is more than payable (advance). Continue?', done:'Fee collected', receipt:'Print receipt', sms:'SMS father', next:'Scan next', ledger:'Open ledger',
+        invalid:'Enter a valid amount.', saving:'Saving…', child:'Children', queuedNote:'Saved offline — will sync when online.',
+        gallery:'Choose voucher photo from gallery', reading:'Reading image…', noQr:'No QR code found in this image. Try a clearer, closer photo.' },
+  ur: { title:'واؤچر اسکین کریں اور فیس جمع کریں', hint:'اسکول کاپی پر موجود کیو آر کوڈ پر کیمرہ رکھیں', manual:'یا کوڈ یہاں لکھیں / اسکین کریں', go:'کھولیں',
+        noCam:'کیمرہ دستیاب نہیں۔ نیچے کوڈ باکس استعمال کریں۔', camDenied:'کیمرے کی اجازت نہیں ملی۔ اس سائٹ کے لیے کیمرہ کی اجازت دیں یا کوڈ باکس استعمال کریں۔',
+        notFound:'یہ کیو آر کسی طالب علم سے میچ نہیں ہوا۔ واؤچر دوبارہ پرنٹ کریں۔', ambiguous:'کوڈ ایک سے زیادہ طلبہ سے میچ ہوا — طلبہ کی فہرست سے کھولیں۔',
+        notSchool:'یہ SchoolMS واؤچر کا کیو آر نہیں ہے۔', month:'واؤچر کا مہینہ', arrears:'سابقہ', fee:'اس ماہ', payable:'اب واجب الادا',
+        collect:'جمع کریں', collectAll:'پوری فیملی کی فیس جمع کریں', amount:'وصول شدہ رقم', paidAlready:'اس مہینے کی فیس پہلے ہی مکمل جمع ہے',
+        free:'یہ طالب علم فیس ادا کرنے والا نہیں ہے', changed:'رقم پرنٹ شدہ واؤچر سے مختلف ہے (پرنٹ شدہ', changed2:')۔ موجودہ رقم دکھائی جا رہی ہے۔',
+        over:'رقم واجب الادا سے زیادہ ہے (ایڈوانس)۔ جاری رکھیں؟', done:'فیس جمع ہو گئی', receipt:'رسید پرنٹ کریں', sms:'والد کو SMS', next:'اگلا اسکین', ledger:'لیجر کھولیں',
+        invalid:'درست رقم درج کریں۔', saving:'محفوظ ہو رہا ہے…', child:'بچے', queuedNote:'آف لائن محفوظ ہوا — انٹرنیٹ آنے پر سنک ہو جائے گا۔',
+        gallery:'گیلری سے واؤچر کی تصویر چنیں', reading:'تصویر پڑھی جا رہی ہے…', noQr:'اس تصویر میں کیو آر کوڈ نہیں ملا۔ زیادہ صاف اور قریب سے لی گئی تصویر آزمائیں۔' }
+};
+const scanL = k => (SCAN_L[LANG] && SCAN_L[LANG][k] !== undefined) ? SCAN_L[LANG][k] : SCAN_L.en[k];
+
+let SCAN = { stream: null, raf: 0, detector: null, busy: false, last: '', lastAt: 0 };
+
+function scanStop() {
+  if (SCAN.raf) { cancelAnimationFrame(SCAN.raf); SCAN.raf = 0; }
+  if (SCAN.stream) { try { SCAN.stream.getTracks().forEach(tr => tr.stop()); } catch (e) {} SCAN.stream = null; }
+}
+const _scanCloseModal = closeModal;
+closeModal = function () { scanStop(); _scanCloseModal(); };   // always release the camera when any modal closes
+
+function scanLoadJsQr() {
+  return new Promise((res, rej) => {
+    if (window.jsQR) return res(window.jsQR);
+    const el = document.createElement('script');
+    el.src = 'https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js';
+    el.onload = () => window.jsQR ? res(window.jsQR) : rej(new Error('jsQR'));
+    el.onerror = () => rej(new Error('jsQR load'));
+    document.head.appendChild(el);
+  });
+}
+
+function openFeeScan() {
+  scanStop();
+  showModal(scanL('title'), `
+    <div id="scan-box" style="position:relative;background:#000;border-radius:12px;overflow:hidden;aspect-ratio:1/1;max-height:60vh;">
+      <video id="scan-video" playsinline muted style="width:100%;height:100%;object-fit:cover;"></video>
+      <div style="position:absolute;inset:18%;border:3px solid var(--gold);border-radius:14px;pointer-events:none;box-shadow:0 0 0 999px rgba(0,0,0,.35);"></div>
+    </div>
+    <div id="scan-msg" style="font-size:13px;opacity:.75;margin:10px 0;text-align:center;">${esc(scanL('hint'))}</div>
+    <input id="scan-file" type="file" accept="image/*" style="display:none" onchange="scanFromFile(this)">
+    <button class="btn-primary" style="margin-bottom:10px;" onclick="document.getElementById('scan-file').click()">🖼 ${esc(scanL('gallery'))}</button>
+    <div class="row2" style="align-items:end;">
+      <label style="margin-bottom:0;"><span>${esc(scanL('manual'))}</span><input id="scan-manual" autocomplete="off" autocapitalize="off" onkeydown="if(event.key==='Enter'){scanHandle(this.value);}"></label>
+      <button class="btn-ghost" onclick="scanHandle(document.getElementById('scan-manual').value)">${esc(scanL('go'))}</button>
+    </div>`);
+  scanStart();
+}
+
+async function scanStart() {
+  const msg = document.getElementById('scan-msg'), video = document.getElementById('scan-video');
+  if (!video) return;
+  if (!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia)) { msg.textContent = scanL('noCam'); return; }
+  try {
+    SCAN.stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } }, audio: false });
+  } catch (e) { msg.textContent = (e && e.name === 'NotAllowedError') ? scanL('camDenied') : scanL('noCam'); return; }
+  if (!document.getElementById('scan-video')) { scanStop(); return; }       // modal closed while waiting for permission
+  video.srcObject = SCAN.stream;
+  try { await video.play(); } catch (e) {}
+  let detector = null, jsqr = null;
+  if ('BarcodeDetector' in window) { try { detector = new BarcodeDetector({ formats: ['qr_code'] }); } catch (e) {} }
+  if (!detector) { try { jsqr = await scanLoadJsQr(); } catch (e) { msg.textContent = scanL('noCam'); return; } }
+  const cv = document.createElement('canvas'), cx = cv.getContext('2d', { willReadFrequently: true });
+  const tick = async () => {
+    if (!SCAN.stream) return;
+    if (video.readyState >= 2 && !SCAN.busy) {
+      let text = '';
+      try {
+        if (detector) { const r = await detector.detect(video); if (r && r[0]) text = r[0].rawValue || ''; }
+        else {
+          const w = video.videoWidth, h = video.videoHeight, k = Math.min(1, 640 / Math.max(w, h));
+          cv.width = Math.round(w * k); cv.height = Math.round(h * k);
+          cx.drawImage(video, 0, 0, cv.width, cv.height);
+          const img = cx.getImageData(0, 0, cv.width, cv.height), q = jsqr(img.data, cv.width, cv.height, { inversionAttempts: 'dontInvert' });
+          if (q) text = q.data || '';
+        }
+      } catch (e) {}
+      if (text) { const now = Date.now(); if (text !== SCAN.last || now - SCAN.lastAt > 3000) { SCAN.last = text; SCAN.lastAt = now; scanHandle(text); return; } }
+    }
+    SCAN.raf = requestAnimationFrame(tick);
+  };
+  SCAN.raf = requestAnimationFrame(tick);
+}
+
+// ---- scan a photo from the gallery (e.g. a voucher picture a parent sent on WhatsApp) ----
+async function scanFromFile(input) {
+  const file = input.files && input.files[0]; if (!file) return;
+  const msg = document.getElementById('scan-msg'); if (msg) msg.textContent = scanL('reading');
+  let text = '';
+  try {
+    let bmp;
+    try { bmp = await createImageBitmap(file); }
+    catch (e) { bmp = await new Promise((res, rej) => { const im = new Image(), u = URL.createObjectURL(file); im.onload = () => { res(im); }; im.onerror = rej; im.src = u; }); }
+    const W = bmp.width || bmp.naturalWidth, H = bmp.height || bmp.naturalHeight;
+    if ('BarcodeDetector' in window) {
+      try { const r = await new BarcodeDetector({ formats: ['qr_code'] }).detect(bmp); if (r && r[0]) text = r[0].rawValue || ''; } catch (e) {}
+    }
+    if (!text) {                                    // jsQR fallback, tried at several sizes (WhatsApp photos are compressed; the QR may be small)
+      const jsqr = await scanLoadJsQr();
+      for (const maxSide of [1600, 1000, 2400, 640]) {
+        const k = Math.min(1, maxSide / Math.max(W, H)), cv = document.createElement('canvas');
+        cv.width = Math.max(1, Math.round(W * k)); cv.height = Math.max(1, Math.round(H * k));
+        const cx = cv.getContext('2d', { willReadFrequently: true });
+        cx.fillStyle = '#fff'; cx.fillRect(0, 0, cv.width, cv.height); cx.drawImage(bmp, 0, 0, cv.width, cv.height);
+        const img = cx.getImageData(0, 0, cv.width, cv.height), q = jsqr(img.data, cv.width, cv.height, { inversionAttempts: 'attemptBoth' });
+        if (q && q.data) { text = q.data; break; }
+        if (k === 1 && maxSide > 1600) break;       // image already smaller than this size — no point repeating
+      }
+    }
+  } catch (e) {}
+  input.value = '';
+  if (text) scanHandle(text);
+  else if (msg) msg.textContent = scanL('noQr');
+}
+
+// ---- decode the QR text into { month, students: [student, ...] } ----
+function scanResolve(raw) {
+  const txt = String(raw || '').trim();
+  const parts = txt.split('|');
+  const byPrefix = p => DATA.students.filter(s => s.id === p || String(s.id).startsWith(p));
+  if (parts[0] === 'SMS1' && parts.length >= 5) {                         // new format: SMS1|S/F|id(,id..)|YYYY-MM|amount
+    const ids = parts[2].split(',').filter(Boolean);
+    const found = [];
+    for (const p of ids) { const m = byPrefix(p); if (m.length > 1) return { err: 'ambiguous' }; if (m.length === 1) found.push(m[0]); }
+    if (!found.length) return { err: 'notFound' };
+    return { month: parts[3], students: found, printed: Number(parts[4]) || 0, family: parts[1] === 'F' };
+  }
+  const v = parts[0] || '';                                                // legacy printed vouchers
+  if (/^FV-\d{6}-[0-9A-Z]{5}$/.test(v)) {
+    const code = v.slice(-5), mk = v.slice(3, 7) + '-' + v.slice(7, 9);
+    const m = DATA.students.filter(s => String(s.id).replace(/-/g, '').slice(0, 5).toUpperCase() === code);
+    if (m.length > 1) return { err: 'ambiguous' };
+    if (!m.length) return { err: 'notFound' };
+    return { month: mk, students: m, printed: Number(String(parts[4] || '').replace(/\D/g, '')) || 0 };
+  }
+  if (/^FF-\d{6}-[0-9A-Z]{5}$/.test(v)) {
+    const mk = v.slice(3, 7) + '-' + v.slice(7, 9), fn = normName(parts[1]);
+    const m = DATA.students.filter(s => s.status !== 'inactive' && isFeePaying(s) && fn && normName(s.father_name) === fn);
+    if (!m.length) return { err: 'notFound' };
+    return { month: mk, students: m, printed: Number(String(parts[3] || '').replace(/\D/g, '')) || 0, family: true };
+  }
+  return { err: 'notSchool' };
+}
+
+// current outstanding for a student at voucher month `mk`, plus what a payment must write
+function scanDue(s, mk) {
+  const existing = DATA.feePayments.find(x => x.student_id === s.id && x.month === mk) || null;
+  const arrears = fvBalance(s.id, mk, false);
+  let fee, payable;
+  if (existing) { payable = fvBalance(s.id, mk, true); fee = money2(payable - arrears); }
+  else { fee = effectiveMonthlyFee(s); payable = money2(arrears + fee); }
+  return { s, existing, arrears, fee, payable };
+}
+
+function scanHandle(raw) {
+  if (!String(raw || '').trim()) return;
+  scanStop();
+  const r = scanResolve(raw);
+  if (r.err) { scanFail(scanL(r.err)); return; }
+  if (!/^\d{4}-\d{2}$/.test(r.month)) { scanFail(scanL('notSchool')); return; }
+  const rows = r.students.map(s => scanDue(s, r.month));
+  SCAN.cur = { month: r.month, rows, printed: r.printed };
+  const feeRows = rows.filter(x => isFeePaying(x.s));
+  const total = money2(feeRows.reduce((a, x) => a + Math.max(0, x.payable), 0));
+  const single = rows.length === 1;
+  const mismatch = r.printed && Math.abs(r.printed - total) > 0.009
+    ? `<div style="font-size:12px;background:#FFF6DD;border:1px solid var(--gold);border-radius:8px;padding:8px;margin-bottom:10px;">⚠ ${esc(scanL('changed'))} ₨${fmt(r.printed)}${esc(scanL('changed2'))}</div>` : '';
+  const rowHtml = rows.map(x => `
+    <div style="display:flex;justify-content:space-between;gap:8px;padding:8px 0;border-bottom:1px solid rgba(0,0,0,.08);">
+      <div><div class="nm" style="font-weight:600;">${esc(LANG === 'ur' ? studentNameUrdu(x.s) : x.s.name)}</div>
+        <div class="sub" style="font-size:12px;opacity:.7;">${esc(x.s.class_name || '')}${x.s.father_name ? ' · ' + esc(x.s.father_name) : ''}</div></div>
+      <div style="text-align:end;font-size:12px;">
+        ${isFeePaying(x.s) ? `<div>${esc(scanL('arrears'))}: ₨${fmt(x.arrears)} · ${esc(scanL('fee'))}: ₨${fmt(x.fee)}</div>
+        <div style="font-size:15px;font-weight:700;color:${x.payable > 0 ? 'var(--rust)' : 'var(--sage)'};">₨${fmt(Math.max(0, x.payable))}</div>` : `<div style="opacity:.7;">${esc(scanL('free'))}</div>`}
+      </div>
+    </div>`).join('');
+  let action;
+  if (total <= 0) {
+    action = `<div class="greenbox" style="margin:12px 0;"><div class="val">✓ ${esc(scanL('paidAlready'))}</div></div>`;
+  } else if (single) {
+    action = `<label style="margin:12px 0 8px;"><span>${esc(scanL('amount'))}</span><input id="scan-amount" type="number" inputmode="decimal" min="0" value="${total}"></label>
+      <button id="scan-pay" class="btn-primary" onclick="scanCollect()">💰 ${esc(scanL('collect'))}</button>`;
+  } else {
+    action = `<button id="scan-pay" class="btn-primary" style="margin-top:12px;" onclick="scanCollect()">💰 ${esc(scanL('collectAll'))} — ₨${fmt(total)}</button>`;
+  }
+  showModal(`${monthLabel(r.month)}`, `
+    ${mismatch}
+    <div style="font-size:12px;opacity:.7;margin-bottom:4px;">${esc(scanL('month'))}: ${esc(monthLabel(r.month))}${single ? '' : ' · ' + esc(scanL('child')) + ': ' + rows.length}</div>
+    ${rowHtml}
+    ${action}
+    <div class="flexgap" style="margin-top:8px;">
+      <button class="btn-ghost" style="flex:1;" onclick="openFeeScan()">${esc(scanL('next'))}</button>
+      ${single ? `<button class="btn-ghost" style="flex:1;" onclick="closeModal(); openStudentDetail('${rows[0].s.id}')">${esc(scanL('ledger'))}</button>` : ''}
+    </div>`);
+}
+
+function scanFail(text) {
+  showModal(scanL('title'), `<div class="empty" style="padding:16px 0;">${esc(text)}</div>
+    <button class="btn-primary" onclick="openFeeScan()">${esc(scanL('next'))}</button>`);
+}
+
+async function scanCollect() {
+  const cur = SCAN.cur; if (!cur || cur.busy) return;
+  const btn = document.getElementById('scan-pay');
+  const feeRows = cur.rows.filter(x => isFeePaying(x.s) && x.payable > 0);
+  if (!feeRows.length) return;
+  // single child: cashier may adjust the received amount (partial payment); family: full payable for every child
+  let amounts;
+  if (cur.rows.length === 1) {
+    const raw = (document.getElementById('scan-amount') || {}).value, a = Number(raw);
+    if (raw === '' || !Number.isFinite(a) || a <= 0) { alert(scanL('invalid')); return; }
+    if (a > feeRows[0].payable + 0.009 && !confirm(scanL('over'))) return;
+    amounts = [money2(a)];
+  } else amounts = feeRows.map(x => x.payable);
+  cur.busy = true; if (btn) { btn.disabled = true; btn.textContent = scanL('saving'); }
+  const saved = []; let anyQueued = false;
+  try {
+    for (let i = 0; i < feeRows.length; i++) {
+      const x = feeRows[i], ex = x.existing, mk = cur.month, paidNow = amounts[i];
+      // First payment of the month writes the month's fee as a charge; a follow-up payment on an
+      // already-recorded month only adds to the amount paid (charges stay as they were).
+      const payload = ex ? { ...ex, amount: money2(Number(ex.amount || 0) + paidNow), pay_date: todayISO() } : {
+        id: crypto.randomUUID ? crypto.randomUUID() : `local-${Date.now()}-${i}`,
+        owner_id: CURRENT_USER.id, student_id: x.s.id, month: mk,
+        school_fee: x.fee, sports_fund: 0, admission_fee: 0, exam_fee: 0, other_fee: 0,
+        amount: paidNow, receipt_no: null, pay_date: todayISO()
+      };
+      const { queued, error } = await offlineWrite({
+        table: 'fee_payments', action: 'upsert', payload, id: payload.id, onConflict: 'student_id,month', baseRow: ex,
+        run: () => sb.from('fee_payments').upsert(payload, { onConflict: 'student_id,month' }),
+        optimisticApply: () => {
+          const idx = DATA.feePayments.findIndex(r => r.id === payload.id);
+          if (idx >= 0) DATA.feePayments[idx] = { ...DATA.feePayments[idx], ...payload }; else DATA.feePayments.push(payload);
+          idbPutRow('fee_payments', payload);
+        }
+      });
+      if (!queued && reportSaveError(error)) throw new Error('save');
+      if (!queued) await reloadFeeRow(x.s.id, mk);
+      anyQueued = anyQueued || queued;
+      saved.push({ s: x.s, id: payload.id, amount: paidNow });
+    }
+  } catch (e) {
+    cur.busy = false; if (btn) { btn.disabled = false; btn.textContent = '💰 ' + scanL('collect'); }
+    if (saved.length) scanDone(saved, anyQueued);   // some rows were saved before the failure — show them so nothing is paid twice
+    return;
+  }
+  cur.busy = false;
+  scanDone(saved, anyQueued);
+}
+
+function scanDone(saved, queued) {
+  const total = money2(saved.reduce((a, x) => a + x.amount, 0));
+  const one = saved.length === 1 ? saved[0] : null;
+  showModal(scanL('done'), `
+    <div class="greenbox" style="text-align:center;margin-bottom:12px;"><div class="lbl">✓ ${esc(scanL('done'))}</div><div class="val" style="font-size:28px;">₨${fmt(total)}</div></div>
+    ${saved.map(x => `<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid rgba(0,0,0,.08);">
+      <span>${esc(x.s.name)}</span>
+      <span style="display:flex;gap:6px;align-items:center;">₨${fmt(x.amount)}
+        <button class="btn-ghost" style="padding:4px 8px;font-size:12px;" onclick="printReceipt('${x.s.id}','${x.id}')">🖨</button>
+        <button class="btn-ghost" style="padding:4px 8px;font-size:12px;" onclick="scanSms('${x.s.id}','${SCAN.cur.month}')">💬</button></span></div>`).join('')}
+    ${queued ? `<div style="font-size:12px;opacity:.75;margin-top:8px;">${esc(scanL('queuedNote'))}</div>` : ''}
+    <button class="btn-primary" style="margin-top:14px;" onclick="openFeeScan()">📷 ${esc(scanL('next'))}</button>`);
+}
+function scanSms(studentId, mk) { sendPaidReceiptSms(studentId, mk); }
 
 function openFeeVouchers() {
   const bank = fvLoadBank();
@@ -6284,6 +6636,7 @@ function openFeeVouchers() {
     </div>
     <label style="margin-top:10px;"><span>${esc(fvL('mode'))}</span><select id="fv-mode" onchange="fvPreview()"><option value="student">${esc(fvL('perStudent'))}</option><option value="family">${esc(fvL('perFamily'))}</option></select></label>
     <label style="margin-top:10px;"><span>${esc(fvL('perPage'))}</span><select id="fv-per"><option value="2">${esc(fvL('per2'))}</option><option value="3">${esc(fvL('per3'))}</option></select></label>
+    <label style="margin-top:10px;"><span>${esc(fvL('qr'))}</span><select id="fv-qr"><option value="yes">${esc(fvL('qrYes'))}</option><option value="no">${esc(fvL('qrNo'))}</option></select></label>
     <label style="margin-top:10px;"><span>${esc(fvL('copies'))}</span><select id="fv-copies"><option value="3">${esc(fvL('c3'))}</option><option value="2">${esc(fvL('c2'))}</option></select></label>
     <label><span>${esc(fvL('bankName'))}</span><input id="fv-bank-name" value="${esc(bank.name || '')}"></label>
     <label><span>${esc(fvL('bankTitle'))}</span><input id="fv-bank-title" value="${esc(bank.title || '')}"></label>
@@ -6319,7 +6672,8 @@ function fvPrint() {
   if (!units.length) return;
   const o = { mk, due: dateVal('fv-due', mk + '-10'), fine: Math.max(0, Number(document.getElementById('fv-fine').value) || 0),
               copies: Number(document.getElementById('fv-copies').value) === 2 ? 2 : 3, bank,
-              per: (document.getElementById('fv-per') || {}).value === '3' ? 3 : 2 };
+              per: (document.getElementById('fv-per') || {}).value === '3' ? 3 : 2,
+              qr: (document.getElementById('fv-qr') || {}).value !== 'no' };
   document.getElementById('print-area').innerHTML = fvHtml(units, o);
   closeModal();
   // Android Chrome fires afterprint as soon as the preview opens, so nothing is cleared on that event
@@ -6352,6 +6706,9 @@ function tplStudents() {
         <input id="student-search-input" placeholder="${esc(t.search)}" value="${esc(studentSearch)}" oninput="studentSearch=this.value; classPage={}; updateStudentsResults();">
         <button class="icon-btn" title="${esc(t.quickAdmission)}" onclick="openQuickAdmission()" style="background:var(--gold);">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#0F2740" stroke-width="2.5"><path d="M13 2 3 14h7l-1 8 10-12h-7l1-8z"/></svg>
+        </button>
+        <button class="icon-btn" title="${esc(scanL('title'))}" onclick="openFeeScan()" style="background:var(--gold);">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#0F2740" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3M7 12h10"/></svg>
         </button>
         <button class="icon-btn" title="${esc(fvL('title'))}" onclick="openFeeVouchers()">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#E4C765" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2h9l5 5v15H6z"/><path d="M14 2v6h6M9 13h6M9 17h6"/></svg>
