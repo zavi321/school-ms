@@ -937,6 +937,13 @@ body:not(.ur) .qpaper-print .pq-instruction::before{counter-increment:pqq;conten
 <script>
   const OWNER_WHATSAPP_NUMBER = "923412565659";
 </script>
+
+<!-- ============ CONFIG: Live Demo account — create this account in Supabase (whitelist email, sign up, ============ -->
+<!-- ============            fill with dummy data), then put its email & password here.                        ============ -->
+<script>
+  const DEMO_EMAIL = "nadeemullah107@gmail.com";      // e.g. "demo@yourdomain.com"
+  const DEMO_PASSWORD = "Demo1122";   // e.g. "demo12345"
+</script>
 <!-- ==================================================================================== -->
 
 <!-- ============================================================================
@@ -1424,6 +1431,7 @@ const T = {
     // Auth
     signUpTitle:'Create your school account', signUpDesc:'Register your school to start using the system.',
     logInTitle:'Log In', logInDesc:'Log in to your school account.',
+    liveDemo:'Live Demo', liveDemoHint:'See the system with sample data — no sign up needed.', demoNotReady:'Demo account is not set up yet. Please contact us.', demoOr:'or',
     schoolName:'School Name', email:'Email Address', password:'Password', confirmPassword:'Confirm Password',
     signUp:'Sign Up', logIn:'Log In', haveAccount:'Already have an account?', noAccount:"Don't have an account?",
     phoneNumber:'Phone Number', forgotPassword:'Forgot password?', forgotEmail:'Forgot your registered email?',
@@ -1620,6 +1628,7 @@ const T = {
     forMonth:'مہینہ', totalAmount:'کل ادا شدہ رقم', thankYou:'ادائیگی کا شکریہ۔',
     signUpTitle:'اپنا اسکول اکاؤنٹ بنائیں', signUpDesc:'سسٹم استعمال کرنے کے لیے اپنا اسکول رجسٹر کریں۔',
     logInTitle:'لاگ ان کریں', logInDesc:'اپنے اسکول اکاؤنٹ میں لاگ ان کریں۔',
+    liveDemo:'لائیو ڈیمو', liveDemoHint:'نمونے کے ڈیٹا کے ساتھ سسٹم دیکھیں — سائن اپ کی ضرورت نہیں۔', demoNotReady:'ڈیمو اکاؤنٹ ابھی تیار نہیں۔ براہ کرم ہم سے رابطہ کریں۔', demoOr:'یا',
     schoolName:'اسکول کا نام', email:'ای میل ایڈریس', password:'پاس ورڈ', confirmPassword:'پاس ورڈ کی تصدیق',
     signUp:'اکاؤنٹ بنائیں', logIn:'لاگ ان', haveAccount:'پہلے سے اکاؤنٹ ہے؟', noAccount:'اکاؤنٹ نہیں ہے؟',
     phoneNumber:'فون نمبر', forgotPassword:'پاس ورڈ بھول گئے؟', forgotEmail:'رجسٹرڈ ای میل بھول گئے؟',
@@ -2969,6 +2978,9 @@ function renderLogIn() {
     </div>
     <div id="auth-msg"></div>
     <button class="btn-primary" id="li-btn" onclick="submitLogIn()">${esc(t.logIn)}</button>
+    <div style="text-align:center;font-size:12px;opacity:.55;margin:12px 0 8px;">${esc(t.demoOr)}</div>
+    <button class="btn-ghost" id="demo-btn" style="width:100%;border:1.5px solid var(--navy);" onclick="startLiveDemo()">▶ ${esc(t.liveDemo)}</button>
+    <div style="text-align:center;font-size:11px;opacity:.6;margin-top:6px;">${esc(t.liveDemoHint)}</div>
     <div class="switch-line">${esc(t.noAccount)} <a onclick="renderSignUp()">${esc(t.signUp)}</a></div>
   `);
 }
@@ -3067,6 +3079,19 @@ async function submitLogIn() {
   msg.innerHTML = '';
   btn.disabled = true;
   const { data, error } = await sb.auth.signInWithPassword({ email, password: pw });
+  btn.disabled = false;
+  if (error) { msg.innerHTML = `<div class="err">${esc(error.message)}</div>`; return; }
+  CURRENT_USER = data.user;
+  await afterLogin();
+}
+
+async function startLiveDemo() {
+  const msg = document.getElementById('auth-msg');
+  const btn = document.getElementById('demo-btn');
+  msg.innerHTML = '';
+  if (!DEMO_EMAIL || !DEMO_PASSWORD) { msg.innerHTML = `<div class="err">${esc(t.demoNotReady)}</div>`; return; }
+  btn.disabled = true;
+  const { data, error } = await sb.auth.signInWithPassword({ email: DEMO_EMAIL, password: DEMO_PASSWORD });
   btn.disabled = false;
   if (error) { msg.innerHTML = `<div class="err">${esc(error.message)}</div>`; return; }
   CURRENT_USER = data.user;
