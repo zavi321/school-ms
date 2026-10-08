@@ -26,7 +26,7 @@
 <meta name="apple-mobile-web-app-title" content="SchoolMS">
 <link rel="apple-touch-icon" href="icon-180.png">
 <link rel="icon" href="icon-192.png">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,500;0,9..144,600;0,9..144,700;1,9..144,500;1,9..144,600;1,9..144,700&family=Berkshire+Swash&family=Aref+Ruqaa:wght@400;700&family=Inter:wght@400;500;600;700&family=Noto+Nastaliq+Urdu:wght@600;700&family=Noto+Sans+Urdu:wght@400;500;600&display=swap">
+<link rel="stylesheet" media="print" onload="this.media='all'" href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,500;0,9..144,600;0,9..144,700;1,9..144,500;1,9..144,600;1,9..144,700&family=Berkshire+Swash&family=Aref+Ruqaa:wght@400;700&family=Inter:wght@400;500;600;700&family=Noto+Nastaliq+Urdu:wght@600;700&family=Noto+Sans+Urdu:wght@400;500;600&display=swap">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.4/dist/umd/supabase.js" integrity="sha384-ysv13JVP3fufiEXfjML9OdCa/rRbMJvUBOWyor82wfuK8INNZAvmbxHgKIHi+oqz" crossorigin="anonymous"></script>
 <script>
 /* Excel library (xlsx, ~900 KB) is only needed for Excel import/export, so it no longer blocks the app from opening.
@@ -2677,6 +2677,27 @@ async function boot() {
 async function afterLogin() {
   try { localStorage.setItem(LAST_UID_KEY, CURRENT_USER.id); } catch (e) {}
   const PROFILE_CACHE_KEY = 'sms_cached_profile_' + CURRENT_USER.id;
+  const LOCK_KEY = 'sms_sub_locked_' + CURRENT_USER.id;
+  // FAST OPEN: when this device already has a saved copy of the school's data (and the school was not locked
+  // last time), show the app from that copy immediately and refresh from the server in the background
+  // (afterLoginRefresh), instead of leaving the loading screen up while profile, subscription and every table
+  // download one after another - which on a weak connection could take 30+ seconds.
+  {
+    let cachedProf = null, lastLocked = null;
+    try { cachedProf = JSON.parse(localStorage.getItem(PROFILE_CACHE_KEY) || 'null'); lastLocked = localStorage.getItem(LOCK_KEY); } catch (e) {}
+    if (cachedProf && lastLocked === '0' && navigator.onLine) {
+      CURRENT_PROFILE = cachedProf;
+      try { await offlineCacheRestore(); } catch (e) {}
+      const haveCache = !CACHE_UNAVAILABLE && (DATA.students.length + DATA.teachers.length + DATA.feePayments.length + DATA.transactions.length) > 0;
+      if (haveCache) {
+        document.getElementById('loading').classList.add('hidden');
+        renderApp();
+        startStaffReqPolling();
+        afterLoginRefresh(PROFILE_CACHE_KEY, LOCK_KEY); // background, not awaited
+        return;
+      }
+    }
+  }
   const { data: prof, error: profErr } = await withTimeout(sb.from('profiles').select('*').eq('id', CURRENT_USER.id).maybeSingle());
   if (prof) {
     CURRENT_PROFILE = prof;
@@ -2702,6 +2723,7 @@ async function afterLogin() {
   // account and lifetime-plan schools are never locked. Skipped entirely with
   // no signal — fails open, same as a network error during the check itself.
   const locked = navigator.onLine ? await checkSubscriptionLock() : false;
+  if (navigator.onLine) { try { localStorage.setItem(LOCK_KEY, locked ? '1' : '0'); } catch (e) {} }
   if (locked) {
     document.getElementById('loading').classList.add('hidden');
     renderRenewalLock();
@@ -2715,6 +2737,20 @@ async function afterLogin() {
   renderApp();
   startStaffReqPolling();
   maybeRunExamRecordsCleanup(); // fire-and-forget safety net (see function below)
+}
+
+// Background half of the fast open above: fresh profile -> subscription check -> fresh data, then redraw in place.
+async function afterLoginRefresh(PROFILE_CACHE_KEY, LOCK_KEY) {
+  try {
+    const { data: prof } = await withTimeout(sb.from('profiles').select('*').eq('id', CURRENT_USER.id).maybeSingle());
+    if (prof) { CURRENT_PROFILE = prof; try { localStorage.setItem(PROFILE_CACHE_KEY, JSON.stringify(prof)); } catch (e) {} }
+    const locked = await checkSubscriptionLock();
+    try { localStorage.setItem(LOCK_KEY, locked ? '1' : '0'); } catch (e) {}
+    if (locked) { renderRenewalLock(); return; }
+    await loadAllData();
+    safeRenderTab();
+    maybeRunExamRecordsCleanup();
+  } catch (e) { console.error('background refresh failed', e); }
 }
 
 // ============================================================================
@@ -4430,10 +4466,31 @@ async function submitAddWhitelist() {
 // ---------------- Settings (school name, password, logout) ----------------
 // Opens an ID card generator tool inside the app's own modal (iframe),
 // instead of a separate full browser tab — keeps the user inside the app.
-function openIdCardTool(file, title) {
+// The tools are separate pages, so offline the iframe used to show "webpage might be down".
+// While online we keep a copy of both in Cache Storage (idcPrefetch, runs shortly after the app loads and
+// every time a tool is opened); offline we open that saved copy through srcdoc instead.
+const IDC_CACHE = 'sms-idcard-tools-v1';
+const IDC_FILES = ['id-card-generator.html', 'teacher-id-card-generator.html'];
+async function idcPrefetch() {
+  if (!navigator.onLine || !window.caches) return;
+  try {
+    const c = await caches.open(IDC_CACHE);
+    for (const f of IDC_FILES) {
+      const r = await fetch(f, { cache: 'no-cache' });
+      if (r && r.ok) await c.put(f, r.clone());
+    }
+  } catch (e) {}
+}
+async function openIdCardTool(file, title) {
   showModal(title, `
-    <iframe src="${file}" style="width:100%;height:75vh;border:none;border-radius:10px;background:#fff;"></iframe>
+    <iframe id="idc-frame" style="width:100%;height:75vh;border:none;border-radius:10px;background:#fff;"></iframe>
   `);
+  const fr = document.getElementById('idc-frame');
+  if (!fr) return;
+  if (navigator.onLine) { fr.src = file; idcPrefetch(); return; }
+  let html = null;
+  try { if (window.caches) { const r = await (await caches.open(IDC_CACHE)).match(file); if (r) html = await r.text(); } } catch (e) {}
+  fr.srcdoc = html || `<body style="font-family:sans-serif;padding:28px;text-align:center;color:#555;line-height:1.7;">${esc(qt('This tool is not saved on this phone yet. Open it once while connected to the internet, then it will work offline.', 'یہ ٹول ابھی اس فون میں محفوظ نہیں۔ ایک بار انٹرنیٹ پر کھولیں، پھر یہ آف لائن بھی چلے گا۔'))}</body>`;
 }
 
 function openSettings() {
@@ -15002,6 +15059,7 @@ function renderClassPortalDiaryEntry(subject) {
 
 boot();
 
+window.addEventListener('load', () => setTimeout(() => { try { idcPrefetch(); } catch (e) {} }, 4000));
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('sw.js').then(reg => {
@@ -16624,7 +16682,7 @@ function sylpPrintFull() {
   setTimeout(cleanup, 3000);
 }
 
-console.log('SchoolMS build: 2026-10-08c-lesson-plan-staff-leave-advance-xlsx-lazy-load-fit-any-paper-print-logo-tint-watermark-fixed-text-editable-footer-single-syllabus-no-flicker-editable-headings-school-logo-no-legacy-syllabus-monthwise-grid-money-round-single-table-reload-csp-blob-img-fix-daily-quiz-7am-latest-result-lightsync-staffreq-chat-voice-syllabus'); // bump this string on every deploy to verify (in browser console) which version is actually running
+console.log('SchoolMS build: 2026-10-08e-fast-open-idcard-offline-lesson-plan-staff-leave-advance-xlsx-lazy-load-fit-any-paper-print-logo-tint-watermark-fixed-text-editable-footer-single-syllabus-no-flicker-editable-headings-school-logo-no-legacy-syllabus-monthwise-grid-money-round-single-table-reload-csp-blob-img-fix-daily-quiz-7am-latest-result-lightsync-staffreq-chat-voice-syllabus'); // bump this string on every deploy to verify (in browser console) which version is actually running
 </script>
 </body>
 </html>
