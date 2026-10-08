@@ -1393,6 +1393,14 @@ const T = {
     admissionDate:'Admission Date', monthlyFee:'Monthly Fee (Rs)', contact:'Contact Number',
     studentType:'Student Type', feePaying:'Fee-Paying', free:'Free', orphan:'Orphan', all:'All',
     updateType:'Update Type', typeUpdated:'Type updated',
+    concession:'Concession', concessionType:'Concession Type', noConcession:'None', concPercent:'Percent (%)', concFixed:'Fixed amount (Rs)',
+    concValue:'Value', concReason:'Reason', concSibling:'Sibling discount', concStaff:'Staff child', concScholarship:'Scholarship',
+    concHafiz:'Hafiz-e-Quran', concOther:'Other', concSave:'Save Concession', concSaved:'Concession saved', concNetFee:'Fee after concession',
+    concFullFee:'Full fee', concReport:'Concession Report', concTotalMonthly:'Total monthly concession', concStudents:'students with concession',
+    concNoStudents:'No student has a concession yet.', concByReason:'By reason',
+    concNote:'Applies to new fee entries and fee vouchers from now on. Months already recorded are not changed.',
+    concBadPercent:'Percent must be more than 0 and less than 100. For a 100% concession, set the student type to Free.',
+    concBadFixed:'The concession must be more than 0 and less than the monthly fee. For the full fee, set the student type to Free.',
     search:'Search name or amount...', noStudents:'No students yet. Add your first student to get started.',
     feeLedger:'Fee Ledger', markPaid:'Mark Month Paid', month:'Month', amount:'Amount (Rs)',
     save:'Save', cancel:'Cancel', delete:'Delete', paid:'Paid', due:'Due',
@@ -1591,6 +1599,14 @@ const T = {
     admissionDate:'داخلہ کی تاریخ', monthlyFee:'ماہانہ فیس (روپے)', contact:'رابطہ نمبر',
     studentType:'طالب علم کی قسم', feePaying:'فیس ادا کرنے والا', free:'مفت', orphan:'یتیم', all:'تمام',
     updateType:'قسم اپڈیٹ کریں', typeUpdated:'قسم اپڈیٹ ہو گئی',
+    concession:'رعایت', concessionType:'رعایت کی قسم', noConcession:'کوئی نہیں', concPercent:'فیصد (%)', concFixed:'مقررہ رقم (روپے)',
+    concValue:'مقدار', concReason:'وجہ', concSibling:'بہن بھائی کی رعایت', concStaff:'اسٹاف کا بچہ', concScholarship:'وظیفہ',
+    concHafiz:'حافظِ قرآن', concOther:'دیگر', concSave:'رعایت محفوظ کریں', concSaved:'رعایت محفوظ ہو گئی', concNetFee:'رعایت کے بعد فیس',
+    concFullFee:'پوری فیس', concReport:'رعایت کی رپورٹ', concTotalMonthly:'ماہانہ کل رعایت', concStudents:'طلباء کو رعایت',
+    concNoStudents:'ابھی کسی طالب علم کو رعایت نہیں دی گئی۔', concByReason:'وجہ کے مطابق',
+    concNote:'یہ رعایت اب سے نئی فیس انٹری اور فیس واؤچر پر لاگو ہوگی۔ پہلے سے درج مہینے تبدیل نہیں ہوں گے۔',
+    concBadPercent:'فیصد 0 سے زیادہ اور 100 سے کم ہونا چاہیے۔ 100 فیصد رعایت کے لیے طالب علم کی قسم "مفت" کر دیں۔',
+    concBadFixed:'رعایت 0 سے زیادہ اور ماہانہ فیس سے کم ہونی چاہیے۔ پوری فیس معاف کرنے کے لیے قسم "مفت" کر دیں۔',
     search:'نام یا رقم تلاش کریں...', noStudents:'ابھی کوئی طالب علم شامل نہیں۔',
     feeLedger:'فیس کھاتہ', markPaid:'مہینہ ادا شدہ نشان زد کریں', month:'مہینہ', amount:'رقم (روپے)',
     save:'محفوظ کریں', cancel:'منسوخ کریں', delete:'حذف کریں', paid:'ادا شدہ', due:'واجب الادا',
@@ -1762,6 +1778,25 @@ const CLASS_OPTIONS = ['Nursery','KG','1st','2nd','3rd','4th','5th','6th','7th',
 const STUDENT_TYPES = ['paying','free','orphan'];
 function typeLabel(type) { return type==='free' ? t.free : type==='orphan' ? t.orphan : t.feePaying; }
 function isFeePaying(s) { return (s.student_type || 'paying') === 'paying'; }
+// ---- Concession (discount) ----------------------------------------------
+// monthly_fee stays the FULL fee. A concession (percent or fixed rupees) is stored
+// separately on the student and only lowers what is billed from now on.
+const CONCESSION_REASONS = ['sibling', 'staff', 'scholarship', 'hafiz', 'other'];
+function concessionAmount(s) {
+  if (!s || !isFeePaying(s)) return 0;
+  const gross = Number(s.monthly_fee || 0);
+  const v = Number(s.concession_value || 0);
+  if (gross <= 0 || !(v > 0)) return 0;
+  let c = 0;
+  if (s.concession_type === 'percent') c = gross * Math.min(v, 100) / 100;
+  else if (s.concession_type === 'fixed') c = v;
+  return money2(Math.min(Math.max(c, 0), gross));
+}
+function effectiveMonthlyFee(s) { return money2(Number((s && s.monthly_fee) || 0) - concessionAmount(s)); }
+function concessionReasonLabel(r) {
+  return r === 'sibling' ? t.concSibling : r === 'staff' ? t.concStaff : r === 'scholarship' ? t.concScholarship
+    : r === 'hafiz' ? t.concHafiz : t.concOther;
+}
 const EXPENSE_CATS = ['Electricity','Rent','Stationery','Salary','Transport','Maintenance','Other'];
 const INCOME_CATS = ['Donation','Grant','Sale','Fundraiser','Other'];
 
@@ -2704,6 +2739,7 @@ async function boot() {
   } else {
     document.getElementById('loading').classList.add('hidden');
     renderLogIn();
+    if (new URLSearchParams(window.location.search).get('demo') === '1') startLiveDemo();
   }
 }
 
@@ -4009,6 +4045,7 @@ function openFullRecord(studentId, registerId) {
       <div style="font-size:12px;opacity:.7;margin-bottom:10px;display:flex;flex-wrap:wrap;gap:10px;">
         <span>${esc(t.className)}: ${esc(s.class_name || '')}</span>
         <span>${esc(t.monthlyFee)}: ₨${fmt(s.monthly_fee)}</span>
+      ${concessionAmount(s) > 0 ? `<span>🏷 ${esc(t.concession)}: −₨${fmt(concessionAmount(s))} (${esc(concessionReasonLabel(s.concession_reason))})</span><span>${esc(t.concNetFee)}: ₨${fmt(effectiveMonthlyFee(s))}</span>` : ''}
         <span>${esc(t.studentType)}: ${esc(typeLabel(s.student_type || 'paying'))}</span>
       </div>
       <div style="display:flex;gap:8px;margin-bottom:14px;">
@@ -5050,7 +5087,7 @@ function exportBackup() {
   });
   addSheet('Students', sortedStudents.map(s=>({
     Name:s.name, Father:s.father_name, Class:s.class_name, Type:typeLabel(s.student_type||'paying'),
-    Admission:fmtDate(s.admission_date), Contact:s.contact, MonthlyFee:s.monthly_fee, Status:s.status,
+    Admission:fmtDate(s.admission_date), Contact:s.contact, MonthlyFee:s.monthly_fee, Concession:concessionAmount(s), ConcessionReason:(concessionAmount(s) > 0 ? concessionReasonLabel(s.concession_reason) : ''), Status:s.status,
     CurrentBalance: studentBalance(s.id)
   })));
   // Per-student fee ledger sheets — mirrors the school's printed fee card format exactly:
@@ -6117,7 +6154,7 @@ function fvBuild(cls, mk) {
     const arrears = fvBalance(s.id, mk, false);
     let fee, payable;
     if (hasEntry) { payable = fvBalance(s.id, mk, true); fee = money2(payable - arrears); }   // month already recorded: bill what is still outstanding
-    else { fee = Number(s.monthly_fee || 0); payable = money2(arrears + fee); }
+    else { fee = effectiveMonthlyFee(s); payable = money2(arrears + fee); }
     if (payable <= 0) { if (!hasEntry && fee === 0 && arrears === 0) nofee++; else paid++; return; }
     rows.push({ s, arrears, fee, payable });
   });
@@ -6294,7 +6331,7 @@ function tplStudentsResults() {
 
   const studentCard = s => {
     const paid = studentPayments(s.id).filter(p=>p.month===cur).reduce((a,b)=>a+Number(b.amount),0);
-    const due = Math.max(0, Number(s.monthly_fee||0)-paid);
+    const due = Math.max(0, effectiveMonthlyFee(s)-paid);
     const type = s.student_type || 'paying';
     const pill = type==='free' ? `<span class="pill free">${esc(t.free)}</span>`
       : type==='orphan' ? `<span class="pill orphan">${esc(t.orphan)}</span>`
@@ -6305,7 +6342,7 @@ function tplStudentsResults() {
       : '';
     return `
       <button class="card-btn" onclick="openStudentDetail('${s.id}')">
-        <div><div class="nm">${esc(s.name)}</div><div class="sub">${esc(t.fatherName)}: ${esc(s.father_name||'')}</div></div>
+        <div><div class="nm">${esc(s.name)}</div><div class="sub">${esc(t.fatherName)}: ${esc(s.father_name||'')}${concessionAmount(s) > 0 ? ' · 🏷 −₨' + fmt(concessionAmount(s)) : ''}</div></div>
         <div style="display:flex;align-items:center;gap:6px;">${smsBtn}${pill}</div>
       </button>`;
   };
@@ -6322,14 +6359,15 @@ function tplStudentsResults() {
             <button class="btn-ghost" style="flex:1;" onclick="openPromoteAllConfirm()">
               🎓 Promote All (New Year)
             </button>
-          </div>`;
+          </div>
+          <button class="btn-ghost" style="width:100%;margin-bottom:12px;" onclick="openConcessionReport()">🏷 ${esc(t.concReport)}</button>`;
       })()}
       ${list.length===0 ? `<div class="empty">${esc(t.noStudents)}</div>` :
         orderedClasses.map(cls => {
           const collapsed = !!classCollapsed[cls];
           const dueCount = groups[cls].filter(s => {
             const paid = studentPayments(s.id).filter(p=>p.month===cur).reduce((a,b)=>a+Number(b.amount),0);
-            return Math.max(0, Number(s.monthly_fee||0)-paid) > 0;
+            return Math.max(0, effectiveMonthlyFee(s)-paid) > 0;
           }).length;
           const totalPages = Math.max(1, Math.ceil(groups[cls].length / STUDENTS_PAGE_SIZE));
           let page = classPage[cls] || 1;
@@ -6674,6 +6712,7 @@ function openStudentDetail(id, viewYear) {
       <span>${esc(t.className)}: ${esc(s.class_name||'')}</span>
       <span>${esc(t.fatherName)}: ${esc(s.father_name||'')}</span>
       <span>${esc(t.monthlyFee)}: ₨${fmt(s.monthly_fee)}</span>
+      ${concessionAmount(s) > 0 ? `<span>🏷 ${esc(t.concession)}: −₨${fmt(concessionAmount(s))} (${esc(concessionReasonLabel(s.concession_reason))})</span><span>${esc(t.concNetFee)}: ₨${fmt(effectiveMonthlyFee(s))}</span>` : ''}
       ${s.gender ? `<span>${esc(t.gender)}: ${esc(s.gender===  'female' ? t.female : t.male)}</span>` : ''}
       ${s.dob ? `<span>${esc(t.dateOfBirth)}: ${esc(fmtDate(s.dob))}</span>` : ''}
       ${s.contact ? `<span>${esc(t.contact)}: ${esc(s.contact)}</span>` : ''}
@@ -6684,6 +6723,24 @@ function openStudentDetail(id, viewYear) {
       </label>
       <button class="btn-ghost" onclick="updateStudentType('${id}')">${esc(t.updateType)}</button>
     </div>
+    ${isFeePaying(s) ? `
+    <h4 class="section-title" style="margin-top:0;">🏷 ${esc(t.concession)}</h4>
+    <div class="row2" style="align-items:end;">
+      <label style="margin-bottom:0;"><span>${esc(t.concessionType)}</span>
+        <select id="c-type">
+          <option value="" ${!s.concession_type ? 'selected' : ''}>${esc(t.noConcession)}</option>
+          <option value="percent" ${s.concession_type === 'percent' ? 'selected' : ''}>${esc(t.concPercent)}</option>
+          <option value="fixed" ${s.concession_type === 'fixed' ? 'selected' : ''}>${esc(t.concFixed)}</option>
+        </select>
+      </label>
+      <label style="margin-bottom:0;"><span>${esc(t.concValue)}</span><input id="c-value" type="number" min="0" value="${Number(s.concession_value) || ''}"></label>
+    </div>
+    <label style="margin-top:8px;margin-bottom:8px;"><span>${esc(t.concReason)}</span>
+      <select id="c-reason">${CONCESSION_REASONS.map(r => `<option value="${r}" ${(s.concession_reason || 'sibling') === r ? 'selected' : ''}>${esc(concessionReasonLabel(r))}</option>`).join('')}</select>
+    </label>
+    <button class="btn-ghost" onclick="updateStudentConcession('${id}')">${esc(t.concSave)}</button>
+    <div style="font-size:12px;opacity:.7;margin:6px 0 16px;">${esc(t.concNote)}</div>
+    ` : ''}
     <div class="row2" style="align-items:end;margin-bottom:16px;">
       <label style="margin-bottom:0;"><span>${esc(t.className)}</span>
         <select id="d-class">
@@ -6717,7 +6774,7 @@ function openStudentDetail(id, viewYear) {
       <input id="p-receipt" placeholder="${esc(t.receiptNo)} (${esc(t.optional)})">
     </div>
     <div class="row2" style="margin-top:8px;">
-      <label style="margin-bottom:0;"><span>${esc(t.schoolFeeCol)}</span><input id="p-schoolfee" type="number" value="${s.monthly_fee||0}"></label>
+      <label style="margin-bottom:0;"><span>${esc(t.schoolFeeCol)}</span><input id="p-schoolfee" type="number" value="${effectiveMonthlyFee(s)||0}"></label>
       <label style="margin-bottom:0;"><span>${esc(t.sportsFund)}</span><input id="p-sports" type="number" value="0"></label>
     </div>
     <div class="row2" style="margin-top:8px;">
@@ -6726,7 +6783,7 @@ function openStudentDetail(id, viewYear) {
     </div>
     <div class="row2" style="margin-top:8px;">
       <label style="margin-bottom:0;"><span>${esc(t.otherFeeCol)}</span><input id="p-other" type="number" value="0"></label>
-      <label style="margin-bottom:0;"><span>${esc(t.totalPaidCol)}</span><input id="p-amount" type="number" placeholder="${esc(t.enterAmount)}" value="${s.monthly_fee||''}"></label>
+      <label style="margin-bottom:0;"><span>${esc(t.totalPaidCol)}</span><input id="p-amount" type="number" placeholder="${esc(t.enterAmount)}" value="${effectiveMonthlyFee(s)||''}"></label>
     </div>
     <div class="row2" style="margin-top:8px;">
       <label style="margin-bottom:0;"><span>${esc(t.dateCol)}</span><input id="p-date" type="date" value="${todayISO()}"></label>
@@ -6826,10 +6883,63 @@ async function offlineUpdateStudent(studentId, patch) {
 async function updateStudentType(studentId) {
   const type = document.getElementById('d-type').value;
   const update = { student_type: type };
-  if (type !== 'paying') update.monthly_fee = 0;
+  if (type !== 'paying') {
+    update.monthly_fee = 0;
+    const st = DATA.students.find(x => x.id === studentId);
+    if (st && (st.concession_type || Number(st.concession_value) > 0)) { update.concession_type = null; update.concession_value = 0; update.concession_reason = null; }
+  }
   const { queued, error } = await offlineUpdateStudent(studentId, update);
   if (!queued && reportSaveError(error)) return;
   if (!queued) await reloadTable('students'); openStudentDetail(studentId);
+}
+
+async function updateStudentConcession(studentId) {
+  const st = DATA.students.find(x => x.id === studentId);
+  if (!st) return;
+  const type = document.getElementById('c-type').value;
+  const val = Number(document.getElementById('c-value').value || 0);
+  const reason = document.getElementById('c-reason').value;
+  const gross = Number(st.monthly_fee || 0);
+  let patch;
+  if (!type) {
+    patch = { concession_type: null, concession_value: 0, concession_reason: null };
+  } else {
+    if (type === 'percent' && !(val > 0 && val < 100)) { alert(t.concBadPercent); return; }
+    if (type === 'fixed' && !(val > 0 && val < gross)) { alert(t.concBadFixed); return; }
+    patch = { concession_type: type, concession_value: val, concession_reason: reason };
+  }
+  const { queued, error } = await offlineUpdateStudent(studentId, patch);
+  if (!queued && reportSaveError(error)) return;
+  if (!queued) await reloadTable('students');
+  openStudentDetail(studentId);
+}
+
+function openConcessionReport() {
+  const rows = DATA.students
+    .filter(s => s.status !== 'inactive' && concessionAmount(s) > 0)
+    .map(s => ({ s, gross: Number(s.monthly_fee || 0), c: concessionAmount(s) }))
+    .sort((a, b) => (CLASS_OPTIONS.indexOf(a.s.class_name) - CLASS_OPTIONS.indexOf(b.s.class_name)) || String(a.s.name || '').localeCompare(String(b.s.name || '')));
+  if (!rows.length) { showModal(t.concReport, `<div class="empty">${esc(t.concNoStudents)}</div>`); return; }
+  const total = money2(rows.reduce((a, r) => a + r.c, 0));
+  const byReason = {};
+  rows.forEach(r => { const k = r.s.concession_reason || 'other'; byReason[k] = byReason[k] || { n: 0, sum: 0 }; byReason[k].n++; byReason[k].sum = money2(byReason[k].sum + r.c); });
+  const reasonHtml = CONCESSION_REASONS.filter(k => byReason[k]).map(k =>
+    `<div style="display:flex;justify-content:space-between;padding:4px 0;"><span>${esc(concessionReasonLabel(k))} (${byReason[k].n})</span><b>₨${fmt(byReason[k].sum)}</b></div>`).join('');
+  const listHtml = rows.map(r => `
+    <button class="card-btn" onclick="closeModal(); openStudentDetail('${r.s.id}')">
+      <div><div class="nm">${esc(r.s.name)}</div>
+        <div class="sub">${esc(r.s.class_name || '')} · ${esc(concessionReasonLabel(r.s.concession_reason))}</div></div>
+      <div style="text-align:end;"><div>₨${fmt(r.gross)} → <b>₨${fmt(r.gross - r.c)}</b></div><div class="sub">−₨${fmt(r.c)}</div></div>
+    </button>`).join('');
+  showModal(t.concReport, `
+    <div style="margin-bottom:12px;">
+      <div style="font-size:13px;opacity:.7;">${esc(t.concTotalMonthly)}</div>
+      <div style="font-size:24px;font-weight:700;">₨${fmt(total)}</div>
+      <div style="font-size:13px;opacity:.7;">${rows.length} ${esc(t.concStudents)}</div>
+    </div>
+    <h4 class="section-title" style="margin-top:0;">${esc(t.concByReason)}</h4>
+    <div style="margin-bottom:12px;">${reasonHtml}</div>
+    ${listHtml}`);
 }
 
 async function updateStudentNameUr(studentId) {
