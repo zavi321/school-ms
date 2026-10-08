@@ -6377,14 +6377,16 @@ const _scanCloseModal = closeModal;
 closeModal = function () { scanStop(); _scanCloseModal(); };   // always release the camera when any modal closes
 
 function scanLoadJsQr() {
-  return new Promise((res, rej) => {
-    if (window.jsQR) return res(window.jsQR);
+  // Local copy first (works fully offline once jsQR.js sits next to index.html), CDN as fallback.
+  const load = src => new Promise((res, rej) => {
     const el = document.createElement('script');
-    el.src = 'https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js';
+    el.src = src;
     el.onload = () => window.jsQR ? res(window.jsQR) : rej(new Error('jsQR'));
     el.onerror = () => rej(new Error('jsQR load'));
     document.head.appendChild(el);
   });
+  if (window.jsQR) return Promise.resolve(window.jsQR);
+  return load('jsQR.js').catch(() => load('https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js'));
 }
 
 function openFeeScan() {
