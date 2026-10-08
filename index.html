@@ -2948,6 +2948,7 @@ function renderAuthShell(inner) {
       <div class="auth-box">
         <div class="auth-brand">${esc(t.appName)}</div>
         <div class="auth-card">${inner}</div>
+        ${legalLinksHtml()}
         <div style="text-align:center;opacity:.35;font-size:10px;margin-top:10px;">build v-kbfix-4</div>
       </div>
     </div>`;
@@ -4653,6 +4654,7 @@ function openSettings() {
       <div id="set-diary-msg"></div>
       <button class="btn-primary" style="width:100%;" onclick="saveDiaryPassword()">${esc(t.saveSettings)}</button>
     </div>
+    ${legalLinksHtml()}
     <div style="margin-top:18px;padding-top:16px;border-top:1px solid var(--line);">
       <p style="font-size:11px;opacity:.6;margin:0 0 8px;">${esc(t.exportHint)}</p>
       <button class="btn-ghost" style="width:100%;margin-bottom:8px;" onclick="exportBackup()">⬇ ${esc(t.exportBackup)}</button>
@@ -5130,6 +5132,95 @@ async function submitSettings() {
   setTimeout(closeModal, 800);
 }
 
+
+
+// ---------------- Privacy Policy & Terms of Use ----------------
+// Opens in its own overlay (works on the login screen too, where #app is hidden).
+const LEGAL_UPDATED = 'October 2026';
+const LEGAL = {
+  en: {
+    privacy: [
+      ['Who we are', 'This app is provided by Zavi Software ("we", "us") to schools. The school using the app ("the School") is responsible for the information it enters about its students, parents and staff. We store and process that information only to run the app for the School.'],
+      ['Information the app holds', 'Whatever the School enters: student names, father names, roll numbers, class, phone numbers, fee records, attendance, exam marks and certificates, teacher and staff details, salaries and advances, expenses, diary entries, notices, messages between parents and teachers, and the School\'s name and logo. For login we hold the School\'s email address and an encrypted password.'],
+      ['How it is used', 'Only to provide the app\'s features to the School: fees and finance, records, attendance, exams and certificates, timetable, diary and notices, and the parent and teacher portals. We do not sell the information, and we do not show it to other schools. Each school can see only its own data.'],
+      ['AI features', 'Some optional features (such as AI Insights) send a summary of the School\'s records to an AI service through our server so it can write suggestions. This is used only to produce the result for that School.'],
+      ['Parent, class and teacher access', 'Parents see their own child\'s information using the School\'s code, their roll number and a PIN. Class teachers and subject teachers use logins that the School creates. The School decides who gets these logins and must keep them private.'],
+      ['Where it is stored', 'Data is stored on secure cloud servers (Supabase) and a copy is kept on the device you use, so the app can work offline. Anyone who can unlock your phone can open the app, so please use a screen lock.'],
+      ['How long we keep it', 'The School can keep records for as long as it uses the app. To keep the app fast, certificates and mark sheets older than 2 years, and fee records of past years that are fully cleared, are deleted automatically. Please keep your own backups (Settings → Full Backup).'],
+      ['Messages', 'Fee reminders and similar messages are sent through your own phone\'s SMS or WhatsApp. Push notifications are used only if you allow them.'],
+      ['Security', 'Access is protected by login, encrypted passwords and attempt limits. No system is perfectly secure, so please use strong passwords and do not share them.'],
+      ['Children\'s information', 'The app holds information about students who are children. The School is responsible for having the permission of parents or guardians to keep this information, and for using it only for school purposes.'],
+      ['Your choices', 'The School can correct or delete its records inside the app, download a full backup at any time, and ask us to delete its account and all data.'],
+      ['Contact', 'For any question or request, contact Zavi Software by SMS using the Contact button below.']
+    ],
+    terms: [
+      ['Using the app', 'The app is licensed to your School only. It may not be resold, shared with other schools, copied or reverse-engineered. You are responsible for what you enter and for keeping your login safe.'],
+      ['Accounts and subscription', 'A school account can be used after we allow your email. Use of the app may require an active subscription. If a subscription ends or is unpaid, we may limit or stop access until it is renewed.'],
+      ['Your data and backups', 'Your records belong to the School. We take reasonable care of them, but you should download a backup regularly. Some old records are deleted automatically (see the Privacy Policy).'],
+      ['Accuracy', 'Fee totals, marks, certificates and reports depend on what the School enters. Please check important documents before printing or issuing them.'],
+      ['Acceptable use', 'Do not use the app for anything unlawful, to harm others, to try to enter other schools\' data, or to disturb the service.'],
+      ['Service and changes', 'We work to keep the app available and may add, change or remove features. The app is provided "as is"; to the extent allowed by law, we are not liable for indirect loss such as lost profit or loss caused by internet, phone or power problems.'],
+      ['Ending use', 'You may stop using the app at any time. We may suspend an account that breaks these terms.'],
+      ['Updates to these terms', 'We may update this policy and these terms. The date at the top shows the latest version. Continuing to use the app means you accept the update.'],
+      ['Contact', 'Zavi Software — use the Contact button below.']
+    ],
+    titles: { privacy: 'Privacy Policy', terms: 'Terms of Use', updated: 'Last updated', contact: 'Contact (SMS)', close: 'Close' }
+  },
+  ur: {
+    privacy: [
+      ['ہم کون ہیں', 'یہ ایپ Zavi Software اسکولوں کو فراہم کرتا ہے۔ ایپ استعمال کرنے والا اسکول اپنے طلبہ، والدین اور اسٹاف کی درج کی گئی معلومات کا ذمہ دار ہے۔ ہم یہ معلومات صرف اسکول کے لیے ایپ چلانے کی غرض سے محفوظ اور استعمال کرتے ہیں۔'],
+      ['ایپ میں کون سی معلومات ہوتی ہیں', 'جو کچھ اسکول درج کرے: طلبہ کے نام، والد کے نام، رول نمبر، کلاس، فون نمبر، فیس ریکارڈ، حاضری، امتحانی نمبر اور سرٹیفکیٹ، اساتذہ اور اسٹاف کی تفصیل، تنخواہیں اور ایڈوانس، اخراجات، ڈائری، نوٹسز، والدین اور اساتذہ کے پیغامات، اور اسکول کا نام اور لوگو۔ لاگ اِن کے لیے اسکول کا ای میل اور خفیہ (انکرپٹڈ) پاس ورڈ محفوظ ہوتا ہے۔'],
+      ['استعمال کا مقصد', 'صرف اسکول کو ایپ کی سہولیات دینے کے لیے: فیس اور مالیات، ریکارڈ، حاضری، امتحانات اور سرٹیفکیٹ، ٹائم ٹیبل، ڈائری اور نوٹسز، اور والدین و اساتذہ کے پورٹل۔ ہم معلومات فروخت نہیں کرتے اور دوسرے اسکولوں کو نہیں دکھاتے۔ ہر اسکول صرف اپنا ڈیٹا دیکھ سکتا ہے۔'],
+      ['AI کی سہولیات', 'کچھ اختیاری سہولیات (مثلاً AI Insights) اسکول کے ریکارڈ کا خلاصہ ہمارے سرور کے ذریعے ایک AI سروس کو بھیجتی ہیں تاکہ وہ مشورے لکھ سکے۔ یہ صرف اسی اسکول کا نتیجہ بنانے کے لیے استعمال ہوتا ہے۔'],
+      ['والدین، کلاس اور اساتذہ کی رسائی', 'والدین اسکول کوڈ، رول نمبر اور PIN کے ذریعے صرف اپنے بچے کی معلومات دیکھتے ہیں۔ کلاس ٹیچر اور سبجیکٹ ٹیچر وہ لاگ اِن استعمال کرتے ہیں جو اسکول بناتا ہے۔ یہ لاگ اِن کس کو دینے ہیں، یہ اسکول طے کرتا ہے اور انہیں خفیہ رکھنا اسکول کی ذمہ داری ہے۔'],
+      ['ڈیٹا کہاں محفوظ ہوتا ہے', 'ڈیٹا محفوظ کلاؤڈ سرورز (Supabase) پر رکھا جاتا ہے اور ایک کاپی آپ کے فون میں بھی رہتی ہے تاکہ ایپ آف لائن چل سکے۔ جو بھی آپ کا فون کھول سکتا ہے وہ ایپ کھول سکتا ہے، اس لیے اسکرین لاک ضرور لگائیں۔'],
+      ['ڈیٹا کتنی دیر رکھا جاتا ہے', 'جب تک اسکول ایپ استعمال کرے وہ ریکارڈ رکھ سکتا ہے۔ ایپ تیز رکھنے کے لیے 2 سال سے پرانے سرٹیفکیٹ اور مارکس شیٹ، اور پچھلے سالوں کے مکمل ادا شدہ فیس ریکارڈ خود بخود حذف ہو جاتے ہیں۔ اپنا بیک اپ ضرور رکھیں (سیٹنگز ← Full Backup)۔'],
+      ['پیغامات', 'فیس کی یاد دہانی اور ایسے پیغامات آپ کے اپنے فون کے SMS یا واٹس ایپ سے بھیجے جاتے ہیں۔ پش نوٹیفکیشن صرف اجازت دینے پر استعمال ہوتے ہیں۔'],
+      ['تحفظ', 'رسائی لاگ اِن، خفیہ پاس ورڈ اور کوششوں کی حد سے محفوظ ہے۔ کوئی بھی نظام مکمل محفوظ نہیں ہوتا، اس لیے مضبوط پاس ورڈ رکھیں اور کسی کو نہ بتائیں۔'],
+      ['بچوں کی معلومات', 'ایپ میں طلبہ، جو بچے ہیں، کی معلومات ہوتی ہیں۔ والدین یا سرپرستوں کی اجازت لینا اور معلومات صرف اسکول کے مقاصد کے لیے استعمال کرنا اسکول کی ذمہ داری ہے۔'],
+      ['آپ کے اختیارات', 'اسکول ایپ میں اپنا ریکارڈ درست یا حذف کر سکتا ہے، کسی بھی وقت مکمل بیک اپ ڈاؤن لوڈ کر سکتا ہے، اور ہم سے اپنا اکاؤنٹ اور تمام ڈیٹا حذف کرنے کو کہہ سکتا ہے۔'],
+      ['رابطہ', 'کسی بھی سوال یا درخواست کے لیے نیچے "رابطہ" بٹن سے Zavi Software کو SMS کریں۔']
+    ],
+    terms: [
+      ['ایپ کا استعمال', 'یہ ایپ صرف آپ کے اسکول کے لیے لائسنس شدہ ہے۔ اسے آگے فروخت کرنا، دوسرے اسکولوں سے شیئر کرنا، کاپی کرنا یا اس کا کوڈ کھولنا منع ہے۔ جو آپ درج کریں اور اپنا لاگ اِن محفوظ رکھنا آپ کی ذمہ داری ہے۔'],
+      ['اکاؤنٹ اور سبسکرپشن', 'ہماری اجازت کے بعد آپ کا ای میل اسکول اکاؤنٹ کے لیے استعمال ہو سکتا ہے۔ ایپ کے استعمال کے لیے فعال سبسکرپشن ضروری ہو سکتی ہے۔ سبسکرپشن ختم یا ادا نہ ہو تو ہم تجدید تک رسائی محدود یا بند کر سکتے ہیں۔'],
+      ['آپ کا ڈیٹا اور بیک اپ', 'آپ کا ریکارڈ اسکول کی ملکیت ہے۔ ہم اس کی مناسب حفاظت کرتے ہیں مگر آپ کو باقاعدگی سے بیک اپ ڈاؤن لوڈ کرنا چاہیے۔ کچھ پرانا ریکارڈ خود بخود حذف ہوتا ہے (پرائیویسی پالیسی دیکھیں)۔'],
+      ['درستگی', 'فیس کے مجموعے، نمبر، سرٹیفکیٹ اور رپورٹس اسی پر منحصر ہیں جو اسکول درج کرے۔ اہم دستاویزات پرنٹ یا جاری کرنے سے پہلے خود جانچ لیں۔'],
+      ['درست استعمال', 'ایپ کو غیر قانونی کام، دوسروں کو نقصان پہنچانے، دوسرے اسکولوں کے ڈیٹا تک پہنچنے کی کوشش، یا سروس میں خلل ڈالنے کے لیے استعمال نہ کریں۔'],
+      ['سروس اور تبدیلیاں', 'ہم ایپ کو دستیاب رکھنے کی کوشش کرتے ہیں اور سہولیات شامل، تبدیل یا ختم کر سکتے ہیں۔ ایپ "جیسی ہے" کی بنیاد پر دی جاتی ہے؛ قانون کی اجازت کی حد تک، ہم بالواسطہ نقصان (جیسے منافع کا نقصان، یا انٹرنیٹ، فون یا بجلی کی خرابی سے نقصان) کے ذمہ دار نہیں۔'],
+      ['استعمال ختم کرنا', 'آپ کسی بھی وقت ایپ کا استعمال بند کر سکتے ہیں۔ ان شرائط کی خلاف ورزی پر ہم اکاؤنٹ معطل کر سکتے ہیں۔'],
+      ['شرائط میں تبدیلی', 'ہم یہ پالیسی اور شرائط تبدیل کر سکتے ہیں۔ اوپر کی تاریخ تازہ ترین ورژن بتاتی ہے۔ ایپ کا استعمال جاری رکھنے کا مطلب تبدیلی قبول کرنا ہے۔'],
+      ['رابطہ', 'Zavi Software — نیچے "رابطہ" بٹن استعمال کریں۔']
+    ],
+    titles: { privacy: 'پرائیویسی پالیسی', terms: 'شرائطِ استعمال', updated: 'آخری اپ ڈیٹ', contact: 'رابطہ (SMS)', close: 'بند کریں' }
+  }
+};
+function openLegal(tab) {
+  tab = tab === 'terms' ? 'terms' : 'privacy';
+  const L = LEGAL[LANG === 'ur' ? 'ur' : 'en'], ur = LANG === 'ur';
+  let root = document.getElementById('legal-root');
+  if (!root) { root = document.createElement('div'); root.id = 'legal-root'; document.body.appendChild(root); }
+  const tabBtn = (k) => `<button type="button" onclick="openLegal('${k}')" style="flex:1;padding:10px 6px;border-radius:12px;border:1.5px solid ${k===tab?'#1B3A57':'#DDD5C0'};background:${k===tab?'#1B3A57':'#fff'};color:${k===tab?'#fff':'inherit'};font:inherit;font-size:13px;">${esc(L.titles[k])}</button>`;
+  root.innerHTML = `
+    <div class="modal-bg" style="z-index:100000;" onclick="if(event.target===this)closeLegal()">
+      <div class="modal" dir="${ur?'rtl':'ltr'}" style="max-height:88vh;overflow:auto;">
+        <div class="modal-head"><h3>${esc(L.titles[tab])}</h3><button onclick="closeLegal()">✕</button></div>
+        <div style="display:flex;gap:8px;margin-bottom:10px;">${tabBtn('privacy')}${tabBtn('terms')}</div>
+        <p style="font-size:11px;opacity:.6;margin:0 0 10px;">${esc(L.titles.updated)}: ${LEGAL_UPDATED}</p>
+        ${L[tab].map(([h, b]) => `<h4 style="margin:14px 0 4px;font-size:14px;">${esc(h)}</h4><p style="margin:0;font-size:13px;line-height:1.75;opacity:.9;">${esc(b)}</p>`).join('')}
+        <a class="btn-primary" style="display:block;text-align:center;text-decoration:none;margin-top:18px;" href="${smsUriFromDigits(OWNER_WHATSAPP_NUMBER, 'Hi, I have a question about the school app.')}">${esc(L.titles.contact)}</a>
+        <button class="btn-ghost" style="width:100%;margin-top:8px;" onclick="closeLegal()">${esc(L.titles.close)}</button>
+      </div>
+    </div>`;
+}
+function closeLegal() { const r = document.getElementById('legal-root'); if (r) r.innerHTML = ''; }
+function legalLinksHtml() {
+  const ur = LANG === 'ur';
+  return `<div style="text-align:center;font-size:11px;margin-top:10px;opacity:.75;">
+    <a href="#" onclick="openLegal('privacy');return false;" style="color:inherit;">${esc(ur?'پرائیویسی پالیسی':'Privacy Policy')}</a>
+    &nbsp;·&nbsp;
+    <a href="#" onclick="openLegal('terms');return false;" style="color:inherit;">${esc(ur?'شرائطِ استعمال':'Terms of Use')}</a></div>`;
+}
 
 // ---------------- First-time Setup Wizard ----------------
 // Shown once to a brand-new school (no students yet, wizard never finished):
