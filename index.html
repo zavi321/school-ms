@@ -547,6 +547,24 @@ html, body{overscroll-behavior:none;}
     .fv-t td:last-child{text-align:right;font-weight:600;}
     .fv-t tr.fv-total td{font-size:14px;font-weight:800;border-top:1.5px solid #0F2740;border-bottom:1.5px solid #0F2740;}
     .fv-bank{margin-top:4px;font-size:10.5px;border:1px solid #999;border-radius:3px;padding:2px 4px;line-height:1.3;}
+    .fv-row-fam{height:192mm;}
+    .fv-page.fv-p3{width:194mm;}
+    .fv-p3 .fv-row{height:93mm;}
+    .fv-p3 .fv-row-fam{height:140mm;}
+    .fv-p3 .fv-copy{padding:2.5mm 3mm;font-size:10.5px;line-height:1.3;}
+    .fv-p3 .fv-school{font-size:12px;}
+    .fv-p3 .fv-tag{font-size:8.5px;}
+    .fv-p3 .fv-sub{font-size:10.5px;margin:3px 0 5px;}
+    .fv-p3 .fv-t td{font-size:10.5px;padding:3px 0;}
+    .fv-p3 .fv-t tr.fv-total td{font-size:12.5px;padding:4px 0;}
+    .fv-p3 .fv-t.fv-ft td{font-size:10px;}
+    .fv-p3 .fv-bank{font-size:9.5px;margin-top:6px;}
+    .fv-p3 .fv-sign{font-size:9px;}
+    .fv-t.fv-ft th{font-size:9.5px;color:#444;text-align:right;padding:2px 0;border-bottom:1.5px solid #0F2740;font-weight:700;}
+    .fv-t.fv-ft th:first-child{text-align:left;}
+    .fv-t.fv-ft td{font-size:11px;text-align:right;width:auto;}
+    .fv-t.fv-ft td:first-child{text-align:left;color:#000;font-weight:600;}
+    .fv-t.fv-ft td small{display:block;color:#555;font-weight:400;font-size:9.5px;}
     .fv-sign{margin-top:auto;display:flex;justify-content:space-between;gap:10px;font-size:10px;color:#444;padding-top:6px;}
     .fv-sign span{border-top:1px solid #000;padding-top:1px;flex:1;text-align:center;}
 
@@ -6113,7 +6131,9 @@ const FV_L = {
     bankCopy: 'BANK COPY', schoolCopy: 'SCHOOL COPY', studentCopy: 'STUDENT COPY',
     vno: 'Voucher No', student: 'Student', father: 'Father', klass: 'Class', monthFee: 'Fee for month',
     prev: 'Previous balance', payable: 'Payable by due date', dueOn: 'Due date', afterDue: 'After due date',
-    bankDetails: 'Deposit to', cashier: 'Cashier / Stamp', depositor: 'Depositor sign', rs: 'Rs'
+    bankDetails: 'Deposit to', cashier: 'Cashier / Stamp', depositor: 'Depositor sign', rs: 'Rs',
+    mode: 'Voucher type', perStudent: 'One per student', perFamily: 'Family (siblings together)',
+    familyVoucher: 'Family Fee Voucher', members: 'Children', famTotal: 'Total family payable', studentCol: 'Student', feeCol: 'Fee', prevCol: 'Previous', totalCol: 'Total', perPage: 'Vouchers per page', per2: '2 per page (larger)', per3: '3 per page (A4 portrait)'
   },
   ur: {
     title: '\u0641\u06cc\u0633 \u0648\u0627\u0624\u0686\u0631 (\u0686\u0627\u0644\u0627\u0646)', voucher: '\u0641\u06cc\u0633 \u0648\u0627\u0624\u0686\u0631', month: '\u0641\u06cc\u0633 \u06a9\u0627 \u0645\u06c1\u06cc\u0646\u06c1', cls: '\u062c\u0645\u0627\u0639\u062a', all: '\u062a\u0645\u0627\u0645 \u062c\u0645\u0627\u0639\u062a\u06cc\u06ba',
@@ -6124,7 +6144,9 @@ const FV_L = {
     bankCopy: '\u0628\u06cc\u0646\u06a9 \u06a9\u0627\u067e\u06cc', schoolCopy: '\u0633\u06a9\u0648\u0644 \u06a9\u0627\u067e\u06cc', studentCopy: '\u0637\u0627\u0644\u0628 \u0639\u0644\u0645 \u06a9\u0627\u067e\u06cc',
     vno: '\u0648\u0627\u0624\u0686\u0631 \u0646\u0645\u0628\u0631', student: '\u0637\u0627\u0644\u0628 \u0639\u0644\u0645', father: '\u0648\u0627\u0644\u062f', klass: '\u062c\u0645\u0627\u0639\u062a', monthFee: '\u0645\u06c1\u06cc\u0646\u06d2 \u06a9\u06cc \u0641\u06cc\u0633',
     prev: '\u0633\u0627\u0628\u0642\u06c1 \u0628\u0642\u0627\u06cc\u0627', payable: '\u0622\u062e\u0631\u06cc \u062a\u0627\u0631\u06cc\u062e \u062a\u06a9 \u0642\u0627\u0628\u0644\u0650 \u0627\u062f\u0627', dueOn: '\u0622\u062e\u0631\u06cc \u062a\u0627\u0631\u06cc\u062e', afterDue: '\u0622\u062e\u0631\u06cc \u062a\u0627\u0631\u06cc\u062e \u06a9\u06d2 \u0628\u0639\u062f',
-    bankDetails: '\u062c\u0645\u0639 \u06a9\u0631\u0627\u0626\u06cc\u06ba', cashier: '\u06a9\u06cc\u0634\u0626\u06cc\u0631 / \u0645\u06c1\u0631', depositor: '\u062c\u0645\u0639 \u06a9\u0631\u0627\u0646\u06d2 \u0648\u0627\u0644\u06d2 \u06a9\u06d2 \u062f\u0633\u062a\u062e\u0637', rs: '\u0631\u0648\u067e\u06d2'
+    bankDetails: '\u062c\u0645\u0639 \u06a9\u0631\u0627\u0626\u06cc\u06ba', cashier: '\u06a9\u06cc\u0634\u0626\u06cc\u0631 / \u0645\u06c1\u0631', depositor: '\u062c\u0645\u0639 \u06a9\u0631\u0627\u0646\u06d2 \u0648\u0627\u0644\u06d2 \u06a9\u06d2 \u062f\u0633\u062a\u062e\u0637', rs: '\u0631\u0648\u067e\u06d2',
+    mode: 'واؤچر کی قسم', perStudent: 'ہر طالب علم کا الگ', perFamily: 'فیملی (بہن بھائی اکٹھے)',
+    familyVoucher: 'فیملی فیس واؤچر', members: 'بچے', famTotal: 'کل فیملی واجب الادا', studentCol: 'طالب علم', feeCol: 'فیس', prevCol: 'سابقہ', totalCol: 'کل', perPage: 'فی صفحہ واؤچر', per2: 'ہر صفحے پر 2 (بڑے)', per3: 'ہر صفحے پر 3 (A4 پورٹریٹ)'
   }
 };
 const fvL = k => (FV_L[LANG] && FV_L[LANG][k] !== undefined) ? FV_L[LANG][k] : FV_L.en[k];
@@ -6146,11 +6168,28 @@ function fvBalance(studentId, mk, inclusive) {
   return running;
 }
 
-function fvBuild(cls, mk) {
+function fvFamilyKey(s) {
+  const f = normName(s.father_name);
+  if (!f) return '';
+  return f + '|' + String(s.contact || '').replace(/\D/g, '').slice(-10);
+}
+function fvUnits(rows, cls, fam) {
+  if (!fam) return rows.map(r => ({ members: [r] }));
+  const map = new Map(), units = [];
+  rows.forEach(r => {
+    const k = fvFamilyKey(r.s);
+    if (!k) { units.push({ members: [r] }); return; }
+    if (!map.has(k)) { const u = { members: [] }; map.set(k, u); units.push(u); }
+    map.get(k).members.push(r);
+  });
+  return units.filter(u => cls === '*' || u.members.some(m => m.s.class_name === cls));
+}
+
+function fvBuild(cls, mk, fam) {
   const rows = []; let paid = 0, free = 0, nofee = 0;
   DATA.students.forEach(s => {
     if (s.status === 'inactive') return;
-    if (cls !== '*' && s.class_name !== cls) return;
+    if (!fam && cls !== '*' && s.class_name !== cls) return;
     if (!isFeePaying(s)) { free++; return; }
     const hasEntry = studentPayments(s.id).some(e => e.month === mk);
     const arrears = fvBalance(s.id, mk, false);
@@ -6161,10 +6200,10 @@ function fvBuild(cls, mk) {
     rows.push({ s, arrears, fee, payable });
   });
   rows.sort((a, b) => fvClassIdx(a.s.class_name) - fvClassIdx(b.s.class_name) || String(a.s.name || '').localeCompare(String(b.s.name || '')));
-  return { rows, paid, free, nofee };
+  return { rows, units: fvUnits(rows, cls, fam), paid, free, nofee };
 }
 
-function fvHtml(rows, o) {
+function fvHtml(units, o) {
   const ur = LANG === 'ur';
   const school = (ur ? schoolNameUrdu() : (CURRENT_PROFILE.school_name || '')) || CURRENT_PROFILE.school_name || 'School';
   const labels = o.copies === 2 ? ['bankCopy', 'schoolCopy'] : ['bankCopy', 'schoolCopy', 'studentCopy'];
@@ -6191,9 +6230,41 @@ function fvHtml(rows, o) {
       <div class="fv-sign"><span>${esc(fvL('depositor'))}</span><span>${esc(fvL('cashier'))}</span></div>
     </div>`;
   };
+  const per = o.per === 3 ? 3 : 2;
   const row = r => `<div class="fv-row" style="--fvc:${labels.length}">${labels.map(l => copy(r, l)).join('')}</div>`;
-  const pages = [];
-  for (let i = 0; i < rows.length; i += 2) pages.push(`<div class="fv-page">${row(rows[i])}${rows[i + 1] ? row(rows[i + 1]) : ''}</div>`);
+  const famCopy = (u, lbl) => {
+    const ms = u.members, sum = k => money2(ms.reduce((a, m) => a + m[k], 0));
+    const payable = sum('payable');
+    const vno = 'FF-' + o.mk.replace('-', '') + '-' + ms.map(m => String(m.s.id)).sort()[0].replace(/-/g, '').slice(0, 5).toUpperCase();
+    return `<div class="fv-copy">
+      <div class="fv-top"><div class="fv-school">${esc(school)}</div><div class="fv-tag">${esc(fvL(lbl))}</div></div>
+      <div class="fv-sub">${esc(fvL('familyVoucher'))} \u2014 ${esc(monthLabel(o.mk))}</div>
+      <table class="fv-t">
+        <tr><td>${esc(fvL('vno'))}</td><td>${esc(vno)}</td></tr>
+        <tr><td>${esc(fvL('father'))}</td><td>${esc(ms[0].s.father_name || '')}</td></tr>
+        <tr><td>${esc(fvL('members'))}</td><td>${ms.length}</td></tr>
+      </table>
+      <table class="fv-t fv-ft" style="margin-top:5px;">
+        <tr><th>${esc(fvL('studentCol'))}</th><th>${esc(fvL('feeCol'))}</th><th>${esc(fvL('prevCol'))}</th><th>${esc(fvL('totalCol'))}</th></tr>
+        ${ms.map(m => `<tr><td>${esc(ur ? studentNameUrdu(m.s) : m.s.name)}<small>${esc(m.s.class_name || '')}</small></td><td>${fmt(m.fee)}</td><td>${fmt(m.arrears)}</td><td>${fmt(m.payable)}</td></tr>`).join('')}
+      </table>
+      <table class="fv-t" style="margin-top:5px;">
+        <tr class="fv-total"><td>${esc(fvL('famTotal'))}</td><td>${money(payable)}</td></tr>
+        <tr><td>${esc(fvL('dueOn'))}</td><td>${esc(fmtDate(o.due) || '')}</td></tr>
+        ${o.fine > 0 ? `<tr><td>${esc(fvL('afterDue'))}</td><td>${money(money2(payable + o.fine))}</td></tr>` : ''}
+      </table>
+      ${bankHtml}
+      <div class="fv-sign"><span>${esc(fvL('depositor'))}</span><span>${esc(fvL('cashier'))}</span></div>
+    </div>`;
+  };
+  const famRow = u => `<div class="fv-row fv-row-fam" style="--fvc:${labels.length}">${labels.map(l => famCopy(u, l)).join('')}</div>`;
+  const pages = []; let pend = [];
+  const flush = () => { while (pend.length) pages.push(`<div class="fv-page${per === 3 ? ' fv-p3' : ''}">${pend.splice(0, per).map(row).join('')}</div>`); };
+  units.forEach(u => {
+    if (u.members.length > 1) { flush(); pages.push(`<div class="fv-page${per === 3 ? ' fv-p3' : ''}">${famRow(u)}</div>`); }
+    else pend.push(u.members[0]);
+  });
+  flush();
   return `<div class="fv-sheet">${pages.join('')}</div>`;
 }
 
@@ -6211,6 +6282,8 @@ function openFeeVouchers() {
       <label style="margin-bottom:0;"><span>${esc(fvL('due'))}</span><input id="fv-due" type="date" value="${mk}-10"></label>
       <label style="margin-bottom:0;"><span>${esc(fvL('fine'))}</span><input id="fv-fine" type="number" min="0" placeholder="0"></label>
     </div>
+    <label style="margin-top:10px;"><span>${esc(fvL('mode'))}</span><select id="fv-mode" onchange="fvPreview()"><option value="student">${esc(fvL('perStudent'))}</option><option value="family">${esc(fvL('perFamily'))}</option></select></label>
+    <label style="margin-top:10px;"><span>${esc(fvL('perPage'))}</span><select id="fv-per"><option value="2">${esc(fvL('per2'))}</option><option value="3">${esc(fvL('per3'))}</option></select></label>
     <label style="margin-top:10px;"><span>${esc(fvL('copies'))}</span><select id="fv-copies"><option value="3">${esc(fvL('c3'))}</option><option value="2">${esc(fvL('c2'))}</option></select></label>
     <label><span>${esc(fvL('bankName'))}</span><input id="fv-bank-name" value="${esc(bank.name || '')}"></label>
     <label><span>${esc(fvL('bankTitle'))}</span><input id="fv-bank-title" value="${esc(bank.title || '')}"></label>
@@ -6230,9 +6303,10 @@ function fvMonthChanged() {
 function fvPreview() {
   const m = document.getElementById('fv-month'), c = document.getElementById('fv-class');
   if (!m || !c) return;
-  const r = fvBuild(c.value, m.value || monthKey());
-  const el = document.getElementById('fv-preview'); if (el) el.textContent = fvL('count')(r.rows.length, r.paid, r.free, r.nofee);
-  const btn = document.getElementById('fv-print-btn'); if (btn) btn.disabled = r.rows.length === 0;
+  const md = document.getElementById('fv-mode');
+  const r = fvBuild(c.value, m.value || monthKey(), !!md && md.value === 'family');
+  const el = document.getElementById('fv-preview'); if (el) el.textContent = fvL('count')(r.units.length, r.paid, r.free, r.nofee);
+  const btn = document.getElementById('fv-print-btn'); if (btn) btn.disabled = r.units.length === 0;
 }
 function fvPrint() {
   const mk = document.getElementById('fv-month').value || monthKey();
@@ -6240,15 +6314,28 @@ function fvPrint() {
   const val = id => (document.getElementById(id) ? document.getElementById(id).value.trim() : '');
   const bank = { name: val('fv-bank-name'), title: val('fv-bank-title'), no: val('fv-bank-no') };
   fvSaveBank(bank);
-  const { rows } = fvBuild(cls, mk);
-  if (!rows.length) return;
+  const md = document.getElementById('fv-mode');
+  const { units } = fvBuild(cls, mk, !!md && md.value === 'family');
+  if (!units.length) return;
   const o = { mk, due: dateVal('fv-due', mk + '-10'), fine: Math.max(0, Number(document.getElementById('fv-fine').value) || 0),
-              copies: Number(document.getElementById('fv-copies').value) === 2 ? 2 : 3, bank };
-  document.getElementById('print-area').innerHTML = fvHtml(rows, o);
+              copies: Number(document.getElementById('fv-copies').value) === 2 ? 2 : 3, bank,
+              per: (document.getElementById('fv-per') || {}).value === '3' ? 3 : 2 };
+  document.getElementById('print-area').innerHTML = fvHtml(units, o);
   closeModal();
-  const clear = () => { const pa = document.getElementById('print-area'); if (pa) pa.innerHTML = ''; window.removeEventListener('afterprint', clear); };
-  window.addEventListener('afterprint', clear);
-  printWithOrientation('A4 landscape');
+  // Android Chrome fires afterprint as soon as the preview opens, so nothing is cleared on that event
+  // (it emptied the vouchers before the PDF was made). The A4-landscape override and the print area
+  // are cleaned up on the first tap after the preview closes instead.
+  const old = document.getElementById('fv-print-style'); if (old) old.remove();
+  const st = document.createElement('style'); st.id = 'fv-print-style';
+  st.textContent = '@media print { @page{ size:' + (o.per === 3 ? 'A4 portrait' : 'A4 landscape') + '; margin:8mm; } }';
+  document.head.appendChild(st);
+  window.print();
+  const done = () => {
+    st.remove();
+    const pa = document.getElementById('print-area'); if (pa) pa.innerHTML = '';
+    document.removeEventListener('pointerdown', done, true);
+  };
+  setTimeout(() => document.addEventListener('pointerdown', done, true), 1500);
 }
 
 function tplStudents() {
