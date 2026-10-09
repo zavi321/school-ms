@@ -4252,9 +4252,9 @@ function _renderTabInner() {
   else if (TAB==='notices') {
     // The form is NOT rebuilt if it is already on screen (same language): a background sync / 'online'
     // event used to wipe it and close the keyboard. Only the list underneath is refreshed.
-    if (document.getElementById('notice-details') && main.dataset.noticeLang === LANG) { noticeLoad(); pmOwnerLoad(); updateAlertsBadge(); return; }
+    if (document.getElementById('notice-details') && main.dataset.noticeLang === LANG) { noticeLoad(); pmOwnerLoad(); pcOwnerLoad(); updateAlertsBadge(); return; }
     main.dataset.noticeLang = LANG;
-    main.innerHTML = tplNotices(); noticeInit(); pmOwnerLoad();
+    main.innerHTML = tplNotices(); noticeInit(); pmOwnerLoad(); pcOwnerLoad();
   }
   else if (TAB==='admin') {
     // Admin page already on screen (same language)? A background redraw (sync finishing, internet coming back…)
@@ -6891,6 +6891,258 @@ async function gpSave() {
     <div class="greenbox" style="text-align:center;margin-bottom:12px;"><div class="lbl">✓ ${esc(gpL('saved'))}</div><div class="val" style="font-size:20px;">${esc(data.student_name)} · ${esc(gpTime(data.left_at))}</div></div>
     <button class="btn-primary" onclick="gpSms('${data.id}')">${esc(gpL('smsNow'))}</button>
     <button class="btn-ghost" style="margin-top:8px;" onclick="openGatePass()">${esc(gpL('close'))}</button>`);
+}
+
+// ===================== PARENT COMPLAINTS / SUGGESTIONS (tracked tickets) =====================
+// Separate from parent_messages: every item is a numbered ticket with a status
+// (New -> Seen -> In progress -> Resolved) and a visible history. The parent picks Principal or
+// Class Teacher; only that person sees it. Needs complaints.sql run once in Supabase.
+const PC_STATUS = { new: ['New', 'نیا', '#c0392b'], seen: ['Seen', 'دیکھ لیا', '#b7791f'], in_progress: ['In progress', 'کام جاری', '#2b6cb0'], resolved: ['Resolved', 'حل ہو گیا', '#2f855a'] };
+const PC_KIND = { complaint: ['Complaint', 'شکایت', '⚠️'], suggestion: ['Suggestion', 'مشورہ', '💡'], appreciation: ['Appreciation', 'شکریہ', '🌟'] };
+const PC_ROLE = { parent: ['Parent', 'والدین'], teacher: ['Class teacher', 'کلاس ٹیچر'], owner: ['Principal', 'پرنسپل'] };
+const pcT = (tbl, k) => tbl[k] ? qt(tbl[k][0], tbl[k][1]) : String(k || '');
+let PC = { filter: 'open', data: { owner: [], teacher: [], parent: [] }, open: {} };
+let PC_OWNER_UNREAD = 0, PC_BADGE_TS = 0;
+
+function pcErr(m) {
+  m = String(m || '');
+  if (/does not exist|could not find the function|schema cache/i.test(m)) return qt('Complaint box is not set up yet. The school must run complaints.sql in Supabase.', 'شکایت باکس ابھی سیٹ اپ نہیں ہے۔ اسکول کو سپابیس میں complaints.sql چلانی ہوگی۔');
+  if (/too_many_complaints/.test(m)) return qt('Too many tickets today. Please try again tomorrow.', 'آج بہت زیادہ ٹکٹ ہو گئے ہیں۔ براہ کرم کل کوشش کریں۔');
+  if (/too_many_replies/.test(m)) return qt('This ticket has too many replies.', 'اس ٹکٹ پر بہت زیادہ جوابات ہو چکے ہیں۔');
+  if (/closed/.test(m)) return qt('This ticket is resolved. Please open a new one.', 'یہ ٹکٹ حل ہو چکا ہے۔ براہ کرم نیا ٹکٹ کھولیں۔');
+  if (/bad_message/.test(m)) return qt('Message is empty or too long (max 1000 characters).', 'پیغام خالی ہے یا بہت لمبا ہے (زیادہ سے زیادہ 1000 حروف)۔');
+  if (/invalid_parent|invalid_login/.test(m)) return qt('Login could not be verified.', 'لاگ ان کی تصدیق نہیں ہو سکی۔');
+  return qt('Could not complete. Please check your connection and try again.', 'مکمل نہیں ہو سکا۔ انٹرنیٹ چیک کر کے دوبارہ کوشش کریں۔');
+}
+const pcWhen = iso => iso ? ((fmtDate(String(iso).slice(0, 10)) || '') + ' ' + new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })) : '';
+const pcEvents = c => (c.events || []).slice().sort((a, b) => String(a.created_at).localeCompare(String(b.created_at)));
+const pcFiltered = list => PC.filter === 'all' ? list : PC.filter === 'resolved' ? list.filter(c => c.status === 'resolved') : list.filter(c => c.status !== 'resolved');
+
+// parent-side "new reply" tracking (kept on the parent's phone)
+function pcSeenKey() { const c = getPpCache(); return 'pc_seen_' + (c ? c.schoolCode + '_' + c.roll : ''); }
+function pcSeenMap() { try { return JSON.parse(localStorage.getItem(pcSeenKey()) || '{}'); } catch (e) { return {}; } }
+const pcStaffEvents = c => (c.events || []).filter(e => e.actor !== 'parent').length;
+const pcParentHasNew = c => pcStaffEvents(c) > (pcSeenMap()[c.id] || 0);
+
+function pcTimeline(c) {
+  return pcEvents(c).map(e => e.kind === 'status'
+    ? `<div class="sub" style="margin-top:6px;">● ${esc(pcT(PC_ROLE, e.actor))}: <b>${esc(pcT(PC_STATUS, e.new_status))}</b>${e.text ? ' — ' + esc(e.text) : ''} · ${esc(pcWhen(e.created_at))}</div>`
+    : `<div style="margin-top:6px;padding:6px 8px;border-radius:8px;background:${e.actor === 'parent' ? 'rgba(0,0,0,.05)' : 'rgba(228,199,101,.28)'};font-size:13px;line-height:1.5;white-space:pre-wrap;"><b style="font-size:11px;">${esc(pcT(PC_ROLE, e.actor))}</b> · <span class="sub">${esc(pcWhen(e.created_at))}</span><br>${esc(e.text || '')}</div>`).join('');
+}
+function pcActionsHtml(c, role) {
+  const id = c.id;
+  if (role === 'parent') {
+    if (c.status === 'resolved') return `<div class="sub" style="margin-top:8px;">✓ ${esc(qt('This ticket is resolved.', 'یہ ٹکٹ حل ہو چکا ہے۔'))}</div>`;
+    return `<textarea id="pc-txt-${id}" maxlength="1000" rows="2" style="width:100%;box-sizing:border-box;margin-top:8px;" placeholder="${esc(qt('Write more…', 'مزید لکھیں…'))}"></textarea>
+      <button class="btn-primary" style="width:100%;margin-top:6px;" onclick="pcAct('${id}','parent',null)">${esc(qt('Send follow-up', 'مزید بھیجیں'))}</button>
+      <div id="pc-st-${id}" style="font-size:12px;margin-top:6px;"></div>`;
+  }
+  return `<textarea id="pc-txt-${id}" maxlength="1000" rows="2" style="width:100%;box-sizing:border-box;margin-top:8px;" placeholder="${esc(qt('Write your reply or note…', 'اپنا جواب یا نوٹ لکھیں…'))}"></textarea>
+    <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap;">
+      <button class="btn-primary" style="flex:1;padding:8px 6px;font-size:13px;" onclick="pcAct('${id}','${role}',null)">${esc(qt('Send reply', 'جواب بھیجیں'))}</button>
+      ${c.status !== 'in_progress' ? `<button class="btn-ghost" style="flex:1;padding:8px 6px;font-size:13px;" onclick="pcAct('${id}','${role}','in_progress')">${esc(qt('In progress', 'کام جاری'))}</button>` : ''}
+      ${c.status !== 'resolved' ? `<button class="btn-ghost" style="flex:1;padding:8px 6px;font-size:13px;" onclick="pcAct('${id}','${role}','resolved')">✓ ${esc(qt('Resolved', 'حل ہو گیا'))}</button>` : ''}
+    </div>
+    <div class="sub" style="margin-top:4px;">${esc(qt('Text typed above is sent with the status change as a note.', 'اوپر لکھا ہوا متن اسٹیٹس کے ساتھ نوٹ کے طور پر جائے گا۔'))}</div>
+    <div id="pc-st-${id}" style="font-size:12px;margin-top:6px;"></div>`;
+}
+function pcRowHtml(c, role) {
+  const st = PC_STATUS[c.status] || PC_STATUS.new, kd = PC_KIND[c.kind] || PC_KIND.complaint;
+  const unread = role === 'parent' ? pcParentHasNew(c) : !!c.unread;
+  const who = role === 'parent' ? pcT(PC_ROLE, c.to_role === 'owner' ? 'owner' : 'teacher') : (c.student_name || '') + (c.class_name ? ' · ' + c.class_name : '');
+  const title = c.subject || String(c.body || '').slice(0, 60);
+  return `<div class="list-row" id="pc-row-${c.id}" style="flex-direction:column;align-items:stretch;">
+    <div onclick="pcToggle('${c.id}','${role}')" style="cursor:pointer;display:flex;justify-content:space-between;gap:8px;align-items:flex-start;">
+      <div style="min-width:0;"><div class="nm">#${c.ticket_no} ${kd[2]} ${esc(who)}<span id="pc-new-${c.id}">${unread ? pmNewTag() : ''}</span></div>
+        <div class="sub">${esc(qt(kd[0], kd[1]))} · ${esc(title)}</div></div>
+      <span id="pc-chip-${c.id}" style="flex:none;font-size:11px;padding:2px 8px;border-radius:999px;background:${st[2]};color:#fff;">${esc(qt(st[0], st[1]))}</span>
+    </div>
+    <div id="pc-det-${c.id}" class="${PC.open[c.id] ? '' : 'hidden'}" style="margin-top:8px;">
+      ${role !== 'parent' && c.father_name ? `<div class="sub">${esc(t.fatherName)}: ${esc(c.father_name)}</div>` : ''}
+      ${c.subject ? `<div style="font-weight:600;font-size:13px;margin-top:4px;">${esc(c.subject)}</div>` : ''}
+      <div style="margin-top:4px;font-size:13px;line-height:1.5;white-space:pre-wrap;">${esc(c.body || '')}</div>
+      <div class="sub" style="margin-top:2px;">${esc(pcWhen(c.created_at))}</div>
+      ${pcTimeline(c)}
+      ${pcActionsHtml(c, role)}
+    </div></div>`;
+}
+const pcBoxId = role => role === 'owner' ? 'pc-owner-list' : role === 'teacher' ? 'pc-teacher-list' : 'pc-parent-list';
+function pcRepaint(role) {
+  const box = document.getElementById(pcBoxId(role)); if (!box) return;
+  const all = PC.data[role] || [], list = role === 'parent' ? all : pcFiltered(all);
+  box.innerHTML = list.length ? `<div class="list-card">${list.map(c => pcRowHtml(c, role)).join('')}</div>` : `<p class="desc">${esc(qt('No tickets here.', 'یہاں کوئی ٹکٹ نہیں۔'))}</p>`;
+  box.dataset.sig = '';
+  if (role === 'owner') pcPaintOwnerCount();
+}
+function pcPaintOwnerCount() {
+  const el = document.getElementById('pc-owner-count'); if (!el) return;
+  el.innerHTML = PC_OWNER_UNREAD > 0 ? ` <b style="background:#d33;color:#fff;border-radius:9px;font-size:10px;padding:1px 6px;">${PC_OWNER_UNREAD > 9 ? '9+' : PC_OWNER_UNREAD}</b>` : '';
+}
+
+async function pcCall(role, id, text, status) {
+  if (role === 'owner') return sb.rpc('parent_complaint_owner_act', { p_id: id, p_text: text || null, p_status: status || null });
+  if (role === 'teacher') { const s = getClassSession(); if (!s) return { error: { message: 'invalid_login' } }; return sb.rpc('parent_complaint_act_class', Object.assign(pmTeacherArgs(s), { p_id: id, p_text: text || null, p_status: status || null })); }
+  const c = getPpCache(); if (!c) return { error: { message: 'invalid_parent' } };
+  return sb.rpc('parent_complaint_reply_parent', { p_school_code: c.schoolCode, p_roll: String(c.roll), p_pin: String(c.pin), p_id: id, p_text: text });
+}
+async function pcAct(id, role, status) {
+  const ta = document.getElementById('pc-txt-' + id), out = document.getElementById('pc-st-' + id); if (!ta || !out) return;
+  const text = ta.value.trim(), bad = m => { out.innerHTML = `<div class="err">${esc(m)}</div>`; };
+  if (!status && !text) { bad(qt('Please write a reply first.', 'پہلے جواب لکھیں۔')); return; }
+  if (!navigator.onLine) { bad(qt('You are offline. Please try again with internet.', 'آپ آف لائن ہیں۔ انٹرنیٹ کے ساتھ دوبارہ کوشش کریں۔')); return; }
+  const btns = document.querySelectorAll(`#pc-det-${id} button`); btns.forEach(b => b.disabled = true); out.textContent = '…';
+  try {
+    const { error } = await pcCall(role, id, text, status);
+    if (error) { bad(pcErr(error.message)); btns.forEach(b => b.disabled = false); return; }
+  } catch (e) { bad(pcErr(e && e.message)); btns.forEach(b => b.disabled = false); return; }
+  ta.value = ''; PC.open[id] = true;
+  if (role === 'owner') await pcOwnerLoad(); else if (role === 'teacher') await pcTeacherLoad(); else await pcParentLoad();
+}
+async function pcToggle(id, role) {
+  const det = document.getElementById('pc-det-' + id); if (!det) return;
+  det.classList.toggle('hidden'); const opened = !det.classList.contains('hidden'); PC.open[id] = opened;
+  if (!opened) return;
+  const c = (PC.data[role] || []).find(x => x.id === id); if (!c) return;
+  if (role === 'parent') {
+    const m = pcSeenMap(); m[id] = pcStaffEvents(c); try { localStorage.setItem(pcSeenKey(), JSON.stringify(m)); } catch (e) {}
+    const tag = document.getElementById('pc-new-' + id); if (tag) tag.innerHTML = ''; pcParentPaintBadge(); return;
+  }
+  if (!c.unread || !navigator.onLine) return;
+  try {
+    const { error } = await pcCall(role, id, null, 'seen'); if (error) return;
+    c.unread = false; if (c.status === 'new') c.status = 'seen';
+    const tag = document.getElementById('pc-new-' + id); if (tag) tag.innerHTML = '';
+    const chip = document.getElementById('pc-chip-' + id), st = PC_STATUS[c.status]; if (chip && st) { chip.textContent = qt(st[0], st[1]); chip.style.background = st[2]; }
+    if (role === 'owner') { PC_OWNER_UNREAD = Math.max(0, PC_OWNER_UNREAD - 1); pmPaintNavBadge(); pcPaintOwnerCount(); } else pcTeacherBadge();
+  } catch (e) {}
+}
+
+// ---- principal (Notice Board tab) ----
+function pcOwnerSectionHtml() {
+  return `<div class="section-title" style="margin-top:16px;display:flex;justify-content:space-between;align-items:center;gap:8px;">
+      <span>${esc(qt('Complaints & suggestions', 'شکایات اور مشورے'))}<span id="pc-owner-count"></span></span>
+      <select style="width:auto;font-size:12px;padding:4px 6px;" onchange="PC.filter=this.value; pcRepaint('owner')">
+        <option value="open"${PC.filter === 'open' ? ' selected' : ''}>${esc(qt('Open', 'کھلے'))}</option>
+        <option value="resolved"${PC.filter === 'resolved' ? ' selected' : ''}>${esc(qt('Resolved', 'حل شدہ'))}</option>
+        <option value="all"${PC.filter === 'all' ? ' selected' : ''}>${esc(qt('All', 'تمام'))}</option></select></div>
+    <div id="pc-owner-list"><div class="empty">…</div></div>`;
+}
+async function pcOwnerBadgeRefresh(force) {
+  if (!CURRENT_USER || !navigator.onLine) return;
+  if (!force && Date.now() - PC_BADGE_TS < 60000) return;
+  PC_BADGE_TS = Date.now();
+  try {
+    const { count, error } = await sb.from('parent_complaints').select('id', { count: 'exact', head: true }).eq('owner_id', CURRENT_USER.id).eq('to_role', 'owner').eq('unread', true);
+    if (error) return;
+    PC_OWNER_UNREAD = count || 0; pmPaintNavBadge(); pcPaintOwnerCount();
+  } catch (e) {}
+}
+async function pcOwnerLoad() {
+  const box = document.getElementById('pc-owner-list'); if (!box || !CURRENT_USER) return;
+  if (!navigator.onLine) { if (!box.dataset.sig) box.innerHTML = `<p class="desc">${esc(qt('You are offline.', 'آپ آف لائن ہیں۔'))}</p>`; return; }
+  try {
+    const { data, error } = await sb.from('parent_complaints').select('*, parent_complaint_events(*)').eq('owner_id', CURRENT_USER.id).eq('to_role', 'owner').order('created_at', { ascending: false }).limit(100);
+    if (error) { box.innerHTML = `<div class="err">${esc(pcErr(error.message))}</div>`; return; }
+    const list = (data || []).map(c => Object.assign({}, c, { events: c.parent_complaint_events || [] }));
+    PC.data.owner = list; PC_OWNER_UNREAD = list.filter(c => c.unread).length; PC_BADGE_TS = Date.now(); pmPaintNavBadge();
+    const sig = LANG + '|' + PC.filter + '|' + JSON.stringify(list.map(c => [c.id, c.status, !!c.unread, (c.events || []).length]));
+    const typing = Array.from(box.querySelectorAll('textarea')).some(x => x === document.activeElement || x.value.trim());   // never wipe a reply being typed
+    if (!typing && box.dataset.sig !== sig) { pcRepaint('owner'); box.dataset.sig = sig; } else pcPaintOwnerCount();
+  } catch (e) { if (!box.dataset.sig) box.innerHTML = `<p class="desc">…</p>`; }
+}
+
+// ---- class teacher (class portal) ----
+async function pcTeacherBadge() {
+  const s = getClassSession(), el = document.getElementById('cp-pc-badge');
+  if (!s || !el || !navigator.onLine) return;
+  try { const { data, error } = await sb.rpc('parent_complaint_unread_class', pmTeacherArgs(s)); if (!error) { const n = Number(data) || 0; el.textContent = n > 0 ? ' (' + n + ')' : ''; } } catch (e) {}
+}
+async function pcTeacherLoad() {
+  const s = getClassSession(), box = document.getElementById('pc-teacher-list'); if (!s || !box) return;
+  if (!navigator.onLine) { box.innerHTML = `<div class="err">${esc(qt('You are offline.', 'آپ آف لائن ہیں۔'))}</div>`; return; }
+  try {
+    const { data, error } = await sb.rpc('parent_complaint_list_class', Object.assign(pmTeacherArgs(s), { p_limit: 100 }));
+    if (error) { box.innerHTML = `<div class="err">${esc(pcErr(error.message))}</div>`; return; }
+    PC.data.teacher = data || []; pcRepaint('teacher');
+  } catch (e) { box.innerHTML = `<div class="err">${esc(pcErr(e && e.message))}</div>`; }
+}
+async function renderClassPortalComplaints() {
+  CLASS_PORTAL_SCREEN = 'complaints';
+  const body = document.getElementById('class-portal-body'); if (!body || !getClassSession()) return;
+  body.innerHTML = `
+    <button class="btn-ghost" style="padding:9px 14px;margin-bottom:10px;" onclick="CLASS_PORTAL_SCREEN='menu'; renderClassPortalMenu()">← ${esc(t.classPortalBackToMenu)}</button>
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
+      <h2 style="margin:0;">${esc(qt('Complaints & suggestions', 'شکایات اور مشورے'))}</h2>
+      <select style="width:auto;font-size:12px;padding:4px 6px;" onchange="PC.filter=this.value; pcRepaint('teacher')">
+        <option value="open"${PC.filter === 'open' ? ' selected' : ''}>${esc(qt('Open', 'کھلے'))}</option>
+        <option value="resolved"${PC.filter === 'resolved' ? ' selected' : ''}>${esc(qt('Resolved', 'حل شدہ'))}</option>
+        <option value="all"${PC.filter === 'all' ? ' selected' : ''}>${esc(qt('All', 'تمام'))}</option></select></div>
+    <div id="pc-teacher-list" style="margin-top:10px;"><p class="desc">…</p></div>`;
+  await pcTeacherLoad();
+}
+
+// ---- parent portal ----
+function ppComplaintBoxHtml() {
+  setTimeout(pcParentBadge, 800);                       // quiet check for new replies once the portal is on screen
+  const opt = (v, en, ur) => `<option value="${v}">${esc(qt(en, ur))}</option>`;
+  return `<div class="card" style="margin-bottom:14px;">
+    <button type="button" class="btn-ghost" style="width:100%;" onclick="pcParentToggle()">📝 ${esc(qt('Complaint / Suggestion box', 'شکایت / مشورہ باکس'))}<span id="pc-parent-badge"></span></button>
+    <div id="pc-parent-box" class="hidden" style="margin-top:10px;">
+      <div class="row2">
+        <label style="margin-bottom:0;"><span>${esc(qt('Type', 'قسم'))}</span><select id="pc-kind">${opt('complaint', 'Complaint', 'شکایت')}${opt('suggestion', 'Suggestion', 'مشورہ')}${opt('appreciation', 'Appreciation', 'شکریہ')}</select></label>
+        <label style="margin-bottom:0;"><span>${esc(qt('Send to', 'کس کو بھیجیں'))}</span><select id="pc-to">${opt('owner', 'Principal', 'پرنسپل')}${opt('teacher', 'Class teacher', 'کلاس ٹیچر')}</select></label>
+      </div>
+      <input id="pc-subject" maxlength="80" style="width:100%;box-sizing:border-box;margin-top:8px;" placeholder="${esc(qt('Subject (optional)', 'عنوان (اختیاری)'))}">
+      <textarea id="pc-body" maxlength="1000" rows="4" style="width:100%;box-sizing:border-box;margin-top:8px;" placeholder="${esc(qt('Write here…', 'یہاں لکھیں…'))}"></textarea>
+      <button type="button" id="pc-submit" class="btn-primary" style="width:100%;margin-top:8px;" onclick="pcParentSubmit()">${esc(qt('Submit', 'جمع کرائیں'))}</button>
+      <div id="pc-parent-status" style="font-size:12px;margin-top:8px;"></div>
+      <div class="section-title" style="margin-top:12px;">${esc(qt('My tickets', 'میرے ٹکٹ'))}</div>
+      <div id="pc-parent-list"><p class="desc">…</p></div>
+    </div></div>`;
+}
+function pcParentPaintBadge() {
+  const el = document.getElementById('pc-parent-badge'); if (!el) return;
+  const n = (PC.data.parent || []).filter(pcParentHasNew).length;
+  el.innerHTML = n > 0 ? ` <b style="background:#d33;color:#fff;border-radius:9px;font-size:10px;padding:1px 6px;">${n}</b>` : '';
+}
+async function pcParentFetch() {
+  const c = getPpCache(); if (!c || !navigator.onLine) return null;
+  try {
+    const { data, error } = await sb.rpc('parent_complaint_list_parent', { p_school_code: c.schoolCode, p_roll: String(c.roll), p_pin: String(c.pin), p_limit: 30 });
+    if (error) return { error };
+    PC.data.parent = data || []; return { data: PC.data.parent };
+  } catch (e) { return { error: e }; }
+}
+async function pcParentBadge() { if (!document.getElementById('pc-parent-badge')) return; const r = await pcParentFetch(); if (r && r.data) pcParentPaintBadge(); }
+async function pcParentLoad() {
+  const box = document.getElementById('pc-parent-list'); if (!box) return;
+  const r = await pcParentFetch();
+  if (!r) { box.innerHTML = `<div class="err">${esc(qt('You are offline.', 'آپ آف لائن ہیں۔'))}</div>`; return; }
+  if (r.error) { box.innerHTML = `<div class="err">${esc(pcErr(r.error.message))}</div>`; return; }
+  pcRepaint('parent'); pcParentPaintBadge();
+}
+function pcParentToggle() {
+  const box = document.getElementById('pc-parent-box'); if (!box) return;
+  box.classList.toggle('hidden'); if (!box.classList.contains('hidden')) pcParentLoad();
+}
+async function pcParentSubmit() {
+  const g = id => (document.getElementById(id) || {}).value || '', out = document.getElementById('pc-parent-status'), btn = document.getElementById('pc-submit');
+  if (!out || !btn) return;
+  const body = g('pc-body').trim(), bad = m => { out.innerHTML = `<div class="err">${esc(m)}</div>`; };
+  if (!body) { bad(qt('Please write something first.', 'پہلے کچھ لکھیں۔')); return; }
+  if (!navigator.onLine) { bad(qt('You are offline. Please connect to the internet and try again.', 'آپ آف لائن ہیں۔ انٹرنیٹ سے جڑ کر دوبارہ کوشش کریں۔')); return; }
+  const c = getPpCache(); if (!c) return;
+  btn.disabled = true; out.textContent = '…';
+  try {
+    const { data, error } = await sb.rpc('parent_complaint_submit', { p_school_code: c.schoolCode, p_roll: String(c.roll), p_pin: String(c.pin),
+      p_kind: g('pc-kind'), p_to_role: g('pc-to'), p_subject: g('pc-subject').trim() || null, p_body: body });
+    if (error) { bad(pcErr(error.message)); btn.disabled = false; return; }
+    document.getElementById('pc-body').value = ''; document.getElementById('pc-subject').value = '';
+    out.innerHTML = `<span class="ok">✓ ${esc(qt('Submitted. Your ticket number is', 'جمع ہو گیا۔ آپ کا ٹکٹ نمبر ہے'))} #${esc(data && data.ticket_no)}</span>`;
+    if (data && data.id) PC.open[data.id] = true;
+    await pcParentLoad();
+  } catch (e) { bad(pcErr(e && e.message)); }
+  btn.disabled = false;
 }
 
 function openFeeVouchers() {
@@ -14609,6 +14861,7 @@ function tplNotices() {
     <div id="notice-list"><div class="empty">…</div></div>
     <div class="section-title" style="margin-top:16px;">${esc(qt('Messages from parents', 'والدین کے پیغامات'))}</div>
     <div id="pm-owner-list"><div class="empty">…</div></div>
+    ${pcOwnerSectionHtml()}
   `;
 }
 
@@ -15099,14 +15352,16 @@ function pmPaintNavBadge() {
   document.querySelectorAll('[onclick="setTab(\'notices\')"]').forEach(el => {
     const host = el.querySelector('span') || el;
     let b = host.querySelector('.pm-nav-badge');
-    if (PM_OWNER_UNREAD > 0) {
+    const pcN = PM_OWNER_UNREAD + PC_OWNER_UNREAD;
+    if (pcN > 0) {
       if (!b) { b = document.createElement('b'); b.className = 'pm-nav-badge'; b.style.cssText = 'background:#d33;color:#fff;border-radius:9px;font-size:10px;padding:1px 6px;margin-inline-start:6px;'; host.appendChild(b); }
-      b.textContent = PM_OWNER_UNREAD > 9 ? '9+' : String(PM_OWNER_UNREAD);
+      b.textContent = pcN > 9 ? '9+' : String(pcN);
     } else if (b) b.remove();
   });
 }
 async function pmOwnerBadgeRefresh(force) {
   pmPaintNavBadge();
+  pcOwnerBadgeRefresh(force);
   if (!CURRENT_USER || !navigator.onLine) return;
   if (!force && Date.now() - PM_BADGE_TS < 60000) return;
   PM_BADGE_TS = Date.now();
@@ -15276,12 +15531,14 @@ function renderClassPortalMenu() {
     <button class="btn-primary" style="width:100%;margin-bottom:10px;" onclick="renderClassPortalLessonPlan()">📝 ${esc(qt('Lesson Plan', 'لیسن پلان'))}</button>
     <button class="btn-primary" style="width:100%;margin-bottom:10px;" onclick="noticeOpenScreen('class')">📢 ${esc(qt('Notice Board', 'نوٹس بورڈ'))}</button>
     <button class="btn-primary" style="width:100%;margin-bottom:10px;" onclick="renderClassPortalParentMsgs()">📩 ${esc(qt('Parent Messages', 'والدین کے پیغامات'))}<span id="cp-pm-badge"></span></button>
+    <button class="btn-primary" style="width:100%;margin-bottom:10px;" onclick="renderClassPortalComplaints()">📝 ${esc(qt('Complaints & suggestions', 'شکایات اور مشورے'))}<span id="cp-pc-badge"></span></button>
     <button class="btn-primary" style="width:100%;margin-bottom:10px;" onclick="chOpen('teacher')">💬 ${esc(qt('Chat & voice message', 'چیٹ اور وائس میسج'))}</button>
     <button class="btn-ghost" style="width:100%;margin-bottom:10px;" onclick="renderClassPortalAddStudent()">${esc(t.classPortalMenuAddStudent)}</button>
     <button class="btn-ghost" style="width:100%;" onclick="renderClassPortalManageStudents()">${esc(t.classPortalMenuManageStudents)}</button>
     ${queue.length ? `<p style="font-size:11px;opacity:.6;margin-top:14px;">${esc(t.classPortalOffline)} (${queue.length})</p>` : ''}
   `;
   pmTeacherBadge();
+  pcTeacherBadge();
 }
 
 // ---- Register (read-only month view — same grid the owner sees, so the
@@ -16827,6 +17084,7 @@ function renderParentPortalResult(r, opts) {
     ${diaryHtml}
     ${noticeParentBoxHtml()}
     ${ppContactBoxHtml()}
+    ${ppComplaintBoxHtml()}
     ${ppQuizHtml(r)}
     ${feeHtml}
     ${resultsHtml}
