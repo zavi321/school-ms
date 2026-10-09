@@ -1000,6 +1000,33 @@ body:not(.ur) .qpaper-print .pq-instruction::before{counter-increment:pqq;conten
      ============================================================================ -->
 
 <!-- ============================================================================
+     ONE-TIME SETUP for Gate Pass / Safe Pickup - run once in the Supabase SQL editor.
+     Safe to re-run. Rows can be added and read, but NOT edited or deleted from the app.
+
+  create table if not exists gate_passes (
+    id uuid primary key default gen_random_uuid(),
+    owner_id uuid not null references auth.users(id) on delete cascade,
+    student_id text not null,
+    student_name text not null,
+    class_name text,
+    kind text not null check (kind in ('early_leave','other_person')),
+    pickup_name text,
+    pickup_relation text,
+    reason text,
+    authorized_by text,
+    parent_confirmed boolean not null default false,
+    left_at timestamptz not null default now(),
+    created_at timestamptz not null default now()
+  );
+  create index if not exists gate_passes_owner_left on gate_passes(owner_id, left_at desc);
+  alter table gate_passes enable row level security;
+  drop policy if exists "gate_passes_select_own" on gate_passes;
+  create policy "gate_passes_select_own" on gate_passes for select using (owner_id = auth.uid());
+  drop policy if exists "gate_passes_insert_own" on gate_passes;
+  create policy "gate_passes_insert_own" on gate_passes for insert with check (owner_id = auth.uid());
+     ============================================================================ -->
+
+<!-- ============================================================================
      ONE-TIME SETUP for Vendors / Suppliers / Agents (payable & receivable) - run once in
      the Supabase SQL editor. Safe to re-run.
 
@@ -6354,7 +6381,8 @@ const SCAN_L = {
         free:'This student is not fee-paying', changed:'Amount differs from the printed voucher (printed', changed2:'). Showing the current amount.',
         over:'Amount is more than payable (advance). Continue?', done:'Fee collected', receipt:'Print receipt', sms:'SMS father', next:'Scan next', ledger:'Open ledger',
         invalid:'Enter a valid amount.', saving:'Saving…', child:'Children', queuedNote:'Saved offline — will sync when online.',
-        gallery:'Choose voucher photo from gallery', reading:'Reading image…', noQr:'No QR code found in this image. Try a clearer, closer photo.' },
+        nameDiff:'Warning: the card says', nameDiff2:'but the record is', nameDiff3:'Check that this card belongs to this child.', idHint:'Point the camera at the QR on the ID card', idTitle:'Scan ID card',
+        multi:'This QR has more than one child — choose:', gallery:'Choose voucher photo from gallery', reading:'Reading image…', noQr:'No QR code found in this image. Try a clearer, closer photo.' },
   ur: { title:'واؤچر اسکین کریں اور فیس جمع کریں', hint:'اسکول کاپی پر موجود کیو آر کوڈ پر کیمرہ رکھیں', manual:'یا کوڈ یہاں لکھیں / اسکین کریں', go:'کھولیں',
         noCam:'کیمرہ دستیاب نہیں۔ نیچے کوڈ باکس استعمال کریں۔', camDenied:'کیمرے کی اجازت نہیں ملی۔ اس سائٹ کے لیے کیمرہ کی اجازت دیں یا کوڈ باکس استعمال کریں۔',
         notFound:'یہ کیو آر کسی طالب علم سے میچ نہیں ہوا۔ واؤچر دوبارہ پرنٹ کریں۔', ambiguous:'کوڈ ایک سے زیادہ طلبہ سے میچ ہوا — طلبہ کی فہرست سے کھولیں۔',
@@ -6363,7 +6391,8 @@ const SCAN_L = {
         free:'یہ طالب علم فیس ادا کرنے والا نہیں ہے', changed:'رقم پرنٹ شدہ واؤچر سے مختلف ہے (پرنٹ شدہ', changed2:')۔ موجودہ رقم دکھائی جا رہی ہے۔',
         over:'رقم واجب الادا سے زیادہ ہے (ایڈوانس)۔ جاری رکھیں؟', done:'فیس جمع ہو گئی', receipt:'رسید پرنٹ کریں', sms:'والد کو SMS', next:'اگلا اسکین', ledger:'لیجر کھولیں',
         invalid:'درست رقم درج کریں۔', saving:'محفوظ ہو رہا ہے…', child:'بچے', queuedNote:'آف لائن محفوظ ہوا — انٹرنیٹ آنے پر سنک ہو جائے گا۔',
-        gallery:'گیلری سے واؤچر کی تصویر چنیں', reading:'تصویر پڑھی جا رہی ہے…', noQr:'اس تصویر میں کیو آر کوڈ نہیں ملا۔ زیادہ صاف اور قریب سے لی گئی تصویر آزمائیں۔' }
+        nameDiff:'انتباہ: کارڈ پر لکھا ہے', nameDiff2:'جبکہ ریکارڈ میں ہے', nameDiff3:'تسلی کریں کہ یہ کارڈ اسی بچے کا ہے۔', idHint:'آئی ڈی کارڈ کے کیو آر پر کیمرہ رکھیں', idTitle:'آئی ڈی کارڈ اسکین کریں',
+        multi:'اس کیو آر میں ایک سے زیادہ بچے ہیں — منتخب کریں:', gallery:'گیلری سے واؤچر کی تصویر چنیں', reading:'تصویر پڑھی جا رہی ہے…', noQr:'اس تصویر میں کیو آر کوڈ نہیں ملا۔ زیادہ صاف اور قریب سے لی گئی تصویر آزمائیں۔' }
 };
 const scanL = k => (SCAN_L[LANG] && SCAN_L[LANG][k] !== undefined) ? SCAN_L[LANG][k] : SCAN_L.en[k];
 
@@ -6389,14 +6418,15 @@ function scanLoadJsQr() {
   return load('jsQR.js').catch(() => load('https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js'));
 }
 
-function openFeeScan() {
+function openFeeScan(mode) {
   scanStop();
-  showModal(scanL('title'), `
+  SCAN.mode = mode === 'gate' ? 'gate' : 'fee';
+  showModal(SCAN.mode === 'gate' ? scanL('idTitle') : scanL('title'), `
     <div id="scan-box" style="position:relative;background:#000;border-radius:12px;overflow:hidden;aspect-ratio:1/1;max-height:60vh;">
       <video id="scan-video" playsinline muted style="width:100%;height:100%;object-fit:cover;"></video>
       <div style="position:absolute;inset:18%;border:3px solid var(--gold);border-radius:14px;pointer-events:none;box-shadow:0 0 0 999px rgba(0,0,0,.35);"></div>
     </div>
-    <div id="scan-msg" style="font-size:13px;opacity:.75;margin:10px 0;text-align:center;">${esc(scanL('hint'))}</div>
+    <div id="scan-msg" style="font-size:13px;opacity:.75;margin:10px 0;text-align:center;">${esc(SCAN.mode === 'gate' ? scanL('idHint') : scanL('hint'))}</div>
     <input id="scan-file" type="file" accept="image/*" style="display:none" onchange="scanFromFile(this)">
     <button class="btn-primary" style="margin-bottom:10px;" onclick="document.getElementById('scan-file').click()">🖼 ${esc(scanL('gallery'))}</button>
     <div class="row2" style="align-items:end;">
@@ -6477,6 +6507,18 @@ function scanResolve(raw) {
   const txt = String(raw || '').trim();
   const parts = txt.split('|');
   const byPrefix = p => DATA.students.filter(s => s.id === p || String(s.id).startsWith(p));
+  if (parts[0] === 'SMS1' && parts[1] === 'I') {                           // ID card: SMS1|I|admission|name(|father|class)
+    const adm = (parts[2] || '').trim().toLowerCase(), qn = normName(parts[3]), qf = normName(parts[4]), qc = normName(parts[5]);
+    const active = DATA.students.filter(s => s.status !== 'inactive');
+    const nameOk = s => !qn || normName(s.name).includes(qn) || qn.includes(normName(s.name));
+    let m = [];
+    if (adm) { m = active.filter(s => String(s.admission_number || '').trim().toLowerCase() === adm); if (m.length > 1) m = m.filter(nameOk); }
+    if (!m.length && qn) m = active.filter(s => nameOk(s) && (!qf || normName(s.father_name) === qf || normName(s.father_name).startsWith(qf)) && (!qc || normName(s.class_name) === qc));
+    if (m.length > 1) return { err: 'ambiguous' };
+    if (!m.length) return { err: 'notFound' };
+    const warn = (qn && !nameOk(m[0])) ? `${scanL('nameDiff')} "${parts[3]}" ${scanL('nameDiff2')} "${m[0].name}". ${scanL('nameDiff3')}` : '';
+    return { month: monthKey(new Date()), students: [m[0]], printed: 0, card: true, warn };
+  }
   if (parts[0] === 'SMS1' && parts.length >= 5) {                         // new format: SMS1|S/F|id(,id..)|YYYY-MM|amount
     const ids = parts[2].split(',').filter(Boolean);
     const found = [];
@@ -6517,13 +6559,15 @@ function scanHandle(raw) {
   const r = scanResolve(raw);
   if (r.err) { scanFail(scanL(r.err)); return; }
   if (!/^\d{4}-\d{2}$/.test(r.month)) { scanFail(scanL('notSchool')); return; }
+  if (SCAN.mode === 'gate') { scanGateResult(r); return; }
   const rows = r.students.map(s => scanDue(s, r.month));
   SCAN.cur = { month: r.month, rows, printed: r.printed };
   const feeRows = rows.filter(x => isFeePaying(x.s));
   const total = money2(feeRows.reduce((a, x) => a + Math.max(0, x.payable), 0));
   const single = rows.length === 1;
-  const mismatch = r.printed && Math.abs(r.printed - total) > 0.009
-    ? `<div style="font-size:12px;background:#FFF6DD;border:1px solid var(--gold);border-radius:8px;padding:8px;margin-bottom:10px;">⚠ ${esc(scanL('changed'))} ₨${fmt(r.printed)}${esc(scanL('changed2'))}</div>` : '';
+  const cardWarn = r.warn ? `<div style="font-size:12px;background:#FFE9E4;border:1px solid var(--rust);border-radius:8px;padding:8px;margin-bottom:10px;">⚠ ${esc(r.warn)}</div>` : '';
+  const mismatch = cardWarn + (r.printed && Math.abs(r.printed - total) > 0.009
+    ? `<div style="font-size:12px;background:#FFF6DD;border:1px solid var(--gold);border-radius:8px;padding:8px;margin-bottom:10px;">⚠ ${esc(scanL('changed'))} ₨${fmt(r.printed)}${esc(scanL('changed2'))}</div>` : '');
   const rowHtml = rows.map(x => `
     <div style="display:flex;justify-content:space-between;gap:8px;padding:8px 0;border-bottom:1px solid rgba(0,0,0,.08);">
       <div><div class="nm" style="font-weight:600;">${esc(LANG === 'ur' ? studentNameUrdu(x.s) : x.s.name)}</div>
@@ -6554,8 +6598,15 @@ function scanHandle(raw) {
 }
 
 function scanFail(text) {
-  showModal(scanL('title'), `<div class="empty" style="padding:16px 0;">${esc(text)}</div>
-    <button class="btn-primary" onclick="openFeeScan()">${esc(scanL('next'))}</button>`);
+  showModal(SCAN.mode === 'gate' ? scanL('idTitle') : scanL('title'), `<div class="empty" style="padding:16px 0;">${esc(text)}</div>
+    <button class="btn-primary" onclick="openFeeScan('${SCAN.mode || 'fee'}')">${esc(scanL('next'))}</button>`);
+}
+
+// gate-pass mode: a scan only picks the child; the gate-pass form opens with that child already selected
+function scanGateResult(r) {
+  if (r.students.length === 1) { gpNew(); gpPick(r.students[0].id, r.warn); return; }
+  showModal(scanL('idTitle'), `<div style="font-size:13px;margin-bottom:8px;">${esc(scanL('multi'))}</div>
+    ${r.students.map(s => `<button class="btn-ghost" style="display:block;width:100%;text-align:start;margin-bottom:6px;" onclick="gpNew(); gpPick('${s.id}')">${esc(s.name)} · ${esc(s.class_name || '')}</button>`).join('')}`);
 }
 
 async function scanCollect() {
@@ -6721,6 +6772,127 @@ async function odSave() {
     <button class="btn-primary" onclick="closeModal(); renderTab();">${esc(odL('close'))}</button>`);
 }
 
+// ===================== GATE PASS / SAFE PICKUP =====================
+// Records every early leave and every pickup by someone other than the parent, then opens the
+// Messages app with a ready Urdu SMS to the father's number (staff taps Send). Entries are
+// insert-only (see the SQL setup block) so history can't be edited or deleted from the app.
+// Online-only: rows are read/written live; nothing is added to the startup data load.
+const GP_L = {
+  en: { title:'Gate pass / safe pickup', newPass:'New gate pass', student:'Student', search:'Type student or father name…', kind:'Type',
+        kindEarly:'Early leave (with parent / permission)', kindOther:'Picked up by someone other than parent', pickup:'Person taking the child', relation:'Relation',
+        reason:'Reason', phoneOk:'Parent confirmed by phone', by:'Authorized by (staff)', save:'Save & notify father', recent:'Last 7 days', none:'No gate passes yet.',
+        pick:'Choose a student first.', needPickup:'Enter the name of the person taking the child.', saving:'Saving…', saved:'Gate pass recorded', sms:'SMS father', smsNow:'📩 Send SMS to father',
+        back:'Back', close:'Close', early:'Early leave', other:'Other person', at:'at', confirmed:'parent confirmed',
+        setup:'Gate pass table is not set up yet. Run the one-time SQL (in the setup comment at the top of index.html) in Supabase, then try again.', loadFail:'Could not load gate passes: ',
+        rels:['Brother','Sister','Uncle','Grandfather','Driver','Relative','Neighbour'] },
+  ur: { title:'گیٹ پاس / محفوظ واپسی', newPass:'نیا گیٹ پاس', student:'طالب علم', search:'طالب علم یا والد کا نام لکھیں…', kind:'قسم',
+        kindEarly:'جلدی چھٹی (والدین کے ساتھ / اجازت سے)', kindOther:'والدین کے بجائے کوئی اور لے جا رہا ہے', pickup:'بچے کو لے جانے والا', relation:'رشتہ',
+        reason:'وجہ', phoneOk:'والدین نے فون پر اجازت دی', by:'اجازت دینے والا (اسٹاف)', save:'محفوظ کریں اور والد کو اطلاع دیں', recent:'پچھلے 7 دن', none:'ابھی کوئی گیٹ پاس نہیں۔',
+        pick:'پہلے طالب علم منتخب کریں۔', needPickup:'بچے کو لے جانے والے کا نام لکھیں۔', saving:'محفوظ ہو رہا ہے…', saved:'گیٹ پاس درج ہو گیا', sms:'والد کو SMS', smsNow:'📩 والد کو SMS بھیجیں',
+        back:'واپس', close:'بند کریں', early:'جلدی چھٹی', other:'کوئی اور', at:'بوقت', confirmed:'والدین کی تصدیق',
+        setup:'گیٹ پاس کا ٹیبل ابھی سیٹ اپ نہیں ہے۔ index.html کے شروع میں دیا گیا ایک بار چلانے والا SQL سپابیس میں چلائیں، پھر دوبارہ کوشش کریں۔', loadFail:'گیٹ پاس لوڈ نہیں ہو سکے: ',
+        rels:['بھائی','بہن','چچا / ماموں','دادا / نانا','ڈرائیور','رشتہ دار','پڑوسی'] }
+};
+const gpL = k => (GP_L[LANG] && GP_L[LANG][k] !== undefined) ? GP_L[LANG][k] : GP_L.en[k];
+let GP = { rows: [], sel: null };
+const gpTime = iso => new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+const gpDate = iso => new Date(iso).toLocaleDateString([], { day: 'numeric', month: 'short' });
+
+// Parent-facing message — always Urdu, like the other parent messages.
+function gpMessage(r, s) {
+  const nm = studentNameUrdu(s) || r.student_name, t = gpTime(r.left_at);
+  const why = r.reason ? `\nوجہ: ${r.reason}` : '';
+  const body = r.kind === 'other_person'
+    ? `محترم والدین، آپ کے بچے ${nm} کو آج ${t} بجے اسکول سے ${r.pickup_name}${r.pickup_relation ? ' (' + r.pickup_relation + ')' : ''} لے گئے ہیں۔${why}\nاگر یہ آپ کی اجازت سے نہیں ہوا تو فوراً اسکول سے رابطہ کریں۔`
+    : `محترم والدین، آپ کے بچے ${nm} کو آج ${t} بجے جلدی چھٹی دی گئی ہے${r.pickup_name ? ' اور وہ ' + r.pickup_name + (r.pickup_relation ? ' (' + r.pickup_relation + ')' : '') + ' کے ساتھ گئے ہیں' : ''}۔${why}\nاگر آپ کو اس کا علم نہیں تو فوراً اسکول سے رابطہ کریں۔`;
+  return `${body}\n${principalSignOffUrdu()}`;
+}
+function gpSms(id) {
+  const r = GP.rows.find(x => x.id === id); if (!r) return;
+  const s = DATA.students.find(x => String(x.id) === String(r.student_id));
+  if (!s) return;
+  openFatherWhatsapp(s.contact || '', gpMessage(r, s));
+}
+
+async function openGatePass() {
+  showModal(gpL('title'), `<div class="empty" style="padding:16px 0;">…</div>`);
+  const since = new Date(Date.now() - 7 * 86400000).toISOString();
+  const { data, error } = await sb.from('gate_passes').select('*').gte('left_at', since).order('left_at', { ascending: false }).limit(200);
+  if (error) {
+    const missing = error.code === '42P01' || /gate_passes/i.test(error.message || '') && /does not exist|schema cache|relation/i.test(error.message || '');
+    showModal(gpL('title'), `<div class="empty" style="padding:16px 0;">${esc(missing ? gpL('setup') : gpL('loadFail') + (error.message || ''))}</div><button class="btn-ghost" onclick="closeModal()">${esc(gpL('close'))}</button>`);
+    return;
+  }
+  GP.rows = data || [];
+  const list = GP.rows.map(r => `
+    <div style="display:flex;justify-content:space-between;gap:8px;padding:8px 0;border-bottom:1px solid rgba(0,0,0,.08);">
+      <div style="min-width:0;">
+        <div style="font-weight:600;">${esc(r.student_name)} <span style="font-weight:400;opacity:.7;font-size:12px;">${esc(r.class_name || '')}</span></div>
+        <div style="font-size:12px;opacity:.75;">${esc(gpDate(r.left_at))} ${esc(gpL('at'))} ${esc(gpTime(r.left_at))} · ${esc(r.kind === 'other_person' ? gpL('other') : gpL('early'))}${r.parent_confirmed ? ' · ✓ ' + esc(gpL('confirmed')) : ''}</div>
+        ${r.pickup_name ? `<div style="font-size:12px;">${esc(r.pickup_name)}${r.pickup_relation ? ' (' + esc(r.pickup_relation) + ')' : ''}</div>` : ''}
+        ${r.reason ? `<div style="font-size:12px;opacity:.75;">${esc(r.reason)}</div>` : ''}
+      </div>
+      <button class="btn-ghost" style="padding:4px 10px;font-size:12px;align-self:center;" onclick="gpSms('${r.id}')">💬 ${esc(gpL('sms'))}</button>
+    </div>`).join('');
+  showModal(gpL('title'), `
+    <button class="btn-primary" onclick="gpNew()">＋ ${esc(gpL('newPass'))}</button>
+    <div style="font-size:12px;opacity:.7;margin:14px 0 4px;">${esc(gpL('recent'))}</div>
+    ${list || `<div class="empty">${esc(gpL('none'))}</div>`}`);
+}
+
+function gpNew() {
+  GP.sel = null;
+  const rels = gpL('rels').map(x => `<option value="${esc(x)}">`).join('');
+  let by = ''; try { by = localStorage.getItem('gp_by') || ''; } catch (e) {}
+  showModal(gpL('newPass'), `
+    <button class="btn-ghost" style="margin-bottom:10px;" onclick="openFeeScan('gate')">📷 ${esc(scanL('idTitle'))}</button>
+    <label><span>${esc(gpL('student'))}</span><input id="gp-q" autocomplete="off" placeholder="${esc(gpL('search'))}" oninput="gpSearch(this.value)"></label>
+    <div id="gp-matches"></div>
+    <div id="gp-chip" style="display:none;margin:6px 0 10px;"></div>
+    <label><span>${esc(gpL('kind'))}</span>
+      <select id="gp-kind"><option value="early_leave">${esc(gpL('kindEarly'))}</option><option value="other_person">${esc(gpL('kindOther'))}</option></select></label>
+    <div class="row2">
+      <label style="margin-bottom:0;"><span>${esc(gpL('pickup'))}</span><input id="gp-pickup" autocomplete="off"></label>
+      <label style="margin-bottom:0;"><span>${esc(gpL('relation'))}</span><input id="gp-rel" list="gp-rels" autocomplete="off"><datalist id="gp-rels">${rels}</datalist></label>
+    </div>
+    <label style="margin-top:8px;"><span>${esc(gpL('reason'))}</span><input id="gp-reason" autocomplete="off"></label>
+    <label style="display:flex;gap:8px;align-items:center;margin:8px 0;"><input id="gp-ok" type="checkbox" style="width:auto;"> <span>${esc(gpL('phoneOk'))}</span></label>
+    <label><span>${esc(gpL('by'))}</span><input id="gp-by" autocomplete="off" value="${esc(by)}"></label>
+    <button id="gp-save" class="btn-primary" onclick="gpSave()">💾 ${esc(gpL('save'))}</button>
+    <button class="btn-ghost" style="margin-top:8px;" onclick="openGatePass()">${esc(gpL('back'))}</button>`);
+}
+function gpSearch(q) {
+  const el = document.getElementById('gp-matches'); if (!el) return;
+  const n = normName(q); if (!n) { el.innerHTML = ''; return; }
+  const m = DATA.students.filter(s => s.status !== 'inactive' && (normName(s.name).includes(n) || normName(s.father_name).includes(n) || normName(s.name_ur).includes(n))).slice(0, 8);
+  el.innerHTML = m.map(s => `<button class="btn-ghost" style="display:block;width:100%;text-align:start;margin-bottom:4px;" onclick="gpPick('${s.id}')">${esc(s.name)} · ${esc(s.class_name || '')}${s.father_name ? ' · ' + esc(s.father_name) : ''}</button>`).join('');
+}
+function gpPick(id, warn) {
+  GP.sel = DATA.students.find(s => String(s.id) === String(id)) || null; if (!GP.sel) return;
+  document.getElementById('gp-matches').innerHTML = ''; document.getElementById('gp-q').value = '';
+  const chip = document.getElementById('gp-chip'); chip.style.display = 'block';
+  chip.innerHTML = `<b>${esc(GP.sel.name)}</b> · ${esc(GP.sel.class_name || '')}${GP.sel.father_name ? ' · ' + esc(GP.sel.father_name) : ''}`
+    + (warn ? `<div style="font-size:12px;background:#FFE9E4;border:1px solid var(--rust);border-radius:8px;padding:6px 8px;margin-top:6px;">⚠ ${esc(warn)}</div>` : '');
+}
+async function gpSave() {
+  if (!GP.sel) { alert(gpL('pick')); return; }
+  const v = id => (document.getElementById(id).value || '').trim();
+  const kind = v('gp-kind'), pickup = v('gp-pickup');
+  if (kind === 'other_person' && !pickup) { alert(gpL('needPickup')); return; }
+  const by = v('gp-by'); try { localStorage.setItem('gp_by', by); } catch (e) {}
+  const btn = document.getElementById('gp-save'); btn.disabled = true; btn.textContent = gpL('saving');
+  const row = { owner_id: CURRENT_USER.id, student_id: String(GP.sel.id), student_name: GP.sel.name, class_name: GP.sel.class_name || null, kind,
+    pickup_name: pickup || null, pickup_relation: v('gp-rel') || null, reason: v('gp-reason') || null, authorized_by: by || null,
+    parent_confirmed: !!document.getElementById('gp-ok').checked };
+  const { data, error } = await sb.from('gate_passes').insert(row).select().single();
+  if (error) { btn.disabled = false; btn.textContent = '💾 ' + gpL('save'); reportSaveError(error); return; }
+  GP.rows.unshift(data);
+  showModal(gpL('saved'), `
+    <div class="greenbox" style="text-align:center;margin-bottom:12px;"><div class="lbl">✓ ${esc(gpL('saved'))}</div><div class="val" style="font-size:20px;">${esc(data.student_name)} · ${esc(gpTime(data.left_at))}</div></div>
+    <button class="btn-primary" onclick="gpSms('${data.id}')">${esc(gpL('smsNow'))}</button>
+    <button class="btn-ghost" style="margin-top:8px;" onclick="openGatePass()">${esc(gpL('close'))}</button>`);
+}
+
 function openFeeVouchers() {
   const bank = fvLoadBank();
   const mk = monthKey();
@@ -6807,6 +6979,9 @@ function tplStudents() {
         <input id="student-search-input" placeholder="${esc(t.search)}" value="${esc(studentSearch)}" oninput="studentSearch=this.value; classPage={}; updateStudentsResults();">
         <button class="icon-btn" title="${esc(t.quickAdmission)}" onclick="openQuickAdmission()" style="background:var(--gold);">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#0F2740" stroke-width="2.5"><path d="M13 2 3 14h7l-1 8 10-12h-7l1-8z"/></svg>
+        </button>
+        <button class="icon-btn" title="${esc(gpL('title'))}" onclick="openGatePass()">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#E4C765" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4H5a1 1 0 0 0-1 1v14a1 1 0 0 0 1 1h4"/><path d="M16 8l4 4-4 4M20 12H10"/></svg>
         </button>
         <button class="icon-btn" title="${esc(odL('title'))}" onclick="openOpeningDues()">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#E4C765" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h12a3 3 0 0 1 3 3v13H7a3 3 0 0 1-3-3z"/><path d="M8 9h7M8 13h7"/></svg>
