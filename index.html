@@ -809,37 +809,40 @@ html, body{overscroll-behavior:none;}
   .ds-warn{background:#FFF4E0;border:1px solid #E8C97A;border-radius:10px;padding:9px 11px;font-size:12px;margin:0 0 10px;line-height:1.5;}
 
   /* Printed roll number slips: 4 per A4 page (2 x 2), cut along the dashed lines */
-  .rs-page{width:100%;height:279mm;display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;break-after:page;page-break-after:always;overflow:hidden;font-family:Inter,'Noto Nastaliq Urdu',sans-serif;color:#1C2530;}
+  .rs-page{width:100%;height:277mm;display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;break-after:page;page-break-after:always;overflow:hidden;font-family:Inter,'Noto Nastaliq Urdu',sans-serif;color:#1C2530;}
   .rs-page:last-child{break-after:auto;page-break-after:auto;}
   .rs-slip,.rs-slip *{-webkit-print-color-adjust:exact;print-color-adjust:exact;}
   .rs-slip{box-sizing:border-box;border:1px dashed #888;padding:2.5mm;overflow:hidden;display:flex;font-size:10pt;}
-  .rs-card{flex:1;min-height:0;display:flex;flex-direction:column;border:.5mm solid #C9A227;border-radius:2.5mm;overflow:hidden;background:#fff;}
-  .rs-head{display:flex;align-items:center;gap:3mm;background:#0F2740;padding:3mm 3.5mm;border-bottom:.7mm solid #C9A227;}
-  .rs-logo{height:13mm;width:13mm;object-fit:contain;background:#fff;border-radius:50%;padding:.8mm;flex-shrink:0;}
-  .rs-school{font-family:Fraunces,serif;font-weight:700;font-size:12pt;color:#fff;line-height:1.15;}
+  .rs-card{position:relative;flex:1;min-height:0;display:flex;flex-direction:column;border:.5mm solid var(--rs-edge,#C9A227);border-radius:2.5mm;overflow:hidden;background:var(--rs-bg,#fff);}
+    .rs-wm{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);object-fit:contain;z-index:0;pointer-events:none;}
+  .rs-head{position:relative;z-index:1;direction:ltr;display:grid;grid-template-columns:15mm 1fr 15mm;align-items:center;column-gap:2mm;background:var(--rs-dark,#0F2740);padding:3mm 3.5mm;border-bottom:.7mm solid #C9A227;}
+    .rs-htitle{grid-column:2;text-align:center;min-width:0;}
+  .rs-logo{height:13mm;width:13mm;object-fit:contain;background:#fff;border-radius:50%;padding:.8mm;justify-self:start;display:block;}
+  .rs-school{font-family:Fraunces,'Noto Nastaliq Urdu',serif;font-weight:700;font-size:11pt;color:#fff;line-height:1.2;overflow-wrap:anywhere;}
   .rs-title{font-size:7.5pt;font-weight:700;letter-spacing:.12em;color:#E4C765;margin-top:1mm;text-transform:uppercase;}
-  .rs-body{flex:1;min-height:0;display:flex;flex-direction:column;padding:3mm 3.5mm 2.5mm;}
+  .rs-body{position:relative;z-index:1;flex:1;min-height:0;display:flex;flex-direction:column;padding:3mm 3.5mm 2.5mm;}
   .rs-info{display:flex;gap:3mm;align-items:stretch;margin-bottom:3mm;}
   .rs-who{flex:1;min-width:0;display:grid;grid-template-columns:1fr 1fr;gap:1.2mm 3mm;align-content:center;}
   .rs-who div{display:flex;flex-direction:column;min-width:0;}
   .rs-who .rs-full{grid-column:1 / -1;}
   .rs-who span{font-size:6.5pt;letter-spacing:.08em;text-transform:uppercase;color:#8A6200;font-weight:600;}
-  .rs-who b{font-size:11pt;color:#0F2740;line-height:1.2;overflow-wrap:anywhere;}
-  .rs-roll{width:26mm;flex-shrink:0;background:#0F2740;border:.5mm solid #C9A227;border-radius:2.5mm;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:1.5mm;}
+  .rs-who b{font-size:11pt;color:var(--rs-dark,#0F2740);line-height:1.2;overflow-wrap:anywhere;}
+  .rs-roll{width:26mm;flex-shrink:0;background:var(--rs-dark,#0F2740);border:.5mm solid #C9A227;border-radius:2.5mm;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:1.5mm;}
   .rs-roll span{font-size:6.5pt;letter-spacing:.1em;text-transform:uppercase;color:#E4C765;}
   .rs-roll b{font-family:Fraunces,serif;font-size:26pt;line-height:1.05;color:#fff;}
-  .rs-table{width:100%;border-collapse:collapse;table-layout:auto;font-size:8.5pt;}
-  .rs-table th{background:#0F2740;color:#E4C765;border:none;padding:1.3mm 1mm;text-align:center;font-size:7pt;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap;}
-  .rs-table td{border:none;border-bottom:.3mm solid #E7E0CE;padding:1.3mm 1mm;text-align:center;color:#1C2530;white-space:normal;}
-  .rs-table tbody tr:nth-child(even) td{background:#FAF6EC;}
+  .rs-table{width:100%;flex:1 1 auto;max-height:100%;border-collapse:collapse;table-layout:auto;font-size:8.5pt;border:.4mm solid var(--rs-dark,#0F2740);}
+  .rs-table td{height:7mm;}
+  .rs-table th{background:var(--rs-dark,#0F2740);color:#E4C765;border:.3mm solid var(--rs-dark,#0F2740);padding:1.3mm 1mm;text-align:center;font-weight:600;font-size:7pt;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap;}
+  .rs-table td{border:.3mm solid #9AA5B1;padding:1.3mm 1mm;text-align:center;color:#1C2530;font-weight:400;white-space:normal;}
+  .rs-table tbody tr:nth-child(even) td{background:rgba(15,39,64,.05);}
   .rs-table td:nth-child(1),.rs-table td:nth-child(4){white-space:nowrap;}
-  .rs-table td:nth-child(3){font-weight:600;color:#0F2740;}
+  .rs-table td:nth-child(3){font-weight:800;color:var(--rs-dark,#0F2740);border-left:.3mm solid var(--rs-dark,#0F2740);}
   .rs-tight .rs-table{font-size:7.3pt;}
   .rs-tight .rs-table th,.rs-tight .rs-table td{padding:.6mm 1mm;}
   .rs-nosheet{font-size:9pt;opacity:.6;text-align:center;padding:6mm 0;}
   .rs-foot{margin-top:auto;display:flex;justify-content:space-between;align-items:flex-end;gap:4mm;padding-top:3mm;font-size:7pt;color:#666;}
   .rs-foot em{font-style:normal;max-width:50mm;line-height:1.3;}
-  .rs-foot span{border-top:.3mm solid #0F2740;min-width:30mm;text-align:center;padding-top:1mm;font-size:8pt;color:#0F2740;}
+  .rs-foot span{border-top:.3mm solid var(--rs-dark,#0F2740);min-width:30mm;text-align:center;padding-top:1mm;font-size:8pt;color:var(--rs-dark,#0F2740);}
   .ds-instr{font-size:10.5px;line-height:1.5;margin-top:10px;padding:8px 12px;background:#fff;border:1px solid #E7E0CE;border-left:3px solid #C9A227;border-radius:6px;color:#1C2530;}
 </style>
 <style>
@@ -7229,7 +7232,7 @@ function tplStudents() {
       </div>
       <div class="searchbar">
         <input id="student-search-input" placeholder="${esc(t.search)}" value="${esc(studentSearch)}" oninput="studentSearch=this.value; classPage={}; updateStudentsResults();">
-        <button class="icon-btn" title="${esc(t.quickAdmission)}" onclick="openQuickAdmission()" style="background:var(--gold);">
+        <button class="icon-btn" title="${esc(qt('New Admission', 'نیا داخلہ'))}" onclick="openNewAdmission()" style="background:var(--gold);">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#0F2740" stroke-width="2.5"><path d="M13 2 3 14h7l-1 8 10-12h-7l1-8z"/></svg>
         </button>
         <button class="icon-btn" title="${esc(gpL('title'))}" onclick="openGatePass()">
@@ -7532,54 +7535,149 @@ function generateAdmissionNumber() {
   return prefix + String(maxSeq + 1).padStart(4, '0');
 }
 
-// Quick Admission: a short, separate form (kept apart from the full Add
-// Student form) for fast intake — basic info + class + father/guardian +
-// an auto-generated admission number. On save it opens the new student's
-// full profile (openStudentDetail) right away.
-function openQuickAdmission() {
+// New Admission (combined form): ONE form for clerk/principal. A single submit
+// creates the student (fee record) AND the Admission Register entry, linked
+// together through student_id, so nothing has to be typed twice.
+function openNewAdmission() {
   const admissionNo = generateAdmissionNumber();
-  showModal(t.quickAdmission, `
-    <label><span>${esc(t.admissionNo)}</span><input id="q-admission-no" value="${esc(admissionNo)}" readonly style="opacity:.7;"></label>
-    <label><span>${esc(t.studentName)}</span><input id="q-name"></label>
-    <label><span>${esc(t.studentNameUr)}</span><input id="q-name-ur" dir="rtl"></label>
+  const nextSerial = (DATA.admissionRegister || []).reduce((m, r) => Math.max(m, Number(r.serial_no) || 0), 0) + 1;
+  const L = (en, ur) => esc(qt(en, ur));
+  const defCls = CLASS_OPTIONS[0];
+  const defFee = setupDefaultFee(defCls) || 0;
+  showModal(qt('New Admission', 'نیا داخلہ'), `
     <div class="row2">
-      <label style="margin-bottom:0;"><span>${esc(t.gender)}</span><select id="q-gender"><option value="male">${esc(t.male)}</option><option value="female">${esc(t.female)}</option></select></label>
-      <label style="margin-bottom:0;"><span>${esc(t.dateOfBirth)}</span><input id="q-dob" type="date"></label>
+      <label style="margin-bottom:0;"><span>${esc(t.admissionNo)}</span><input id="na-admission-no" value="${esc(admissionNo)}" readonly style="opacity:.7;"></label>
+      <label style="margin-bottom:0;"><span>${esc(t.serialNo)}</span><input id="na-serial" type="number" value="${nextSerial}"></label>
     </div>
-    <label><span>${esc(t.className)}</span><select id="q-class">${CLASS_OPTIONS.map(c=>`<option>${c}</option>`).join('')}</select></label>
-    <label><span>${esc(t.fatherName)}</span><input id="q-father"></label>
-    <label><span>${esc(t.contact)}</span><input id="q-contact" type="tel" placeholder="03XXXXXXXXX"></label>
+    <label><span>${esc(t.admissionDate)}</span><input id="na-date" type="date" value="${todayISO()}"></label>
+    <label><span>${esc(t.studentName)}</span><input id="na-name"></label>
+    <label><span>${esc(t.studentNameUr)}</span><input id="na-name-ur" dir="rtl"></label>
+    <div class="row2">
+      <label style="margin-bottom:0;"><span>${esc(t.gender)}</span><select id="na-gender"><option value="male">${esc(t.male)}</option><option value="female">${esc(t.female)}</option></select></label>
+      <label style="margin-bottom:0;"><span>${esc(t.dobFigures)}</span><input id="na-dob" type="date"></label>
+    </div>
+    <label><span>${esc(t.dobWords)}</span><input id="na-dob-words"></label>
+    <label><span>${esc(t.className)}</span><select id="na-class" onchange="onNewAdmissionClassChange()">${CLASS_OPTIONS.map(c=>`<option>${c}</option>`).join('')}</select></label>
+    <label><span>${esc(t.fatherName)}</span><input id="na-father"></label>
+    <label><span>${esc(t.fatherNameUr)}</span><input id="na-father-ur" dir="rtl"></label>
+    <label><span>${L('Father Number', 'والد کا نمبر')}</span><input id="na-contact" type="tel" placeholder="03XXXXXXXXX"></label>
+    <label><span>${esc(t.casteTribe)}</span><input id="na-caste"></label>
+    <label><span>${esc(t.casteTribeUr)}</span><input id="na-caste-ur" dir="rtl"></label>
+    <label><span>${esc(t.occupation)}</span><input id="na-occupation"></label>
+    <label><span>${esc(t.residence)}</span><input id="na-residence"></label>
+    <label><span>${esc(t.residenceUr)}</span><input id="na-residence-ur" dir="rtl"></label>
+    <div class="section-title" style="margin:14px 0 8px;">${L('Fee', 'فیس')}</div>
+    <label><span>${esc(t.studentType)}</span><select id="na-type" onchange="onNewAdmissionTypeChange()">${STUDENT_TYPES.map(v=>`<option value="${v}">${esc(typeLabel(v))}</option>`).join('')}</select></label>
+    <label><span>${esc(t.monthlyFee)}</span><input id="na-fee" type="number" value="${defFee}"></label>
+    <div id="na-conc-box">
+      <div class="row2">
+        <label style="margin-bottom:0;"><span>${L('Fee Concession', 'فیس رعایت')}</span>
+          <select id="na-conc-type"><option value="">${esc(qt('None', 'کوئی نہیں'))}</option><option value="percent">${esc(t.concPercent)}</option><option value="fixed">${esc(t.concFixed)}</option></select></label>
+        <label style="margin-bottom:0;"><span>${L('Concession Value', 'رعایت کی مقدار')}</span><input id="na-conc-value" type="number" value="0"></label>
+      </div>
+      <label style="margin-top:8px;"><span>${esc(t.concReason)}</span>
+        <select id="na-conc-reason">${CONCESSION_REASONS.map(r=>`<option value="${r}">${esc(concessionReasonLabel(r))}</option>`).join('')}</select></label>
+    </div>
+    <label><span>${esc(t.arrearsDue)}</span><input id="na-arrears" type="number" value="0"></label>
+    <label><span>${esc(t.remarks)}</span><input id="na-remarks"></label>
     <div class="flexgap">
       <button class="btn-ghost" onclick="closeModal()">${esc(t.cancel)}</button>
-      <button class="btn-primary" style="flex:1" onclick="guardedSubmit(this, submitQuickAdmission)">${esc(t.save)}</button>
+      <button class="btn-primary" style="flex:1" onclick="guardedSubmit(this, submitNewAdmission)">${esc(t.save)}</button>
     </div>
   `);
 }
+function onNewAdmissionClassChange() {
+  const f = document.getElementById('na-fee'), c = document.getElementById('na-class'), ty = document.getElementById('na-type');
+  if (f && c && !f.disabled && (!ty || ty.value === 'paying')) { const d = setupDefaultFee(c.value); if (d) f.value = d; }
+}
+function onNewAdmissionTypeChange() {
+  const type = document.getElementById('na-type').value;
+  const fee = document.getElementById('na-fee'), box = document.getElementById('na-conc-box');
+  if (type !== 'paying') { fee.value = 0; fee.disabled = true; box.style.display = 'none'; }
+  else { fee.disabled = false; box.style.display = ''; onNewAdmissionClassChange(); }
+}
 
-async function submitQuickAdmission() {
-  const name = document.getElementById('q-name').value.trim();
-  if (!name) return;
-  const payload = {
-    id: crypto.randomUUID ? crypto.randomUUID() : `local-${Date.now()}`,
-    owner_id: CURRENT_USER.id,
-    admission_number: document.getElementById('q-admission-no').value,
-    name, name_ur: document.getElementById('q-name-ur').value.trim() || null,
-    gender: document.getElementById('q-gender').value,
-    dob: dateVal('q-dob', null),
-    father_name: document.getElementById('q-father').value,
-    class_name: document.getElementById('q-class').value,
-    student_type: 'paying',
-    admission_date: todayISO(),
-    monthly_fee: 0, contact: document.getElementById('q-contact').value, status:'active'
+async function submitNewAdmission() {
+  const g = id => document.getElementById(id);
+  const name = g('na-name').value.trim();
+  const father = g('na-father').value.trim();
+  const cls = g('na-class').value;
+  const type = g('na-type').value;
+  const feeRaw = g('na-fee').value;
+  if (!name) { alert(qt('Student name is required.', 'طالب علم کا نام ضروری ہے۔')); return; }
+  if (!father) { alert(qt("Father's name is required.", 'والد کا نام ضروری ہے۔')); return; }
+  if (type === 'paying' && (feeRaw === '' || !(Number(feeRaw) >= 0))) { alert(t.feeInvalid); return; }
+  const fee = type === 'paying' ? Number(feeRaw) : 0;
+
+  // Concession (only for fee-paying students) — same rules as the student profile.
+  let concession_type = null, concession_value = 0, concession_reason = null;
+  const cType = g('na-conc-type').value;
+  if (type === 'paying' && cType) {
+    const val = Number(g('na-conc-value').value || 0);
+    if (cType === 'percent' && !(val > 0 && val < 100)) { alert(t.concBadPercent); return; }
+    if (cType === 'fixed' && !(val > 0 && val < fee)) { alert(t.concBadFixed); return; }
+    concession_type = cType; concession_value = val; concession_reason = g('na-conc-reason').value;
+  }
+
+  // Same name + father + class already a student? Ask before creating a duplicate.
+  const dup = DATA.students.find(x => (x.name || '').trim().toLowerCase() === name.toLowerCase()
+    && (x.father_name || '').trim().toLowerCase() === father.toLowerCase() && x.class_name === cls);
+  if (dup && !confirm(qt('A student with the same name, father and class already exists. Add anyway?',
+    'اسی نام، والد اور جماعت کا طالب علم پہلے سے موجود ہے۔ پھر بھی شامل کریں؟'))) return;
+
+  const studentId = crypto.randomUUID ? crypto.randomUUID() : `local-${Date.now()}`;
+  const admissionDate = dateVal('na-date');
+  const studentPayload = {
+    id: studentId, owner_id: CURRENT_USER.id,
+    admission_number: g('na-admission-no').value,
+    name, name_ur: g('na-name-ur').value.trim() || null,
+    gender: g('na-gender').value, dob: dateVal('na-dob', null),
+    father_name: father, class_name: cls, student_type: type,
+    admission_date: admissionDate, monthly_fee: fee,
+    contact: g('na-contact').value.trim(), status: 'active',
+    concession_type, concession_value, concession_reason
   };
-  const { queued, error } = await offlineWrite({
-    table: 'students', action: 'insert', payload, id: payload.id, baseRow: null,
-    run: () => sb.from('students').insert(payload),
-    optimisticApply: () => { DATA.students.push(payload); idbPutRow('students', payload); }
+  const regPayload = {
+    id: crypto.randomUUID ? crypto.randomUUID() : `local-${Date.now()}-r`, owner_id: CURRENT_USER.id,
+    serial_no: g('na-serial').value ? Number(g('na-serial').value) : null,
+    admission_date: admissionDate,
+    student_name: name, student_name_ur: g('na-name-ur').value.trim() || null,
+    dob_figures: dateVal('na-dob', ''), dob_words: g('na-dob-words').value.trim(),
+    father_name: father, father_name_ur: g('na-father-ur').value.trim() || null,
+    caste_tribe: g('na-caste').value.trim(), caste_tribe_ur: g('na-caste-ur').value.trim() || null,
+    occupation: g('na-occupation').value.trim(),
+    residence: g('na-residence').value.trim(), residence_ur: g('na-residence-ur').value.trim() || null,
+    class_admitted: cls, student_id: studentId,
+    arrears_due: Number(g('na-arrears').value || 0),
+    class_withdrawn: null, withdrawal_date: null,
+    high_middle_slc_no: '', bise_enrolment_no: '', slc_issue_date: null,
+    attendance_possible: '', attendance_actual: '', school_fund_report: '', conduct: '',
+    remarks: g('na-remarks').value.trim(),
+    parent_pin: String(Math.floor(100000 + Math.random() * 900000))
+  };
+
+  // 1) Student first (the register entry points at it) ...
+  const r1 = await offlineWrite({
+    table: 'students', action: 'insert', payload: studentPayload, id: studentPayload.id, baseRow: null,
+    run: () => sb.from('students').insert(studentPayload),
+    optimisticApply: () => { DATA.students.push(studentPayload); idbPutRow('students', studentPayload); }
   });
-  if (!queued && reportSaveError(error)) return;
-  closeModal(); if (!queued) await loadAllData(); renderTab();
-  openStudentDetail(payload.id);
+  if (!r1.queued && reportSaveError(r1.error)) return;   // nothing saved yet -> safe to retry
+
+  // 2) ... then the register entry.
+  const r2 = await offlineWrite({
+    table: 'admission_register', action: 'insert', payload: regPayload, id: regPayload.id, baseRow: null,
+    run: () => sb.from('admission_register').insert(regPayload),
+    optimisticApply: () => { DATA.admissionRegister.push(regPayload); idbPutRow('admission_register', regPayload); }
+  });
+  if (!r2.queued && r2.error) {
+    alert(qt('Student was saved, but the Admission Register entry failed. Please add the register entry from the Admission Register tab (link this student).',
+      'طالب علم محفوظ ہو گیا مگر داخلہ رجسٹر کی اندراج ناکام ہوئی۔ براہ کرم داخلہ رجسٹر ٹیب سے اندراج شامل کریں (اسی طالب علم کو لنک کریں)۔'));
+  }
+  closeModal();
+  if (!(r1.queued && r2.queued)) await loadAllData();
+  renderTab();
+  openStudentDetail(studentId);
 }
 
 // Builds the same 12-month (Feb-Jan academic year) ledger rows used on the physical
@@ -8765,7 +8863,7 @@ function handleTimetableLogoUpload(file) {
   reader.onload = (e) => {
     dmcLogo = e.target.result;
     saveDMCConfig();
-    if (TAB === 'timetable') renderTab();
+    if (TAB === 'timetable' || TAB === 'datesheet') renderTab();
   };
   reader.readAsDataURL(file);
 }
@@ -10515,8 +10613,24 @@ function dsLoad() {
     examName: d.examName || '',
     instructions: d.instructions || '',
     cols: Array.isArray(d.cols) ? d.cols : [],
-    cells: (d.cells && typeof d.cells === 'object') ? d.cells : {}
+    cells: (d.cells && typeof d.cells === 'object') ? d.cells : {},
+    gen: Object.assign({ start: '', end: '', startTime: '08:00', endTime: '12:00', skipSun: true, skipFri: false, mode: 'spread',
+      groups: null, hard: 'Maths, English, Urdu, Science, Physics, Chemistry, Biology' }, (d.gen && typeof d.gen === 'object') ? d.gen : {}),
+    genNote: d.genNote || ''
   };
+  // Groups used by Auto-generate: each has its own editable classes and subjects.
+  const gg = dsData.gen.groups;
+  dsData.gen.groups = (Array.isArray(gg) && gg.length)
+    ? gg.map(x => ({ classes: String((x && x.classes) || ''), subjects: String((x && x.subjects) || '') }))
+    : DS_DEFAULT_GROUPS.map(c => ({ classes: c.join(', '), subjects: '' }));
+  // Rows of the date sheet = an editable class list (never taken from the students list).
+  let cl = Array.isArray(d.classes) ? d.classes.map(x => String(x || '').trim()).filter(Boolean) : [];
+  if (!cl.length) {
+    const base = [].concat(...DS_DEFAULT_GROUPS);
+    const extra = Object.keys(dsData.cells).filter(c => !base.includes(c) && Object.values(dsData.cells[c] || {}).some(v => (v || '').trim()));
+    cl = base.concat(extra);
+  }
+  dsData.classes = [...new Set(cl)];
 }
 function dsSave() {
   try { localStorage.setItem(dsKey(), JSON.stringify(dsData)); }
@@ -10556,8 +10670,10 @@ function dsSortedRows(cls) {
     .filter(c => (cells[c.id] || '').trim())
     .map(c => ({ date: c.date, subject: cells[c.id].trim(), start: c.start, end: c.end }));
 }
-// Classes shown as rows: every class that has active students, plus any class that already has data.
-function dsClassList() {
+// Rows of the date sheet: the editable class list (NOT taken from the students list).
+function dsClassList() { if (!dsData) dsLoad(); return dsData.classes.slice(); }
+// Classes that have students - used only by the Roll Number Slips (slips are printed per student).
+function dsSlipClassList() {
   const withStudents = DATA.students.filter(s => s.status !== 'inactive').map(s => s.class_name).filter(Boolean);
   const withData = Object.keys(dsData.cells).filter(c => Object.values(dsData.cells[c] || {}).some(v => (v || '').trim()));
   const all = [...new Set([...withStudents, ...withData])];
@@ -10608,6 +10724,39 @@ function dsDeleteCol(id) {
   dsSave();
   renderTab();
 }
+// ---------- editable class rows ----------
+function dsRenameClass(oldName, value, el) {
+  const nv = String(value || '').trim();
+  if (!nv || nv === oldName) { if (el) el.value = oldName; return; }
+  if (dsData.classes.includes(nv)) {
+    alert(qt('This class is already in the list.', 'یہ جماعت فہرست میں پہلے سے موجود ہے۔'));
+    if (el) el.value = oldName;
+    return;
+  }
+  const i = dsData.classes.indexOf(oldName);
+  if (i < 0) return;
+  dsData.classes[i] = nv;
+  if (dsData.cells[oldName]) { dsData.cells[nv] = dsData.cells[oldName]; delete dsData.cells[oldName]; }
+  dsSave();
+  renderTab();
+}
+function dsAddClass() {
+  const n = prompt(qt('Class name (e.g. 11th)', 'جماعت کا نام (مثلاً 11th)'));
+  const nm = String(n || '').trim();
+  if (!nm) return;
+  if (dsData.classes.includes(nm)) { alert(qt('This class is already in the list.', 'یہ جماعت فہرست میں پہلے سے موجود ہے۔')); return; }
+  dsData.classes.push(nm);
+  dsSave();
+  renderTab();
+}
+function dsDeleteClass(cl) {
+  const filled = Object.values(dsData.cells[cl] || {}).some(v => (v || '').trim());
+  if (filled && !confirm(qt('Remove this class and its subjects?', 'یہ جماعت اور اس کے مضامین ہٹا دیں؟'))) return;
+  dsData.classes = dsData.classes.filter(c => c !== cl);
+  delete dsData.cells[cl];
+  dsSave();
+  renderTab();
+}
 // Re-draws only the slips card (warnings/counts) so typing in the grid is never interrupted.
 function dsRefreshSlips() {
   const el = document.getElementById('ds-slips');
@@ -10621,8 +10770,11 @@ function dsRefreshSlips() {
 // inside a class. The number is for the slip only — it is not saved on the student.
 function dsSlipStudents(scope) {
   const order = c => { const i = CLASS_OPTIONS.indexOf(c); return i < 0 ? 999 : i; };
+  if (!dsData) dsLoad();
+  // Only classes that actually sit an exam (have subjects in the date sheet) get slips.
+  const sitsExam = c => dsSortedRows(c).length > 0;
   return DATA.students
-    .filter(s => s.status !== 'inactive')
+    .filter(s => s.status !== 'inactive' && sitsExam(s.class_name))
     .slice()
     .sort((a, b) => order(a.class_name) - order(b.class_name)
       || String(a.class_name || '').localeCompare(String(b.class_name || ''))
@@ -10630,36 +10782,36 @@ function dsSlipStudents(scope) {
     .map((s, i) => ({ s, roll: String(i + 1) }))
     .filter(x => scope === 'all' || x.s.class_name === scope);
 }
-// 4 slips per A4 page (2 x 2), and every class starts on a fresh page so slips can be handed out class by class.
+// 4 slips per A4 page (2 x 2). Pages are filled completely: when a class ends in the middle of a page,
+// the next class's first student continues on the SAME page (no empty slots). Each slip carries its own class.
 function dsSlipPages(list) {
-  const groups = [];
-  list.forEach(x => {
-    const last = groups[groups.length - 1];
-    if (last && last.cls === x.s.class_name) last.items.push(x);
-    else groups.push({ cls: x.s.class_name, items: [x] });
-  });
   const pages = [];
-  groups.forEach(g => { for (let i = 0; i < g.items.length; i += 4) pages.push({ cls: g.cls, items: g.items.slice(i, i + 4) }); });
+  for (let i = 0; i < list.length; i += 4) pages.push({ items: list.slice(i, i + 4) });
   return pages;
 }
 
 // ---------- the tab ----------
 function tplDsSlips() {
-  const classes = dsClassList();
+  const classes = dsSlipClassList();
   if (dsSlipClass !== 'all' && !classes.includes(dsSlipClass)) dsSlipClass = 'all';
   const counts = {};
-  DATA.students.forEach(s => { if (s.status !== 'inactive') counts[s.class_name] = (counts[s.class_name] || 0) + 1; });
+  const skipped = {};
+  DATA.students.forEach(s => {
+    if (s.status === 'inactive') return;
+    if (dsSortedRows(s.class_name).length) counts[s.class_name] = (counts[s.class_name] || 0) + 1;
+    else skipped[s.class_name] = (skipped[s.class_name] || 0) + 1;
+  });
   const totalStudents = Object.values(counts).reduce((a, b) => a + b, 0);
   const slip = dsSlipStudents(dsSlipClass);
   const pages = dsSlipPages(slip).length;
-  const noSheet = [...new Set(slip.map(x => x.s.class_name))].filter(c => !dsSortedRows(c).length);
+  const noSheet = Object.keys(skipped).filter(c => c && skipped[c]);
   const range = slip.length ? slip[0].roll + ' – ' + slip[slip.length - 1].roll : '';
 
   const warnSheet = noSheet.length ? `
-    <div class="ds-warn">${esc(qt('No subjects entered in the date sheet for: ', 'ڈیٹ شیٹ میں ان کلاسوں کے مضامین درج نہیں: '))}<b>${noSheet.map(c => esc(c)).join('، ')}</b></div>` : '';
+    <div class="ds-warn">${esc(qt('No slips for these classes (no subjects in the date sheet = not sitting the exam): ', 'ان کلاسوں کی سلپس نہیں بنیں گی (ڈیٹ شیٹ میں مضامین نہیں، یعنی امتحان نہیں دے رہیں): '))}<b>${noSheet.map(c => esc(c)).join('، ')}</b></div>` : '';
 
   return `
-    <p style="font-size:12px;opacity:.7;margin:0 0 10px;">${esc(qt('Roll numbers run in one sequence through the whole school, class by class (Nursery first), A–Z by name inside each class. Each slip also shows that class\'s subjects from the date sheet above.', 'رول نمبر پورے اسکول میں کلاس وار ایک ہی ترتیب میں چلتے ہیں (نرسری سے شروع)، ہر کلاس میں نام کی ترتیب سے۔ ہر سلپ پر اوپر والی ڈیٹ شیٹ سے اس کلاس کے مضامین بھی چھپیں گے۔'))}</p>
+    <p style="font-size:12px;opacity:.7;margin:0 0 10px;">${esc(qt('Roll numbers run in one sequence through the whole school, class by class (Nursery first), A–Z by name inside each class. Each slip also shows that class\'s subjects from the date sheet above. Pages are filled with 4 slips each - the next class continues on the same page.', 'رول نمبر پورے اسکول میں کلاس وار ایک ہی ترتیب میں چلتے ہیں (نرسری سے شروع)، ہر کلاس میں نام کی ترتیب سے۔ ہر سلپ پر اوپر والی ڈیٹ شیٹ سے اس کلاس کے مضامین بھی چھپیں گے۔ ہر صفحے پر 4 سلپس ہوں گی، اگلی کلاس اسی صفحے پر جاری رہے گی۔'))}</p>
     <label><span>${esc(qt('Print slips for', 'سلپس کس کے لیے'))}</span>
       <select onchange="dsSlipClass=this.value;dsRefreshSlips();">
         <option value="all" ${dsSlipClass === 'all' ? 'selected' : ''}>${esc(qt('All classes', 'تمام کلاسیں'))} (${totalStudents})</option>
@@ -10668,6 +10820,217 @@ function tplDsSlips() {
     <p style="font-size:12px;opacity:.7;margin:0 0 10px;">${esc(qt(`${slip.length} slips · Roll No. ${range} · 4 per A4 page · ${pages} page(s)`, `${slip.length} سلپس · رول نمبر ${range} · ہر A4 صفحے پر 4 · ${pages} صفحات`))}</p>
     ${warnSheet}
     <button class="btn-primary" onclick="dsPrintSlips()" ${slip.length ? '' : 'disabled'}>🎫 ${esc(qt('Print Roll Number Slips', 'رول نمبر سلپس پرنٹ کریں'))}</button>`;
+}
+
+// ---------- auto-generate ----------
+// Default groups for Auto-generate (classes can be edited in the panel). Inside one group a single
+// teacher takes each subject for ALL its classes, so a teacher gets 1 paper a day when possible,
+// never more than 2.
+const DS_DEFAULT_GROUPS = [
+  ['Nursery', 'KG'],
+  ['1st', '2nd', '3rd'],
+  ['4th', '5th'],
+  ['6th', '7th'],
+  ['8th', '9th', '10th']
+];
+function dsGenSet(field, value) { dsData.gen[field] = value; dsSave(); }
+// The panel's open/closed state is kept in a variable (not in a <details> element),
+// so a background re-render of the tab can never snap it shut again.
+let dsGenOpen = null;   // null = automatic: open while there is no date sheet yet
+function dsGenIsOpen() { return dsGenOpen === null ? !(dsData && dsData.cols && dsData.cols.length) : dsGenOpen; }
+function dsGenToggle() {
+  dsGenOpen = !dsGenIsOpen();
+  const body = document.getElementById('ds-gen-body'), arrow = document.getElementById('ds-gen-arrow');
+  if (body) body.style.display = dsGenOpen ? 'block' : 'none';
+  if (arrow) arrow.textContent = dsGenOpen ? '▲' : '▼';
+}
+function dsParseSubjects(text) {
+  const seen = new Set(), out = [];
+  String(text || '').split(/[\n,،;]+/).map(x => x.trim()).filter(Boolean).forEach(x => {
+    const k = x.toLowerCase();
+    if (!seen.has(k)) { seen.add(k); out.push(x); }
+  });
+  return out;
+}
+// Teacher of a paper = its subject name without a bracket suffix, so "English(w)" and
+// "English(o)" count as the same English teacher.
+function dsTeacherKey(sub) { return String(sub).replace(/[\(（][^\)）]*[\)）]/g, '').trim().toLowerCase(); }
+// A paper is "hard" when its subject is in the editable hard list. Oral papers, e.g. English(o), count as easy.
+function dsIsHard(sub, hardKeys) {
+  if (/[\(（]\s*(o|oral)\s*[\)）]\s*$/i.test(String(sub).trim())) return false;
+  const key = dsTeacherKey(sub);
+  if (!key) return false;
+  return hardKeys.some(h => key === h || key.startsWith(h) || h.startsWith(key));
+}
+// Order of hard (H) and easy (E) days: a hard paper is followed by an easy one wherever the numbers allow
+// (the surplus of one kind is spread out in small runs, never bunched together).
+function dsTypePattern(h, e) {
+  const out = [];
+  if (!h || !e) { for (let i = 0; i < h + e; i++) out.push(h ? 'H' : 'E'); return out; }
+  if (e >= h) {
+    const base = Math.floor(e / h), extra = e % h;
+    for (let b = 0; b < h; b++) { out.push('H'); for (let k = 0; k < base + (b < extra ? 1 : 0); k++) out.push('E'); }
+  } else {
+    const runs = e + 1, base = Math.floor(h / runs), extra = h % runs;
+    for (let r = 0; r < runs; r++) { for (let k = 0; k < base + (r < extra ? 1 : 0); k++) out.push('H'); if (r < e) out.push('E'); }
+  }
+  return out;
+}
+// Every class of a group sits its papers on the FIRST S days one after another (no empty day in the middle -
+// free days only come at the end). Day order = hard, easy, hard, easy ... Classes rotate through the subjects of
+// the same kind, so on any day each teacher meets a different class (1 paper a day when possible, never above 2).
+// Returns { assign[classIdx][subjectIdx] = dayIdx, load, ordered } or null.
+function dsScheduleOrdered(C, subs, D, hardKeys) {
+  const S = subs.length;
+  if (!S || S > D) return null;
+  const keys = subs.map(dsTeacherKey);
+  const hardIdx = [], easyIdx = [];
+  subs.forEach((sub, i) => (dsIsHard(sub, hardKeys) ? hardIdx : easyIdx).push(i));
+  const build = (pattern, hIdx, eIdx) => {
+    const assign = Array.from({ length: C }, () => new Array(S).fill(-1));
+    for (let c = 0; c < C; c++) {
+      let jh = 0, je = 0;
+      pattern.forEach((type, d) => {
+        if (type === 'H') assign[c][hIdx[(jh++ + c) % hIdx.length]] = d;
+        else assign[c][eIdx[(je++ + c) % eIdx.length]] = d;
+      });
+    }
+    return assign;
+  };
+  const load = a => {
+    const cnt = {}; let mx = 0;
+    for (let c = 0; c < C; c++) for (let i = 0; i < S; i++) { const k = keys[i] + '|' + a[c][i]; cnt[k] = (cnt[k] || 0) + 1; if (cnt[k] > mx) mx = cnt[k]; }
+    return mx;
+  };
+  const a1 = build(dsTypePattern(hardIdx.length, easyIdx.length), hardIdx, easyIdx);   // 1) hard / easy order
+  const l1 = load(a1);
+  if (l1 <= 2) return { assign: a1, load: l1, ordered: true };
+  const all = subs.map((_, i) => i);                                                  // 2) teacher limit only
+  const a2 = build(all.map(() => 'H'), all, []);
+  const l2 = load(a2);
+  if (l2 <= 2) return { assign: a2, load: l2, ordered: false };
+  return null;
+}
+function dsGenGroupSet(idx, field, value) { const grp = dsData.gen.groups[idx]; if (grp) { grp[field] = value; dsSave(); } }
+function dsGenAddGroup() { dsData.gen.groups.push({ classes: '', subjects: '' }); dsGenOpen = true; dsSave(); renderTab(); }
+function dsGenRemoveGroup(idx) {
+  if (dsData.gen.groups.length <= 1) return;
+  dsData.gen.groups.splice(idx, 1); dsGenOpen = true; dsSave(); renderTab();
+}
+function dsGenPanelHtml() {
+  const g = dsData.gen;
+  const isOpen = dsGenIsOpen();
+  const groupBox = (grp, idx) => `
+    <div style="border:1px solid var(--line);border-radius:10px;padding:10px;margin-bottom:10px;">
+      <div style="display:flex;align-items:flex-end;gap:6px;margin-bottom:8px;">
+        <label style="flex:1;min-width:0;margin-bottom:0;"><span>${esc(qt('Group', 'گروپ'))} ${idx + 1} — ${esc(qt('classes (comma separated)', 'جماعتیں (کاما سے الگ)'))}</span>
+          <input type="text" value="${esc(grp.classes)}" placeholder="Nursery, KG" oninput="dsGenGroupSet(${idx},'classes',this.value)"></label>
+        ${g.groups.length > 1 ? `<button class="del-x" style="padding:6px 8px;" onclick="dsGenRemoveGroup(${idx})">✕</button>` : ''}
+      </div>
+      <label style="margin-bottom:0;"><span>${esc(qt('Subjects (one per line or comma separated)', 'مضامین (ہر سطر میں ایک یا کاما سے الگ)'))}</span>
+        <textarea rows="3" placeholder="${esc(qt('Urdu, English, Maths, Islamiyat…', 'اردو، انگلش، ریاضی، اسلامیات…'))}" oninput="dsGenGroupSet(${idx},'subjects',this.value)">${esc(grp.subjects)}</textarea></label>
+    </div>`;
+  return `
+    <div class="list-card" style="padding:14px;margin-bottom:12px;">
+      <div onclick="dsGenToggle()" style="font-weight:600;cursor:pointer;display:flex;justify-content:space-between;align-items:center;">
+        <span>⚡ ${esc(qt('Auto-generate Date Sheet', 'ڈیٹ شیٹ خود بنائیں'))}</span><span id="ds-gen-arrow">${isOpen ? '▲' : '▼'}</span>
+      </div>
+      <div id="ds-gen-body" style="margin-top:12px;display:${isOpen ? 'block' : 'none'};">
+        <div class="row2">
+          <label style="margin-bottom:0;"><span>${esc(qt('First exam date', 'پہلے پیپر کی تاریخ'))}</span><input type="date" value="${esc(g.start || '')}" onchange="dsGenSet('start',this.value)"></label>
+          <label style="margin-bottom:0;"><span>${esc(qt('Last exam date', 'آخری پیپر کی تاریخ'))}</span><input type="date" value="${esc(g.end || '')}" onchange="dsGenSet('end',this.value)"></label>
+        </div>
+        <div class="row2" style="margin-top:8px;">
+          <label style="margin-bottom:0;"><span>${esc(qt('Paper starts', 'پیپر شروع'))}</span><input type="time" value="${esc(g.startTime || '08:00')}" onchange="dsGenSet('startTime',this.value)"></label>
+          <label style="margin-bottom:0;"><span>${esc(qt('Paper ends', 'پیپر ختم'))}</span><input type="time" value="${esc(g.endTime || '12:00')}" onchange="dsGenSet('endTime',this.value)"></label>
+        </div>
+        <label style="display:flex;align-items:center;gap:8px;margin:10px 0 0;"><input type="checkbox" style="width:auto;" ${g.skipSun !== false ? 'checked' : ''} onchange="dsGenSet('skipSun',this.checked)"><span>${esc(qt('Skip Sunday', 'اتوار کی چھٹی'))}</span></label>
+        <label style="display:flex;align-items:center;gap:8px;margin:6px 0 10px;"><input type="checkbox" style="width:auto;" ${g.skipFri ? 'checked' : ''} onchange="dsGenSet('skipFri',this.checked)"><span>${esc(qt('Skip Friday', 'جمعہ کی چھٹی'))}</span></label>
+        <label><span>${esc(qt('Hard subjects (a hard paper is always followed by an easy one)', 'مشکل مضامین (مشکل پیپر کے بعد ہمیشہ آسان پیپر آئے گا)'))}</span>
+          <input type="text" value="${esc(g.hard || '')}" placeholder="Maths, English, Urdu, Science" oninput="dsGenSet('hard',this.value)"></label>
+        ${g.groups.map(groupBox).join('')}
+        <button class="btn-ghost" style="width:100%;margin-bottom:10px;" onclick="dsGenAddGroup()">+ ${esc(qt('Add group', 'گروپ شامل کریں'))}</button>
+        <button class="btn-primary" style="width:100%;" onclick="dsGenerate()">${esc(qt('Generate Date Sheet', 'ڈیٹ شیٹ بنائیں'))}</button>
+        <p style="font-size:12px;opacity:.7;margin:8px 0 0;">${esc(qt('Only the classes and subjects written here are used (students are not looked at). Papers run day after day from the first date, so any free days come at the end, never in the middle. Hard and easy papers alternate (oral papers like English(o) count as easy). Each class gets one paper a day; a teacher gets 1 paper a day when possible and never more than 2. Everything can be edited afterwards.', 'صرف یہاں لکھی ہوئی جماعتیں اور مضامین استعمال ہوتے ہیں (طلبہ کا ڈیٹا نہیں دیکھا جاتا)۔ پیپر پہلی تاریخ سے مسلسل چلتے ہیں، اس لیے خالی دن بیچ میں نہیں بلکہ آخر میں آتے ہیں۔ مشکل اور آسان پیپر باری باری آتے ہیں (زبانی پیپر جیسے English(o) آسان گنے جاتے ہیں)۔ ہر جماعت کا دن میں ایک پیپر ہو گا؛ استاد کا دن میں ممکن ہو تو ایک پیپر اور دو سے زیادہ کبھی نہیں۔ بعد میں سب کچھ بدل سکتے ہیں۔'))}</p>
+      </div>
+      ${dsData.genNote ? `<div style="font-size:12px;opacity:.8;margin-top:10px;white-space:pre-line;">${esc(dsData.genNote)}</div>` : ''}
+    </div>`;
+}
+function dsGenerate() {
+  const g = dsData.gen;
+  if (!g.start || !g.end) { alert(qt('Please choose the first and last exam dates.', 'براہ کرم پہلے اور آخری پیپر کی تاریخ چنیں۔')); return; }
+  const startD = new Date(g.start + 'T00:00:00'), endD = new Date(g.end + 'T00:00:00');
+  if (isNaN(startD) || isNaN(endD) || endD < startD) { alert(qt('The last date must be on or after the first date.', 'آخری تاریخ پہلی تاریخ کے بعد (یا برابر) ہونی چاہیے۔')); return; }
+  if ((endD - startD) / 86400000 > 120) { alert(qt('That date range is too long (max 120 days).', 'تاریخوں کا دورانیہ بہت زیادہ ہے (زیادہ سے زیادہ 120 دن)۔')); return; }
+  if (g.startTime && g.endTime && g.endTime <= g.startTime) { alert(qt('Paper end time must be after the start time.', 'پیپر ختم ہونے کا وقت شروع کے بعد ہونا چاہیے۔')); return; }
+
+  // working days
+  const days = [];
+  for (const d = new Date(startD); d <= endD; d.setDate(d.getDate() + 1)) {
+    const wd = d.getDay();
+    if (g.skipSun !== false && wd === 0) continue;
+    if (g.skipFri && wd === 5) continue;
+    days.push(localISO(d));
+  }
+  if (!days.length) { alert(qt('No working days in that range.', 'اس دورانیے میں کوئی کام کا دن نہیں۔')); return; }
+
+  // groups: ONLY what is written in the panel (classes + subjects) is used
+  const active = [], seen = {};
+  for (const grp of g.groups) {
+    const subs = dsParseSubjects(grp.subjects);
+    if (!subs.length) continue;
+    const classes = dsParseSubjects(grp.classes);
+    if (!classes.length) { alert(qt('Write the classes of every group that has subjects.', 'جس گروپ کے مضامین لکھے ہیں اس کی جماعتیں بھی لکھیں۔')); return; }
+    const dup = classes.find(c => seen[c.toLowerCase()]);
+    if (dup) { alert(`${dup}: ` + qt('is in more than one group.', 'ایک سے زیادہ گروپ میں ہے۔')); return; }
+    classes.forEach(c => { seen[c.toLowerCase()] = 1; });
+    active.push({ classes, subs, label: classes.join(', ') });
+  }
+  if (!active.length) { alert(qt('Enter subjects for at least one group.', 'کم از کم ایک گروپ کے مضامین لکھیں۔')); return; }
+  const tooMany = active.filter(x => x.subs.length > days.length);
+  if (tooMany.length) {
+    alert(qt(`Only ${days.length} exam day(s) are available, but these groups have more subjects than that:\n`, `صرف ${days.length} دن دستیاب ہیں، مگر ان گروپوں کے مضامین زیادہ ہیں:\n`)
+      + tooMany.map(x => `${x.label}: ${x.subs.length}`).join('\n')
+      + qt('\n\nAdd more days or remove a holiday.', '\n\nمزید دن بڑھائیں یا کوئی چھٹی ختم کریں۔'));
+    return;
+  }
+  const hasData = dsData.cols.length > 0 && Object.values(dsData.cells).some(m => Object.values(m || {}).some(v => (v || '').trim()));
+  if (hasData && !confirm(qt('This will replace the current date sheet. Continue?', 'اس سے موجودہ ڈیٹ شیٹ بدل جائے گی۔ جاری رکھیں؟'))) return;
+
+  const D = days.length;
+  const hardKeys = dsParseSubjects(g.hard).map(dsTeacherKey).filter(Boolean);
+  const plan = [], failed = [], noteLines = [];
+  active.forEach(x => {
+    const res = dsScheduleOrdered(x.classes.length, x.subs, D, hardKeys);
+    if (!res) failed.push(x); else plan.push({ x, res });
+  });
+  if (failed.length) {
+    alert(qt('Not enough days: a teacher would have to check more than 2 papers in one day for:\n', 'دن کم ہیں: ان گروپوں میں کسی استاد کے ایک دن میں دو سے زیادہ پیپر آ جاتے ہیں:\n')
+      + failed.map(x => x.label).join('\n')
+      + qt('\n\nAdd more days or remove a holiday.', '\n\nمزید دن بڑھائیں یا کوئی چھٹی ختم کریں۔'));
+    return;
+  }
+  // one column per day that has at least one paper
+  const colByDay = {}, cells = {};
+  plan.forEach(({ x, res }) => {
+    x.classes.forEach((cl, ci) => x.subs.forEach((sub, si) => {
+      const di = res.assign[ci][si];
+      if (!colByDay[di]) colByDay[di] = { id: dsNewId(), date: days[di], start: g.startTime || '08:00', end: g.endTime || '12:00' };
+      (cells[cl] = cells[cl] || {})[colByDay[di].id] = sub;
+    }));
+    noteLines.push(`${x.label}: ` + (res.load === 1
+      ? qt('every teacher has at most 1 paper a day', 'ہر استاد کا دن میں زیادہ سے زیادہ ایک پیپر')
+      : qt('some teachers have 2 papers on a day (not more)', 'کچھ اساتذہ کے کسی دن دو پیپر ہیں (اس سے زیادہ نہیں)'))
+      + (res.ordered ? '' : qt(' - hard/easy order not possible within the teacher limit', ' - اساتذہ کی حد کی وجہ سے مشکل/آسان ترتیب ممکن نہیں')));
+  });
+  const cols = Object.keys(colByDay).map(Number).sort((m, n) => m - n).map(k => colByDay[k]);
+  dsData.genNote = noteLines.join('\n');
+  dsData.cols = cols;
+  dsData.cells = cells;
+  dsData.classes = [].concat(...plan.map(pl => pl.x.classes));   // the sheet's rows = the classes written in the groups
+  dsSave();
+  dsGenOpen = false;   // close the panel so the new date sheet is visible
+  renderTab();
 }
 
 function tplDateSheet() {
@@ -10689,15 +11052,15 @@ function tplDateSheet() {
         <input type="time" value="${esc(c.end || '')}" onchange="dsSetCol('${c.id}','end',this.value)">
       </div>
     </th>`;
-  const bodyRow = cl => `<tr><td class="tt-class-name">${esc(cl)}</td>${cols.map(c => `
+  const bodyRow = cl => `<tr><td class="tt-class-name"><div style="display:flex;align-items:center;gap:2px;"><input type="text" value="${esc(cl)}" style="width:100%;min-width:0;font-weight:700;font-size:12px;padding:2px;" onchange="dsRenameClass('${escJs(cl)}',this.value,this)"><button class="del-x" style="padding:0 3px;" onclick="dsDeleteClass('${escJs(cl)}')">✕</button></div></td>${cols.map(c => `
       <td class="tt-cell"><input type="text" class="tt-subject" autocomplete="off" placeholder="${esc(qt('Subject', 'مضمون'))}"
         value="${esc(((dsData.cells[cl] || {})[c.id]) || '')}"
         oninput="dsSetCell('${escJs(cl)}','${c.id}',this.value)" onchange="dsRefreshSlips()"></td>`).join('')}</tr>`;
 
   const gridHtml = cols.length ? `
     <div class="tt-scroll-wrap">
-      <table class="tt-grid" style="width:${70 + 150 * cols.length}px;">
-        <colgroup><col style="width:70px">${cols.map(() => '<col style="width:150px">').join('')}</colgroup>
+      <table class="tt-grid" style="width:${120 + 150 * cols.length}px;">
+        <colgroup><col style="width:120px">${cols.map(() => '<col style="width:150px">').join('')}</colgroup>
         <tr><th>${esc(qt('Class', 'جماعت'))}</th>${cols.map(headCell).join('')}</tr>
         ${classes.map(bodyRow).join('')}
       </table>
@@ -10709,14 +11072,26 @@ function tplDateSheet() {
         <span>${esc(qt('Exam Date Sheet', 'امتحانی ڈیٹ شیٹ'))}</span>
         <button onclick="dsPrintDateSheet()" style="border:none;background:var(--navy);color:var(--gold-soft);border-radius:8px;padding:5px 12px;font-size:11px;font-weight:600;">🖨️ ${esc(t.print)}</button>
       </div>
+      <div class="list-card" style="display:flex;align-items:center;gap:12px;padding:14px;margin-bottom:12px;">
+        <div style="flex-shrink:0;text-align:center;">
+          ${dmcLogo ? `<img src="${dmcLogo}" style="height:46px;width:46px;object-fit:contain;border-radius:8px;display:block;margin:0 auto 4px;">`
+            : `<div style="height:46px;width:46px;border-radius:8px;background:var(--line);display:flex;align-items:center;justify-content:center;font-size:9px;color:#999;margin:0 auto 4px;">${esc(qt('Logo', 'لوگو'))}</div>`}
+          <input type="file" accept="image/*" style="font-size:9px;width:100px;" onchange="handleTimetableLogoUpload(this.files[0])">
+        </div>
+        <input type="text" value="${esc(dmcSchoolName === 'SCHOOL NAME' ? '' : dmcSchoolName)}" placeholder="${esc(qt('School Name', 'اسکول کا نام'))}"
+          style="flex:1;font-family:Fraunces,serif;font-size:15px;font-weight:600;border:none;border-bottom:1px solid var(--line);background:transparent;padding:6px 2px;color:var(--navy);"
+          onchange="dmcSchoolName=this.value||'SCHOOL NAME'; saveDMCConfig();">
+      </div>
       <div class="list-card" style="padding:14px;margin-bottom:12px;">
         <label><span>${esc(qt('Exam Name', 'امتحان کا نام'))}</span>
           <input type="text" autocomplete="off" value="${esc(dsData.examName)}" placeholder="${esc(qt('e.g. Mid-Term Exam 2026', 'مثال: مڈ ٹرم امتحان 2026'))}" oninput="dsSetMeta('examName',this.value)"></label>
         <label style="margin-bottom:0;"><span>${esc(qt('Instructions (printed under the date sheet)', 'ہدایات (ڈیٹ شیٹ کے نیچے چھپیں گی)'))}</span>
           <textarea rows="2" placeholder="${esc(qt('e.g. Reach 15 minutes early. Bring your own pen.', 'مثال: 15 منٹ پہلے پہنچیں۔ اپنا قلم ساتھ لائیں۔'))}" oninput="dsSetMeta('instructions',this.value)">${esc(dsData.instructions)}</textarea></label>
       </div>
+      ${dsGenPanelHtml()}
+      ${cols.length ? `<p style="font-size:12px;opacity:.7;margin:0 0 8px;">${esc(qt('Tap any box to correct a subject, a class name or a date. Changes are saved automatically.', 'کسی بھی خانے پر ٹیپ کر کے مضمون، جماعت کا نام یا تاریخ ٹھیک کریں۔ تبدیلی خود محفوظ ہو جاتی ہے۔'))}</p>` : ''}
       ${gridHtml}
-      <div class="ds-btns"><button class="btn-ghost" onclick="dsAddCol()">+ ${esc(qt('Add Date', 'تاریخ شامل کریں'))}</button></div>
+      <div class="ds-btns"><button class="btn-ghost" onclick="dsAddCol()">+ ${esc(qt('Add Date', 'پیپر کی تاریخ شامل کریں'))}</button><button class="btn-ghost" onclick="dsAddClass()">+ ${esc(qt('Add Class', 'جماعت شامل کریں'))}</button></div>
 
       <div class="section-title">${esc(qt('Roll Number Slips', 'رول نمبر سلپس'))}</div>
       <div class="list-card" style="padding:14px;" id="ds-slips">${tplDsSlips()}</div>
@@ -10725,38 +11100,91 @@ function tplDateSheet() {
 
 // ---------- printing ----------
 // Same landscape-on-portrait A4 layout the Timetable uses (see .tt-print-rotate).
-function dsPrintDateSheet() {
+// Printed date sheet: ONE full A4 sheet (landscape drawn on a portrait page), never a 2nd page.
+//  - page background = the logo's main colour at 30% strength
+//  - logo watermark: centred, 40% opacity, 80% of the sheet
+//  - logo at the far left of the header, school name centred (same distance from both sides)
+const DS_BG_STRENGTH = 0.30;      // how strong the logo colour is on the page background
+const DS_WM_OPACITY = 0.40;       // watermark opacity
+const DS_WM_SIZE = 80;            // watermark size, % of the sheet
+const DS_SLIP_BG_STRENGTH = 0.20;  // roll slips only: logo colour strength on the slip background
+const DS_SLIP_WM_OPACITY = 0.20;  // roll slips only: logo watermark opacity
+async function dsPrintDateSheet() {
   if (!dsData) dsLoad();
   const cols = dsSortedCols().filter(c => c.date);
   if (!cols.length) {
-    alert(qt('Add at least one exam date first.', 'پہلے کم از کم ایک امتحانی تاریخ شامل کریں۔'));
+    alert(qt('Add at least one exam date first.', 'پہلے کم از کم ایک پیپر کی تاریخ شامل کریں۔'));
     return;
   }
   const ur = LANG === 'ur';
   const school = dsSchoolName();
-  const headerRow = `<tr><th>${esc(qt('Class', 'جماعت'))}</th>${cols.map(c => `<th>${esc(fmtDate(c.date))}<span class="tt-print-time">${esc(dsDayName(c.date))}</span>${dsTimeRange(c) ? `<span class="tt-print-time">${esc(dsTimeRange(c))}</span>` : ''}</th>`).join('')}</tr>`;
-  const rows = dsClassList().map(cl => `<tr><td class="tt-print-classname">${esc(cl)}</td>${cols.map(c => {
+  const logoSrc = dmcLogo || null;
+  const tint = await sylpLogoColor(logoSrc);                    // [r,g,b] or null
+  const bgPage = tint ? sylpMix(tint, 1 - DS_BG_STRENGTH) : '#FAF6EC';
+  const lineCol = tint ? sylpMix(tint, 0.35) : '#C9B98A';
+  const dark = tint ? 'rgb(' + tint.map(v => Math.round(v * 0.32)).join(',') + ')' : '#0F2740';
+  const classes = dsClassList();
+  const nCols = cols.length;
+  const colgroup = `<col style="width:9%">` + cols.map(() => `<col>`).join('');
+  const headerRow = `<tr><th>${esc(qt('Class', 'جماعت'))}</th>${cols.map(c => `<th>${esc(fmtDate(c.date))}<span class="dsp-time">${esc(dsDayName(c.date))}</span>${dsTimeRange(c) ? `<span class="dsp-time">${esc(dsTimeRange(c))}</span>` : ''}</th>`).join('')}</tr>`;
+  const rows = classes.map(cl => `<tr><th class="cn">${esc(cl)}</th>${cols.map(c => {
     const v = (((dsData.cells[cl] || {})[c.id]) || '').trim();
-    return `<td>${v ? `<span class="tt-print-subject">${esc(v)}</span>` : `<span class="tt-print-empty">—</span>`}</td>`;
+    return `<td dir="auto">${v ? esc(v) : '<span class="dsp-empty">—</span>'}</td>`;
   }).join('')}</tr>`).join('');
   document.getElementById('print-area').innerHTML = `
-    <div class="tt-print-page"><div class="tt-print-rotate">
-    <div class="tt-print" dir="${ur ? 'rtl' : 'ltr'}">
-      <div class="tt-print-head">
-        ${dmcLogo ? `<img class="tt-print-logo" src="${dmcLogo}">` : ''}
-        <div class="eyebrow">${esc(qt('Exam Date Sheet', 'امتحانی ڈیٹ شیٹ'))}</div>
-        <h2>${esc(school)}</h2>
-        ${dsData.examName ? `<div class="tt-print-sub">${esc(dsData.examName)}</div>` : ''}
+    <style>
+      .dsp{-webkit-text-size-adjust:none;text-size-adjust:none;-webkit-print-color-adjust:exact;print-color-adjust:exact;font-family:Inter,'Noto Nastaliq Urdu','Noto Naskh Arabic',sans-serif;width:100%;height:100%;box-sizing:border-box;padding:5mm;background:${bgPage};border:1.5px solid ${dark};display:flex;position:relative;flex-direction:column;color:${dark};overflow:hidden;--sf:1;}
+      .dsp *{-webkit-print-color-adjust:exact;print-color-adjust:exact;}
+      .dsp-wm{position:absolute;left:50%;top:50%;width:${DS_WM_SIZE}%;height:${DS_WM_SIZE}%;transform:translate(-50%,-50%);object-fit:contain;opacity:${DS_WM_OPACITY};z-index:0;pointer-events:none;}
+      .dsp-head{position:relative;z-index:1;flex:0 0 auto;direction:ltr;display:grid;grid-template-columns:26mm 1fr 26mm;align-items:center;column-gap:3mm;background:${dark};color:#fff;border-radius:2.5mm;padding:2.5mm 4mm;margin-bottom:3mm;}
+      .dsp-logo{height:21mm;width:21mm;object-fit:contain;background:#fff;border-radius:50%;padding:1mm;justify-self:start;display:block;}
+      .dsp-title{text-align:center;min-width:0;grid-column:2;}
+      .dsp-eyebrow{color:#E4C765;font-size:calc(10px*var(--sf));letter-spacing:.22em;text-transform:uppercase;margin-bottom:1mm;}
+      .dsp-school{font-family:Fraunces,'Noto Nastaliq Urdu',serif;font-weight:800;font-size:calc(22px*var(--sf));line-height:1.2;overflow-wrap:anywhere;}
+      .dsp-sub{color:#E4C765;font-weight:700;font-size:calc(13px*var(--sf));margin-top:1mm;}
+      .dsp-table{position:relative;z-index:1;flex:1 1 auto;width:100%;border-collapse:collapse;table-layout:fixed;background:rgba(255,255,255,.4);}
+      .dsp-table th,.dsp-table td{border:1px solid ${lineCol};padding:calc(1.4mm*var(--sf)) calc(1mm*var(--sf));text-align:center;vertical-align:middle;font-size:calc(13px*var(--sf));line-height:1.3;overflow:hidden;overflow-wrap:anywhere;}
+      .dsp-table thead th{background:rgba(255,255,255,.55);font-size:calc(11.5px*var(--sf));font-weight:800;border-bottom:2px solid ${dark};}
+      .dsp-time{display:block;font-weight:600;font-size:calc(9.5px*var(--sf));opacity:.8;margin-top:.5mm;}
+      .dsp-table th.cn{background:rgba(255,255,255,.55);font-weight:800;}
+      .dsp-table td{font-weight:700;}
+      .dsp-empty{opacity:.35;font-weight:400;}
+      .dsp-instr{position:relative;z-index:1;flex:0 0 auto;margin-top:3mm;font-size:calc(11px*var(--sf));line-height:1.5;background:rgba(255,255,255,.55);border-left:1.2mm solid ${dark};border-radius:1.5mm;padding:1.6mm 3mm;}
+      .dsp-foot{position:relative;z-index:1;flex:0 0 auto;display:flex;justify-content:space-between;align-items:center;margin-top:3mm;font-size:calc(11px*var(--sf));font-weight:700;}
+    </style>
+    <div class="tt-print-page" style="position:fixed;left:0;top:0;right:0;bottom:0;width:auto;height:auto;container-type:size;overflow:hidden;break-after:avoid;page-break-after:avoid;"><div class="tt-print-rotate" style="width:100vh;height:100vw;width:100cqh;height:100cqw;">
+      <div class="dsp">
+        ${logoSrc ? `<img class="dsp-wm" src="${logoSrc}">` : ''}
+        <div class="dsp-head">
+          ${logoSrc ? `<img class="dsp-logo" src="${logoSrc}">` : ''}
+          <div class="dsp-title">
+            <div class="dsp-eyebrow">${esc(qt('Exam Date Sheet', 'امتحانی ڈیٹ شیٹ'))}</div>
+            <div class="dsp-school" dir="auto">${esc(school)}</div>
+            ${dsData.examName ? `<div class="dsp-sub" dir="auto">${esc(dsData.examName)}</div>` : ''}
+          </div>
+        </div>
+        <table class="dsp-table" dir="${ur ? 'rtl' : 'ltr'}"><colgroup>${colgroup}</colgroup><thead>${headerRow}</thead><tbody>${rows}</tbody></table>
+        ${dsData.instructions ? `<div class="dsp-instr" dir="auto"><b>${esc(qt('Instructions', 'ہدایات'))}:</b> ${esc(dsData.instructions).replace(/\n/g, '<br>')}</div>` : ''}
+        <div class="dsp-foot" dir="${ur ? 'rtl' : 'ltr'}"><span>${esc(school)}</span><span>${esc(qt('Principal', 'پرنسپل'))}: ______________</span></div>
       </div>
-      <table class="tt-print-table"><thead>${headerRow}</thead><tbody>${rows}</tbody></table>
-      ${dsData.instructions ? `<div class="ds-instr"><b>${esc(qt('Instructions', 'ہدایات'))}:</b> ${esc(dsData.instructions).replace(/\n/g, '<br>')}</div>` : ''}
-      <div class="tt-print-foot">
-        <span class="tt-print-brand">${esc(school)}</span>
-        <span>${esc(qt('Principal', 'پرنسپل'))}: ______________</span>
-      </div>
-    </div>
     </div></div>`;
-  printAsA4(0);
+  // Shrink the text until the whole sheet fits ONE landscape box (279 x 210 mm = the smaller of A4/Letter), so it never spills to a 2nd page.
+  try {
+    const pa = document.getElementById('print-area'), pr = pa.querySelector('.dsp');
+    const keep = pa.getAttribute('style');
+    pa.style.cssText = 'display:block;position:absolute;left:-20000px;top:0;visibility:hidden;width:297mm;';
+    const rot = pa.querySelector('.tt-print-rotate'), pg = pa.querySelector('.tt-print-page');
+    const sv = [rot.getAttribute('style'), pg.getAttribute('style')];
+    pg.style.cssText = 'position:relative;width:279mm;height:210mm;';
+    rot.style.cssText = 'position:absolute;left:0;top:0;width:279mm;height:210mm;';
+    for (let f = 1; f >= 0.35; f -= 0.04) {
+      pr.style.setProperty('--sf', f.toFixed(2));
+      if (pr.scrollHeight <= pr.clientHeight + 1 && pr.scrollWidth <= pr.clientWidth + 1) break;
+    }
+    pg.setAttribute('style', sv[1] || ''); if (sv[0] == null) rot.removeAttribute('style'); else rot.setAttribute('style', sv[0]);
+    if (keep == null) pa.removeAttribute('style'); else pa.setAttribute('style', keep);
+  } catch (e) {}
+  sylpPrintFull();   // true full-bleed A4 (0 margin)
 }
 
 function dsSlipHtml(x, cls) {
@@ -10770,10 +11198,11 @@ function dsSlipHtml(x, cls) {
     </table>` : `<div class="rs-nosheet">${esc(qt('Date sheet not entered yet', 'ڈیٹ شیٹ ابھی درج نہیں'))}</div>`;
   return `
     <div class="rs-slip${rows.length > 10 ? ' rs-tight' : ''}" dir="${ur ? 'rtl' : 'ltr'}"><div class="rs-card">
+      ${dmcLogo ? `<img class="rs-wm" src="${dmcLogo}" style="width:${DS_WM_SIZE}%;height:${DS_WM_SIZE}%;opacity:${DS_SLIP_WM_OPACITY};">` : ''}
       <div class="rs-head">
         ${dmcLogo ? `<img class="rs-logo" src="${dmcLogo}">` : ''}
-        <div>
-          <div class="rs-school">${esc(dsSchoolName())}</div>
+        <div class="rs-htitle">
+          <div class="rs-school" dir="auto">${esc(dsSchoolName())}</div>
           <div class="rs-title">${esc(qt('Roll Number Slip', 'رول نمبر سلپ'))}${dsData.examName ? ' · ' + esc(dsData.examName) : ''}</div>
         </div>
       </div>
@@ -10791,17 +11220,20 @@ function dsSlipHtml(x, cls) {
       </div>
     </div></div>`;
 }
-function dsPrintSlips() {
+async function dsPrintSlips() {
   const list = dsSlipStudents(dsSlipClass);
   if (!list.length) {
-    alert(qt('No students found.', 'کوئی طالب علم نہیں ملا۔'));
+    alert(qt('No students found in classes that have a date sheet.', 'ڈیٹ شیٹ والی کلاسوں میں کوئی طالب علم نہیں ملا۔'));
     return;
   }
-  const noSheet = [...new Set(list.map(x => x.s.class_name))].filter(c => !dsSortedRows(c).length);
-  if (noSheet.length && !confirm(qt(`No date sheet entered for: ${noSheet.join(', ')}. Print anyway?`,
-                                    `ان کلاسوں کی ڈیٹ شیٹ درج نہیں: ${noSheet.join('، ')}۔ پھر بھی پرنٹ کریں؟`))) return;
+  // Same look as the printed date sheet: page colour = logo colour at 30%, dark shade of it for the bands.
+  const tint = await sylpLogoColor(dmcLogo || null);
+  const theme = tint ? (() => {
+    const dark = 'rgb(' + tint.map(v => Math.round(v * 0.32)).join(',') + ')';
+    return `--rs-bg:#fff;--rs-dark:${dark};--rs-edge:${dark};--rs-line:${sylpMix(tint, 0.35)};--rs-even:rgba(255,255,255,.5);`;
+  })() : '';
   document.getElementById('print-area').innerHTML = dsSlipPages(list)
-    .map(p => `<div class="rs-page">${p.items.map(x => dsSlipHtml(x, p.cls)).join('')}</div>`).join('');
+    .map(p => `<div class="rs-page" style="${theme}">${p.items.map(x => dsSlipHtml(x, x.s.class_name)).join('')}</div>`).join('');
   printAsA4(8);
 }
 
@@ -12403,7 +12835,7 @@ function tplRegisterDashboard() {
     </div>
     <div style="display:flex;align-items:center;justify-content:space-between;margin:20px 0 8px;">
       <div class="section-title" style="margin:0;">${esc(t.admissionRegister)}</div>
-      <button class="icon-btn" style="width:34px;height:34px;" onclick="openAddAdmissionEntry()">
+      <button class="icon-btn" style="width:34px;height:34px;" onclick="openNewAdmission()">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#E4C765" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg>
       </button>
     </div>
@@ -12697,7 +13129,7 @@ function tplRegisterList() {
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#E4C765" stroke-width="2.5"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.35-4.35"/></svg>
       </button>
       ${registerSearch.trim() && full.length===1 ? `<button class="icon-btn" title="${esc(t.print)}" onclick="printSingleAdmissionEntry('${full[0].id}')">🖨️</button>` : ''}
-      <button class="icon-btn" onclick="openAddAdmissionEntry()">
+      <button class="icon-btn" onclick="openNewAdmission()">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#E4C765" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg>
       </button>
     </div>
