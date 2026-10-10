@@ -1889,18 +1889,203 @@ async function probeFeeInstallments() {
 }
 // Upsert a fee_payments row; if the server says the installments column does not exist,
 // drop that one field and retry so a payment is never lost over a missing optional column.
-async function feeUpsert(payload) {
-  let r = await sb.from('fee_payments').upsert(payload, { onConflict: 'student_id,month' });
-  if (r.error && payload && 'installments' in payload && /installments/i.test(String(r.error.message || ''))) {
-    setFeeInstOk(false);
-    const { installments, ...rest } = payload;
-    r = await sb.from('fee_payments').upsert(rest, { onConflict: 'student_id,month' });
+const FEE_INST_SQL = 'alter table public.fee_payments add column if not exists installments jsonb;';
+let _feeInstWarned = false;
+function warnFeeInstMissing() {
+  if (_feeInstWarned) return; _feeInstWarned = true;
+  try {
+    alert(qt('Payment saved, but the individual installment details (date / receipt of each part-payment) could NOT be stored: the database has no "installments" column. The total paid is correct.\n\nFix once in Supabase > SQL Editor:\n' + FEE_INST_SQL,
+             'ادائیگی محفوظ ہو گئی، لیکن ہر قسط کی تفصیل (تاریخ / رسید) محفوظ نہیں ہو سکی: ڈیٹابیس میں "installments" کالم موجود نہیں۔ کل ادا شدہ رقم درست ہے۔\n\nSupabase > SQL Editor میں ایک بار یہ چلائیں:\n' + FEE_INST_SQL));
+  } catch (e) {}
+}
+// Amber notice shown on the fee form while installment details cannot be stored.
+function feeInstWarnHtml() {
+  if (FEE_INST_OK) return '';
+  return `<div style="margin-top:10px;padding:9px 11px;border-radius:10px;background:rgba(200,150,40,.14);font-size:12px;line-height:1.5;">
+    ⚠ ${esc(qt('Part-payment (installment) history is not being saved because the database is missing a column. Totals are still correct. Run this once in Supabase → SQL Editor:', 'قسطوں کی تفصیل محفوظ نہیں ہو رہی کیونکہ ڈیٹابیس میں کالم موجود نہیں۔ کل رقم درست رہتی ہے۔ Supabase → SQL Editor میں ایک بار یہ چلائیں:'))}
+    <div dir="ltr" style="margin-top:4px;font-family:monospace;font-size:11px;user-select:all;word-break:break-all;">${esc(FEE_INST_SQL)}</div></div>`;
+}
+// Optional columns added over time. A missing one is dropped from the save (totals stay right) and reported.
+const FEE_OPT_COLS = ['installments', 'pay_method', 'adjustment', 'adjustment_note'];
+const FEE_NEW_SQL = "alter table public.fee_payments add column if not exists pay_method text;\nalter table public.fee_payments add column if not exists adjustment numeric default 0;\nalter table public.fee_payments add column if not exists adjustment_note text;\nnotify pgrst, 'reload schema';";
+function feeColMissing(c) { try { return localStorage.getItem('fee_col_missing_' + c) === '1'; } catch (e) { return false; } }
+function feeColSetMissing(c, v) { try { localStorage.setItem('fee_col_missing_' + c, v ? '1' : '0'); } catch (e) {} }
+async function probeFeeColumns() {
+  if (!navigator.onLine) return;
+  for (const c of ['pay_method', 'adjustment', 'adjustment_note']) {
+    try {
+      const r = await sb.from('fee_payments').select(c).limit(1);
+      if (r.error) { if (/column|schema cache/i.test(String(r.error.message || ''))) feeColSetMissing(c, true); }
+      else feeColSetMissing(c, false);
+    } catch (e) {}
   }
-  return r;
+}
+let _feeColsWarned = false;
+function warnFeeColsMissing() {
+  if (_feeColsWarned) return; _feeColsWarned = true;
+  try {
+    alert(qt('Saved, but the payment method / adjustment details could NOT be stored because the database is missing some columns. Balances and totals are still correct.\n\nRun once in Supabase > SQL Editor:\n' + FEE_NEW_SQL,
+             'محفوظ ہو گیا، لیکن ادائیگی کا طریقہ / ایڈجسٹمنٹ کی تفصیل محفوظ نہیں ہو سکی کیونکہ ڈیٹابیس میں کچھ کالم موجود نہیں۔ بیلنس اور کل رقم درست ہیں۔\n\nSupabase > SQL Editor میں ایک بار چلائیں:\n' + FEE_NEW_SQL));
+  } catch (e) {}
+}
+function feeColsWarnHtml() {
+  if (!['pay_method', 'adjustment', 'adjustment_note'].some(feeColMissing)) return '';
+  return `<div style="margin-top:10px;padding:9px 11px;border-radius:10px;background:rgba(200,150,40,.14);font-size:12px;line-height:1.5;">
+    ⚠ ${esc(qt('Payment method and adjustment notes are not being saved: the database is missing columns. Run once in Supabase → SQL Editor:', 'ادائیگی کا طریقہ اور ایڈجسٹمنٹ نوٹ محفوظ نہیں ہو رہے: ڈیٹابیس میں کالم موجود نہیں۔ Supabase → SQL Editor میں ایک بار چلائیں:'))}
+    <div dir="ltr" style="margin-top:4px;font-family:monospace;font-size:11px;user-select:all;white-space:pre-wrap;word-break:break-all;">${esc(FEE_NEW_SQL)}</div></div>`;
+}
+async function feeUpsert(payload) {
+  const body = { ...payload };
+  for (let tries = 0; tries < 6; tries++) {
+    const r = await sb.from('fee_payments').upsert(body, { onConflict: 'student_id,month' });
+    if (!r.error) return r;
+    const msg = String(r.error.message || '');
+    const col = FEE_OPT_COLS.find(c => c in body && new RegExp('\\b' + c + '\\b', 'i').test(msg));
+    if (!col) return r;
+    if (col === 'installments') { setFeeInstOk(false); warnFeeInstMissing(); }
+    else { feeColSetMissing(col, true); warnFeeColsMissing(); }
+    delete body[col];
+  }
+  return { error: { message: 'fee_payments save failed (columns)' } };
+}
+
+// ---- Payment method (cash / bank / JazzCash / EasyPaisa / other) ----
+const FEE_METHODS = ['cash', 'bank', 'jazzcash', 'easypaisa', 'other'];
+function feeMethodLabel(m) {
+  const k = String(m || '').toLowerCase();
+  if (k === 'cash') return qt('Cash', 'نقد');
+  if (k === 'bank') return qt('Bank', 'بینک');
+  if (k === 'jazzcash') return 'JazzCash';
+  if (k === 'easypaisa') return 'EasyPaisa';
+  if (k === 'other') return qt('Other', 'دیگر');
+  return qt('Not recorded', 'درج نہیں');
+}
+function feeMethodOptions(sel) { return FEE_METHODS.map(m => `<option value="${m}"${m === sel ? ' selected' : ''}>${esc(feeMethodLabel(m))}</option>`).join(''); }
+function lastFeeMethod() { try { const v = localStorage.getItem('sms_last_pay_method'); return FEE_METHODS.includes(v) ? v : 'cash'; } catch (e) { return 'cash'; } }
+// Money received per method for one month (each installment keeps its own method when tracked; refunds count negative).
+function methodBreakdown(mk) {
+  const out = {};
+  const add = (m, a) => { const k = FEE_METHODS.includes(m) ? m : 'unspecified'; out[k] = money2((out[k] || 0) + a); };
+  DATA.feePayments.filter(e => e.month === mk).forEach(e => {
+    const inst = Array.isArray(e.installments) ? e.installments : [];
+    if (inst.length) {
+      const sum = money2(inst.reduce((a, x) => a + Number(x.a || 0), 0));
+      inst.forEach(x => add(x.m || e.pay_method, Number(x.a || 0)));
+      const rest = money2(Number(e.amount || 0) - sum);
+      if (Math.abs(rest) > 0.005) add(e.pay_method, rest);
+    } else if (Number(e.amount || 0) !== 0) add(e.pay_method, Number(e.amount));
+  });
+  return out;
+}
+function openMethodReport(mk) {
+  mk = mk || monthKey();
+  const bd = methodBreakdown(mk);
+  const keys = [...FEE_METHODS, 'unspecified'].filter(k => bd[k] !== undefined);
+  const total = money2(keys.reduce((a, k) => a + bd[k], 0));
+  const rows = keys.length ? keys.map(k => `<div class="list-row"><span>${esc(feeMethodLabel(k))}</span><b>₨${fmt(bd[k])}</b></div>`).join('')
+    : `<div class="empty">${esc(qt('No payments recorded for this month.', 'اس مہینے کی کوئی ادائیگی درج نہیں۔'))}</div>`;
+  showModal(qt('Collection by payment method', 'ادائیگی کے طریقے کے مطابق وصولی'), `
+    <label><span>${esc(t.month || qt('Month', 'مہینہ'))}</span><select onchange="openMethodReport(this.value)">${gmMonthOptions(mk)}</select></label>
+    <div class="list-card" style="margin-top:10px;">${rows}</div>
+    ${keys.length ? `<div class="list-row" style="font-weight:700;"><span>${esc(qt('Total', 'کل'))}</span><span>₨${fmt(total)}</span></div>` : ''}
+    <p style="font-size:11px;opacity:.6;margin-top:8px;">${esc(qt('Counted by the month the fee belongs to. Entries saved before this feature show as "Not recorded".', 'فیس کے مہینے کے مطابق گنتی۔ اس فیچر سے پہلے کی انٹریاں "درج نہیں" میں آتی ہیں۔'))}</p>`);
 }
 // Balance for display: negative means the family has paid ahead (advance credit), not that they owe.
-const fmtBal = b => { const n = Number(b) || 0; return n < 0 ? '₨' + fmt(Math.abs(n)) + ' ' + qt('(advance)', '(ایڈوانس)') : '₨' + fmt(n); };
+const fmtBal = b => { const n = Number(b) || 0; return n < 0 ? '₨' + fmt(Math.abs(n)) + ' ' + qt('Advance / Credit', 'ایڈوانس / کریڈٹ') : '₨' + fmt(n); };
 const moneyOk = v => { const n = Number(v); return Number.isFinite(n) && n >= 0; };
+
+// ---- Academic session start month (1-12). Default February, i.e. the classic Feb-Jan fee card. ----
+// Saved on the school's profile when the column exists, and always on this device as a fallback.
+function sessionStartMonth() {
+  try {
+    const pm = CURRENT_PROFILE && Number(CURRENT_PROFILE.session_start_month);
+    if (pm >= 1 && pm <= 12) return pm;
+    const lm = Number(localStorage.getItem('sms_session_start_' + (CURRENT_USER && CURRENT_USER.id)));
+    if (lm >= 1 && lm <= 12) return lm;
+  } catch (e) {}
+  return 2;
+}
+function academicYearOf(year, month) { return month >= sessionStartMonth() ? year : year - 1; }
+function sessionMonthOrder() { const sm = sessionStartMonth(), o = []; for (let i = 0; i < 12; i++) o.push(((sm - 1 + i) % 12) + 1); return o; }
+function sessionMonthKeys(startYear) {
+  const sm = sessionStartMonth();
+  return sessionMonthOrder().map(m => `${m >= sm ? startYear : startYear + 1}-${String(m).padStart(2, '0')}`);
+}
+function sessionLabel(startYear) { return sessionStartMonth() === 1 ? String(startYear) : `${startYear}–${startYear + 1}`; }
+
+// ---- Amount in words (Pakistani system: thousand / lakh / crore), English + Urdu ----
+const _EN_ONES = ['Zero','One','Two','Three','Four','Five','Six','Seven','Eight','Nine','Ten','Eleven','Twelve','Thirteen','Fourteen','Fifteen','Sixteen','Seventeen','Eighteen','Nineteen'];
+const _EN_TENS = ['','','Twenty','Thirty','Forty','Fifty','Sixty','Seventy','Eighty','Ninety'];
+function _enBelow100(n) { return n < 20 ? _EN_ONES[n] : _EN_TENS[Math.floor(n / 10)] + (n % 10 ? '-' + _EN_ONES[n % 10] : ''); }
+function _enBelow1000(n) { return (n >= 100 ? _EN_ONES[Math.floor(n / 100)] + ' Hundred' + (n % 100 ? ' ' : '') : '') + (n % 100 ? _enBelow100(n % 100) : ''); }
+function numberToWordsEn(n) {
+  n = Math.floor(Number(n) || 0);
+  if (n === 0) return 'Zero';
+  const parts = [];
+  [[10000000, 'Crore'], [100000, 'Lakh'], [1000, 'Thousand']].forEach(([v, name]) => {
+    if (n >= v) { const q = Math.floor(n / v); parts.push((q >= 100 ? numberToWordsEn(q) : _enBelow100(q)) + ' ' + name); n %= v; }
+  });
+  if (n > 0) parts.push(_enBelow1000(n));
+  return parts.join(' ');
+}
+const _UR_0_99 = ['صفر','ایک','دو','تین','چار','پانچ','چھ','سات','آٹھ','نو','دس','گیارہ','بارہ','تیرہ','چودہ','پندرہ','سولہ','سترہ','اٹھارہ','انیس',
+  'بیس','اکیس','بائیس','تئیس','چوبیس','پچیس','چھبیس','ستائیس','اٹھائیس','انتیس','تیس','اکتیس','بتیس','تینتیس','چونتیس','پینتیس','چھتیس','سینتیس','اڑتیس','انتالیس',
+  'چالیس','اکتالیس','بیالیس','تینتالیس','چوالیس','پینتالیس','چھیالیس','سینتالیس','اڑتالیس','انچاس','پچاس','اکاون','باون','ترپن','چون','پچپن','چھپن','ستاون','اٹھاون','انسٹھ',
+  'ساٹھ','اکسٹھ','باسٹھ','تریسٹھ','چونسٹھ','پینسٹھ','چھیاسٹھ','سڑسٹھ','اڑسٹھ','انہتر','ستر','اکہتر','بہتر','تہتر','چوہتر','پچھتر','چھہتر','ستتر','اٹھہتر','اناسی',
+  'اسی','اکیاسی','بیاسی','تراسی','چوراسی','پچاسی','چھیاسی','ستاسی','اٹھاسی','نواسی','نوے','اکانوے','بانوے','ترانوے','چورانوے','پچانوے','چھیانوے','ستانوے','اٹھانوے','ننانوے'];
+function numberToWordsUr(n) {
+  n = Math.floor(Number(n) || 0);
+  if (n === 0) return 'صفر';
+  const parts = [];
+  [[10000000, 'کروڑ'], [100000, 'لاکھ'], [1000, 'ہزار']].forEach(([v, name]) => {
+    if (n >= v) { const q = Math.floor(n / v); parts.push((q >= 100 ? numberToWordsUr(q) : _UR_0_99[q]) + ' ' + name); n %= v; }
+  });
+  if (n >= 100) { parts.push(_UR_0_99[Math.floor(n / 100)] + ' سو'); n %= 100; }
+  if (n > 0) parts.push(_UR_0_99[n]);
+  return parts.join(' ');
+}
+// "Rupees Five Thousand Only" / "پانچ ہزار روپے صرف" (with paisa when the amount has decimals)
+function amountInWords(amount, lang) {
+  const a = Math.max(0, money2(amount));
+  const rs = Math.floor(a), ps = Math.round((a - rs) * 100);
+  if (lang === 'ur') return numberToWordsUr(rs) + ' روپے' + (ps ? ' اور ' + numberToWordsUr(ps) + ' پیسے' : '') + ' صرف';
+  return 'Rupees ' + numberToWordsEn(rs) + (ps ? ' and ' + numberToWordsEn(ps) + ' Paise' : '') + ' Only';
+}
+
+// ---- Receipt number duplicates ----
+function receiptTokens(e) { return String(e.receipt_no || '').split(',').map(x => x.trim()).filter(Boolean); }
+function receiptOwner(no, exceptId) {
+  const k = String(no || '').trim().toLowerCase(); if (!k) return null;
+  return DATA.feePayments.find(e => e.id !== exceptId && receiptTokens(e).some(x => x.toLowerCase() === k)) || null;
+}
+function findDuplicateReceipts() {
+  const map = {};
+  DATA.feePayments.forEach(e => receiptTokens(e).forEach(tk => { const k = tk.toLowerCase(); (map[k] = map[k] || []).push(e); }));
+  return Object.keys(map).filter(k => new Set(map[k].map(e => e.id)).size > 1).map(k => ({ no: k, rows: map[k] }));
+}
+// Called after an offline sync: two phones saving offline can produce the same auto number.
+function notifyDuplicateReceipts() {
+  const d = findDuplicateReceipts(); if (!d.length) return;
+  const sig = d.map(x => x.no).sort().join('|');
+  try { if (sessionStorage.getItem('dup_rcpt_sig') === sig) return; sessionStorage.setItem('dup_rcpt_sig', sig); } catch (e) {}
+  const lines = d.slice(0, 6).map(x => x.no.toUpperCase() + ': ' + x.rows.map(e => { const st = DATA.students.find(z => z.id === e.student_id); return (st ? st.name : '—') + ' (' + monthLabel(e.month) + ')'; }).join(' / '));
+  setTimeout(() => alert(qt('Duplicate receipt numbers found (usually two phones saving offline):\n\n', 'ڈپلیکیٹ رسید نمبر ملے (عموماً دو فون آف لائن محفوظ کرنے سے):\n\n') + lines.join('\n') + (d.length > 6 ? '\n…' : '') +
+    qt('\n\nOpen the student and use "Correct this entry" to give one of them a new number.', '\n\nطالب علم کھول کر "Correct this entry" سے ایک کو نیا نمبر دیں۔')), 300);
+}
+// ---- Automatic receipt number: continues the highest number already used (prefix + width kept) ----
+function nextReceiptNo() {
+  let best = null;
+  DATA.feePayments.forEach(e => {
+    String(e.receipt_no || '').split(',').forEach(tok => {
+      const m = tok.trim().match(/^(.*?)(\d+)$/);
+      if (!m) return;
+      const num = parseInt(m[2], 10);
+      if (!best || num > best.num) best = { num, prefix: m[1], width: m[2].length };
+    });
+  });
+  if (!best) return '0001';
+  return best.prefix + String(best.num + 1).padStart(best.width, '0');
+}
 const MONEY_NEG_MSG = () => LANG === 'ur' ? 'رقم منفی نہیں ہو سکتی۔ براہ کرم درست رقم لکھیں۔' : 'Amount cannot be negative. Please enter a valid amount.';
 // Used on the dashboard to show "—" instead of a real-looking number/amount
 // when there is no cached data to show at all (see CACHE_UNAVAILABLE) — so
@@ -2464,6 +2649,15 @@ function isDupKey(error) { return !!error && (error.code === '23505' || /duplica
 // success and the queued change was DELETED from the queue (silent data loss).
 async function execQueueItem(item) {
   if (item.table === 'fee_payments' && item.action === 'upsert') return await feeUpsert(item.payload);
+  // Salary advance recovery saved offline: replace whatever is recorded for that teacher+month.
+  // Delete-then-insert is safe to repeat, so a retry after a dropped connection never double-counts.
+  if (item.table === 'staff_advance_recoveries' && item.action === 'stf_recovery') {
+    const pl = item.payload || {};
+    const d = await sb.from('staff_advance_recoveries').delete().eq('teacher_id', String(pl.teacher_id)).eq('month', pl.month);
+    if (d.error) return d;
+    if (pl.rows && pl.rows.length) return await sb.from('staff_advance_recoveries').insert(pl.rows);
+    return { error: null };
+  }
   const q = sb.from(item.table);
   if (item.action === 'upsert') return await q.upsert(item.payload, { onConflict: item.onConflict });
   if (item.action === 'update') return await q.update(item.payload).eq('id', item.id);
@@ -2536,7 +2730,11 @@ async function flushSyncQueue() {
     if (remaining.length) scheduleSyncRetry();
   } else { _syncRetryMs = 0; }
   if (conflicts.length) { PENDING_CONFLICTS = conflicts; renderSyncConflictModal(); }
-  else { await loadAllData(); if (TAB) safeRenderTab(); }
+  else {
+    try { if (!(await idbGetAll('sync_queue')).some(x => x.table === 'staff_advance_recoveries')) await stfLoad(); } catch (e) {}
+    await loadAllData(); if (TAB) safeRenderTab();
+    notifyDuplicateReceipts();
+  }
 }
 
 function renderSyncConflictModal() {
@@ -3430,6 +3628,7 @@ async function loadAllData() {
   DATA.students = s.data || [];
   DATA.feePayments = fp.data || [];
   if (DATA.feePayments.length) setFeeInstOk('installments' in DATA.feePayments[0]); else probeFeeInstallments();
+  probeFeeColumns();
   DATA.teachers = tc.data || [];
   DATA.salaryPayments = sp.data || [];
   DATA.transactions = tx.data || [];
@@ -3550,7 +3749,6 @@ function sendPaidReceiptSms(studentId, month) {
   const s = DATA.students.find(x => x.id === studentId);
   if (!s) return;
   const [my, mm] = month.split('-').map(Number);
-  const academicYearOf = (year, mon) => (mon >= 2 ? year : year - 1);
   const { rows } = buildAcademicYearLedger(studentId, academicYearOf(my, mm));
   const row = rows.find(r => !r.blank && r.mk === month);
   if (!row) return;
@@ -3584,14 +3782,14 @@ function sendFeeRequestWhatsapp(id) {
 
 function openFeeRequestReminders() {
   const due = DATA.students
-    .filter(s => s.status !== 'inactive' && isFeePaying(s) && studentBalance(s.id) > 0)
+    .filter(s => studentBalance(s.id) > 0)
     .sort((a, b) => studentBalance(b.id) - studentBalance(a.id));
   const rows = due.length === 0
     ? `<div class="empty">${esc(t.noDueStudents)}</div>`
     : due.map(s => `
       <div class="card-btn" style="cursor:default;">
         <div>
-          <div class="nm">${esc(s.name)}</div>
+          <div class="nm">${esc(s.name)}${esc(leftTag(s))}</div>
           <div class="sub">${esc(t.fatherName)}: ${esc(s.father_name||'')} · ₨${fmt(studentBalance(s.id))} ${esc(t.due)}</div>
         </div>
         <button class="btn-primary" style="padding:6px 14px;" onclick="sendFeeRequestWhatsapp('${s.id}')">${esc(t.send)}</button>
@@ -3631,6 +3829,17 @@ function studentBalance(id) {
   return running;
 }
 
+// Everyone who still owes money. A struck-off (left) student or one switched to free/orphan keeps
+// the balance they owe, so it must not vanish from dues totals and defaulter lists.
+// What a student still owes right now: running balance (sports/other charges and carried-forward
+// arrears included), plus this month's expected fee when no entry exists for it yet.
+function studentDueNow(s) {
+  const cur = monthKey();
+  const hasCur = studentPayments(s.id).some(p => p.month === cur);
+  return Math.max(0, money2(studentBalance(s.id) + (hasCur ? 0 : effectiveMonthlyFee(s))));
+}
+const leftTag = s => (s && s.status === 'inactive') ? ' ' + qt('(Left)', '(چھوڑ چکا)') : '';
+
 // ---------------- Stats ----------------
 function computeStats() {
   const cur = monthKey();
@@ -3653,7 +3862,7 @@ function computeStats() {
     // "Fees Due" subtracts that same `amount` from ALL of the month's charges. (Counting it only
     // on the paid side used to make Fees Due read too low.) The "Other Fees" card still shows
     // the hostel/transport charged this month on its own.
-    otherFeeThisMonth += curEntries.reduce((a,e)=>a+Number(e.other_fee||0),0);
+    otherFeeThisMonth += curEntries.reduce((a,e)=>a+Number(e.other_fee||0)-Number(e.adjustment||0),0);
     // "Due (this month)" must reflect ONLY this calendar month's own charges that
     // remain unpaid — NOT studentBalance(), which is the all-time running balance
     // including every earlier carried-forward month. Using studentBalance() here
@@ -3692,11 +3901,16 @@ function computeStats() {
   // Sum of every fee-paying active student's outstanding running balance —
   // the all-time counterpart to "Fees Due (this month)" above.
   let totalDuesAllTime = 0;
-  active.forEach(s=>{ if (isFeePaying(s)) totalDuesAllTime += Math.max(0, studentBalance(s.id)); });
+  let leftDuesAllTime = 0;
+  DATA.students.forEach(s=>{
+    const b = Math.max(0, studentBalance(s.id));
+    totalDuesAllTime += b;
+    if (s.status === 'inactive') leftDuesAllTime += b;
+  });
 
   return { activeCount:active.length, feesCollectedThisMonth, feesDueThisMonth, salaryPaidThisMonth, totalExpenseThisMonth, otherFeeThisMonth,
     totalCollectedAllTime, totalSalariesAllTime, totalOtherIncomeAllTime, totalOtherExpenseAllTime,
-    totalIncomeAllTime, totalExpenseAllTime, netBalance, totalDuesAllTime, payingCount, freeCount, orphanCount };
+    totalIncomeAllTime, totalExpenseAllTime, netBalance, totalDuesAllTime, leftDuesAllTime, payingCount, freeCount, orphanCount };
 }
 
 // ---------------- App shell render ----------------
@@ -4803,6 +5017,9 @@ function openSettings() {
   showModal(t.settings, `
     <label><span>${esc(t.changeSchoolName)}</span><input id="set-school" value="${esc(CURRENT_PROFILE.school_name||'')}"></label>
     <label><span>${esc(t.changeSchoolNameUr)}</span><input id="set-school-ur" dir="rtl" value="${esc(CURRENT_PROFILE.school_name_ur||'')}"></label>
+    <label><span>${esc(qt('Academic session starts in', 'تعلیمی سیشن شروع ہونے کا مہینہ'))}</span>
+      <select id="set-session-start">${(LANG === 'ur' ? UR_MONTH_NAMES : ['January','February','March','April','May','June','July','August','September','October','November','December'])
+        .map((n, i) => `<option value="${i + 1}"${sessionStartMonth() === i + 1 ? ' selected' : ''}>${esc(n)}</option>`).join('')}</select></label>
     <label><span>${esc(t.changePassword)}</span><input id="set-pw" type="password" autocomplete="new-password"></label>
     <div id="set-msg"></div>
     <button class="btn-primary" onclick="submitSettings()">${esc(t.saveSettings)}</button>
@@ -5200,7 +5417,7 @@ function exportBackup() {
   // Per-student fee ledger sheets — mirrors the school's printed fee card format exactly:
   // 12 fixed rows (February through January) with columns
   // Month | Last Balance | School Fee | Sports Fund | Admission Fee | Annual Exam Fee | Total Dues | Total Paid | Balance | Receipt No | Date | Signature
-  const CARD_MONTH_ORDER = [2,3,4,5,6,7,8,9,10,11,12,1]; // Feb..Jan, same order as the printed card
+  // Same session as the printed card (starts in the month chosen in Settings; default Feb..Jan)
   const usedSheetNames = new Set(['Students','Teachers','Salary Payments','Other Transactions','Summary']);
   DATA.students.slice().sort((a, b) => {
     const r = classRank(a.class_name) - classRank(b.class_name);
@@ -5214,14 +5431,11 @@ function exportBackup() {
     // Figure out which calendar year February starts in for this student's card
     // (admission year if known, else the earliest recorded entry, else the current year)
     let startYear;
-    if (s.admission_date) startYear = new Date(s.admission_date).getFullYear();
-    else if (entries.length) startYear = Math.min(...entries.map(e => Number(e.month.split('-')[0])));
-    else startYear = new Date().getFullYear();
+    if (s.admission_date) { const ad = new Date(s.admission_date); startYear = academicYearOf(ad.getFullYear(), ad.getMonth() + 1); }
+    else if (entries.length) startYear = Math.min(...entries.map(e => { const [y, m] = e.month.split('-').map(Number); return academicYearOf(y, m); }));
+    else { const nd = new Date(); startYear = academicYearOf(nd.getFullYear(), nd.getMonth() + 1); }
 
-    const monthKeys = CARD_MONTH_ORDER.map(m => {
-      const y = m >= 2 ? startYear : startYear + 1; // January rolls into the next calendar year
-      return `${y}-${String(m).padStart(2,'0')}`;
-    });
+    const monthKeys = sessionMonthKeys(startYear);
 
     let running = 0;
     const ledgerRows = monthKeys.map(mk => {
@@ -5243,7 +5457,7 @@ function exportBackup() {
       return {
         Month: monthLabel(mk), 'Last Balance': lastBalance, 'School Fee': Number(e.school_fee||0),
         'Sports Fund': Number(e.sports_fund||0), 'Admission Fee': Number(e.admission_fee||0), 'Annual Exam Fee': Number(e.exam_fee||0),
-        'Other Fee': Number(e.other_fee||0), 'Total Dues': totalDues, 'Total Paid': totalPaid, 'Balance': balance,
+        'Other Fee': Number(e.other_fee||0) - Number(e.adjustment||0), 'Adjustment': Number(e.adjustment||0), 'Payment Method': e.pay_method || '', 'Total Dues': totalDues, 'Total Paid': totalPaid, 'Balance': balance,
         'Receipt No': e.receipt_no||'', Date: fmtDate(e.pay_date)||'', Signature: ''
       };
     });
@@ -5292,13 +5506,26 @@ async function submitSettings() {
     if (error) { msg.innerHTML = `<div class="err">${esc(friendlyErrorMsg(error))}</div>`; return; }
     CURRENT_PROFILE.school_name_ur = schoolNameUr;
   }
+  let sessionNote = '';
+  const newSm = Number((document.getElementById('set-session-start') || {}).value) || 2;
+  if (newSm !== sessionStartMonth()) {
+    try { localStorage.setItem('sms_session_start_' + CURRENT_USER.id, String(newSm)); } catch (e) {}
+    const { error } = await sb.from('profiles').update({ session_start_month: newSm }).eq('id', CURRENT_USER.id);
+    if (error) {
+      // Column not added to the database yet: keep the choice on this device only.
+      delete CURRENT_PROFILE.session_start_month;
+      sessionNote = qt(' Session start saved on this device only (database column "session_start_month" is missing on profiles).',
+                       ' سیشن کا مہینہ صرف اس ڈیوائس پر محفوظ ہوا (ڈیٹابیس میں profiles کا کالم "session_start_month" موجود نہیں)۔');
+    } else CURRENT_PROFILE.session_start_month = newSm;
+    if (TAB) safeRenderTab();
+  }
   if (newPw) {
     const { error } = await sb.auth.updateUser({ password: newPw });
     if (error) { msg.innerHTML = `<div class="err">${esc(friendlyErrorMsg(error))}</div>`; return; }
   }
-  msg.innerHTML = `<div class="ok">${esc(t.settingsSaved)}</div>`;
+  msg.innerHTML = `<div class="ok">${esc(t.settingsSaved)}${esc(sessionNote)}</div>`;
   document.querySelector('header .eyebrow').textContent = CURRENT_PROFILE.school_name;
-  setTimeout(closeModal, 800);
+  setTimeout(closeModal, sessionNote ? 3500 : 800);
 }
 
 
@@ -5598,13 +5825,15 @@ function openDashFeesDueModal() {
 }
 function openDashDuesModal() {
   const rows = [];
-  DATA.students.filter(s=>s.status!=='inactive' && isFeePaying(s)).forEach(s => {
+  DATA.students.forEach(s => {
     const bal = studentBalance(s.id);
-    if (bal > 0) rows.push({ name: s.name, id: s.id, class_name: s.class_name, bal });
+    if (bal > 0) rows.push({ name: s.name + leftTag(s), id: s.id, class_name: s.class_name, bal });
   });
   rows.sort((a,b)=> b.bal - a.bal);
+  const leftTotal = money2(DATA.students.filter(s => s.status === 'inactive').reduce((a, s) => a + Math.max(0, studentBalance(s.id)), 0));
+  const note = leftTotal > 0 ? `<div style="font-size:12px;opacity:.75;margin-bottom:8px;">${esc(qt('Includes ₨' + fmt(leftTotal) + ' still owed by students who have left.', 'اس میں ₨' + fmt(leftTotal) + ' ان طلبہ کے بھی شامل ہیں جو اسکول چھوڑ چکے ہیں۔'))}</div>` : '';
   const body = rows.length ? rows.map(r => dashListRow(r.name, r.class_name||'', `<span class="amt-neg">₨${fmt(r.bal)}</span>`, `openStudentDetail('${r.id}')`)).join('') : dashEmptyRow();
-  showModal(t.totalDuesAllTime, `<div class="list-card">${body}</div>`);
+  showModal(t.totalDuesAllTime, `${note}<div class="list-card">${body}</div>`);
 }
 
 // Uses the 'am' session record as each student's status for the day (falls back
@@ -6900,6 +7129,8 @@ function openGenerateFees() {
     <div id="gm-summary" style="margin-top:10px;"></div>
     <div style="margin-top:12px;"><button id="gm-save" class="btn-primary" style="width:100%;" onclick="gmSave()">${esc(gmL('gen'))}</button></div>
     <div style="margin-top:8px;"><button id="gm-notice" class="btn-ghost" style="width:100%;" onclick="openFeeNotice(GM.mk)">📩 ${esc(gnL('btn'))}</button></div>
+    <div style="margin-top:8px;"><button class="btn-ghost" style="width:100%;" onclick="openApplyLateFee()">⏰ ${esc(qt('Apply late fee', 'تاخیر کا جرمانہ لگائیں'))}</button></div>
+    <div style="margin-top:8px;"><button class="btn-ghost" style="width:100%;" onclick="openMethodReport(GM.mk)">📊 ${esc(qt('Collection by payment method', 'ادائیگی کے طریقے کے مطابق وصولی'))}</button></div>
     <div style="margin-top:8px;"><button id="gm-remove" class="btn-ghost danger" style="width:100%;" onclick="gmRemove()">🗑 ${esc(gmL('remove'))}</button></div>`);
   gmRefresh();
 }
@@ -7563,7 +7794,7 @@ function tplStudentsResults() {
 
   const studentCard = s => {
     const paid = studentPayments(s.id).filter(p=>p.month===cur).reduce((a,b)=>a+Number(b.amount),0);
-    const due = Math.max(0, effectiveMonthlyFee(s)-paid);
+    const due = studentDueNow(s);
     const type = s.student_type || 'paying';
     const pill = type==='free' ? `<span class="pill free">${esc(t.free)}</span>`
       : type==='orphan' ? `<span class="pill orphan">${esc(t.orphan)}</span>`
@@ -7581,7 +7812,7 @@ function tplStudentsResults() {
 
   return `
       ${(() => {
-        const overdueCount = DATA.students.filter(s => s.status!=='inactive' && isFeePaying(s) && studentBalance(s.id) > 0).length;
+        const overdueCount = DATA.students.filter(s => studentBalance(s.id) > 0).length;
         return `
           <div style="display:flex;gap:8px;margin-bottom:12px;">
             ${overdueCount > 0 ? `
@@ -7597,10 +7828,7 @@ function tplStudentsResults() {
       ${list.length===0 ? `<div class="empty">${esc(t.noStudents)}</div>` :
         orderedClasses.map(cls => {
           const collapsed = !!classCollapsed[cls];
-          const dueCount = groups[cls].filter(s => {
-            const paid = studentPayments(s.id).filter(p=>p.month===cur).reduce((a,b)=>a+Number(b.amount),0);
-            return Math.max(0, effectiveMonthlyFee(s)-paid) > 0;
-          }).length;
+          const dueCount = groups[cls].filter(s => isFeePaying(s) && studentDueNow(s) > 0).length;
           const totalPages = Math.max(1, Math.ceil(groups[cls].length / STUDENTS_PAGE_SIZE));
           let page = classPage[cls] || 1;
           if (page > totalPages) page = classPage[cls] = totalPages;
@@ -7700,14 +7928,14 @@ async function runPromoteAllStudents() {
 
 function openOverdueReminders() {
   const overdue = DATA.students
-    .filter(s => s.status!=='inactive' && isFeePaying(s) && studentBalance(s.id) > 0)
+    .filter(s => studentBalance(s.id) > 0)
     .sort((a,b) => studentBalance(b.id) - studentBalance(a.id));
   const rows = overdue.length === 0
     ? `<div class="empty">${esc(t.noOverdueStudents)}</div>`
     : overdue.map(s => `
       <div class="card-btn" style="cursor:default;">
         <div>
-          <div class="nm">${esc(s.name)}</div>
+          <div class="nm">${esc(s.name)}${esc(leftTag(s))}</div>
           <div class="sub">${esc(t.fatherName)}: ${esc(s.father_name||'')} · ₨${fmt(studentBalance(s.id))} (${monthsOverdue(s)}+ ${esc(t.due)})</div>
         </div>
         <button class="btn-primary" style="padding:6px 14px;" onclick="sendOverdueReminderWhatsapp('${s.id}')">${esc(t.send)}</button>
@@ -7950,7 +8178,6 @@ function buildAcademicYearLedger(studentId, overrideStartYear) {
 
   // The fee card covers Feb–Jan. A calendar month of Feb-Dec belongs to that same
   // year's academic year; January belongs to the *previous* year's academic year.
-  const academicYearOf = (year, month) => (month >= 2 ? year : year - 1);
 
   let startYear;
   if (overrideStartYear) {
@@ -7969,11 +8196,7 @@ function buildAcademicYearLedger(studentId, overrideStartYear) {
     startYear = academicYearOf(now.getFullYear(), now.getMonth() + 1);
   }
 
-  const CARD_MONTH_ORDER = [2,3,4,5,6,7,8,9,10,11,12,1];
-  const monthKeys = CARD_MONTH_ORDER.map(m => {
-    const y = m >= 2 ? startYear : startYear + 1;
-    return `${y}-${String(m).padStart(2,'0')}`;
-  });
+  const monthKeys = sessionMonthKeys(startYear);
 
   // Opening balance = whatever was still due (or credit) from all months BEFORE this
   // academic year, so the card/ledger always agrees with studentBalance().
@@ -8014,7 +8237,6 @@ function buildAcademicYearLedger(studentId, overrideStartYear) {
 // there's nothing older to show.
 function earliestAcademicYear(studentId) {
   const s = DATA.students.find(x => x.id === studentId);
-  const academicYearOf = (year, month) => (month >= 2 ? year : year - 1);
   const entries = studentPayments(studentId);
   let years = entries.map(e => {
     const [ey, em] = e.month.split('-').map(Number);
@@ -8107,28 +8329,32 @@ function openStudentDetail(id, viewYear) {
     <h4 class="section-title" style="margin-top:0;">${esc(t.addEntry)}</h4>
     <div class="row2">
       <input id="p-month" type="month" value="${monthKey()}" onchange="feeMonthChanged('${id}')">
-      <input id="p-receipt" placeholder="${esc(t.receiptNo)} (${esc(t.optional)})">
+      <input id="p-receipt" oninput="this.dataset.manual='1'" placeholder="${esc(t.receiptNo)} (${esc(qt('auto', 'خودکار'))})">
     </div>
     <div id="p-existing-note" style="display:none;margin-top:8px;padding:9px 11px;border-radius:8px;background:rgba(200,150,40,.14);font-size:13px;line-height:1.5;"></div>
     <div class="row2" style="margin-top:8px;">
-      <label style="margin-bottom:0;"><span>${esc(t.schoolFeeCol)}</span><input id="p-schoolfee" type="number" min="0" value="${effectiveMonthlyFee(s)||0}"></label>
-      <label style="margin-bottom:0;"><span>${esc(t.sportsFund)}</span><input id="p-sports" type="number" min="0" value="0"></label>
+      <label style="margin-bottom:0;"><span>${esc(t.schoolFeeCol)}</span><input id="p-schoolfee" type="number" min="0" oninput="feeChargesChanged('${id}')" value="${effectiveMonthlyFee(s)||0}"></label>
+      <label style="margin-bottom:0;"><span>${esc(t.sportsFund)}</span><input id="p-sports" type="number" min="0" oninput="feeChargesChanged('${id}')" value="0"></label>
     </div>
     <div class="row2" style="margin-top:8px;">
-      <label style="margin-bottom:0;"><span>${esc(t.admissionFeeCol)}</span><input id="p-admission" type="number" min="0" value="0"></label>
-      <label style="margin-bottom:0;"><span>${esc(t.examFeeCol)}</span><input id="p-exam" type="number" min="0" value="0"></label>
+      <label style="margin-bottom:0;"><span>${esc(t.admissionFeeCol)}</span><input id="p-admission" type="number" min="0" oninput="feeChargesChanged('${id}')" value="0"></label>
+      <label style="margin-bottom:0;"><span>${esc(t.examFeeCol)}</span><input id="p-exam" type="number" min="0" oninput="feeChargesChanged('${id}')" value="0"></label>
     </div>
     <div class="row2" style="margin-top:8px;">
-      <label style="margin-bottom:0;"><span>${esc(t.otherFeeCol)}</span><input id="p-other" type="number" min="0" value="0"></label>
-      <label style="margin-bottom:0;"><span>${esc(t.totalPaidCol)}</span><input id="p-amount" type="number" min="0" placeholder="${esc(t.enterAmount)}" value="${effectiveMonthlyFee(s)||''}"></label>
+      <label style="margin-bottom:0;"><span>${esc(t.otherFeeCol)}</span><input id="p-other" type="number" min="0" oninput="feeChargesChanged('${id}')" value="0"></label>
+      <label style="margin-bottom:0;"><span>${esc(t.totalPaidCol)}</span><input id="p-amount" type="number" min="0" oninput="feeAmountTyped('${id}')" placeholder="${esc(t.enterAmount)}" value="${effectiveMonthlyFee(s)||''}"></label>
     </div>
     <div class="row2" style="margin-top:8px;">
       <label style="margin-bottom:0;"><span>${esc(t.dateCol)}</span><input id="p-date" type="date" value="${todayISO()}"></label>
+      <label style="margin-bottom:0;"><span>${esc(qt('Payment method', 'ادائیگی کا طریقہ'))}</span><select id="p-method">${feeMethodOptions(lastFeeMethod())}</select></label>
     </div>
+    <div id="p-summary" style="margin-top:10px;"></div>
+    ${feeInstWarnHtml()}${feeColsWarnHtml()}
     <div style="margin-top:10px;"><button class="btn-primary" onclick="guardedSubmit(this, ()=>submitFeePayment('${id}'))">+ ${esc(t.save)}</button></div>
+    <div style="margin-top:8px;"><button class="btn-ghost" style="width:100%;" onclick="openFeeAdjust('${id}')">± ${esc(qt('Adjustment / Refund / Write-off', 'ایڈجسٹمنٹ / واپسی / معافی'))}</button></div>
 
     <div style="display:flex;align-items:center;justify-content:space-between;margin-top:16px;">
-      <h4 class="section-title" style="margin:0;">${esc(t.feeLedger)} · ${startYear}–${startYear+1}</h4>
+      <h4 class="section-title" style="margin:0;">${esc(t.feeLedger)} · ${sessionLabel(startYear)}</h4>
       <div style="display:flex;gap:6px;">
         <button class="btn-ghost" style="padding:5px 10px;font-size:12px;" ${earliestYear!==null && startYear<=earliestYear?'disabled':''} onclick="openStudentDetail('${id}', ${startYear-1})">‹ ${esc(t.previous)}</button>
         <button class="btn-ghost" style="padding:5px 10px;font-size:12px;" onclick="openStudentDetail('${id}', ${startYear+1})">${esc(t.next)} ›</button>
@@ -8146,16 +8372,16 @@ function openStudentDetail(id, viewYear) {
           ${rows.map(r=>`
             <tr class="${!r.blank && r.dup ? 'dup-row' : ''}">
               <td class="mo">${esc(monthLabel(r.mk))}${!r.blank && r.dup ? ` <span class="dup-tag" title="${LANG==='ur'?'اس مہینے کی دہرائی گئی انٹری — اگر غلطی سے بن گئی ہے تو ہٹا دیں':'Duplicate entry for this month — remove it if added by mistake'}">⚠ ${esc(LANG==='ur'?'ڈپلیکیٹ':'duplicate')}</span>` : ''}</td>
-              <td>${r.blank ? '—' : '₨'+fmt(r.lastBalance)}</td>
+              <td>${r.blank ? '—' : fmtBal(r.lastBalance)}</td>
               <td>${r.blank ? '—' : '₨'+fmt(r.e.school_fee)}</td>
               <td>${r.blank ? '—' : '₨'+fmt(r.e.sports_fund)}</td>
               <td>${r.blank ? '—' : '₨'+fmt(r.e.admission_fee)}</td>
               <td>${r.blank ? '—' : '₨'+fmt(r.e.exam_fee)}</td>
-              <td>${r.blank ? '—' : '₨'+fmt(r.e.other_fee)}</td>
+              <td>${r.blank ? '—' : '₨'+fmt(r.e.other_fee)}${!r.blank && Number(r.e.adjustment||0) !== 0 ? ` <span title="${esc(r.e.adjustment_note||'')}" style="cursor:help;">✎</span>` : ''}</td>
               <td>${r.blank ? '—' : '₨'+fmt(r.totalDues)}</td>
               <td>${r.blank ? '—' : '₨'+fmt(r.totalPaid)}</td>
               <td class="${!r.blank && r.balance>0?'bal-neg':'bal-pos'}">${r.blank ? '—' : fmtBal(r.balance)}</td>
-              <td>${r.blank ? '—' : esc(r.e.receipt_no||'—')}</td>
+              <td>${r.blank ? '—' : esc(r.e.receipt_no||'—')}${!r.blank && r.e.pay_method ? `<div style="font-size:10px;opacity:.65;">${esc(feeMethodLabel(r.e.pay_method))}</div>` : ''}</td>
               <td>${r.blank ? '—' : esc(fmtDate(r.e.pay_date)||'')}</td>
               <td>${r.blank ? '' : `<button class="print-btn" title="${esc(t.print)}" onclick="printReceipt('${id}','${r.e.id}')">🖨️</button>`}</td>
               <td>${r.blank ? '' : `<button class="print-btn" title="Send SMS to father" onclick="sendPaidReceiptSms('${id}','${r.mk}')">💬</button>`}</td>
@@ -8189,7 +8415,7 @@ function feeMonthChanged(studentId) {
   const amt = document.getElementById('p-amount');
   if (ex) {
     set('p-schoolfee', ex.school_fee || 0); set('p-sports', ex.sports_fund || 0);
-    set('p-admission', ex.admission_fee || 0); set('p-exam', ex.exam_fee || 0); set('p-other', ex.other_fee || 0);
+    set('p-admission', ex.admission_fee || 0); set('p-exam', ex.exam_fee || 0); set('p-other', money2(Number(ex.other_fee || 0) - Number(ex.adjustment || 0)));
     note.style.display = 'block';
     note.innerHTML = `<div id="p-existing-msg"></div>
       <label style="display:flex;align-items:center;gap:6px;margin:6px 0 0;cursor:pointer;"><input type="checkbox" id="p-replace" style="width:auto;margin:0;" onchange="feeReplaceToggled('${studentId}')"><span>${esc(qt('Correct this entry instead (replace the paid total)', 'اس انٹری کو درست کریں (ادا شدہ کل رقم بدل دیں)'))}</span></label>`;
@@ -8199,6 +8425,10 @@ function feeMonthChanged(studentId) {
     note.style.display = 'none'; note.innerHTML = '';
     if (amt) { amt.value = effectiveMonthlyFee(s) || ''; amt.placeholder = t.enterAmount; }
   }
+  const amt2 = document.getElementById('p-amount'); if (amt2) delete amt2.dataset.manual;
+  const rc = document.getElementById('p-receipt'); if (rc) delete rc.dataset.manual;
+  feeFillReceipt(studentId);
+  feeCalcSummary(studentId);
 }
 function feeReplaceToggled(studentId) {
   const month = (document.getElementById('p-month') || {}).value;
@@ -8217,6 +8447,253 @@ function feeReplaceToggled(studentId) {
     if (amt) { amt.value = ''; amt.placeholder = qt('Installment amount', 'قسط کی رقم'); }
     if (msg) msg.innerHTML = esc(qt('This month already has ', 'اس مہینے میں پہلے سے ادا ہو چکا ہے: ')) + '<b>₨' + fmt(ex.amount) + '</b> ' + esc(qt('paid. The amount you enter will be ADDED as another installment.', '۔ آپ جو رقم لکھیں گے وہ اگلی قسط کے طور پر شامل ہوگی۔'));
   }
+  if (amt) delete amt.dataset.manual;
+  feeFillReceipt(studentId);
+  feeCalcSummary(studentId);
+}
+
+
+// ---------------- Adjustment / Refund / Write-off ----------------
+// Stored on the month's fee entry so every existing balance, receipt, report and the parent portal stay correct:
+//  • write-off (waive dues)  -> a negative amount inside that month's "Other" charges (and noted in `adjustment`)
+//  • extra charge / late fee -> a positive amount in the same place
+//  • refund of advance       -> reduces what was recorded as paid for the chosen month (cash handed back)
+function feeAdjAppend(old, line) { return old ? old + ' | ' + line : line; }
+function openFeeAdjust(studentId) {
+  const s = DATA.students.find(x => x.id === studentId); if (!s) return;
+  const paid = studentPayments(studentId).filter(e => Number(e.amount) > 0).sort((a, b) => (a.month < b.month ? 1 : -1));
+  showModal(qt('Adjustment / Refund / Write-off', 'ایڈجسٹمنٹ / واپسی / معافی'), `
+    <div id="fa-bal" style="font-size:13px;margin-bottom:8px;"></div>
+    <label><span>${esc(qt('Type', 'قسم'))}</span><select id="fa-type" onchange="feeAdjRefresh('${studentId}')">
+      <option value="writeoff">${esc(qt('Write-off / waive dues (no cash)', 'معافی / واجبات ختم (نقد نہیں)'))}</option>
+      <option value="charge">${esc(qt('Extra charge (adds to dues)', 'اضافی چارج (واجبات میں اضافہ)'))}</option>
+      <option value="refund">${esc(qt('Refund advance / overpayment (cash back)', 'ایڈوانس / زائد رقم کی واپسی (نقد)'))}</option>
+    </select></label>
+    <label><span>${esc(qt('Amount', 'رقم'))} (₨)</span><input id="fa-amount" type="number" min="0" oninput="feeAdjRefresh('${studentId}')"></label>
+    <label id="fa-month-wrap"><span>${esc(qt('Month', 'مہینہ'))}</span><input id="fa-month" type="month" value="${monthKey()}"></label>
+    <div id="fa-refund-wrap" style="display:none;">
+      <label><span>${esc(qt('Take the refund from this month’s payment', 'اس مہینے کی ادائیگی سے واپسی'))}</span>
+        <select id="fa-rmonth" onchange="feeAdjRefresh('${studentId}')">${paid.map(e => `<option value="${e.id}">${esc(monthLabel(e.month))} — ₨${fmt(e.amount)}</option>`).join('')}</select></label>
+      <label><span>${esc(qt('Refunded by', 'واپسی کا طریقہ'))}</span><select id="fa-method">${feeMethodOptions('cash')}</select></label>
+    </div>
+    <label><span>${esc(qt('Reason / note (required)', 'وجہ / نوٹ (ضروری)'))}</span><input id="fa-note" placeholder="${esc(qt('e.g. fee waived by principal', 'مثلاً پرنسپل کی طرف سے معاف'))}"></label>
+    <div id="fa-preview" style="margin:8px 0;font-size:13px;line-height:1.5;"></div>
+    <div class="flexgap">
+      <button class="btn-ghost" onclick="openStudentDetail('${studentId}')">${esc(t.cancel)}</button>
+      <button class="btn-primary" style="flex:1" onclick="guardedSubmit(this, ()=>submitFeeAdjust('${studentId}'))">${esc(t.save)}</button>
+    </div>`);
+  feeAdjRefresh(studentId);
+}
+function feeAdjCheck(studentId) {
+  const g = id => (document.getElementById(id) || {}).value;
+  const type = g('fa-type'), amt = money2(Number(g('fa-amount')) || 0), bal = studentBalance(studentId);
+  let nb = bal, err = '', entry = null;
+  if (type === 'writeoff') {
+    nb = money2(bal - amt);
+    if (amt > Math.max(0, bal) + 0.005) err = qt('You can only write off what is owed (₨' + fmt(Math.max(0, bal)) + ').', 'صرف واجب الادا رقم (₨' + fmt(Math.max(0, bal)) + ') تک معاف کر سکتے ہیں۔');
+  } else if (type === 'charge') nb = money2(bal + amt);
+  else {
+    nb = money2(bal + amt);
+    entry = DATA.feePayments.find(e => e.id === g('fa-rmonth')) || null;
+    const credit = Math.max(0, -bal);
+    if (!entry) err = qt('There is no payment to refund from.', 'واپسی کے لیے کوئی ادائیگی موجود نہیں۔');
+    else if (amt > credit + 0.005) err = qt('Only advance / overpaid money can be refunded (₨' + fmt(credit) + ' available).', 'صرف ایڈوانس / زائد رقم واپس ہو سکتی ہے (₨' + fmt(credit) + ' دستیاب)۔');
+    else if (amt > Number(entry.amount) + 0.005) err = qt('That month only has ₨' + fmt(entry.amount) + ' paid.', 'اس مہینے میں صرف ₨' + fmt(entry.amount) + ' ادا شدہ ہے۔');
+  }
+  return { type, amt, bal, nb, err, entry };
+}
+function feeAdjRefresh(studentId) {
+  const c = feeAdjCheck(studentId);
+  const set = (id, d) => { const el = document.getElementById(id); if (el) el.style.display = d; };
+  set('fa-month-wrap', c.type === 'refund' ? 'none' : ''); set('fa-refund-wrap', c.type === 'refund' ? '' : 'none');
+  const b = document.getElementById('fa-bal'); if (b) b.innerHTML = esc(qt('Current balance', 'موجودہ بیلنس')) + ': <b>' + esc(fmtBal(c.bal)) + '</b>';
+  const pv = document.getElementById('fa-preview');
+  if (pv) pv.innerHTML = (c.amt > 0 ? esc(qt('Balance after', 'بعد میں بیلنس')) + ': <b>' + esc(fmtBal(c.nb)) + '</b>' : '') +
+    (c.err ? `<div style="color:var(--rust);font-weight:600;margin-top:4px;">${esc(c.err)}</div>` : '') +
+    (c.type === 'refund' ? `<div style="font-size:11px;opacity:.65;margin-top:4px;">${esc(qt('The refund reduces the paid amount recorded for that month (cash goes back to the family).', 'واپسی اس مہینے کی ادا شدہ رقم کم کرتی ہے (رقم خاندان کو واپس جاتی ہے)۔'))}</div>` : '');
+}
+async function submitFeeAdjust(studentId) {
+  const c = feeAdjCheck(studentId);
+  const note = ((document.getElementById('fa-note') || {}).value || '').trim();
+  if (!(c.amt > 0)) { alert(qt('Enter an amount greater than 0.', '0 سے زیادہ رقم لکھیں۔')); return; }
+  if (!note) { alert(qt('Please write a reason / note.', 'براہ کرم وجہ / نوٹ لکھیں۔')); return; }
+  if (c.err) { alert(c.err); return; }
+  const today = todayISO();
+  const label = c.type === 'writeoff' ? qt('Write-off', 'معافی') : c.type === 'charge' ? qt('Extra charge', 'اضافی چارج') : qt('Refund', 'واپسی');
+  const line = today + ' ' + label + ' ₨' + fmt(c.amt) + ': ' + note;
+  if (!confirm(label + ' ₨' + fmt(c.amt) + '\n\n' + qt('Balance after', 'بعد میں بیلنس') + ': ' + fmtBal(c.nb) + '\n\n' + qt('Save?', 'محفوظ کریں؟'))) return;
+  let payload, base, month;
+  if (c.type === 'refund') {
+    const E = c.entry; month = E.month; base = E;
+    const method = (document.getElementById('fa-method') || {}).value || 'cash';
+    payload = { ...E, amount: money2(Number(E.amount) - c.amt), adjustment_note: feeAdjAppend(E.adjustment_note, line + ' (' + feeMethodLabel(method) + ')') };
+    if (feeColMissing('adjustment_note')) delete payload.adjustment_note;
+    if (FEE_INST_OK) {
+      const prev = Array.isArray(E.installments) ? E.installments.slice() : [];
+      if (!prev.length && Number(E.amount) > 0) prev.push({ d: E.pay_date || today, a: Number(E.amount), r: E.receipt_no || '', m: E.pay_method || '' });
+      payload.installments = prev.concat({ d: today, a: -c.amt, r: 'REFUND', m: method });
+    }
+  } else {
+    month = (document.getElementById('fa-month') || {}).value || monthKey();
+    const ex = DATA.feePayments.find(x => x.student_id === studentId && x.month === month) || null;
+    const delta = c.type === 'writeoff' ? -c.amt : c.amt;
+    base = ex;
+    if (ex) payload = { ...ex, other_fee: money2(Number(ex.other_fee || 0) + delta), adjustment: money2(Number(ex.adjustment || 0) + delta), adjustment_note: feeAdjAppend(ex.adjustment_note, line) };
+    else {
+      payload = { id: crypto.randomUUID ? crypto.randomUUID() : 'local-' + Date.now(), owner_id: CURRENT_USER.id, student_id: studentId, month,
+        school_fee: 0, sports_fund: 0, admission_fee: 0, exam_fee: 0, other_fee: delta, amount: 0, receipt_no: null, pay_date: today,
+        adjustment: delta, adjustment_note: line };
+      if (FEE_INST_OK) payload.installments = [];
+    }
+    if (feeColMissing('adjustment')) delete payload.adjustment;
+    if (feeColMissing('adjustment_note')) delete payload.adjustment_note;
+  }
+  const { queued, error } = await offlineWrite({
+    table: 'fee_payments', action: 'upsert', payload, id: payload.id, onConflict: 'student_id,month', baseRow: base,
+    run: () => feeUpsert(payload),
+    optimisticApply: () => {
+      const idx = DATA.feePayments.findIndex(x => x.id === payload.id);
+      if (idx >= 0) DATA.feePayments[idx] = { ...DATA.feePayments[idx], ...payload }; else DATA.feePayments.push(payload);
+      idbPutRow('fee_payments', payload);
+    }
+  });
+  if (!queued && reportSaveError(error)) return;
+  if (!queued) await reloadFeeRow(studentId, month);
+  openStudentDetail(studentId);
+}
+
+// ---------------- Late fee (applied to the ledger) ----------------
+function lfCalc(mk) {
+  const list = [];
+  DATA.feePayments.filter(e => e.month === mk).forEach(e => {
+    const st = DATA.students.find(x => x.id === e.student_id);
+    if (!st || st.status === 'inactive' || !isFeePaying(st)) return;
+    if (/\[LF\]/.test(String(e.adjustment_note || ''))) return;                 // late fee already applied
+    const charge = Number(e.school_fee || 0) + Number(e.sports_fund || 0) + Number(e.admission_fee || 0) + Number(e.exam_fee || 0) + Number(e.other_fee || 0);
+    if (money2(charge - Number(e.amount || 0)) > 0) list.push({ e, st });
+  });
+  return list;
+}
+function openApplyLateFee() {
+  showModal(qt('Apply late fee', 'تاخیر کا جرمانہ لگائیں'), `
+    <div style="font-size:12.5px;opacity:.8;margin-bottom:10px;line-height:1.5;">${esc(qt('Adds a late fee to the ledger of every student whose fee for the chosen month is still (partly) unpaid. A student is never charged twice for the same month.', 'منتخب مہینے کی فیس جن طلبہ کی (جزوی طور پر) باقی ہے ان کے لیڈجر میں تاخیر کا جرمانہ لگتا ہے۔ ایک مہینے کا جرمانہ دو بار نہیں لگتا۔'))}</div>
+    <label><span>${esc(qt('Month', 'مہینہ'))}</span><select id="lf-month" onchange="lfRefresh()">${gmMonthOptions(monthKey())}</select></label>
+    <label><span>${esc(qt('Late fee per student', 'فی طالب علم جرمانہ'))} (₨)</span><input id="lf-fine" type="number" min="0" oninput="lfRefresh()"></label>
+    <div id="lf-summary" style="margin:10px 0;font-size:13px;line-height:1.5;"></div>
+    <button id="lf-apply" class="btn-primary" style="width:100%;" onclick="guardedSubmit(this, lfApply)">${esc(qt('Apply late fee', 'جرمانہ لگائیں'))}</button>`);
+  lfRefresh();
+}
+function lfRefresh() {
+  const mk = (document.getElementById('lf-month') || {}).value, fine = money2(Number((document.getElementById('lf-fine') || {}).value) || 0);
+  const list = mk ? lfCalc(mk) : [], box = document.getElementById('lf-summary'), btn = document.getElementById('lf-apply'); if (!box) return;
+  const blocked = feeColMissing('adjustment') || feeColMissing('adjustment_note');
+  box.innerHTML = blocked
+    ? `<div style="color:var(--rust);">${esc(qt('The database needs the new fee columns first. Run in Supabase → SQL Editor:', 'پہلے ڈیٹابیس میں نئے کالم درکار ہیں۔ Supabase → SQL Editor میں چلائیں:'))}<div dir="ltr" style="font-family:monospace;font-size:11px;user-select:all;white-space:pre-wrap;word-break:break-all;margin-top:4px;">${esc(FEE_NEW_SQL)}</div></div>`
+    : `${list.length} ${esc(qt('students have an unpaid balance for this month', 'طلبہ کی اس مہینے کی فیس باقی ہے'))}` + (fine > 0 && list.length ? ` — ${esc(qt('total late fee', 'کل جرمانہ'))}: <b>₨${fmt(money2(fine * list.length))}</b>` : '');
+  if (btn) btn.disabled = blocked || !(fine > 0) || !list.length;
+}
+async function lfApply() {
+  const mk = (document.getElementById('lf-month') || {}).value, fine = money2(Number((document.getElementById('lf-fine') || {}).value) || 0);
+  const list = lfCalc(mk); if (!(fine > 0) || !list.length) return;
+  if (!confirm(qt('Add a late fee of ₨' + fmt(fine) + ' to ' + list.length + ' students for ' + monthLabel(mk) + '? (total ₨' + fmt(money2(fine * list.length)) + ')',
+                  list.length + ' طلبہ کو ' + monthLabel(mk) + ' کے لیے ₨' + fmt(fine) + ' جرمانہ لگائیں؟ (کل ₨' + fmt(money2(fine * list.length)) + ')'))) return;
+  let done = 0, failed = 0, anyOnline = false;
+  for (const { e } of list) {
+    const payload = { ...e, other_fee: money2(Number(e.other_fee || 0) + fine), adjustment: money2(Number(e.adjustment || 0) + fine),
+      adjustment_note: feeAdjAppend(e.adjustment_note, todayISO() + ' ' + qt('Late fee', 'تاخیر کا جرمانہ') + ' ₨' + fmt(fine) + ' [LF]') };
+    const { queued, error } = await offlineWrite({
+      table: 'fee_payments', action: 'upsert', payload, id: payload.id, onConflict: 'student_id,month', baseRow: e,
+      run: () => feeUpsert(payload),
+      optimisticApply: () => {
+        const idx = DATA.feePayments.findIndex(x => x.id === payload.id);
+        if (idx >= 0) DATA.feePayments[idx] = { ...DATA.feePayments[idx], ...payload };
+        idbPutRow('fee_payments', payload);
+      }
+    });
+    if (!queued && error) { failed++; continue; }
+    done++; if (!queued) anyOnline = true;
+  }
+  if (anyOnline) await reloadTable('fee_payments');
+  closeModal(); if (TAB) safeRenderTab();
+  alert(qt('Late fee added for ' + done + ' students' + (failed ? ' (' + failed + ' failed — try again)' : '') + '.', done + ' طلبہ کو جرمانہ لگ گیا' + (failed ? ' (' + failed + ' ناکام — دوبارہ کوشش کریں)' : '') + '۔'));
+}
+
+// ---- Fee form: automatic Total Paid + overpayment / mismatch warning -------------------
+// Charges typed in the form (school fee, sports fund, admission, exam, other).
+function feeFormCharges() {
+  const v = id => Number((document.getElementById(id) || {}).value) || 0;
+  return money2(v('p-schoolfee') + v('p-sports') + v('p-admission') + v('p-exam') + v('p-other'));
+}
+// What was still due (or credit, if negative) from every month BEFORE the chosen one.
+function feePrevBalance(studentId, month) {
+  let run = 0;
+  studentPayments(studentId).filter(e => e.month < month)
+    .sort((a, b) => (a.month > b.month ? 1 : a.month < b.month ? -1 : 0) || (new Date(a.pay_date) - new Date(b.pay_date)))
+    .forEach(e => {
+      run = money2(run + Number(e.school_fee||0) + Number(e.sports_fund||0) + Number(e.admission_fee||0) + Number(e.exam_fee||0) + Number(e.other_fee||0) - Number(e.amount||0));
+    });
+  return run;
+}
+// Everything the form needs to know about the current numbers.
+function feeFormState(studentId) {
+  const month = (document.getElementById('p-month') || {}).value;
+  const ex = month ? DATA.feePayments.find(x => x.student_id === studentId && x.month === month) : null;
+  const replace = !!(document.getElementById('p-replace') || {}).checked;
+  const entered = Number((document.getElementById('p-amount') || {}).value) || 0;
+  const adjEx = ex ? Number(ex.adjustment || 0) : 0;      // saved adjustment / late fee stays part of this month's charges
+  const charges = money2(feeFormCharges() + adjEx);
+  const prev = month ? feePrevBalance(studentId, month) : 0;
+  const basePaid = ex && !replace ? Number(ex.amount || 0) : 0;   // installment mode keeps what was already paid
+  const paidTotal = money2(basePaid + entered);
+  const totalDues = money2(prev + charges);
+  return { month, ex, replace, entered, charges, prev, basePaid, paidTotal, totalDues, balance: money2(totalDues - paidTotal) };
+}
+// Receipt No is filled in automatically (next number in sequence) unless the user typed their own.
+// When correcting an existing entry the entry's own receipt number is kept.
+function feeFillReceipt(studentId) {
+  const el = document.getElementById('p-receipt'); if (!el || el.dataset.manual === '1') return;
+  const st = feeFormState(studentId);
+  el.value = (st.ex && st.replace && st.ex.receipt_no) ? st.ex.receipt_no : nextReceiptNo();
+}
+// Total Paid follows the charges automatically until the user types their own amount.
+function feeChargesChanged(studentId) {
+  const amt = document.getElementById('p-amount');
+  const st = feeFormState(studentId);
+  const canAuto = !st.ex || (!st.replace && Number(st.ex.amount || 0) === 0);
+  if (amt && canAuto && amt.dataset.manual !== '1') amt.value = st.charges > 0 ? st.charges : '';
+  feeCalcSummary(studentId);
+}
+function feeAmountTyped(studentId) {
+  const amt = document.getElementById('p-amount');
+  if (amt) amt.dataset.manual = '1';
+  feeCalcSummary(studentId);
+}
+function feeCalcSummary(studentId) {
+  const box = document.getElementById('p-summary'); if (!box) return;
+  const st = feeFormState(studentId);
+  const row = (l, v, b) => `<div style="display:flex;justify-content:space-between;gap:8px;${b ? 'font-weight:700;' : ''}"><span>${esc(l)}</span><span>${v}</span></div>`;
+  let status, bg, col;
+  if (st.balance < 0) {
+    status = qt('⚠ Overpayment: ₨' + fmt(Math.abs(st.balance)) + ' more than the total dues. It will be saved as advance credit — please double-check the amount.',
+                '⚠ زائد ادائیگی: کل واجب الادا سے ₨' + fmt(Math.abs(st.balance)) + ' زیادہ ہے۔ یہ ایڈوانس کے طور پر محفوظ ہوگی — رقم دوبارہ چیک کریں۔');
+    bg = 'rgba(178,74,50,.14)'; col = 'var(--rust)';
+  } else if (st.balance > 0) {
+    status = qt('Balance ₨' + fmt(st.balance) + ' will remain due and carry forward.',
+                'بیلنس ₨' + fmt(st.balance) + ' باقی رہے گا اور اگلے مہینے میں منتقل ہوگا۔');
+    if (st.entered > 0 && money2(st.paidTotal) !== money2(st.charges) && st.prev === 0)
+      status = qt('Paid (₨' + fmt(st.paidTotal) + ') does not match this month’s charges (₨' + fmt(st.charges) + '). ', 'ادا شدہ (₨' + fmt(st.paidTotal) + ') اس مہینے کے چارجز (₨' + fmt(st.charges) + ') سے مختلف ہے۔ ') + status;
+    bg = 'rgba(200,150,40,.14)'; col = '#8A6A12';
+  } else {
+    status = qt('✓ Fully paid — paid amount matches the total dues.', '✓ مکمل ادائیگی — ادا شدہ رقم کل واجب الادا کے برابر ہے۔');
+    bg = 'rgba(63,113,84,.14)'; col = 'var(--sage)';
+  }
+  box.innerHTML = `<div style="padding:10px 12px;border-radius:10px;background:${bg};font-size:13px;line-height:1.55;">
+    ${row(qt('This month’s charges', 'اس مہینے کے چارجز'), '₨' + fmt(st.charges))}
+    ${st.prev !== 0 ? row(qt('Previous balance', 'پچھلا بیلنس'), fmtBal(st.prev)) : ''}
+    ${row(t.totalDuesCol, '₨' + fmt(st.totalDues), true)}
+    ${row(qt('Total paid (with this entry)', 'کل ادا شدہ (اس انٹری سمیت)'), '₨' + fmt(st.paidTotal), true)}
+    ${row(t.balanceCol, fmtBal(st.balance), true)}
+    <div style="margin-top:6px;color:${col};font-weight:600;">${esc(status)}</div></div>`;
 }
 
 // "Strike Off" marks a student who has left the school as inactive (status
@@ -8361,6 +8838,7 @@ async function submitFeePayment(studentId) {
   const amount = document.getElementById('p-amount').value;
   const receiptNo = document.getElementById('p-receipt').value;
   const date = dateVal('p-date');
+  const method = (document.getElementById('p-method') || {}).value || 'cash';
   if (!month || amount === '' || !Number.isFinite(Number(amount))) {
     alert(LANG === 'ur' ? '\u0645\u06c1\u06cc\u0646\u06c1 \u0627\u0648\u0631 \u0627\u062f\u0627 \u0634\u062f\u06c1 \u0631\u0642\u0645 \u062f\u0631\u062c \u06a9\u0631\u06cc\u06ba\u06d4' : 'Please choose the month and enter the amount paid.');
     return;
@@ -8375,6 +8853,7 @@ async function submitFeePayment(studentId) {
   // existing one), and doubles as the "before" snapshot for conflict checks.
   const existingRow = DATA.feePayments.find(x => x.student_id === studentId && x.month === month) || null;
   const isNewEntry = !existingRow;
+  const adjEx = existingRow ? Number(existingRow.adjustment || 0) : 0;   // adjustment / late fee already on this entry
   // Same month already has an entry: by default this save is a further INSTALLMENT that is
   // added to what was already paid. Ticking "correct this entry" (p-replace) overwrites instead.
   const replaceEl = document.getElementById('p-replace');
@@ -8385,22 +8864,47 @@ async function submitFeePayment(studentId) {
     return;
   }
   const payAmount = isInstallment ? money2(Number(existingRow.amount || 0) + enteredAmount) : enteredAmount;
-  let payReceipt = receiptNo || null;
+  // Overpayment guard: paid total would exceed (previous balance + this month's charges).
+  {
+    const dues = money2(feePrevBalance(studentId, month) + Number(schoolFee) + Number(sportsFund) + Number(admissionFee) + Number(examFee) + Number(otherFee) + adjEx);
+    const over = money2(payAmount - dues);
+    if (over > 0 && !confirm(qt('Paid total ₨' + fmt(payAmount) + ' is ₨' + fmt(over) + ' MORE than the total dues (₨' + fmt(dues) + ').\n\nSave anyway as advance credit?',
+        'کل ادا شدہ ₨' + fmt(payAmount) + ' کل واجب الادا (₨' + fmt(dues) + ') سے ₨' + fmt(over) + ' زیادہ ہے۔\n\nکیا پھر بھی ایڈوانس کے طور پر محفوظ کریں؟'))) return;
+  }
+  // Empty receipt box -> next automatic number (or the entry's own number when correcting it).
+  let receiptFinal = receiptNo.trim() || ((existingRow && !isInstallment && existingRow.receipt_no) ? existingRow.receipt_no : nextReceiptNo());
+  // Duplicate receipt number check. An auto-filled number that went stale (data changed meanwhile) is simply
+  // replaced; a number typed by hand needs a confirmation.
+  {
+    const ownId = existingRow ? existingRow.id : null;
+    let owner = receiptOwner(receiptFinal, ownId);
+    if (owner && (document.getElementById('p-receipt') || {}).dataset.manual !== '1') {
+      receiptFinal = nextReceiptNo(); owner = receiptOwner(receiptFinal, ownId);
+    }
+    if (owner) {
+      const os = DATA.students.find(x => x.id === owner.student_id);
+      if (!confirm(qt('Receipt number ' + receiptFinal + ' is already used for ' + (os ? os.name : '—') + ' (' + monthLabel(owner.month) + ').\n\nUse the same number again?',
+                      'رسید نمبر ' + receiptFinal + ' پہلے سے ' + (os ? os.name : '—') + ' (' + monthLabel(owner.month) + ') کے لیے استعمال ہو چکا ہے۔\n\nکیا یہی نمبر دوبارہ استعمال کریں؟'))) return;
+    }
+  }
+  let payReceipt = receiptFinal;
   if (isInstallment && existingRow.receipt_no) {
-    payReceipt = (!receiptNo || String(existingRow.receipt_no).split(', ').includes(receiptNo))
-      ? existingRow.receipt_no : existingRow.receipt_no + ', ' + receiptNo;
+    payReceipt = String(existingRow.receipt_no).split(', ').includes(receiptFinal)
+      ? existingRow.receipt_no : existingRow.receipt_no + ', ' + receiptFinal;
   }
 
   const payload = {
     id: existingRow ? existingRow.id : (crypto.randomUUID ? crypto.randomUUID() : `local-${Date.now()}`),
     owner_id: CURRENT_USER.id, student_id: studentId, month,
     school_fee: Number(schoolFee), sports_fund: Number(sportsFund),
-    admission_fee: Number(admissionFee), exam_fee: Number(examFee), other_fee: Number(otherFee),
+    admission_fee: Number(admissionFee), exam_fee: Number(examFee), other_fee: money2(Number(otherFee) + adjEx),
     amount: payAmount, receipt_no: payReceipt, pay_date: date
   };
+  if (!feeColMissing('pay_method')) payload.pay_method = method;
+  try { localStorage.setItem('sms_last_pay_method', method); } catch (e) {}
   if (FEE_INST_OK) {
     const prev = existingRow && Array.isArray(existingRow.installments) ? existingRow.installments.slice() : [];
-    const entry = { d: date, a: isInstallment ? enteredAmount : payAmount, r: receiptNo || '' };
+    const entry = { d: date, a: isInstallment ? enteredAmount : payAmount, r: receiptFinal, m: method };
     if (isInstallment) {
       // Month saved before installments were tracked: keep what was already paid as the first line.
       if (!prev.length && Number(existingRow.amount) > 0) prev.push({ d: existingRow.pay_date || date, a: Number(existingRow.amount), r: existingRow.receipt_no || '' });
@@ -8444,7 +8948,6 @@ async function submitFeePayment(studentId) {
   // phone's own Messages app with no internet needed at all.
   if ((isNewEntry || isInstallment) && student && date === todayISO()) {
     const [my, mm] = month.split('-').map(Number);
-    const academicYearOf = (y, m) => (m >= 2 ? y : y - 1);
     const { rows: ledgerRows } = buildAcademicYearLedger(studentId, academicYearOf(my, mm));
     const row = ledgerRows.find(r => !r.blank && r.mk === month);
     // For an installment the parent is told only what was paid just now, not the month's running total.
@@ -8471,13 +8974,17 @@ function printReceipt(studentId, entryId) {
 
   // One line per installment received for this month (when tracked), so a later payment is
   // visible on the receipt instead of vanishing into the cumulative total.
-  const inst = Array.isArray(e.installments) ? e.installments.filter(x => Number(x && x.a) > 0) : [];
+  const inst = Array.isArray(e.installments) ? e.installments.filter(x => Number(x && x.a) !== 0) : [];
   const instSum = money2(inst.reduce((a, x) => a + Number(x.a || 0), 0));
   let instHtml = '';
-  if (inst.length >= 2 || (inst.length === 1 && instSum < money2(Number(e.amount || 0)))) {
+  if (inst.length >= 2 || (inst.length === 1 && (instSum < money2(Number(e.amount || 0)) || Number(inst[0].a) < 0))) {
     const lines = [];
     if (instSum < money2(Number(e.amount || 0)) - 0.005) lines.push(`<tr><td class="lbl">${esc(qt('Earlier payments', 'پچھلی ادائیگیاں'))}</td><td style="text-align:right;">₨${fmt(money2(Number(e.amount || 0) - instSum))}</td></tr>`);
-    inst.forEach((x, i) => lines.push(`<tr><td class="lbl">${esc(qt('Installment', 'قسط'))} ${i + 1} · ${esc(fmtDate(x.d) || '')}${x.r ? ' · ' + esc(x.r) : ''}</td><td style="text-align:right;">₨${fmt(x.a)}</td></tr>`));
+    let n = 0;
+    inst.forEach(x => {
+      const neg = Number(x.a) < 0; if (!neg) n++;
+      lines.push(`<tr><td class="lbl">${esc(neg ? qt('Refund', 'واپسی') : qt('Installment', 'قسط') + ' ' + n)} · ${esc(fmtDate(x.d) || '')}${x.r ? ' · ' + esc(x.r) : ''}${x.m ? ' · ' + esc(feeMethodLabel(x.m)) : ''}</td><td style="text-align:right;">${neg ? '−' : ''}₨${fmt(Math.abs(Number(x.a)))}</td></tr>`);
+    });
     instHtml = lines.join('');
   }
 
@@ -8501,6 +9008,9 @@ function printReceipt(studentId, entryId) {
         <tr><td class="lbl">${esc(t.fatherName)}</td><td style="text-align:right;">${esc(s.father_name||'')}</td></tr>
         ${rowsHtml}
         <tr class="total-row"><td>${esc(t.totalAmount)}</td><td style="text-align:right;">₨${fmt(e.amount)}</td></tr>
+        <tr><td class="lbl">${esc(qt('Amount in words', 'رقم الفاظ میں'))}</td><td dir="auto" style="text-align:right;font-weight:600;">${esc(amountInWords(e.amount, LANG))}</td></tr>
+        ${e.pay_method ? `<tr><td class="lbl">${esc(qt('Payment method', 'ادائیگی کا طریقہ'))}</td><td style="text-align:right;">${esc(feeMethodLabel(e.pay_method))}</td></tr>` : ''}
+        ${Number(e.adjustment || 0) !== 0 ? `<tr><td class="lbl">${esc(qt('Adjustment included in Other', 'ایڈجسٹمنٹ (دیگر میں شامل)'))}</td><td style="text-align:right;">${Number(e.adjustment) < 0 ? '−' : '+'}₨${fmt(Math.abs(Number(e.adjustment)))}</td></tr>` : ''}
         ${instHtml}
         <tr><td class="lbl">${esc(balance < 0 ? qt('Advance / Credit', 'ایڈوانس / کریڈٹ') : t.balanceCol)}</td><td style="text-align:right;">₨${fmt(Math.abs(balance))}</td></tr>
         <tr><td class="lbl">${esc(t.receiptNo)}</td><td style="text-align:right;">${esc(e.receipt_no||'—')}</td></tr>
@@ -8512,6 +9022,14 @@ function printReceipt(studentId, entryId) {
 }
 async function deleteFeePayment(paymentId, studentId) {
   const baseRow = DATA.feePayments.find(x => x.id === paymentId) || null;
+  if (baseRow) {
+    const paidAmt = Number(baseRow.amount || 0);
+    const warn = paidAmt > 0
+      ? qt('Delete the fee entry for ' + monthLabel(baseRow.month) + '?\n\nIt has ₨' + fmt(paidAmt) + ' PAID recorded. Deleting removes that payment record and the money will no longer show as received.\n\nThis cannot be undone.',
+           monthLabel(baseRow.month) + ' کی فیس انٹری حذف کریں؟\n\nاس میں ₨' + fmt(paidAmt) + ' ادا شدہ درج ہیں۔ حذف کرنے سے ادائیگی کا ریکارڈ مٹ جائے گا اور یہ رقم وصول شدہ نہیں دکھائی جائے گی۔\n\nیہ واپس نہیں ہو سکتا۔')
+      : qt('Delete the (unpaid) fee entry for ' + monthLabel(baseRow.month) + '?', monthLabel(baseRow.month) + ' کی (بغیر ادائیگی) فیس انٹری حذف کریں؟');
+    if (!confirm(warn)) return;
+  }
   const { queued, error } = await offlineWrite({
     table: 'fee_payments', action: 'delete', payload: null, id: paymentId, baseRow,
     run: () => sb.from('fee_payments').delete().eq('id', paymentId),
@@ -8532,7 +9050,7 @@ function printFeeCard(studentId, viewYear) {
   const rowsHtml = rows.map(r => `
     <tr class="${r.mk===todayMk ? 'fc-current' : ''}">
       <td class="fc-mo">${esc(monthLabel(r.mk))}</td>
-      <td class="${!r.blank && r.lastBalance>0?'fc-due':'fc-zero'}">${r.blank ? '—' : '₨'+fmt(r.lastBalance)}</td>
+      <td class="${!r.blank && r.lastBalance>0?'fc-due':'fc-zero'}">${r.blank ? '—' : fmtBal(r.lastBalance)}</td>
       <td class="fc-zero">${r.blank ? '—' : '₨'+fmt(r.e.school_fee)}</td>
       <td class="fc-zero">${r.blank ? '—' : '₨'+fmt(r.e.sports_fund)}</td>
       <td class="fc-zero">${r.blank ? '—' : '₨'+fmt(r.e.admission_fee)}</td>
@@ -8548,7 +9066,7 @@ function printFeeCard(studentId, viewYear) {
   document.getElementById('print-area').innerHTML = `
     <div class="fc-wrap">
       <div class="fc-head">
-        <div class="eyebrow">${esc(t.feeLedger)} · ${startYear}–${startYear+1}</div>
+        <div class="eyebrow">${esc(t.feeLedger)} · ${sessionLabel(startYear)}</div>
         <h2>${esc(CURRENT_PROFILE.school_name || 'School')}</h2>
         <div class="fc-sub">Annual Fee Card</div>
       </div>
@@ -9807,7 +10325,7 @@ function openTeacherDetail(id) {
   const totalPaid = payments.reduce((a,b)=>a+Number(b.amount),0);
   const curMonth = monthKey();
   const attInfo = calcAttendanceSalary(id, curMonth);
-  if (!STF.loaded && !STF.loading && navigator.onLine) {
+  if (!STF.loaded && !STF.loading) {
     STF.loading = true;
     stfLoad().then(() => { STF.loading = false; if (STF.loaded && document.getElementById('p-month')) openTeacherDetail(id); });
   }
@@ -9877,10 +10395,6 @@ async function submitSalaryPayment(teacherId) {
   const advEl = document.getElementById('p-adv');
   let ded = advEl ? Math.max(0, Number(advEl.value || 0)) : 0;
   ded = Math.min(ded, gross, stfTeacherOutstanding(teacherId, month));
-  if (advEl && !navigator.onLine && (ded > 0 || stfRecoveredIn(teacherId, month) > 0)) {
-    alert(qt('Advance recovery needs an internet connection. Connect and try again, or set the recovery to 0 to save offline.', 'ایڈوانس کی کٹوتی کے لیے انٹرنیٹ ضروری ہے۔ انٹرنیٹ سے جڑیں، یا آف لائن محفوظ کرنے کے لیے کٹوتی 0 کر دیں۔'));
-    return;
-  }
   const amount = gross - ded;
 
   // Looked up from the local cache (works offline too) — doubles as the
@@ -9913,7 +10427,7 @@ async function submitSalaryPayment(teacherId) {
     }
   });
   if (!queued && reportSaveError(error)) return;
-  if (advEl && navigator.onLine) {
+  if (advEl) {
     const rErr = await stfApplyRecovery(teacherId, month, ded);
     if (rErr) alert(qt('Salary was saved, but the advance recovery could not be recorded (' + rErr.message + '). Open this teacher and save the same month again.', 'تنخواہ محفوظ ہو گئی، مگر ایڈوانس کی کٹوتی درج نہیں ہو سکی (' + rErr.message + ')۔ اسی استاد کو کھول کر وہی مہینہ دوبارہ محفوظ کریں۔'));
   }
@@ -9938,10 +10452,8 @@ async function submitSalaryPayment(teacherId) {
 async function deleteSalaryPayment(paymentId, teacherId) {
   const baseRow = DATA.salaryPayments.find(x => x.id === paymentId) || null;
   if (baseRow && stfRecoveredIn(teacherId, baseRow.month) > 0) {
-    if (!navigator.onLine) { alert(qt('This salary included an advance recovery, so it can only be deleted while online.', 'اس تنخواہ میں ایڈوانس کی کٹوتی شامل تھی، اس لیے یہ صرف آن لائن حذف ہو سکتی ہے۔')); return; }
-    const { error: rErr } = await sb.from('staff_advance_recoveries').delete().eq('teacher_id', String(teacherId)).eq('month', baseRow.month);
+    const rErr = await stfApplyRecovery(teacherId, baseRow.month, 0);   // removes this month's recovery (queued if offline)
     if (reportSaveError(rErr)) return;
-    await stfLoad();
   }
   const { queued } = await offlineWrite({
     table: 'salary_payments', action: 'delete', payload: null, id: paymentId, baseRow,
@@ -10147,10 +10659,28 @@ async function lpvMarkSeen(id) {
 // Advance: recorded per teacher, then recovered from salary. The salary form suggests the
 // amount due for that month and saves NET (salary - recovery) as the salary payment.
 // Needs the "ONE-TIME SETUP for Staff Leave & Salary Advance" SQL (top of this file). Online only.
-const STF = { leaves: [], advances: [], recoveries: [], loaded: false, err: false, loading: false };
+const STF = { leaves: [], advances: [], recoveries: [], loaded: false, err: false, loading: false, cached: false };
 let STF_LV_TEACHER = '', STF_AD_TEACHER = '';
+// Last-synced copy of leaves / advances / recoveries, kept on the device so the salary form can
+// still work out (and save) an advance recovery with no internet. Leave & Advance screens
+// themselves stay online-only; they ignore a cached copy (see STF.cached).
+const STF_CACHE_KEY = 'sms_stf_cache_';
+function stfCacheSave() {
+  try { if (CURRENT_USER) localStorage.setItem(STF_CACHE_KEY + CURRENT_USER.id, JSON.stringify({ leaves: STF.leaves, advances: STF.advances, recoveries: STF.recoveries })); } catch (e) {}
+}
+function stfCacheRestore() {
+  try {
+    if (!CURRENT_USER) return false;
+    const raw = localStorage.getItem(STF_CACHE_KEY + CURRENT_USER.id); if (!raw) return false;
+    const c = JSON.parse(raw);
+    STF.leaves = c.leaves || []; STF.advances = c.advances || []; STF.recoveries = c.recoveries || [];
+    STF.err = false; STF.loaded = true; STF.cached = true;
+    return true;
+  } catch (e) { return false; }
+}
 async function stfLoad() {
-  if (!navigator.onLine || !CURRENT_USER) return;
+  if (!CURRENT_USER) return;
+  if (!navigator.onLine) { if (!STF.loaded) stfCacheRestore(); return; }
   try {
     const [l, a, r] = await Promise.all([
       sb.from('staff_leaves').select('*').order('created_at', { ascending: false }),
@@ -10159,12 +10689,13 @@ async function stfLoad() {
     ]);
     STF.err = !!(l.error || a.error || r.error);
     STF.leaves = l.data || []; STF.advances = a.data || []; STF.recoveries = r.data || [];
-    STF.loaded = true;
-  } catch (e) { STF.loaded = false; }
+    STF.loaded = true; STF.cached = false;
+    if (!STF.err) stfCacheSave();
+  } catch (e) { if (!STF.loaded) { STF.loaded = false; stfCacheRestore(); } }
 }
 function stfNote() {
   if (STF.err) return `<div class="err">${esc(qt('Leave & Advance tables are not set up yet. Run the "ONE-TIME SETUP for Staff Leave & Salary Advance" SQL (top of index.html) in Supabase.', 'چھٹی اور ایڈوانس کے ٹیبل ابھی نہیں بنے۔ index.html کے شروع میں دی گئی Staff Leave & Salary Advance والی SQL سپابیس میں چلائیں۔'))}</div>`;
-  if (!STF.loaded) return `<div class="err">${esc(qt('You are offline. Connect to the internet to use this.', 'آپ آف لائن ہیں۔ اسے استعمال کرنے کے لیے انٹرنیٹ سے جڑیں۔'))}</div>`;
+  if (!STF.loaded || STF.cached) return `<div class="err">${esc(qt('You are offline. Connect to the internet to use this.', 'آپ آف لائن ہیں۔ اسے استعمال کرنے کے لیے انٹرنیٹ سے جڑیں۔'))}</div>`;
   return '';
 }
 const stfName = id => { const tc = DATA.teachers.find(x => String(x.id) === String(id)); return tc ? tc.name : '—'; };
@@ -10198,9 +10729,9 @@ function stfAdvRowHtml(teacherId, month) {
 }
 // Spreads the recovery over the teacher's advances (oldest first) and replaces whatever was
 // recorded for that month before, so saving the same month twice never double-counts.
+// Works offline: the local copy is updated at once and the change is queued like a salary save.
 async function stfApplyRecovery(teacherId, month, ded) {
   const tid = String(teacherId);
-  const mine = STF.recoveries.filter(r => String(r.teacher_id) === tid && r.month === month);
   let left = ded; const rows = [];
   const advs = stfTeacherAdvances(tid).slice().sort((a, b) => String(a.given_date).localeCompare(String(b.given_date)));
   for (const a of advs) {
@@ -10208,9 +10739,21 @@ async function stfApplyRecovery(teacherId, month, ded) {
     const take = Math.round(Math.min(stfOutstanding(a, month), left) * 100) / 100;
     if (take > 0) { rows.push({ owner_id: CURRENT_USER.id, advance_id: a.id, teacher_id: tid, month, amount: take }); left -= take; }
   }
-  if (mine.length) { const r = await sb.from('staff_advance_recoveries').delete().in('id', mine.map(x => x.id)); if (r.error) return r.error; }
-  if (rows.length) { const r = await sb.from('staff_advance_recoveries').insert(rows); if (r.error) return r.error; }
-  await stfLoad();
+  const payload = { teacher_id: tid, month, rows };
+  const stamp = Date.now();
+  STF.recoveries = STF.recoveries.filter(r => !(String(r.teacher_id) === tid && r.month === month))
+    .concat(rows.map((r, k) => ({ ...r, id: 'local-' + stamp + '-' + k })));
+  stfCacheSave();
+  const item = { table: 'staff_advance_recoveries', action: 'stf_recovery', payload };
+  if (navigator.onLine) {
+    try {
+      const r = await execQueueItem(item);
+      if (!r.error) { await stfLoad(); return null; }
+      if (!isNetworkError(r.error)) { await stfLoad(); return r.error; }   // real server rejection: show it, don't queue
+    } catch (e) { /* request never reached the server — queue it below */ }
+  }
+  await idbQueueAdd({ ...item, ts: stamp });
+  renderOfflineBanner();
   return null;
 }
 
@@ -10237,7 +10780,7 @@ async function openStaffLeaves(teacherId) {
       <button class="btn-primary" style="flex:1;padding:8px;" onclick="guardedSubmit(this, ()=>stfDecideLeave('${lv.id}','approved'))">${esc(qt('Approve', 'منظور'))}</button>
       <button class="btn-ghost" style="flex:1;padding:8px;" onclick="guardedSubmit(this, ()=>stfDecideLeave('${lv.id}','rejected'))">${esc(qt('Reject', 'مسترد'))}</button>
     </div>`;
-  const ok = STF.loaded && !STF.err;
+  const ok = STF.loaded && !STF.err && !STF.cached;
   const form = !ok ? '' : `
     <div class="field-box"><label><span>${esc(qt('Teacher', 'استاد'))}</span><select id="sl-teacher">${stfTeacherOpts(STF_LV_TEACHER)}</select></label></div>
     <div class="row2">
@@ -10326,7 +10869,7 @@ async function openStaffAdvances(teacherId) {
         </div>
       </div></div>`;
   };
-  const ok = STF.loaded && !STF.err;
+  const ok = STF.loaded && !STF.err && !STF.cached;
   const form = !ok ? '' : `
     <div class="field-box"><label><span>${esc(qt('Teacher', 'استاد'))}</span><select id="sa-teacher">${stfTeacherOpts(STF_AD_TEACHER)}</select></label></div>
     <div class="row2">
@@ -11041,12 +11584,12 @@ function tplReports() {
       <div class="list-card">
         ${(() => {
           const defaulters = DATA.students
-            .filter(x => x.status!=='inactive' && isFeePaying(x) && studentBalance(x.id) > 0)
+            .filter(x => studentBalance(x.id) > 0)
             .sort((a,b) => studentBalance(b.id) - studentBalance(a.id));
           if (defaulters.length === 0) return `<div style="padding:16px;text-align:center;opacity:.5;font-size:13px;">—</div>`;
           return defaulters.map(x => `
             <div class="list-row" style="cursor:pointer;" onclick="setTab('students'); openStudentDetail('${x.id}')">
-              <span style="font-size:13px;">${esc(x.name)} <span style="font-size:11px;opacity:.5;">(${esc(x.class_name||'—')})</span></span>
+              <span style="font-size:13px;">${esc(x.name)}${esc(leftTag(x))} <span style="font-size:11px;opacity:.5;">(${esc(x.class_name||'—')})</span></span>
               <span class="amt-neg">₨${fmt(studentBalance(x.id))}</span>
             </div>`).join('');
         })()}
@@ -11056,13 +11599,13 @@ function tplReports() {
 
 function printDefaultersReport() {
   const defaulters = DATA.students
-    .filter(x => x.status!=='inactive' && isFeePaying(x) && studentBalance(x.id) > 0)
+    .filter(x => studentBalance(x.id) > 0)
     .sort((a,b) => studentBalance(b.id) - studentBalance(a.id));
   const total = defaulters.reduce((a,b) => a + studentBalance(b.id), 0);
   const rows = defaulters.map((x,i) => `
     <tr>
       <td>${i+1}</td>
-      <td>${esc(x.name)}</td>
+      <td>${esc(x.name)}${esc(leftTag(x))}</td>
       <td>${esc(x.father_name||'—')}</td>
       <td>${esc(x.class_name||'—')}</td>
       <td style="text-align:right;">₨${fmt(studentBalance(x.id))}</td>
@@ -18070,7 +18613,7 @@ function renderParentPortalResult(r, opts) {
   const feeHtml = (history.length || r.fee_balance) ? `
     <div class="card" style="margin:12px 0;">
       <div class="row2">
-        <div><div class="sub">${esc(t.parentFeeBalance)}</div><div class="nm">₨${fmt(r.fee_balance||0)}</div></div>
+        <div><div class="sub">${esc(t.parentFeeBalance)}</div><div class="nm">${fmtBal(r.fee_balance||0)}</div></div>
         <div><div class="sub">${esc(t.parentLastPayment)}</div><div class="nm">${r.last_payment_month ? esc(monthLabel(r.last_payment_month)) + ' — ₨' + fmt(r.last_payment_amount||0) : '—'}</div></div>
       </div>
       ${history.length ? `<button type="button" class="btn-ghost" style="width:100%;margin-top:10px;" onclick="togglePpFeeHistory()">${esc(t.parentFeeHistory)}</button><div id="pp-fee-history" class="hidden" style="margin-top:8px;"></div>` : ''}
@@ -18128,7 +18671,7 @@ function togglePpFeeHistory() {
   const rows = PP_CURRENT.fee_history || [];
   box.innerHTML = `<table style="width:100%;font-size:12px;border-collapse:collapse;">
     <thead><tr><th style="text-align:left;padding:4px 0;">${esc(t.parentMonth || 'Month')}</th><th style="text-align:right;">${esc(t.parentDues || 'Dues')}</th><th style="text-align:right;">${esc(t.parentPaid || 'Paid')}</th><th style="text-align:right;">${esc(t.parentBalance || 'Balance')}</th></tr></thead>
-    <tbody>${rows.map(x => `<tr style="border-top:1px solid var(--line);"><td style="padding:4px 0;">${esc(monthLabel(x.month))}</td><td style="text-align:right;">₨${fmt(x.dues)}</td><td style="text-align:right;">₨${fmt(x.paid)}</td><td style="text-align:right;">₨${fmt(x.balance)}</td></tr>`).join('')}</tbody>
+    <tbody>${rows.map(x => `<tr style="border-top:1px solid var(--line);"><td style="padding:4px 0;">${esc(monthLabel(x.month))}</td><td style="text-align:right;">₨${fmt(x.dues)}</td><td style="text-align:right;">₨${fmt(x.paid)}</td><td style="text-align:right;">${fmtBal(x.balance)}</td></tr>`).join('')}</tbody>
   </table>`;
   box.classList.remove('hidden');
 }
