@@ -498,9 +498,9 @@ html, body{overscroll-behavior:none;}
      recalculated from cell content (inputs/selects) on every frame — that
      per-frame recalculation was the other half of the scroll stutter. */
   .tt-grid{border-collapse:collapse;table-layout:fixed;}
-  .tt-grid th,.tt-grid td{border:1px solid var(--line);padding:4px;}
-  .tt-grid th{background:var(--cream);font-size:11px;white-space:nowrap;}
-  .tt-class-name{font-weight:700;text-align:center;background:var(--cream);font-size:12px;white-space:nowrap;}
+  .tt-grid th,.tt-grid td{border:1.5px solid #8A94A3;padding:4px;}
+  .tt-grid th{background:var(--cream);font-size:11px;white-space:nowrap;border-bottom:2.5px solid var(--navy);}
+  .tt-class-name{font-weight:700;text-align:center;background:var(--cream);font-size:12px;white-space:nowrap;border-right:2.5px solid var(--navy) !important;}
   .tt-period-label{font-weight:700;font-size:11px;text-align:center;margin-bottom:3px;}
   .tt-period-time{display:flex;align-items:center;gap:3px;justify-content:center;}
   .tt-period-time input[type="time"]{width:auto;padding:2px;font-size:10px;min-width:64px;}
@@ -612,11 +612,11 @@ html, body{overscroll-behavior:none;}
     .tt-print-head .tt-print-sub{color:#E4C765;opacity:.95;font-size:13px;font-weight:600;position:relative;}
     .tt-print-logo{height:40px;width:40px;object-fit:contain;border-radius:6px;background:#fff;padding:3px;margin-bottom:8px;position:relative;}
     .tt-print-table{width:100%;height:100%;border-collapse:collapse;background:#fff;border:1px solid #E7E0CE;border-top:none;flex:1;}
-    .tt-print-table thead th{background:#FAF6EC;color:#0F2740;font-size:10.5px;text-transform:uppercase;letter-spacing:.04em;padding:8px 4px;text-align:center;font-weight:700;border-bottom:2px solid #C9A227;}
+    .tt-print-table thead th{background:#FAF6EC;color:#0F2740;font-size:10.5px;text-transform:uppercase;letter-spacing:.04em;padding:8px 4px;text-align:center;font-weight:700;border:1.5px solid #0F2740;border-bottom:2.5px solid #C9A227;}
     .tt-print-table thead .tt-print-time{display:block;text-transform:none;font-size:8.5px;font-weight:500;color:#8A6200;letter-spacing:0;margin-top:2px;}
-    .tt-print-table tbody td{border:1px solid #EFEAD9;padding:12px 4px;text-align:center;font-size:13px;vertical-align:middle;color:#1C2530;}
+    .tt-print-table tbody td{border:1.5px solid #0F2740;padding:12px 4px;text-align:center;font-size:13px;vertical-align:middle;color:#1C2530;}
     .tt-print-table tbody tr:nth-child(even){background:#FCFAF3;}
-    .tt-print-classname{font-weight:700;background:#FAF6EC !important;color:#0F2740;white-space:nowrap;}
+    .tt-print-classname{font-weight:700;background:#FAF6EC !important;color:#0F2740;white-space:nowrap;border-right:2.5px solid #0F2740 !important;}
     .tt-print-subject{font-weight:600;}
     .tt-print-teacher{display:block;font-size:9.5px;color:#8A6200;margin-top:2px;font-weight:500;}
     .tt-print-empty{color:#C7C0A8;}
@@ -9195,11 +9195,11 @@ async function printTimetable() {
     .tt-print-head .tt-print-sub{color:#E4C765;opacity:.95;font-size:13px;font-weight:600;position:relative;}
     .tt-print-logo{height:40px;width:40px;object-fit:contain;border-radius:6px;background:#fff;padding:3px;margin-bottom:8px;position:relative;}
     .tt-print-table{width:100%;height:100%;border-collapse:collapse;background:#fff;border:1px solid #E7E0CE;border-top:none;flex:1;}
-    .tt-print-table thead th{background:#FAF6EC;color:#0F2740;font-size:10.5px;text-transform:uppercase;letter-spacing:.04em;padding:8px 4px;text-align:center;font-weight:700;border-bottom:2px solid #C9A227;}
+    .tt-print-table thead th{background:#FAF6EC;color:#0F2740;font-size:10.5px;text-transform:uppercase;letter-spacing:.04em;padding:8px 4px;text-align:center;font-weight:700;border:1.5px solid #0F2740;border-bottom:2.5px solid #C9A227;}
     .tt-print-table thead .tt-print-time{display:block;text-transform:none;font-size:8.5px;font-weight:500;color:#8A6200;letter-spacing:0;margin-top:2px;}
-    .tt-print-table tbody td{border:1px solid #EFEAD9;padding:12px 4px;text-align:center;font-size:13px;vertical-align:middle;color:#1C2530;}
+    .tt-print-table tbody td{border:1.5px solid #0F2740;padding:12px 4px;text-align:center;font-size:13px;vertical-align:middle;color:#1C2530;}
     .tt-print-table tbody tr:nth-child(even){background:#FCFAF3;}
-    .tt-print-classname{font-weight:700;background:#FAF6EC !important;color:#0F2740;white-space:nowrap;}
+    .tt-print-classname{font-weight:700;background:#FAF6EC !important;color:#0F2740;white-space:nowrap;border-right:2.5px solid #0F2740 !important;}
     .tt-print-subject{font-weight:600;}
     .tt-print-teacher{display:block;font-size:9.5px;color:#8A6200;margin-top:2px;font-weight:500;}
     .tt-print-empty{color:#C7C0A8;}
