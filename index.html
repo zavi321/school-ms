@@ -8721,6 +8721,7 @@ let ttClasses = null;         // null = use the default class list (CLASS_OPTION
 let ttBreakAfter = 0;         // 0 = no break column; otherwise the period number the break is shown right after
 let ttBreakStart = '';
 let ttBreakEnd = '';
+let ttAssign = [];            // teachers & subjects per class: {id, class_name, subject, teacher_id, per_week}
 let ttStatus = 'idle';        // 'idle' | 'loading' | 'ready' | 'missing_table'
 
 function ttDefaultClassOptions() {
@@ -8752,7 +8753,8 @@ function ttLocalWrite() {
   try {
     localStorage.setItem(ttLocalKey(), JSON.stringify({
       rows: ttRows, times: ttPeriodTimes,
-      settings: { classes: ttClasses, periods_count: ttPeriods, break_after: ttBreakAfter, break_start: ttBreakStart, break_end: ttBreakEnd }
+      settings: { classes: ttClasses, periods_count: ttPeriods, break_after: ttBreakAfter, break_start: ttBreakStart, break_end: ttBreakEnd },
+      week: { assign: ttAssign, teachers: ttTeachers }
     }));
   } catch (e) { alert((LANG === 'ur' ? 'محفوظ نہیں ہوا: ' : 'Could not save: ') + e.message); }
 }
@@ -8772,6 +8774,9 @@ async function loadTimetableGrid() {
     ttPeriods = Math.max(7, ...ttRows.map(r => r.period), 0);
     ttClasses = null; ttBreakAfter = 0; ttBreakStart = ''; ttBreakEnd = '';
   }
+  const wk = d.week || {};
+  ttAssign = Array.isArray(wk.assign) ? wk.assign : [];
+  ttTeachers = Array.isArray(wk.teachers) ? wk.teachers : [];
   ttStatus = 'ready';
   await loadDMCConfig(); // pulls the editable school logo/name shown at the top of the timetable
   if (TAB === 'timetable') renderTab();
@@ -8846,6 +8851,7 @@ async function saveTimetableCell(className, period, field, value) {
   };
   if (idx >= 0) ttRows[idx] = row; else ttRows.push(row);
   ttLocalWrite();
+  ttRefreshFree();
 }
 
 async function savePeriodTime(period, field, value) {
@@ -8915,10 +8921,10 @@ function tplTimetable() {
       </th>`;
     const cell = (className, period) => {
       const row = ttRows.find(r => r.class_name === className && r.period === period);
-      const teacherOptions = DATA.teachers.map(tc =>
-        `<option value="${tc.id}" ${row && row.teacher_id === tc.id ? 'selected' : ''}>${esc(tc.name)}</option>`).join('');
+      const teacherOptions = ttTeacherOptions().map(tc =>
+        `<option value="${esc(tc.id)}" ${row && row.teacher_id === tc.id ? 'selected' : ''}>${esc(tc.name)}</option>`).join('');
       return `
-        <td class="tt-cell">
+        <td class="tt-cell" data-cls="${esc(className)}" data-p="${period}">
           <input type="text" class="tt-subject" placeholder="${LANG === 'ur' ? 'مضمون' : 'Subject'}"
             value="${esc(row && row.subject ? row.subject : '')}"
             onchange="saveTimetableCell('${esc(className).replace(/'/g,"\\'")}',${period},'subject',this.value)">
@@ -8931,12 +8937,15 @@ function tplTimetable() {
     const breakCell = () => `<td class="tt-break-col"><span class="tt-break-label">${LANG === 'ur' ? 'وقفہ' : 'Break'}</span></td>`;
     const headerRow = `<tr><th>${LANG === 'ur' ? 'جماعت' : 'Class'}</th>${cols.map(c => c.type === 'break' ? breakHeader() : periodHeader(c.period)).join('')}</tr>`;
     const bodyRows = classes.map(c =>
-      `<tr><td class="tt-class-name">${esc(c)}</td>${cols.map(col => col.type === 'break' ? breakCell() : cell(c, col.period)).join('')}</tr>`).join('');
+      `<tr><td class="tt-class-name">${esc(c)}</td>${cols.map(col => col.type === 'break' ? breakCell() : cell(c, col.period)).join('')}</tr>`).join('')
+      + `<tr><td class="tt-class-name" style="font-size:10px;">${esc(qt('Free teachers', 'فارغ اساتذہ'))}</td>${cols.map(col => col.type === 'break' ? '<td class="tt-break-col"></td>' : `<td class="tt-free-cell" data-p="${col.period}" style="font-size:10px;vertical-align:top;line-height:1.35;">${ttFreeHtml(col.period)}</td>`).join('')}</tr>`;
     gridHtml = `
       <div class="tt-scroll-wrap">
         <table class="tt-grid" style="width:${ttTableWidth(cols)}px;">${ttColGroup(cols)}${headerRow}${bodyRows}</table>
       </div>
       <div class="flexgap" style="margin-top:10px;flex-wrap:wrap;">
+        <button class="btn-ghost" onclick="ttOpenAssign()">👩‍🏫 ${esc(qt('Teachers & subjects', 'اساتذہ اور مضامین'))}</button>
+        <button class="btn-primary" onclick="ttAutoFill()">⚙️ ${esc(qt('Auto-fill timetable', 'ٹائم ٹیبل خود بنائیں'))}</button>
         <button class="btn-ghost" onclick="ttAddPeriod()">+ ${LANG === 'ur' ? 'پیریڈ شامل کریں' : 'Add Period'}</button>
         <button class="btn-ghost" onclick="ttRemovePeriod()">− ${LANG === 'ur' ? 'پیریڈ ہٹائیں' : 'Remove Period'}</button>
         <button class="btn-ghost" onclick="openManageTtClasses()">${LANG === 'ur' ? 'جماعتیں منتخب کریں' : 'Manage Classes'}</button>
@@ -8961,6 +8970,7 @@ function tplTimetable() {
           ${dmcLogo ? `<img src="${dmcLogo}" style="height:46px;width:46px;object-fit:contain;border-radius:8px;display:block;margin:0 auto 4px;">`
             : `<div style="height:46px;width:46px;border-radius:8px;background:var(--line);display:flex;align-items:center;justify-content:center;font-size:9px;color:#999;margin:0 auto 4px;">${LANG === 'ur' ? 'لوگو' : 'Logo'}</div>`}
           <input type="file" accept="image/*" style="font-size:9px;width:100px;" onchange="handleTimetableLogoUpload(this.files[0])">
+          ${dmcLogo ? `<button class="btn-ghost" style="font-size:9px;padding:2px 8px;margin-top:3px;" onclick="ttRemoveLogo()">✕ ${esc(qt('Remove logo', 'لوگو ہٹائیں'))}</button>` : ''}
         </div>
         <input type="text" value="${esc(dmcSchoolName === 'SCHOOL NAME' ? '' : dmcSchoolName)}" placeholder="${LANG === 'ur' ? 'اسکول کا نام' : 'School Name'}"
           style="flex:1;font-family:Fraunces,serif;font-size:15px;font-weight:600;border:none;border-bottom:1px solid var(--line);background:transparent;padding:6px 2px;color:var(--navy);"
@@ -8970,8 +8980,181 @@ function tplTimetable() {
     </div>`;
 }
 
-function printTimetable() {
+// ---- Teachers & subjects: one box per teacher, written like:  Azhar sir, Islamiat 2nd, Urdu 3rd, Islamiat 4th ----
+// First item = teacher's name, then "Subject Class" items separated by commas. Optional "x6" / "(6)" after an item = periods per week.
+// What is written is turned into ttAssign (used by Auto-fill). Anything that could not be understood is shown, never dropped silently.
+let ttTeachers = [];          // [{id, text}] one entry per teacher box
+function ttNormName(n) { return String(n || '').toLowerCase().replace(/\b(sir|madam|miss|mam|sb|sahib|ustad)\b|سر|استاد|میڈم/g, '').replace(/[^a-z0-9\u0600-\u06FF]+/g, ''); }
+function ttTeacherIdFor(name) {
+  const k = ttNormName(name);
+  const hit = k && DATA.teachers.find(t => ttNormName(t.name) === k);
+  return hit ? hit.id : 'n:' + (k || name);
+}
+function ttTeacherName(id) {
+  if (!id) return '';
+  for (const t of ttTeachers) { const p = ttParseTeacher(t.text); if (p.name && ttTeacherIdFor(p.name) === id) return p.name; }
+  const d = DATA.teachers.find(x => x.id === id);
+  return d ? d.name : (String(id).startsWith('n:') ? String(id).slice(2) : '');
+}
+// teachers offered in the weekly grid's drop-down: the ones written in the boxes first, then the Teachers tab
+function ttTeacherOptions() {
+  const out = [], seen = new Set();
+  ttTeachers.forEach(t => { const p = ttParseTeacher(t.text); if (!p.name) return; const id = ttTeacherIdFor(p.name); if (!seen.has(id)) { seen.add(id); out.push({ id, name: p.name }); } });
+  DATA.teachers.forEach(t => { if (!seen.has(t.id)) { seen.add(t.id); out.push({ id: t.id, name: t.name }); } });
+  return out;
+}
+function ttParseTeacher(text) {
+  const parts = String(text || '').split(/[,،;\n]+/).map(x => x.replace(/\s+/g, ' ').trim()).filter(Boolean);
+  const res = { name: parts[0] || '', entries: [], bad: [], dup: [] };
+  const classes = ttClassOptions().slice().sort((a, b) => b.length - a.length);
+  const seen = new Set();
+  parts.slice(1).forEach(tok => {
+    let t = tok, pw = null;
+    const m = t.match(/\s*(?:[x×*]\s*(\d{1,2})|\((\d{1,2})\))\s*$/i);
+    if (m) { pw = Number(m[1] || m[2]); t = t.slice(0, m.index).trim(); }
+    let cls = null, subj = '';
+    const low = t.toLowerCase();
+    for (const c of classes) {
+      const cl = c.toLowerCase();
+      if (low.endsWith(cl) && (low.length === cl.length || /[\s\-]/.test(low[low.length - cl.length - 1]))) { cls = c; subj = t.slice(0, t.length - c.length); break; }
+      if (low.startsWith(cl) && (low.length === cl.length || /[\s\-]/.test(low[cl.length]))) { cls = c; subj = t.slice(c.length); break; }
+    }
+    if (!cls) {   // "Urdu 3" / "3 Urdu" -> the class whose number is 3
+      const n = t.match(/^(.*?)[\s\-]*(\d{1,2})\s*(?:st|nd|rd|th)?$/i) || t.match(/^(\d{1,2})\s*(?:st|nd|rd|th)?[\s\-]*(.*)$/i);
+      if (n) {
+        const isFirst = /^\d/.test(t) && !/\d\s*(?:st|nd|rd|th)?$/i.test(t.replace(/^\d{1,2}\s*(?:st|nd|rd|th)?/i, ''));
+        const num = isFirst ? n[1] : n[2], rest = isFirst ? n[2] : n[1];
+        const c = classes.find(x => (x.match(/^\d+/) || [])[0] === String(Number(num)));
+        if (c) { cls = c; subj = rest; }
+      }
+    }
+    subj = subj.replace(/^[\s\-:]+|[\s\-:]+$/g, '');
+    if (!cls || !subj) { res.bad.push(tok); return; }
+    const key = cls + '|' + subj.toLowerCase();
+    if (seen.has(key)) { res.dup.push(subj + ' ' + cls); return; }
+    seen.add(key); res.entries.push({ class_name: cls, subject: subj, per_week: pw });
+  });
+  return res;
+}
+function ttRebuildAssign() {
+  const out = [];
+  ttTeachers.forEach(t => {
+    const p = ttParseTeacher(t.text); if (!p.name) return;
+    const tid = ttTeacherIdFor(p.name);
+    p.entries.forEach(e => out.push({ id: t.id + '_' + out.length, class_name: e.class_name, subject: e.subject, teacher_id: tid, per_week: 1 }));
+  });
+  ttAssign = out; ttLocalWrite();
+}
+function ttOpenAssign() {
+  const boxes = ttTeachers.map(t => {
+    const p = ttParseTeacher(t.text);
+    const bySub = {}; p.entries.forEach(e => { (bySub[e.subject] = bySub[e.subject] || []).push(e.class_name); });
+    const sum = Object.keys(bySub).map(s => esc(s) + ': ' + bySub[s].map(esc).join(', ')).join(' · ');
+    return `<div style="border:1px solid var(--line);border-radius:8px;padding:8px;margin-bottom:8px;">
+      <div style="display:flex;gap:6px;align-items:flex-start;">
+        <textarea dir="auto" rows="3" style="flex:1;min-width:0;width:100%;padding:8px;border:1px solid var(--line);border-radius:8px;font-family:inherit;font-size:14px;" placeholder="Azhar sir, Islamiat 2nd, Urdu 3rd, Islamiat 4th" onchange="ttTchSet('${t.id}', this.value)">${esc(t.text)}</textarea>
+        <button class="btn-ghost" style="padding:4px 10px;" onclick="ttTchDel('${t.id}')">✕</button>
+      </div>
+      ${p.name ? `<div style="font-size:11px;margin-top:5px;"><b>${esc(p.name)}</b>${sum ? ' — ' + sum : ''}</div>` : ''}
+      ${p.dup.length ? `<div style="font-size:11px;opacity:.7;margin-top:3px;">${esc(qt('Written twice, counted once: ', 'دو بار لکھا، ایک بار گنا: ') + p.dup.join(', '))}</div>` : ''}
+      ${p.bad.length ? `<div style="font-size:11px;color:#c0392b;margin-top:3px;">${esc(qt('Not understood (write like "Urdu 3rd"): ', 'سمجھ نہیں آیا ("Urdu 3rd" کی طرح لکھیں): ') + p.bad.join(', '))}</div>` : ''}
+    </div>`;
+  }).join('');
+  const load = {}; ttAssign.forEach(a => { load[a.class_name] = (load[a.class_name] || 0) + 1; });
+  const over = Object.keys(load).filter(c => load[c] > ttPeriods).map(c => `${c}: ${load[c]}/${ttPeriods}`);
+  showModal(qt('Teachers & subjects', 'اساتذہ اور مضامین'), `
+    <p style="font-size:12px;opacity:.75;margin:0 0 8px;">${esc(qt('One box per teacher: the name first, then subject and class, separated by commas. Each subject gets one period every day.', 'ہر استاد کے لیے ایک خانہ: پہلے نام، پھر مضمون اور کلاس، کوما سے الگ۔ ہر مضمون کو روزانہ ایک پیریڈ ملتا ہے۔'))}<br><b>Azhar sir, Islamiat 2nd, Urdu 3rd, Islamiat 4th, Islamiat 5th</b></p>
+    ${boxes || `<p style="font-size:12px;opacity:.6;">${esc(qt('No teacher yet.', 'ابھی کوئی استاد نہیں۔'))}</p>`}
+    ${over.length ? `<p style="font-size:12px;color:#c0392b;font-weight:600;">${esc(qt('More subjects than periods (add a period or remove a subject): ', 'مضامین پیریڈ سے زیادہ ہیں (پیریڈ بڑھائیں یا مضمون ہٹائیں): ') + over.join('  '))}</p>` : ''}
+    <button class="btn-ghost" style="width:100%;margin-bottom:8px;" onclick="ttTchAdd()">+ ${esc(qt('Add teacher', 'استاد شامل کریں'))}</button>
+    <button class="btn-primary" style="width:100%;" onclick="closeModal(); renderTab();">${esc(qt('Done', 'مکمل'))}</button>`);
+}
+function ttTchAdd() { ttTeachers.push({ id: 'tc_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6), text: '' }); ttLocalWrite(); ttOpenAssign(); }
+function ttTchDel(id) { ttTeachers = ttTeachers.filter(t => t.id !== id); ttRebuildAssign(); ttOpenAssign(); }
+function ttTchSet(id, v) { const t = ttTeachers.find(x => x.id === id); if (t) t.text = v; ttRebuildAssign(); ttOpenAssign(); }
+
+// ---- Free teachers: who has no class in a given period (shown in the last row of the timetable and of the print) ----
+function ttTeacherUniverse() {
+  const out = [], seen = new Set();
+  const add = (id, name) => { if (id && !seen.has(id) && name) { seen.add(id); out.push({ id, name }); } };
+  ttTeachers.forEach(t => { const p = ttParseTeacher(t.text); if (p.name) add(ttTeacherIdFor(p.name), p.name); });
+  ttRows.forEach(r => { if (r.teacher_id) add(r.teacher_id, ttTeacherName(r.teacher_id)); });
+  if (!out.length) DATA.teachers.forEach(t => add(t.id, t.name));
+  return out;
+}
+function ttFreeNames(period) {
+  const busy = new Set(ttRows.filter(r => r.period === period && r.teacher_id).map(r => r.teacher_id));
+  return ttTeacherUniverse().filter(t => !busy.has(t.id)).map(t => t.name);
+}
+// teacher in two classes at the same period
+function ttClashSet() {
+  const seen = {}, bad = new Set();
+  ttRows.forEach(r => {
+    if (!r.teacher_id) return;
+    const k = r.teacher_id + '|' + r.period;
+    if (seen[k] && seen[k] !== r.class_name) bad.add(k); else seen[k] = r.class_name;
+  });
+  return bad;
+}
+// updates the free-teachers row and the clash outlines on screen after any change (no full re-render, so the scroll position stays)
+function ttRefreshFree() {
+  document.querySelectorAll('.tt-free-cell').forEach(td => { td.innerHTML = ttFreeHtml(Number(td.dataset.p)); });
+  const bad = ttClashSet();
+  document.querySelectorAll('td.tt-cell[data-cls]').forEach(td => {
+    const r = ttRows.find(x => x.class_name === td.dataset.cls && x.period === Number(td.dataset.p));
+    td.style.outline = (r && r.teacher_id && bad.has(r.teacher_id + '|' + r.period)) ? '2px solid #c0392b' : '';
+    td.style.outlineOffset = '-2px';
+  });
+}
+function ttFreeHtml(p) {
+  const n = ttFreeNames(p);
+  return n.length ? n.map(esc).join('<br>') : '<span style="opacity:.4;">—</span>';
+}
+
+// ---- Auto-fill (daily timetable: the same every day) ----
+// Every subject of a class gets one period; a teacher is never in two classes in the same period. Several tries with a
+// different order are made and the best one is kept; whatever cannot be placed is listed, never hidden.
+function ttAutoFill() {
+  const P = ttPeriods;
+  const classes = ttClassOptions().filter(c => ttAssign.some(a => a.class_name === c && a.subject));
+  if (!classes.length) return alert(qt('First write the teachers and their subjects ("Teachers & subjects").', 'پہلے اساتذہ اور ان کے مضامین لکھیں ("اساتذہ اور مضامین")۔'));
+  if (ttRows.some(r => classes.includes(r.class_name) && r.subject) && !confirm(qt('This replaces the existing timetable of these classes. Continue?', 'یہ ان کلاسوں کا موجودہ ٹائم ٹیبل بدل دے گا۔ جاری رکھیں؟'))) return;
+  const keep = ttRows.filter(r => !classes.includes(r.class_name));
+  const shuffle = a => { a = a.slice(); for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
+  let best = null;
+  for (let attempt = 0; attempt < 200; attempt++) {
+    const order = attempt === 0 ? classes.slice() : shuffle(classes);
+    const busy = {}, out = [], unplaced = [];
+    keep.forEach(r => { if (r.teacher_id) busy[r.teacher_id + '|' + r.period] = 1; });
+    order.forEach((cls, ci) => {
+      let items = ttAssign.filter(a => a.class_name === cls && a.subject);
+      if (attempt > 0) items = shuffle(items);
+      const used = {};
+      items.forEach((it, i) => {
+        let ok = false;
+        for (let q = 0; q < P && !ok; q++) {
+          const p = ((ci + i + q) % P) + 1;
+          if (used[p]) continue;
+          if (it.teacher_id && busy[it.teacher_id + '|' + p]) continue;
+          used[p] = 1; if (it.teacher_id) busy[it.teacher_id + '|' + p] = 1;
+          out.push({ class_name: cls, period: p, subject: it.subject, teacher_id: it.teacher_id || null }); ok = true;
+        }
+        if (!ok) unplaced.push(cls + ' - ' + it.subject);
+      });
+    });
+    if (!best || unplaced.length < best.unplaced.length) best = { out, unplaced };
+    if (!unplaced.length) break;
+  }
+  ttRows = keep.concat(best.out.map(r => ({ id: 'local_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7), day_of_week: 'ALL', ...r })));
+  ttLocalWrite(); renderTab();
+  if (best.unplaced.length) alert(qt('These could not be placed (a class has more subjects than periods, or the teacher is already busy in every free period):\n', 'یہ نہیں لگ سکے (کلاس کے مضامین پیریڈ سے زیادہ ہیں، یا استاد ہر خالی پیریڈ میں مصروف ہے):\n') + best.unplaced.slice(0, 15).join('\n') + (best.unplaced.length > 15 ? '\n…' : ''));
+}
+function ttRemoveLogo() { if (!confirm(qt('Remove the logo?', 'لوگو ہٹا دیں؟'))) return; dmcLogo = ''; saveDMCConfig(); renderTab(); }
+
+
+async function printTimetable() {
   if (ttStatus !== 'ready') return;
+  const tint = await sylpLogoColor(dmcLogo || null);   // page tint = 15% of the logo's main colour
   const classes = ttClassOptions();
   const cols = ttColumns();
   const periodTimeStr = (p) => {
@@ -8990,16 +9173,35 @@ function printTimetable() {
     const cells = cols.map(col => {
       if (col.type === 'break') return `<td class="tt-print-break-td">${LANG === 'ur' ? 'وقفہ' : 'Break'}</td>`;
       const row = ttRows.find(r => r.class_name === c && r.period === col.period);
-      const tc = row && row.teacher_id ? DATA.teachers.find(x => x.id === row.teacher_id) : null;
+      const tcName = row && row.teacher_id ? ttTeacherName(row.teacher_id) : '';
       const subj = row && row.subject ? `<span class="tt-print-subject">${esc(row.subject)}</span>` : `<span class="tt-print-empty">—</span>`;
-      return `<td>${subj}${tc ? `<span class="tt-print-teacher">${esc(tc.name)}</span>` : ''}</td>`;
+      return `<td>${subj}${tcName ? `<span class="tt-print-teacher">${esc(tcName)}</span>` : ''}</td>`;
     }).join('');
     return `<tr><td class="tt-print-classname">${esc(c)}</td>${cells}</tr>`;
-  }).join('');
+  }).join('') + `<tr><td class="tt-print-classname" style="font-size:9px;">${esc(qt('Free teachers', 'فارغ اساتذہ'))}</td>${cols.map(col => col.type === 'break' ? '<td class="tt-print-break-td"></td>' : `<td class="tt-print-free">${ttFreeNames(col.period).map(esc).join(', ') || '—'}</td>`).join('')}</tr>`;
   const schoolName = (dmcSchoolName && dmcSchoolName !== 'SCHOOL NAME') ? dmcSchoolName : (CURRENT_PROFILE.school_name || 'School');
+  const bgPage = tint ? sylpMix(tint, 0.85) : '#fff';
+  const nCl = classes.length;   // more classes -> tighter rows, so everything always fits on the one page
+  const dens = nCl <= 8 ? { pad: 12, fs: 13 } : nCl <= 12 ? { pad: 7, fs: 12 } : nCl <= 16 ? { pad: 4, fs: 10.5 } : { pad: 2, fs: 9.5 };
   document.getElementById('print-area').innerHTML = `
-    <div class="tt-print-page"><div class="tt-print-rotate">
+    <style>
+      .tt-print{background:${bgPage} !important;position:relative;overflow:hidden;-webkit-print-color-adjust:exact;print-color-adjust:exact;}
+      .tt-print-wm{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:55%;height:70%;object-fit:contain;opacity:.25;z-index:0;}
+      .tt-print-head,.tt-print-table,.tt-print-foot{position:relative;z-index:1;}
+      .tt-print-table{background:rgba(255,255,255,.5) !important;}
+      .tt-print-table thead th{background:rgba(255,255,255,.85) !important;}
+      .tt-print-table tbody tr:nth-child(even){background:rgba(255,255,255,.3) !important;}
+      .tt-print-classname{background:rgba(255,255,255,.8) !important;}
+      .tt-print-foot{background:rgba(255,255,255,.7) !important;}
+      .tt-print-free{font-size:8.5px;line-height:1.3;color:#444;vertical-align:top !important;}
+      .tt-print-table tbody td{padding:calc(${dens.pad}px*var(--tf,1)) 4px !important;font-size:calc(${dens.fs}px*var(--tf,1)) !important;}
+      .tt-print-teacher{font-size:calc(${Math.max(7, dens.fs - 3.5)}px*var(--tf,1)) !important;}
+      .tt-print-free{font-size:calc(8.5px*var(--tf,1)) !important;}
+      .tt-print-table thead th{padding:calc(${Math.max(3, dens.pad)}px*var(--tf,1)) 4px !important;font-size:calc(10.5px*var(--tf,1)) !important;}
+    </style>
+    <div class="tt-print-page" style="position:fixed;left:0;top:0;right:0;bottom:0;width:auto;height:auto;container-type:size;overflow:hidden;break-after:avoid;page-break-after:avoid;"><div class="tt-print-rotate" style="width:100vh;height:100vw;width:100cqh;height:100cqw;">
     <div class="tt-print" dir="${LANG === 'ur' ? 'rtl' : 'ltr'}">
+      ${dmcLogo ? `<img class="tt-print-wm" src="${dmcLogo}">` : ''}
       <div class="tt-print-head">
         ${dmcLogo ? `<img class="tt-print-logo" src="${dmcLogo}">` : ''}
         <div class="eyebrow">${LANG === 'ur' ? 'ٹائم ٹیبل' : 'School Timetable'}</div>
@@ -9015,7 +9217,23 @@ function printTimetable() {
       </div>
     </div>
     </div></div>`;
-  printAsA4(0); // explicit portrait A4, 0 margin (full-bleed) — a browser can otherwise remember landscape from the last thing printed (e.g. the Admission Register)
+  // Shrink the text until the whole sheet fits inside ONE landscape box (279 x 210 mm - the smaller of A4 / Letter), so it never spills to a 2nd page.
+  try {
+    const pa = document.getElementById('print-area'), pr = pa.querySelector('.tt-print');
+    const keep = pa.getAttribute('style');
+    pa.style.cssText = 'display:block;position:absolute;left:-20000px;top:0;visibility:hidden;width:297mm;';
+    const rot = pa.querySelector('.tt-print-rotate'), pg = pa.querySelector('.tt-print-page');
+    const sv = [rot.getAttribute('style'), pg.getAttribute('style')];
+    pg.style.cssText = 'position:relative;width:279mm;height:210mm;';
+    rot.style.cssText = 'position:absolute;left:0;top:0;width:279mm;height:210mm;';
+    for (let f = 1; f >= 0.4; f -= 0.04) {
+      pr.style.setProperty('--tf', f.toFixed(2));
+      if (pr.scrollHeight <= pr.clientHeight + 1 && pr.scrollWidth <= pr.clientWidth + 1) break;
+    }
+    pg.setAttribute('style', sv[1] || ''); rot.setAttribute('style', sv[0] || '');
+    if (keep == null) pa.removeAttribute('style'); else pa.setAttribute('style', keep);
+  } catch (e) {}
+  sylpPrintFull();   // zero-margin print; the sheet fills whatever paper the phone picks (A4 or Letter) and stays on one page
 }
 
 
@@ -18596,6 +18814,7 @@ function sylpRender() {
       <button class="btn-ghost" style="flex:1;" onclick="sylpSettings()">⚙ ${esc(qt('School / Logo', 'اسکول / لوگو'))}</button>
       <button class="btn-ghost" style="flex:1;" onclick="sylpPrint()">🖨 ${esc(qt('Print', 'پرنٹ'))}</button>
     </div>
+    <button class="btn-ghost" style="width:100%;margin-bottom:10px;" onclick="sylaOpen()">🤖 ${esc(qt('Auto syllabus from book (PDF / photos)', 'کتاب (PDF / تصاویر) سے خودکار نصاب'))}</button>
     <div id="sylp-status" style="font-size:11px;opacity:.65;min-height:14px;margin-bottom:6px;"></div>
     ${subs.length ? `
       <div style="font-size:11px;opacity:.6;margin-bottom:6px;">${esc(qt('Tap a box to write the syllabus. Tap a heading to edit its date/month, or tap RESULT + EXAM / VACATION to change that text. Scroll sideways to see all months.', 'نصاب لکھنے کے لیے خانے پر ٹیپ کریں۔ تمام مہینے دیکھنے کے لیے سائیڈ میں سکرول کریں۔'))}</div>
@@ -18697,6 +18916,259 @@ function sylpDeleteSubject(sid) {
   const d = sylpData(SYLP_CLASS);
   d.subjects = d.subjects.filter(x => x.id !== sid);
   delete d.cells[sid];
+  closeModal(); sylpRender(); sylpPersist();
+}
+
+// ---------- Syllabus: AUTO from the book (PDF or photos). Manual typing in the grid still works exactly as before. ----------
+// No AI and no server: the teacher types / pastes the lessons (or gets the list from the book PDF with the on-phone PDF reader),
+// and plain code spreads them over the chosen periods in the book's order.
+// NOTHING of the book or of this auto result is stored in Supabase: the generated text is kept ONLY on this phone (localStorage), like the Question Paper
+// drafts: one CURRENT result + one PREVIOUS result (New / Previous buttons), each deleted automatically after SYLA_KEEP_HOURS.
+// Only when the teacher taps "Save to chart" does the text go into the syllabus chart (same as typing it by hand).
+// No size limit is applied here. (The server side has its own limits - if a book is rejected the real error message is shown.)
+const SYLA_KEEP_HOURS = 24;               // current / previous auto result is deleted from this phone after this many hours
+function sylaStoreKey() { return 'syla_tmp_v1_' + (CURRENT_USER ? CURRENT_USER.id : ''); }
+// Loads { cur, prev } from this phone and throws away anything older than SYLA_KEEP_HOURS.
+function sylaStoreLoad() {
+  let s = null;
+  try { s = JSON.parse(localStorage.getItem(sylaStoreKey())); } catch (e) {}
+  if (!s || typeof s !== 'object') s = {};
+  const live = x => (x && x.ts && x.data && x.data.periods && (Date.now() - x.ts) < SYLA_KEEP_HOURS * 3600 * 1000) ? x : null;
+  const out = { cur: live(s.cur), prev: live(s.prev) };
+  if ((s.cur && !out.cur) || (s.prev && !out.prev)) sylaStoreSave(out);
+  return out;
+}
+function sylaStoreSave(s) {
+  try {
+    if (!s.cur && !s.prev) localStorage.removeItem(sylaStoreKey());
+    else localStorage.setItem(sylaStoreKey(), JSON.stringify({ cur: s.cur || null, prev: s.prev || null }));
+  } catch (e) {}
+}
+function sylaAge(ts) {
+  const m = Math.max(0, Math.round((Date.now() - ts) / 60000));
+  if (m < 60) return qt(m + ' min ago', m + ' منٹ پہلے');
+  const h = Math.round(m / 60);
+  return qt(h + ' h ago', h + ' گھنٹے پہلے');
+}
+function sylaOpen() {
+  if (sylaStoreLoad().cur) sylaPreview(); else sylaForm();
+}
+function sylaForm() {
+  const d = sylpData(SYLP_CLASS);
+  const teach = SYLP_COLS.filter(c => !c.type);
+  const names = [...new Set(d.subjects.map(s => s.name).concat(SYLP_SUGGEST))];
+  const st = sylaStoreLoad();
+  showModal(qt('Auto syllabus from book', 'کتاب سے خودکار نصاب'), `
+    <p style="font-size:12px;opacity:.7;margin:0 0 10px;">${esc(qt('Write or paste the lessons of the book, one lesson per line (you may add the exercises in the same line). The app spreads them over the months in the book\'s order. Nothing is added that you did not list, and nothing is stored online.', 'کتاب کے سبق لکھیں یا پیسٹ کریں، ہر سطر میں ایک سبق (مشقیں بھی اسی سطر میں لکھ سکتے ہیں)۔ ایپ انہیں کتاب کی ترتیب سے مہینوں میں بانٹ دیتی ہے۔ جو آپ نے نہ لکھا وہ شامل نہیں ہوتا، اور کچھ آن لائن محفوظ نہیں ہوتا۔'))}</p>
+    <div style="font-size:12px;margin-bottom:6px;">${esc(qt('Class', 'کلاس'))}: <b>${esc(SYLP_CLASS)}</b></div>
+    <label><span>${esc(qt('Subject', 'مضمون'))}</span><input id="syla-sub" list="syla-sub-list" dir="auto" maxlength="40" autocomplete="off"></label>
+    <datalist id="syla-sub-list">${names.map(x => `<option value="${esc(x)}">`).join('')}</datalist>
+    <label class="btn-ghost" style="display:block;width:100%;text-align:center;cursor:pointer;box-sizing:border-box;margin-bottom:8px;">📄 ${esc(qt('Get the lesson list from the book PDF / photo', 'کتاب کی PDF / تصویر سے سبق کی فہرست لیں'))}
+      <input type="file" accept="application/pdf,image/*" multiple style="display:none;" onchange="sylaReadFile(this)"></label>
+    <label><span>${esc(qt('Lessons (one per line). Optional page range at the end of a line, e.g. (12-20), makes longer lessons get more time.', 'سبق (ہر سطر میں ایک)۔ سطر کے آخر میں صفحات (12-20) لکھ دیں تو لمبے سبق کو زیادہ وقت ملے گا۔'))}</span>
+      <textarea id="syla-list" dir="auto" rows="9" style="width:100%;padding:9px 12px;border:1px solid var(--line);border-radius:8px;font-family:inherit;font-size:14px;resize:vertical;" placeholder="Unit 1: Numbers (5-18)&#10;Unit 2: Fractions (19-40)"></textarea></label>
+    <div style="font-size:12px;font-weight:600;margin:8px 0 4px;">${esc(qt('Periods to fill', 'کون سی مدتیں بھرنی ہیں'))}</div>
+    <div style="display:flex;flex-direction:column;gap:3px;margin-bottom:8px;">${teach.map(c => `<label style="display:flex !important;flex-direction:row !important;justify-content:flex-start !important;align-items:center;gap:10px;font-size:13px;margin:0;"><input type="checkbox" class="syla-per" value="${c.k}" checked style="width:20px !important;height:20px;flex:none;margin:0;"><span style="flex:1;text-align:start;">${esc(sylpColLabel(c, d.session))}</span></label>`).join('')}</div>
+    <div id="syla-msg"></div>
+    <button id="syla-go" class="btn-primary" style="width:100%;" onclick="sylaMake()">⚙️ ${esc(qt('Make syllabus', 'نصاب بنائیں'))}</button>
+    ${st.prev ? `<div class="flexgap" style="margin-top:10px;"><button class="btn-ghost" style="flex:1;" onclick="sylaPrevious()">↩️ ${esc(qt('Previous', 'پچھلا'))} — ${esc(st.prev.sub)}</button></div>` : ''}`);
+}
+function sylaMsg(h) { const el = document.getElementById('syla-msg'); if (el) el.innerHTML = h || ''; }
+
+// ---- lesson list from a PDF / photo (done on the phone with the same PDF reader the Question Paper import uses) ----
+// 1) the PDF's own bookmarks, 2) the "Contents" page text, 3) OCR of the first pages if the PDF is only pictures.
+// What is found is only put into the box below so it can be checked and edited. Nothing is sent to any AI.
+function sylaMedian(a) { const s = a.slice().sort((x, y) => x - y); return s.length ? s[Math.floor(s.length / 2)] : 0; }
+// entries [{t, p}] with start pages -> text lines with "(start-end)" page ranges
+function sylaLinesFromEntries(en, lastEnd) {
+  const gaps = [];
+  for (let i = 0; i + 1 < en.length; i++) if (en[i].p && en[i + 1].p && en[i + 1].p > en[i].p) gaps.push(en[i + 1].p - en[i].p);
+  const med = Math.max(1, sylaMedian(gaps) || 1);
+  return en.map((x, i) => {
+    if (!x.p) return x.t;
+    const nx = en[i + 1] && en[i + 1].p;
+    const end = (nx && nx > x.p) ? nx - 1 : (lastEnd && lastEnd >= x.p ? lastEnd : x.p + med - 1);
+    return x.t + ' (' + x.p + '-' + end + ')';
+  });
+}
+// Contents-page style lines: "Title ........ 12"
+function sylaParseContents(lines) {
+  const out = []; let last = 0;
+  const re = /^(.{3,90}?)[\s.·…_\-–]{2,}(\d{1,3})$/, re2 = /^((?:unit|chapter|lesson|ch\.?|سبق|باب|یونٹ)\s*\d{0,3}.{2,80}?)\s+(\d{1,3})$/i;
+  lines.forEach(l => {
+    const m = l.match(re) || l.match(re2); if (!m) return;
+    const t = m[1].replace(/[.·…_]{2,}/g, ' ').replace(/\s+/g, ' ').trim(), p = Number(m[2]);
+    if (!/[A-Za-z\u0600-\u06FF]/.test(t) || p < last) return;
+    last = p; out.push({ t, p });
+  });
+  return out;
+}
+async function sylaReadFile(inp) {
+  const files = Array.from(inp.files || []);
+  if (!files.length) return;
+  const box = document.getElementById('syla-list');
+  if (box.value.trim() && !confirm(qt('Replace the lessons below with the list found in the file?', 'نیچے لکھے سبق فائل سے ملی فہرست سے بدل دیں؟'))) { inp.value = ''; return; }
+  sylaMsg('');
+  try {
+    pqImpMsg('⏳ ' + qt('Opening file…', 'فائل کھل رہی ہے…'));
+    let lines = [], note = '', found = [];
+    const f = files[0];
+    if (files.length === 1 && (f.type === 'application/pdf' || /\.pdf$/i.test(f.name))) {
+      await pqLoadScript(PQ_PDFJS); pdfjsLib.GlobalWorkerOptions.workerSrc = PQ_PDFJS_W;
+      const pdf = await pdfjsLib.getDocument({ data: await f.arrayBuffer() }).promise;
+      // 1) bookmarks
+      let ol = null; try { ol = await pdf.getOutline(); } catch (e) {}
+      if (ol && ol.length) {
+        const en = [];
+        for (const o of ol) {
+          let p = null;
+          try { let dst = o.dest; if (typeof dst === 'string') dst = await pdf.getDestination(dst); if (dst && dst[0]) p = (await pdf.getPageIndex(dst[0])) + 1; } catch (e) {}
+          const t = pqNorm(o.title); if (t) en.push({ t, p });
+        }
+        if (en.length) { found = sylaLinesFromEntries(en, pdf.numPages); note = qt('from the PDF bookmarks', 'PDF کے بک مارکس سے'); }
+      }
+      // 2) contents page(s) text, 3) OCR when the PDF has no text
+      if (!found.length) {
+        const scan = Math.min(pdf.numPages, 30); let texty = 0, tl = [];
+        for (let n = 1; n <= scan; n++) {
+          pqImpMsg('📄 ' + n + '/' + scan);
+          const pg = await pdf.getPage(n); const pl = pqLines((await pg.getTextContent()).items).map(pqNorm).filter(Boolean);
+          if (pl.join('').length > 20) texty++;
+          tl.push(pl);
+        }
+        if (!texty) {
+          const ocrN = Math.min(pdf.numPages, 8); tl = [];
+          for (let n = 1; n <= ocrN; n++) {
+            const pg = await pdf.getPage(n), vp = pg.getViewport({ scale: 2 }), c = document.createElement('canvas'); c.width = vp.width; c.height = vp.height;
+            await pg.render({ canvasContext: c.getContext('2d'), viewport: vp }).promise;
+            tl.push((await pqOcr(c, n, ocrN)).map(pqNorm).filter(Boolean));
+          }
+        }
+        // use pages that say Contents / Index, plus the two pages after them
+        const isC = pl => /contents|table of contents|index|فہرست|مندرجات/i.test(pl.slice(0, 6).join(' '));
+        let idx = tl.findIndex(isC); const use = [];
+        if (idx >= 0) for (let i = idx; i < Math.min(tl.length, idx + 3); i++) use.push(...tl[i]);
+        let en = sylaParseContents(use);
+        if (en.length < 3) en = sylaParseContents([].concat(...tl.slice(0, 8)));
+        if (en.length >= 3) { found = sylaLinesFromEntries(en, 0); note = qt('from the contents page', 'فہرست کے صفحے سے'); }
+      }
+    } else {
+      const im = files.filter(x => /^image\//.test(x.type)).slice(0, 8);
+      for (let i = 0; i < im.length; i++) lines = lines.concat((await pqOcr(await pqImgCanvas(im[i]), i + 1, im.length)).map(pqNorm).filter(Boolean));
+      const en = sylaParseContents(lines);
+      if (en.length >= 3) { found = sylaLinesFromEntries(en, 0); note = qt('from the photo (please check the spelling)', 'تصویر سے (براہ کرم املا چیک کریں)'); }
+    }
+    document.getElementById('pqImpMsg') && (document.getElementById('pqImpMsg').style.display = 'none');
+    inp.value = '';
+    if (!found.length) {
+      return sylaMsg(`<div class="ds-warn">${esc(qt('No lesson list could be found in this file (it may have no bookmarks / contents page, or the text is not readable). Please type or paste the lessons below.', 'اس فائل میں سبق کی فہرست نہیں ملی (شاید بک مارکس / فہرست نہیں یا تحریر پڑھی نہیں جا رہی)۔ براہ کرم نیچے سبق خود لکھیں یا پیسٹ کریں۔'))}</div>`);
+    }
+    box.value = found.join('\n');
+    sylaMsg(`<div class="ds-warn">${esc(qt(`${found.length} lessons found ${note}. Please read the list, correct it, and remove anything that is not a lesson.`, `${found.length} سبق ملے ${note}۔ براہ کرم فہرست پڑھ کر درست کریں اور جو سبق نہیں اسے ہٹا دیں۔`))}</div>`);
+  } catch (e) {
+    const m = document.getElementById('pqImpMsg'); if (m) m.style.display = 'none';
+    try { inp.value = ''; } catch (e2) {}
+    sylaMsg(`<div class="err">${esc(qt('Could not read the file. ', 'فائل پڑھی نہیں جا سکی۔ ') + ((e && e.message) || ''))}</div>`);
+  }
+}
+
+// ---- spreading the lessons over the periods (plain code, no AI) ----
+// Lessons keep the book's order. A lesson's weight = its pages if "(a-b)" is written at the end of the line,
+// otherwise the typical (median) weight. Periods just before an exam get a smaller share and a "Revision" line.
+function sylaPlan(lines, periods) {
+  const rangeRe = /\((\d+)\s*[-–—]\s*(\d+)\)\s*$/;
+  const raw = lines.map(l => { const m = l.match(rangeRe); return m ? Math.max(1, Number(m[2]) - Number(m[1]) + 1) : 0; });
+  const med = Math.max(1, sylaMedian(raw.filter(Boolean)) || 1);
+  const w = raw.map(x => x || med), W = w.reduce((a, b) => a + b, 0);
+  const share = periods.map(p => p.before_exam ? 0.75 : 1), S = share.reduce((a, b) => a + b, 0);
+  const edge = []; let acc = 0; share.forEach(s => { acc += s / S * W; edge.push(acc); });
+  const buckets = periods.map(() => []); let cum = 0;
+  lines.forEach((l, i) => {
+    const mid = cum + w[i] / 2; cum += w[i];
+    let k = edge.findIndex(e => mid <= e + 1e-9); if (k < 0) k = periods.length - 1;
+    buckets[k].push(l);
+  });
+  const rev = qt('Revision', 'دہرائی');
+  const out = {}, warnings = [];
+  periods.forEach((p, k) => {
+    const arr = buckets[k].slice();
+    if (p.before_exam) arr.push(rev);
+    out[p.k] = arr.join('\n');
+    if (!buckets[k].length) warnings.push(qt(`${p.label}: no lesson fell in this period (there are only ${lines.length} lessons).`, `${p.label}: اس مدت میں کوئی سبق نہیں آیا (کل ${lines.length} سبق ہیں)۔`));
+    if (out[p.k].length > 600) warnings.push(qt(`${p.label}: longer than 600 characters - shorten it before saving to the chart.`, `${p.label}: 600 حروف سے لمبا ہے - چارٹ میں محفوظ کرنے سے پہلے مختصر کریں۔`));
+  });
+  return { periods: out, warnings };
+}
+function sylaMake() {
+  const sub = document.getElementById('syla-sub').value.trim();
+  const lines = document.getElementById('syla-list').value.split('\n').map(x => x.replace(/\s+/g, ' ').trim()).filter(Boolean);
+  const picked = Array.from(document.querySelectorAll('.syla-per:checked')).map(x => x.value);
+  if (!sub) return sylaMsg(`<div class="err">${esc(qt('Please write the subject name.', 'براہ کرم مضمون کا نام لکھیں۔'))}</div>`);
+  if (!lines.length) return sylaMsg(`<div class="err">${esc(qt('Please write or paste the lessons first.', 'پہلے سبق لکھیں یا پیسٹ کریں۔'))}</div>`);
+  if (!picked.length) return sylaMsg(`<div class="err">${esc(qt('Select at least one period.', 'کم از کم ایک مدت منتخب کریں۔'))}</div>`);
+  const d = sylpData(SYLP_CLASS);
+  const periods = picked.map(k => {
+    const idx = SYLP_COLS.findIndex(c => c.k === k);
+    const next = SYLP_COLS.slice(idx + 1).find(c => !c.type || c.type === 'exam');
+    return { k, label: sylpColLabel(SYLP_COLS[idx], d.session), before_exam: !!(next && next.type === 'exam') };
+  });
+  const plan = sylaPlan(lines, periods);
+  const st = sylaStoreLoad();
+  if (st.cur) st.prev = st.cur;   // the older result becomes "Previous"
+  st.cur = { sub, cls: SYLP_CLASS, periods, data: { book_title: '', book_summary: qt(`${lines.length} lessons spread over ${periods.length} periods.`, `${lines.length} سبق ${periods.length} مدتوں میں بانٹے گئے۔`), periods: plan.periods, warnings: plan.warnings }, ts: Date.now() };
+  sylaStoreSave(st);
+  sylaPreview();
+}
+function sylaPreview() {
+  const st = sylaStoreLoad(), cur = st.cur;
+  if (!cur) { sylaForm(); return; }
+  const { sub, periods, data } = cur;
+  const warn = (data.warnings || []).length ? `<div class="ds-warn"><b>${esc(qt('Please check:', 'براہ کرم دیکھیں:'))}</b><br>${data.warnings.map(w => '• ' + esc(w)).join('<br>')}</div>` : '';
+  showModal(qt('Check the syllabus', 'نصاب چیک کریں') + ' — ' + sub + (cur.cls ? ' (' + cur.cls + ')' : ''), `
+    ${data.book_title || data.book_summary ? `<p style="font-size:12px;margin:0 0 8px;">${data.book_title ? '<b>' + esc(data.book_title) + '</b><br>' : ''}${esc(data.book_summary || '')}</p>` : ''}
+    ${warn}
+    <p style="font-size:11px;opacity:.65;margin:0 0 8px;">${esc(qt('Made ', 'بنا: ') + sylaAge(cur.ts) + qt(` · kept only on this phone and deleted automatically after ${SYLA_KEEP_HOURS} hours. You can edit any box. It goes into the chart only when you tap Save to chart.`, ` · صرف اسی فون میں رہتا ہے اور ${SYLA_KEEP_HOURS} گھنٹے بعد خود حذف ہو جاتا ہے۔ ہر خانہ ایڈیٹ ہو سکتا ہے۔ "چارٹ میں محفوظ کریں" دبانے پر ہی چارٹ میں جاتا ہے۔`))}</p>
+    ${periods.map(p => `<label><span>${esc(p.label)}</span><textarea class="syla-out" data-k="${p.k}" dir="auto" rows="5" oninput="sylaEdit('${p.k}', this.value)" style="width:100%;padding:9px 12px;border:1px solid var(--line);border-radius:8px;font-family:inherit;font-size:13px;resize:vertical;">${esc(data.periods[p.k] || '')}</textarea></label>`).join('')}
+    <div id="syla-msg"></div>
+    <button class="btn-primary" style="width:100%;" onclick="sylaSave()">${esc(qt('Save to chart', 'چارٹ میں محفوظ کریں'))}</button>
+    <div class="flexgap" style="margin-top:10px;">
+      <button class="btn-ghost" style="flex:1;" onclick="sylaNew()">🆕 ${esc(qt('New book', 'نئی کتاب'))}</button>
+      ${st.prev ? `<button class="btn-ghost" style="flex:1;" onclick="sylaPrevious()">↩️ ${esc(qt('Previous', 'پچھلا'))}</button>` : ''}
+    </div>`);
+}
+// Keeps the teacher's edits of the current result on this phone.
+function sylaEdit(k, v) {
+  const st = sylaStoreLoad(); if (!st.cur) return;
+  st.cur.data.periods[k] = v; sylaStoreSave(st);
+}
+// New book: the current result is kept as "Previous" (replacing the older previous), the screen is cleared for a new book.
+function sylaNew() {
+  const st = sylaStoreLoad();
+  if (st.prev && !confirm(qt('Start a new book? The current result is kept as Previous and the older Previous is deleted.', 'نئی کتاب شروع کریں؟ موجودہ نتیجہ "پچھلا" بن جائے گا اور پرانا "پچھلا" حذف ہو جائے گا۔'))) return;
+  if (st.cur) { st.prev = st.cur; st.cur = null; sylaStoreSave(st); }
+  sylaForm();
+}
+// Previous: swaps the previous and the current result.
+function sylaPrevious() {
+  const st = sylaStoreLoad(); if (!st.prev) return;
+  const t = st.cur; st.cur = st.prev; st.prev = t || null;
+  sylaStoreSave(st);
+  sylaPreview();
+}
+function sylaSave() {
+  const cur = sylaStoreLoad().cur; if (!cur) return;
+  const sub = cur.sub;
+  if (cur.cls && cur.cls !== SYLP_CLASS && !confirm(qt(`This result was made for ${cur.cls}, but the chart now showing is ${SYLP_CLASS}. Put it in ${SYLP_CLASS}?`, `یہ نتیجہ ${cur.cls} کے لیے بنا تھا مگر اب چارٹ ${SYLP_CLASS} کا کھلا ہے۔ ${SYLP_CLASS} میں ڈالیں؟`))) return;
+  const d = sylpData(SYLP_CLASS);
+  const outs = Array.from(document.querySelectorAll('.syla-out')).map(t => ({ k: t.dataset.k, v: t.value.trim() }));
+  const long = outs.filter(o => o.v.length > 600);
+  if (long.length) return sylaMsg(`<div class="err">${esc(qt('Some boxes are longer than 600 characters (the chart box limit). Please shorten them.', 'کچھ خانے 600 حروف سے لمبے ہیں (چارٹ خانے کی حد)۔ براہ کرم مختصر کریں۔'))}</div>`);
+  let s = d.subjects.find(x => x.name.toLowerCase() === sub.toLowerCase());
+  const overwrite = s && outs.some(o => o.v && ((d.cells[s.id] || {})[o.k] || '').trim());
+  if (overwrite && !confirm(qt('This subject already has syllabus in some of these periods. Replace it?', 'اس مضمون میں ان میں سے کچھ مدتوں میں نصاب پہلے سے ہے۔ بدل دیں؟'))) return;
+  if (!s) { s = { id: sylpNewId(), name: sub }; d.subjects.push(s); }
+  if (!d.cells[s.id]) d.cells[s.id] = {};
+  outs.forEach(o => { if (o.v) d.cells[s.id][o.k] = o.v; });
   closeModal(); sylpRender(); sylpPersist();
 }
 
