@@ -12299,148 +12299,304 @@ function exportVendorsSummary() {
   document.head.appendChild(s); })();
 
 // ---------------- Reports ----------------
-function tplReports() {
-  const s = computeStats();
-  const perClass = {};
-  DATA.students.filter(x=>x.status!=='inactive').forEach(st=>{
-    const cls = st.class_name || '—';
-    if (!perClass[cls]) perClass[cls] = {count:0, collected:0, dues:0};
-    perClass[cls].count++;
-    perClass[cls].collected += studentPayments(st.id).reduce((a,b)=>a+Number(b.amount),0);
-    if (isFeePaying(st)) perClass[cls].dues += Math.max(0, studentBalance(st.id));
+// ---------------- Reports tab ----------------
+// Period report (this month / last month / all time / custom dates), income-expense-net, staff advance figures,
+// class-wise table that adds up, defaulters with filters + paging + WhatsApp, staff report, Excel save/share.
+const REP = { preset: 'month', from: '', to: '', defStatus: 'active', defClass: 'all', defSearch: '', defMin: 0, defPage: 1 };
+const REP_PAGE = 20;
+function repRange() {
+  const today = todayISO(), mk = monthKey();
+  if (REP.preset === 'all') return { from: '0000-01-01', to: '9999-12-31', label: qt('All time', 'ابتدا سے اب تک'), mk };
+  if (REP.preset === 'last') {
+    const d = new Date(), lm = monthKey(new Date(d.getFullYear(), d.getMonth() - 1, 1)), p = lm.split('-').map(Number);
+    return { from: lm + '-01', to: localISO(new Date(p[0], p[1], 0)), label: monthLabel(lm), mk: lm };
+  }
+  if (REP.preset === 'custom') {
+    let f = REP.from || today, e = REP.to || today; if (f > e) { const x = f; f = e; e = x; }
+    return { from: f, to: e, label: fmtDate(f) + ' → ' + fmtDate(e), mk: e.slice(0, 7) };
+  }
+  return { from: mk + '-01', to: today, label: monthLabel(mk), mk };
+}
+function repSetPreset(p) { REP.preset = p; if (p === 'custom') { REP.from = REP.from || todayISO(); REP.to = REP.to || todayISO(); } renderTab(); }
+function repSetDate(k, v) { REP[k] = v; renderTab(); }
+function repDefSet(k, v) { REP[k] = v; REP.defPage = 1; renderTab(); }
+function repDefSearch(v) { REP.defSearch = v; REP.defPage = 1; reFocusAfterRender('rep-def-search'); }
+function repDefMin(v) { REP.defMin = Math.max(0, Number(v) || 0); REP.defPage = 1; reFocusAfterRender('rep-def-min'); }
+function repDefPage(p) { REP.defPage = p; renderTab(); }
+
+function repData() {
+  const R = repRange();
+  const inR = d => { const x = String(d || '').slice(0, 10); return x >= R.from && x <= R.to; };
+  const stfOk = STF.loaded && !STF.err;
+  let fees = 0;
+  DATA.students.forEach(s => studentPayments(s.id).forEach(p => { if (inR(p.pay_date)) fees += Number(p.amount || 0); }));
+  const sumTx = type => DATA.transactions.filter(x => x.type === type && !isTransferTxn(x) && inR(x.txn_date)).reduce((a, b) => a + Number(b.amount || 0), 0);
+  const otherInc = sumTx('income'), otherExp = sumTx('expense');
+  let salNet = 0, salCut = 0;
+  const staff = [];
+  DATA.teachers.forEach(tc => {
+    let net = 0, cut = 0;
+    teacherPayments(tc.id).forEach(p => { if (!inR(p.pay_date)) return; net += Number(p.amount || 0); if (stfOk) cut += stfRecoveredIn(tc.id, p.month); });
+    const given = stfOk ? stfTeacherAdvances(tc.id).filter(a => inR(a.given_date)).reduce((a, b) => a + Number(b.amount || 0), 0) : 0;
+    const outstanding = stfOk ? stfTeacherOutstanding(tc.id) : 0;
+    const att = calcAttendanceSalary(tc.id, R.mk);
+    salNet += net; salCut += cut;
+    if (!teacherIsLeft(tc) || net || cut || given || outstanding)
+      staff.push({ name: tc.name + (teacherIsLeft(tc) ? ' ' + qt('(Left)', '(چھوڑ گئے)') : ''), subject: tc.subject || '', paid: money2(net + cut), cut: money2(cut), given: money2(given), outstanding: money2(outstanding), att });
   });
-  const rows = [
-    [t.totalCollectedAllTime, s.totalCollectedAllTime, 'amt-pos'],
-    [t.totalSalariesAllTime, s.totalSalariesAllTime, 'amt-neg'],
-    [t.totalOtherIncomeAllTime, s.totalOtherIncomeAllTime, 'amt-pos'],
-    [t.totalOtherExpenseAllTime, s.totalOtherExpenseAllTime, 'amt-neg'],
-  ];
+  const salGross = money2(salNet + salCut);
+  const advGiven = stfOk ? STF.advances.filter(a => inR(a.given_date)).reduce((a, b) => a + Number(b.amount || 0), 0) : 0;
+  const advOut = stfOk ? DATA.teachers.reduce((a, tc) => a + stfTeacherOutstanding(tc.id), 0) : 0;
+  const income = money2(fees + otherInc), expense = money2(salGross + otherExp), net = money2(income - expense);
+  const per = {}; let leftDues = 0, activeDues = 0;
+  DATA.students.forEach(st => {
+    const key = st.class_name || '—'; const c = per[key] || (per[key] = { count: 0, collected: 0, dues: 0 });
+    const active = st.status !== 'inactive', bal = Math.max(0, studentBalance(st.id));
+    if (active) { c.count++; c.dues += bal; activeDues += bal; } else leftDues += bal;
+    studentPayments(st.id).forEach(p => { if (inR(p.pay_date)) c.collected += Number(p.amount || 0); });
+  });
+  const classes = Object.entries(per).map(([name, d]) => ({ name, count: d.count, collected: money2(d.collected), dues: money2(d.dues) }));
+  const s = computeStats();
+  return { R, fees: money2(fees), otherInc: money2(otherInc), otherExp: money2(otherExp), salGross, salNet: money2(salNet), salCut: money2(salCut), advGiven: money2(advGiven), advOut: money2(advOut),
+    income, expense, net, classes, staff, stfOk, leftDues: money2(leftDues), activeDues: money2(activeDues),
+    counts: { paying: s.payingCount, free: s.freeCount, orphan: s.orphanCount } };
+}
+function repDefaulters() {
+  const q = REP.defSearch.trim().toLowerCase();
+  return DATA.students.map(x => ({ s: x, bal: studentBalance(x.id) })).filter(r => {
+    if (!(r.bal > 0) || r.bal < REP.defMin) return false;
+    const left = r.s.status === 'inactive';
+    if (REP.defStatus === 'active' && left) return false;
+    if (REP.defStatus === 'left' && !left) return false;
+    if (REP.defClass !== 'all' && (r.s.class_name || '—') !== REP.defClass) return false;
+    if (q && !(String(r.s.name || '') + ' ' + String(r.s.father_name || '')).toLowerCase().includes(q)) return false;
+    return true;
+  }).sort((a, b) => b.bal - a.bal);
+}
+const repChip = (on, label, fn) => `<button onclick="${fn}" style="flex:none;border:1px solid var(--navy);border-radius:999px;padding:6px 12px;font-size:12px;font-weight:600;background:${on ? 'var(--navy)' : 'transparent'};color:${on ? 'var(--gold-soft)' : 'inherit'};">${esc(label)}</button>`;
+const repBtn = (label, fn) => `<button onclick="${fn}" style="border:none;background:var(--navy);color:var(--gold-soft);border-radius:8px;padding:5px 12px;font-size:11px;font-weight:600;">${label}</button>`;
+function repRow(label, val, cls, sub, bold) {
+  return `<div class="list-row"><span style="font-size:13px;${bold ? 'font-weight:700;' : ''}">${esc(label)}${sub ? `<span style="display:block;font-size:11px;opacity:.6;font-weight:400;">${esc(sub)}</span>` : ''}</span><span class="${cls || ''}" style="${bold ? 'font-weight:700;' : ''}">${val}</span></div>`;
+}
+function tplReports() {
+  if (!STF.loaded && !STF.loading) { STF.loading = true; stfLoad().then(() => { STF.loading = false; if (TAB === 'reports') safeRenderTab(); }).catch(() => { STF.loading = false; }); }
+  const D = repData(), R = D.R, ur = LANG === 'ur';
+  const money = v => '₨' + fmt(v);
+  const defs = repDefaulters();
+  const defTotal = money2(defs.reduce((a, r) => a + r.bal, 0));
+  const totalPages = Math.max(1, Math.ceil(defs.length / REP_PAGE));
+  if (REP.defPage > totalPages) REP.defPage = totalPages;
+  const pageRows = defs.slice((REP.defPage - 1) * REP_PAGE, REP.defPage * REP_PAGE);
+  const classNames = Array.from(new Set(DATA.students.map(x => x.class_name || '—')));
+  const cTot = D.classes.reduce((a, c) => ({ count: a.count + c.count, collected: a.collected + c.collected, dues: a.dues + c.dues }), { count: 0, collected: 0, dues: 0 });
+  const stfNoteHtml = !D.stfOk ? `<div style="font-size:11px;opacity:.65;padding:6px 14px;">${esc(qt('Staff advance figures are not available yet (offline or not set up).', 'عملے کے ایڈوانس کے اعداد ابھی دستیاب نہیں (آف لائن یا سیٹ اپ نہیں)۔'))}</div>` : '';
   return `
     <div style="padding-top:16px;">
-      <div class="section-title" style="margin-top:0;display:flex;justify-content:space-between;align-items:center;">
-        <span>${esc(t.summaryReport)}</span>
-        <button onclick="printReport()" style="border:none;background:var(--navy);color:var(--gold-soft);border-radius:8px;padding:5px 12px;font-size:11px;font-weight:600;">🖨️ ${esc(t.print)}</button>
+      <div class="section-title" style="margin-top:0;">${esc(qt('Report period', 'رپورٹ کی مدت'))}</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;">
+        ${repChip(REP.preset === 'month', qt('This month', 'یہ مہینہ'), "repSetPreset('month')")}
+        ${repChip(REP.preset === 'last', qt('Last month', 'پچھلا مہینہ'), "repSetPreset('last')")}
+        ${repChip(REP.preset === 'all', qt('All time', 'سارا ریکارڈ'), "repSetPreset('all')")}
+        ${repChip(REP.preset === 'custom', qt('Custom dates', 'اپنی تاریخیں'), "repSetPreset('custom')")}
+      </div>
+      ${REP.preset === 'custom' ? `<div class="row2" style="margin-bottom:8px;">
+        <label><span>${esc(qt('From', 'سے'))}</span><input type="date" max="${todayISO()}" value="${esc(REP.from)}" onchange="repSetDate('from', this.value)"></label>
+        <label><span>${esc(qt('To', 'تک'))}</span><input type="date" max="${todayISO()}" value="${esc(REP.to)}" onchange="repSetDate('to', this.value)"></label>
+      </div>` : ''}
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:4px;">
+        <button class="btn-ghost" style="flex:1;" onclick="repExportExcel()">📊 ${esc(qt('Save Excel', 'ایکسل محفوظ کریں'))}</button>
+        <button class="btn-ghost" style="flex:1;" onclick="repShareExcel()">📤 ${esc(qt('Share Excel', 'ایکسل شیئر کریں'))}</button>
+      </div>
+
+      <div class="section-title" style="display:flex;justify-content:space-between;align-items:center;">
+        <span>${esc(t.summaryReport)} — ${esc(R.label)}</span>
+        ${repBtn('🖨️ ' + esc(t.print), 'printReport()')}
       </div>
       <div class="list-card">
-        ${rows.map(([l,v,cls])=>`<div class="list-row"><span style="font-size:13px;">${esc(l)}</span><span class="${cls}">₨${fmt(v)}</span></div>`).join('')}
+        ${repRow(qt('Fees collected', 'وصول شدہ فیس'), money(D.fees), 'amt-pos')}
+        ${repRow(qt('Other income', 'دیگر آمدنی'), money(D.otherInc), 'amt-pos')}
+        ${repRow(qt('Total income', 'کل آمدنی'), money(D.income), 'amt-pos', '', true)}
+        ${repRow(qt('Salaries', 'تنخواہیں'), money(D.salGross), 'amt-neg', D.stfOk && D.salCut > 0 ? qt('Paid ₨' + fmt(D.salNet) + ' + advance cut ₨' + fmt(D.salCut), 'ادا ₨' + fmt(D.salNet) + ' + ایڈوانس کٹوتی ₨' + fmt(D.salCut)) : '')}
+        ${repRow(qt('Other expenses', 'دیگر اخراجات'), money(D.otherExp), 'amt-neg')}
+        ${repRow(qt('Total expenses', 'کل اخراجات'), money(D.expense), 'amt-neg', '', true)}
+        ${repRow(D.net >= 0 ? qt('Net savings (profit)', 'خالص بچت (منافع)') : qt('Net loss', 'خالص خسارہ'), money(Math.abs(D.net)), D.net >= 0 ? 'amt-pos' : 'amt-neg', '', true)}
+        ${D.stfOk ? repRow(qt('Staff advances given (loan, not an expense)', 'دیے گئے ایڈوانس (قرض، خرچ نہیں)'), money(D.advGiven)) : ''}
+        ${D.stfOk ? repRow(qt('Staff advances still to recover (now)', 'عملے سے وصول ہونے والے ایڈوانس (اب)'), money(D.advOut)) : ''}
+        ${repRow(qt('Fee dues outstanding (current students, now)', 'بقایا فیس (موجودہ طلبہ، اب)'), money(D.activeDues), D.activeDues > 0 ? 'amt-neg' : '')}
+        ${D.leftDues > 0 ? repRow(qt('Dues of students who left (now)', 'چھوڑ جانے والے طلبہ کے بقایا (اب)'), money(D.leftDues), 'amt-neg') : ''}
+        ${stfNoteHtml}
       </div>
+
       <div class="section-title">${esc(t.studentType)}</div>
       <div class="list-card">
-        <div class="list-row"><span style="font-size:13px;">${esc(t.feePaying)}</span><span>${s.payingCount}</span></div>
-        <div class="list-row"><span style="font-size:13px;">${esc(t.free)}</span><span>${s.freeCount}</span></div>
-        <div class="list-row"><span style="font-size:13px;">${esc(t.orphan)}</span><span>${s.orphanCount}</span></div>
+        <div class="list-row"><span style="font-size:13px;">${esc(t.feePaying)}</span><span>${D.counts.paying}</span></div>
+        <div class="list-row"><span style="font-size:13px;">${esc(t.free)}</span><span>${D.counts.free}</span></div>
+        <div class="list-row"><span style="font-size:13px;">${esc(t.orphan)}</span><span>${D.counts.orphan}</span></div>
       </div>
-      <div class="section-title">${esc(t.perClassBreakdown)}</div>
+
+      <div class="section-title">${esc(t.perClassBreakdown)} — ${esc(R.label)}</div>
       <div class="list-card">
-        ${Object.keys(perClass).length===0 ? `<div style="padding:16px;text-align:center;opacity:.5;font-size:13px;">—</div>` :
-          Object.entries(perClass).map(([cls,d])=>`
-            <div class="list-row">
-              <span style="font-size:13px;font-weight:500;">${esc(cls)} <span style="font-size:11px;opacity:.5;">(${d.count})</span></span>
-              <span style="display:flex;flex-direction:column;align-items:flex-end;gap:2px;">
-                <span class="amt-pos">₨${fmt(d.collected)}</span>
-                ${d.dues>0 ? `<span class="amt-neg" style="font-size:11px;">₨${fmt(d.dues)} ${esc(t.due)}</span>` : ''}
-              </span>
-            </div>`).join('')}
+        ${D.classes.length === 0 ? `<div style="padding:16px;text-align:center;opacity:.5;font-size:13px;">—</div>` :
+          D.classes.map(c => `
+          <div class="list-row">
+            <span style="font-size:13px;font-weight:500;">${esc(c.name)} <span style="font-size:11px;opacity:.5;">(${c.count})</span></span>
+            <span style="display:flex;flex-direction:column;align-items:flex-end;gap:2px;">
+              <span class="amt-pos">${money(c.collected)}</span>
+              ${c.dues > 0 ? `<span class="amt-neg" style="font-size:11px;">${money(c.dues)} ${esc(t.due)}</span>` : ''}
+            </span>
+          </div>`).join('') + `
+          <div class="list-row" style="font-weight:700;">
+            <span style="font-size:13px;">${esc(t.total)} <span style="font-size:11px;opacity:.5;">(${cTot.count})</span></span>
+            <span style="display:flex;flex-direction:column;align-items:flex-end;gap:2px;"><span class="amt-pos">${money(cTot.collected)}</span>${cTot.dues > 0 ? `<span class="amt-neg" style="font-size:11px;">${money(cTot.dues)} ${esc(t.due)}</span>` : ''}</span>
+          </div>`}
       </div>
+      <div style="font-size:11px;opacity:.6;padding:4px 4px 0;">${esc(qt('Collected includes students who later left; (number) and dues are for current students only.', 'وصولی میں بعد میں چھوڑ جانے والے طلبہ بھی شامل ہیں؛ (تعداد) اور بقایا صرف موجودہ طلبہ کے ہیں۔'))}</div>
+
+      <div class="section-title">${esc(qt('Staff report', 'عملے کی رپورٹ'))} — ${esc(R.label)}</div>
+      <div class="list-card">
+        ${D.staff.length === 0 ? `<div style="padding:16px;text-align:center;opacity:.5;font-size:13px;">—</div>` :
+          D.staff.map(r => `
+          <div class="list-row" style="flex-direction:column;align-items:stretch;gap:2px;">
+            <div style="display:flex;justify-content:space-between;gap:8px;"><span style="font-size:13px;font-weight:600;">${esc(r.name)}</span><span class="amt-neg">${money(r.paid)}</span></div>
+            <div style="font-size:11px;opacity:.7;">${esc(qt('Attendance', 'حاضری'))} (${esc(monthLabel(R.mk))}): ${esc(r.att.hasRecords ? qt('Present ', 'حاضر ') + r.att.present + ' · ' + qt('Leave ', 'چھٹی ') + r.att.leave + ' · ' + qt('Absent ', 'غیر حاضر ') + r.att.absent : '—')}</div>
+            ${D.stfOk && (r.cut || r.given || r.outstanding) ? `<div style="font-size:11px;opacity:.7;">${r.cut ? esc(qt('Advance cut', 'ایڈوانس کٹوتی')) + ': ' + money(r.cut) + ' · ' : ''}${r.given ? esc(qt('Advance given', 'ایڈوانس دیا')) + ': ' + money(r.given) + ' · ' : ''}${esc(qt('Still to recover', 'باقی وصولی'))}: ${money(r.outstanding)}</div>` : ''}
+          </div>`).join('')}
+      </div>
+
       <div class="section-title" style="display:flex;justify-content:space-between;align-items:center;">
         <span>${esc(t.defaultersReport)}</span>
-        <button onclick="printDefaultersReport()" style="border:none;background:var(--navy);color:var(--gold-soft);border-radius:8px;padding:5px 12px;font-size:11px;font-weight:600;">🖨️ ${esc(t.print)}</button>
+        ${repBtn('🖨️ ' + esc(t.print), 'printDefaultersReport()')}
       </div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;">
+        ${repChip(REP.defStatus === 'active', qt('Current', 'موجودہ'), "repDefSet('defStatus','active')")}
+        ${repChip(REP.defStatus === 'left', qt('Left', 'چھوڑ گئے'), "repDefSet('defStatus','left')")}
+        ${repChip(REP.defStatus === 'all', qt('All', 'سب'), "repDefSet('defStatus','all')")}
+      </div>
+      <div class="row2" style="margin-bottom:8px;">
+        <label><span>${esc(t.className)}</span><select onchange="repDefSet('defClass', this.value)"><option value="all">${esc(qt('All classes', 'تمام کلاسیں'))}</option>${classNames.map(c => `<option value="${esc(c)}" ${REP.defClass === c ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select></label>
+        <label><span>${esc(qt('Min balance (Rs)', 'کم از کم بقایا (روپے)'))}</span><input id="rep-def-min" type="number" min="0" value="${REP.defMin || ''}" oninput="repDefMin(this.value)"></label>
+      </div>
+      <div class="field-box" style="margin-bottom:8px;"><label><span>${esc(qt('Search name / father name', 'نام / والد کا نام تلاش کریں'))}</span><input id="rep-def-search" value="${esc(REP.defSearch)}" oninput="repDefSearch(this.value)"></label></div>
+      <div class="greenbox" style="margin-bottom:8px;"><div class="lbl">${esc(qt('Defaulters', 'نادہندگان'))}: ${defs.length}</div><div class="val">${money(defTotal)}</div></div>
       <div class="list-card">
-        ${(() => {
-          const defaulters = DATA.students
-            .filter(x => studentBalance(x.id) > 0)
-            .sort((a,b) => studentBalance(b.id) - studentBalance(a.id));
-          if (defaulters.length === 0) return `<div style="padding:16px;text-align:center;opacity:.5;font-size:13px;">—</div>`;
-          return defaulters.map(x => `
-            <div class="list-row" style="cursor:pointer;" onclick="setTab('students'); openStudentDetail('${x.id}')">
-              <span style="font-size:13px;">${esc(x.name)}${esc(leftTag(x))} <span style="font-size:11px;opacity:.5;">(${esc(x.class_name||'—')})</span></span>
-              <span class="amt-neg">₨${fmt(studentBalance(x.id))}</span>
-            </div>`).join('');
-        })()}
+        ${defs.length === 0 ? `<div style="padding:16px;text-align:center;opacity:.5;font-size:13px;">—</div>` :
+          pageRows.map(r => { const x = r.s; return `
+          <div class="list-row" style="cursor:pointer;" onclick="setTab('students'); openStudentDetail('${x.id}')">
+            <span style="font-size:13px;">${esc(x.name)}${esc(leftTag(x))}<span style="display:block;font-size:11px;opacity:.55;">${esc(x.father_name || '—')} · ${esc(x.class_name || '—')}${x.contact ? ' · ' + esc(x.contact) : ''}</span></span>
+            <span style="display:flex;align-items:center;gap:8px;"><span class="amt-neg">${money(r.bal)}</span>${x.contact ? `<button class="print-btn" title="WhatsApp" onclick="event.stopPropagation(); sendFeeRequestWhatsapp('${x.id}')">💬</button>` : ''}</span>
+          </div>`; }).join('')}
       </div>
+      ${defs.length <= REP_PAGE ? '' : `
+      <div class="flexgap" style="align-items:center;margin-top:12px;">
+        <button class="btn-ghost" ${REP.defPage <= 1 ? 'disabled' : ''} onclick="repDefPage(${REP.defPage - 1})">‹ ${esc(t.previous)}</button>
+        <span style="font-size:12px;opacity:.65;white-space:nowrap;">${REP.defPage} / ${totalPages}</span>
+        <button class="btn-ghost" ${REP.defPage >= totalPages ? 'disabled' : ''} onclick="repDefPage(${REP.defPage + 1})">${esc(t.next)} ›</button>
+      </div>`}
     </div>`;
 }
 
 function printDefaultersReport() {
-  const defaulters = DATA.students
-    .filter(x => studentBalance(x.id) > 0)
-    .sort((a,b) => studentBalance(b.id) - studentBalance(a.id));
-  const total = defaulters.reduce((a,b) => a + studentBalance(b.id), 0);
-  const rows = defaulters.map((x,i) => `
+  const defs = repDefaulters();
+  const total = money2(defs.reduce((a, r) => a + r.bal, 0));
+  const rows = defs.map((r, i) => `
     <tr>
-      <td>${i+1}</td>
-      <td>${esc(x.name)}${esc(leftTag(x))}</td>
-      <td>${esc(x.father_name||'—')}</td>
-      <td>${esc(x.class_name||'—')}</td>
-      <td style="text-align:right;">₨${fmt(studentBalance(x.id))}</td>
+      <td>${i + 1}</td><td>${esc(r.s.name)}${esc(leftTag(r.s))}</td><td>${esc(r.s.father_name || '—')}</td><td>${esc(r.s.class_name || '—')}</td>
+      <td style="text-align:right;">₨${fmt(r.bal)}</td>
     </tr>`).join('');
-
+  const filt = [REP.defStatus === 'active' ? qt('Current students', 'موجودہ طلبہ') : REP.defStatus === 'left' ? qt('Students who left', 'چھوڑ جانے والے طلبہ') : qt('All students', 'تمام طلبہ'),
+    REP.defClass !== 'all' ? REP.defClass : '', REP.defMin > 0 ? qt('Min ₨', 'کم از کم ₨') + fmt(REP.defMin) : ''].filter(Boolean).join(' · ');
   document.getElementById('print-area').innerHTML = `
     <div class="ledger-print">
       <h2>${esc(CURRENT_PROFILE.school_name || 'School')}</h2>
-      <div class="sub">${esc(t.defaultersReport)} — ${esc(fmtDate(todayISO()))}</div>
+      <div class="sub">${esc(t.defaultersReport)} — ${esc(fmtDate(todayISO()))} (${esc(filt)})</div>
       <table>
         <thead><tr><th>#</th><th>${esc(t.studentName)}</th><th>${esc(t.fatherName)}</th><th>${esc(t.className)}</th><th>${esc(t.balanceCol)}</th></tr></thead>
         <tbody>${rows}</tbody>
       </table>
-      <div class="foot" style="text-align:left;margin-top:14px;font-weight:700;">${esc(t.total)}: ₨${fmt(total)}</div>
+      <div class="foot" style="text-align:left;margin-top:14px;font-weight:700;">${esc(t.total)}: ₨${fmt(total)} (${defs.length})</div>
     </div>`;
   window.print();
 }
 
 function printReport() {
-  const s = computeStats();
-  const perClass = {};
-  DATA.students.filter(x=>x.status!=='inactive').forEach(st=>{
-    const cls = st.class_name || '—';
-    if (!perClass[cls]) perClass[cls] = {count:0, collected:0, dues:0};
-    perClass[cls].count++;
-    perClass[cls].collected += studentPayments(st.id).reduce((a,b)=>a+Number(b.amount),0);
-    if (isFeePaying(st)) perClass[cls].dues += Math.max(0, studentBalance(st.id));
-  });
-  const summaryRows = [
-    [t.totalCollectedAllTime, s.totalCollectedAllTime],
-    [t.totalSalariesAllTime, s.totalSalariesAllTime],
-    [t.totalOtherIncomeAllTime, s.totalOtherIncomeAllTime],
-    [t.totalOtherExpenseAllTime, s.totalOtherExpenseAllTime],
-  ].map(([l,v])=>`<tr><td class="lbl">${esc(l)}</td><td style="text-align:right;">₨${fmt(v)}</td></tr>`).join('');
-
-  const typeRows = `
-    <tr><td class="lbl">${esc(t.feePaying)}</td><td style="text-align:right;">${s.payingCount}</td></tr>
-    <tr><td class="lbl">${esc(t.free)}</td><td style="text-align:right;">${s.freeCount}</td></tr>
-    <tr><td class="lbl">${esc(t.orphan)}</td><td style="text-align:right;">${s.orphanCount}</td></tr>`;
-
-  const classRowsHtml = Object.keys(perClass).length===0
-    ? `<tr><td colspan="4" style="text-align:center;opacity:.6;">—</td></tr>`
-    : Object.entries(perClass).map(([cls,d])=>`
-        <tr>
-          <td>${esc(cls)}</td>
-          <td style="text-align:right;">${d.count}</td>
-          <td style="text-align:right;">₨${fmt(d.collected)}</td>
-          <td style="text-align:right;">${d.dues>0 ? '₨'+fmt(d.dues) : '—'}</td>
-        </tr>`).join('');
-
+  const D = repData(), R = D.R;
+  const tr = (l, v, b) => `<tr><td class="lbl"${b ? ' style="font-weight:700;"' : ''}>${esc(l)}</td><td style="text-align:right;${b ? 'font-weight:700;' : ''}">${v}</td></tr>`;
+  const m = v => '₨' + fmt(v);
+  const sum = [
+    tr(qt('Fees collected', 'وصول شدہ فیس'), m(D.fees)), tr(qt('Other income', 'دیگر آمدنی'), m(D.otherInc)), tr(qt('Total income', 'کل آمدنی'), m(D.income), true),
+    tr(qt('Salaries', 'تنخواہیں'), m(D.salGross)), tr(qt('Other expenses', 'دیگر اخراجات'), m(D.otherExp)), tr(qt('Total expenses', 'کل اخراجات'), m(D.expense), true),
+    tr(D.net >= 0 ? qt('Net savings (profit)', 'خالص بچت (منافع)') : qt('Net loss', 'خالص خسارہ'), m(Math.abs(D.net)), true)
+  ];
+  if (D.stfOk) sum.push(tr(qt('Staff advances given (loan)', 'دیے گئے ایڈوانس (قرض)'), m(D.advGiven)), tr(qt('Staff advances still to recover', 'باقی ایڈوانس وصولی'), m(D.advOut)));
+  sum.push(tr(qt('Fee dues outstanding (current students)', 'بقایا فیس (موجودہ طلبہ)'), m(D.activeDues)));
+  if (D.leftDues > 0) sum.push(tr(qt('Dues of students who left', 'چھوڑ جانے والوں کے بقایا'), m(D.leftDues)));
+  const typeRows = tr(t.feePaying, D.counts.paying) + tr(t.free, D.counts.free) + tr(t.orphan, D.counts.orphan);
+  const th = (x, right) => `<th style="text-align:${right ? 'right' : 'left'};padding:6px 4px;border-bottom:2px solid #0F2740;font-size:11px;">${esc(x)}</th>`;
+  const cTot = D.classes.reduce((a, c) => ({ count: a.count + c.count, collected: a.collected + c.collected, dues: a.dues + c.dues }), { count: 0, collected: 0, dues: 0 });
+  const classRows = D.classes.length === 0 ? `<tr><td colspan="4" style="text-align:center;opacity:.6;">—</td></tr>` :
+    D.classes.map(c => `<tr><td>${esc(c.name)}</td><td style="text-align:right;">${c.count}</td><td style="text-align:right;">${m(c.collected)}</td><td style="text-align:right;">${c.dues > 0 ? m(c.dues) : '—'}</td></tr>`).join('') +
+    `<tr style="font-weight:700;"><td>${esc(t.total)}</td><td style="text-align:right;">${cTot.count}</td><td style="text-align:right;">${m(cTot.collected)}</td><td style="text-align:right;">${cTot.dues > 0 ? m(cTot.dues) : '—'}</td></tr>`;
+  const staffRows = D.staff.length === 0 ? '' : D.staff.map(r => `<tr><td>${esc(r.name)}</td><td style="text-align:right;">${m(r.paid)}</td><td style="text-align:right;">${r.cut ? m(r.cut) : '—'}</td><td style="text-align:right;">${D.stfOk ? m(r.outstanding) : '—'}</td></tr>`).join('');
   document.getElementById('print-area').innerHTML = `
     <div class="receipt-box" style="max-width:100%;">
       <h2>${esc(CURRENT_PROFILE.school_name || 'School')}</h2>
-      <div class="sub">${esc(t.summaryReport)} — ${esc(fmtDate(todayISO()))}</div>
-      <table><tbody>${summaryRows}</tbody></table>
+      <div class="sub">${esc(t.summaryReport)} — ${esc(R.label)} (${esc(fmtDate(todayISO()))})</div>
+      <table><tbody>${sum.join('')}</tbody></table>
       <div style="margin-top:16px;font-weight:700;font-size:13px;color:#0F2740;">${esc(t.studentType)}</div>
       <table><tbody>${typeRows}</tbody></table>
       <div style="margin-top:16px;font-weight:700;font-size:13px;color:#0F2740;">${esc(t.perClassBreakdown)}</div>
       <table style="width:100%;border-collapse:collapse;">
-        <thead><tr>
-          <th style="text-align:left;padding:6px 4px;border-bottom:2px solid #0F2740;font-size:11px;">Class</th>
-          <th style="text-align:right;padding:6px 4px;border-bottom:2px solid #0F2740;font-size:11px;">#</th>
-          <th style="text-align:right;padding:6px 4px;border-bottom:2px solid #0F2740;font-size:11px;">Collected</th>
-          <th style="text-align:right;padding:6px 4px;border-bottom:2px solid #0F2740;font-size:11px;">${esc(t.due)}</th>
-        </tr></thead>
-        <tbody style="font-size:12px;">${classRowsHtml}</tbody>
+        <thead><tr>${th(t.className)}${th('#', true)}${th(qt('Collected', 'وصولی'), true)}${th(t.due, true)}</tr></thead>
+        <tbody style="font-size:12px;">${classRows}</tbody>
       </table>
-      <div class="foot">${esc(CURRENT_PROFILE.school_name || '')} — Principal Signature: ____________________</div>
+      ${staffRows ? `<div style="margin-top:16px;font-weight:700;font-size:13px;color:#0F2740;">${esc(qt('Staff report', 'عملے کی رپورٹ'))}</div>
+      <table style="width:100%;border-collapse:collapse;">
+        <thead><tr>${th(qt('Name', 'نام'))}${th(qt('Salary', 'تنخواہ'), true)}${th(qt('Advance cut', 'ایڈوانس کٹوتی'), true)}${th(qt('Advance left', 'باقی ایڈوانس'), true)}</tr></thead>
+        <tbody style="font-size:12px;">${staffRows}</tbody>
+      </table>` : ''}
+      <div class="foot">${esc(CURRENT_PROFILE.school_name || '')} — ${esc(qt('Principal Signature', 'پرنسپل کے دستخط'))}: ____________________</div>
     </div>`;
   window.print();
+}
+
+function repBuildWorkbook() {
+  if (typeof XLSX === 'undefined') { alert(qt('Excel library is not loaded yet. Connect to the internet once and try again.', 'ایکسل لائبریری لوڈ نہیں ہوئی۔ ایک بار انٹرنیٹ سے جڑ کر دوبارہ کوشش کریں۔')); return null; }
+  const D = repData(), R = D.R;
+  const school = CURRENT_PROFILE.school_name || 'School';
+  const sumA = [[school], [qt('Summary report', 'خلاصہ رپورٹ') + ' — ' + R.label], [], [qt('Item', 'مد'), qt('Amount (Rs)', 'رقم (روپے)')],
+    [qt('Fees collected', 'وصول شدہ فیس'), D.fees], [qt('Other income', 'دیگر آمدنی'), D.otherInc], [qt('Total income', 'کل آمدنی'), D.income],
+    [qt('Salaries (paid + advance cut)', 'تنخواہیں (ادا + ایڈوانس کٹوتی)'), D.salGross], [qt('Other expenses', 'دیگر اخراجات'), D.otherExp], [qt('Total expenses', 'کل اخراجات'), D.expense],
+    [D.net >= 0 ? qt('Net savings (profit)', 'خالص بچت (منافع)') : qt('Net loss', 'خالص خسارہ'), Math.abs(D.net)]];
+  if (D.stfOk) sumA.push([qt('Staff advances given (loan)', 'دیے گئے ایڈوانس (قرض)'), D.advGiven], [qt('Staff advances still to recover', 'باقی ایڈوانس وصولی'), D.advOut]);
+  sumA.push([qt('Fee dues outstanding (current students)', 'بقایا فیس (موجودہ طلبہ)'), D.activeDues]);
+  if (D.leftDues > 0) sumA.push([qt('Dues of students who left', 'چھوڑ جانے والوں کے بقایا'), D.leftDues]);
+  const clsA = [[qt('Class', 'کلاس'), qt('Students', 'طلبہ'), qt('Collected', 'وصولی'), qt('Dues', 'بقایا')]];
+  D.classes.forEach(c => clsA.push([c.name, c.count, c.collected, c.dues]));
+  clsA.push([qt('Total', 'کل'), D.classes.reduce((a, c) => a + c.count, 0), money2(D.classes.reduce((a, c) => a + c.collected, 0)), money2(D.classes.reduce((a, c) => a + c.dues, 0))]);
+  const defA = [['#', qt('Student', 'طالب علم'), qt('Father', 'والد'), qt('Class', 'کلاس'), qt('Contact', 'رابطہ'), qt('Balance (Rs)', 'بقایا (روپے)'), qt('Status', 'حیثیت')]];
+  repDefaulters().forEach((r, i) => defA.push([i + 1, r.s.name, r.s.father_name || '', r.s.class_name || '', r.s.contact || '', r.bal, r.s.status === 'inactive' ? qt('Left', 'چھوڑ گئے') : qt('Current', 'موجودہ')]));
+  const stA = [[qt('Staff', 'عملہ'), qt('Subject / role', 'مضمون / عہدہ'), qt('Salary (paid + cut)', 'تنخواہ (ادا + کٹوتی)'), qt('Advance cut', 'ایڈوانس کٹوتی'), qt('Advance given', 'ایڈوانس دیا'), qt('Advance still to recover', 'باقی ایڈوانس'),
+    qt('Present', 'حاضر'), qt('Leave', 'چھٹی'), qt('Absent', 'غیر حاضر')]];
+  D.staff.forEach(r => stA.push([r.name, r.subject, r.paid, r.cut, r.given, r.outstanding, r.att.present, r.att.leave, r.att.absent]));
+  const wb = XLSX.utils.book_new();
+  [[sumA, 'Summary', [34, 16]], [clsA, 'Classes', [20, 10, 14, 14]], [defA, 'Defaulters', [5, 22, 22, 14, 16, 14, 10]], [stA, 'Staff', [22, 18, 16, 14, 14, 18, 9, 9, 9]]].forEach(([aoa, name, w]) => {
+    const ws = XLSX.utils.aoa_to_sheet(aoa); ws['!cols'] = w.map(x => ({ wch: x })); XLSX.utils.book_append_sheet(wb, ws, name);
+  });
+  const schoolPart = school.replace(/[^a-z0-9]+/gi, '_');
+  const range = REP.preset === 'all' ? 'AllTime' : R.from + '_to_' + R.to;
+  return { wb, name: `${schoolPart}_Report_${range}.xlsx` };
+}
+function repExportExcel() { const b = repBuildWorkbook(); if (b) XLSX.writeFile(b.wb, b.name); }
+// Opens the phone's share sheet (WhatsApp etc.) with the Excel file; falls back to a normal download.
+async function repShareExcel() {
+  const b = repBuildWorkbook(); if (!b) return;
+  try {
+    const out = XLSX.write(b.wb, { bookType: 'xlsx', type: 'array' });
+    const blob = new Blob([out], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const file = new File([blob], b.name, { type: blob.type });
+    if (navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file], title: b.name }); return; }
+  } catch (e) { if (e && e.name === 'AbortError') return; }
+  XLSX.writeFile(b.wb, b.name);
 }
 
 // Tapping a Recent Activity row opens that person's full record
