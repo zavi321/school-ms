@@ -4035,7 +4035,7 @@ function studentDueNow(s) {
   const hasCur = studentPayments(s.id).some(p => p.month === cur);
   return Math.max(0, money2(studentBalance(s.id) + (hasCur ? 0 : effectiveMonthlyFee(s))));
 }
-const leftTag = s => (s && s.status === 'inactive') ? ' ' + qt('(Left)', '(چھوڑ چکا)') : '';
+const leftTag = s => (s && s.status === 'inactive') ? ' ' + qt('(Left', '(چھوڑ چکا') + (s.left_date ? ' ' + String(s.left_date).slice(0, 10) : '') + ')' : '';
 
 // ---------------- Stats ----------------
 function computeStats() {
@@ -4075,7 +4075,7 @@ function computeStats() {
     else freeCount++;
   });
   let salaryPaidThisMonth=0;
-  DATA.teachers.forEach(tc=>{ salaryPaidThisMonth += teacherPayments(tc.id).filter(p=>p.month===cur).reduce((a,b)=>a+Number(b.amount),0); });
+  DATA.teachers.forEach(tc=>{ salaryPaidThisMonth += teacherPayments(tc.id).filter(p=>p.month===cur).reduce((a,b)=>a+Number(b.amount)+((STF.loaded&&!STF.err)?stfRecoveredIn(tc.id,p.month):0),0); });
 
   // Other (non-salary) expenses recorded this calendar month, plus salaries
   // paid this month — together the "Expenses (this month)" figure that
@@ -4088,7 +4088,7 @@ function computeStats() {
   let totalCollectedAllTime=0;
   DATA.students.forEach(s=>{ totalCollectedAllTime += studentPayments(s.id).reduce((a,b)=>a+Number(b.amount),0); });
   let totalSalariesAllTime=0;
-  DATA.teachers.forEach(tc=>{ totalSalariesAllTime += teacherPayments(tc.id).reduce((a,b)=>a+Number(b.amount),0); });
+  DATA.teachers.forEach(tc=>{ totalSalariesAllTime += teacherPayments(tc.id).reduce((a,b)=>a+Number(b.amount)+((STF.loaded&&!STF.err)?stfRecoveredIn(tc.id,b.month):0),0); });
   const totalOtherIncomeAllTime = DATA.transactions.filter(x=>x.type==='income' && !isTransferTxn(x)).reduce((a,b)=>a+Number(b.amount),0);
   const totalOtherExpenseAllTime = DATA.transactions.filter(x=>x.type==='expense' && !isTransferTxn(x)).reduce((a,b)=>a+Number(b.amount),0);
   const totalIncomeAllTime = totalCollectedAllTime + totalOtherIncomeAllTime;
@@ -5466,12 +5466,13 @@ async function saveDiaryPassword() {
 // Generic activity-log entry not tied to one of the ACTIVITY_LOG_TABLES rows
 // above (e.g. "downloaded a backup", "restored a backup") — same best-effort,
 // never-throws behavior as logActivity().
-function logCustomActivity(description, action) {
-  if (!navigator.onLine || !CURRENT_USER) return;
+function logCustomActivity(description, action, tableName) {
+  if (!CURRENT_USER) return;
+  if (!navigator.onLine) { const q = _logqRead(); q.push({ action: action || 'other', table_name: tableName || 'backup', description, at: new Date().toLocaleString() }); _logqWrite(q); return; }
   try {
     sb.from('activity_log').insert({
       owner_id: CURRENT_USER.id, actor_email: CURRENT_USER.email || null,
-      action: action || 'other', table_name: 'backup', description
+      action: action || 'other', table_name: tableName || 'backup', description
     }).then(() => {}).catch(() => {});
   } catch (e) { /* never let logging break the actual action */ }
 }
@@ -5504,7 +5505,9 @@ async function openActivityLog() {
 // printing/sharing, but lossy (rounded to display columns, no row IDs), so
 // it can't safely be fed back in. This JSON export keeps every raw row from
 // every table, IDs included, so it can be restored later without guesswork.
-function exportFullBackupJSON() {
+async function exportFullBackupJSON() {
+  try { if (!FIN.loaded) await finLoad(); if (!FINV.loaded) await finvLoad(); if (!STF.loaded) await stfLoad(); } catch (e) {}
+  if ((FIN.err || FINV.err || STF.err) && !confirm(qt('Some finance/staff data could not be loaded, so this backup will be INCOMPLETE. Download anyway?', 'مالی/عملے کا کچھ ڈیٹا لوڈ نہیں ہو سکا، اس لیے یہ بیک اپ ادھورا ہوگا۔ پھر بھی ڈاؤن لوڈ کریں؟'))) return;
   const payload = {
     version: 1,
     exported_at: new Date().toISOString(),
@@ -5519,7 +5522,9 @@ function exportFullBackupJSON() {
       students: DATA.students, fee_payments: DATA.feePayments, teachers: DATA.teachers,
       salary_payments: DATA.salaryPayments, transactions: DATA.transactions,
       admission_register: DATA.admissionRegister, teacher_attendance: DATA.teacherAttendance,
-      holidays: DATA.holidays, class_logins: DATA.classLogins, student_attendance: DATA.studentAttendance
+      holidays: DATA.holidays, class_logins: DATA.classLogins, student_attendance: DATA.studentAttendance,
+      fin_accounts: FIN.accounts, fin_heads: FIN.heads, fin_vendors: FINV.vendors, fin_vendor_entries: FINV.entries,
+      staff_advances: STF.advances, staff_leaves: STF.leaves, staff_advance_recoveries: STF.recoveries
     }
   };
   const blob = new Blob([JSON.stringify(payload)], { type: 'application/json' });
@@ -5565,8 +5570,10 @@ async function confirmRestoreBackup() {
   const msg = document.getElementById('restore-msg');
   if (!parsed) return;
   msg.innerHTML = `<div style="font-size:12px;opacity:.7;">${LANG === 'ur' ? 'بحال کیا جا رہا ہے…' : 'Restoring…'}</div>`;
-  const TABLES = ['students', 'fee_payments', 'teachers', 'salary_payments', 'transactions',
-    'admission_register', 'teacher_attendance', 'holidays', 'class_logins', 'student_attendance'];
+  // Order matters for foreign keys: accounts / vendors / advances before the rows that point at them.
+  const TABLES = ['fin_accounts', 'fin_heads', 'fin_vendors', 'students', 'fee_payments', 'teachers', 'salary_payments', 'transactions',
+    'admission_register', 'teacher_attendance', 'holidays', 'class_logins', 'student_attendance',
+    'fin_vendor_entries', 'staff_advances', 'staff_leaves', 'staff_advance_recoveries'];
   const failed = [];
   for (const key of TABLES) {
     const rows = parsed.data[key];
@@ -5578,10 +5585,16 @@ async function confirmRestoreBackup() {
     // per-request row/size limits in one go.
     for (let i = 0; i < scoped.length; i += 500) {
       const { error } = await sb.from(key).upsert(scoped.slice(i, i + 500), { onConflict: 'id' });
-      if (error) { failed.push(key); break; }
+      if (error) {
+        const notSetUp = /does not exist|schema cache|relation|could not find/i.test(String(error.message || ''));
+        failed.push(notSetUp && /^(fin_|staff_)/.test(key) ? key + ' (' + qt('table not set up in Supabase', 'سپابیس میں ٹیبل نہیں بنا') + ')' : key);
+        break;
+      }
     }
   }
   PENDING_RESTORE_DATA = null;
+  FIN.loaded = false; FINV.loaded = false; STF.loaded = false;
+  try { await finLoad(); await finvLoad(); await stfLoad(); } catch (e) {}
   await loadAllData(); renderTab();
   if (failed.length) {
     msg.innerHTML = `<div class="err">${(LANG === 'ur' ? 'کچھ حصے بحال نہیں ہو سکے: ' : 'Some parts could not be restored: ') + esc(failed.join(', '))}</div>`;
@@ -5591,7 +5604,8 @@ async function confirmRestoreBackup() {
   }
 }
 
-function exportBackup() {
+async function exportBackup() {
+  try { if (!FIN.loaded) await finLoad(); if (!FINV.loaded) await finvLoad(); if (!STF.loaded) await stfLoad(); } catch (e) {}
   const wb = XLSX.utils.book_new();
   const addSheet = (name, rows) => {
     const ws = XLSX.utils.json_to_sheet(rows.length ? rows : [{}]);
@@ -5683,6 +5697,13 @@ function exportBackup() {
   addSheet('Other Transactions', DATA.transactions.map(x=>({
     Type:x.type, Category:x.category, Description:x.description, Amount:x.amount, Date:fmtDate(x.txn_date)
   })));
+  addSheet('Staff Advances', (STF.advances || []).map(a => ({ Teacher: stfName(a.teacher_id), Amount: a.amount, Date: fmtDate(a.given_date), Method: a.pay_method || 'cash', RecoverFrom: a.recover_from, Installment: a.installment, Note: a.note })));
+  addSheet('Advance Recoveries', (STF.recoveries || []).map(r => ({ Teacher: stfName(r.teacher_id), Month: r.month, Amount: r.amount })));
+  addSheet('Staff Leaves', (STF.leaves || []).map(l => { const o = { Teacher: stfName(l.teacher_id) }; Object.keys(l).forEach(k => { if (!['id', 'owner_id', 'teacher_id', 'created_at'].includes(k)) o[k] = l[k]; }); return o; }));
+  addSheet('Accounts', (FIN.accounts || []).map(a => ({ Name: a.name, Kind: a.kind, OpeningBalance: a.opening_balance, CurrentBalance: finAccBalance(a) })));
+  addSheet('Heads', (FIN.heads || []).map(h => ({ Name: h.name, Type: h.type })));
+  addSheet('Vendors', (FINV.vendors || []).map(v => ({ Name: v.name, Kind: v.kind, Contact: v.contact, Balance: finvBalance(v.id) })));
+  addSheet('Vendor Entries', (FINV.entries || []).map(e => { const v = (FINV.vendors || []).find(x => x.id === e.vendor_id); return { Vendor: v ? v.name : e.vendor_id, Type: e.entry_type, Amount: e.amount, Date: fmtDate(e.entry_date), Note: e.note }; }));
   const s = computeStats();
   addSheet('Summary', [{
     TotalFeesCollected:s.totalCollectedAllTime, TotalSalariesPaid:s.totalSalariesAllTime,
@@ -6025,7 +6046,7 @@ function openDashTeachersModal() {
 function openDashTeacherSalariesModal() {
   const list = DATA.teachers.slice().sort((a,b)=> (a.name||'').localeCompare(b.name||''));
   const body = list.length ? list.map(tc => {
-    const paid = teacherPayments(tc.id).reduce((a,b)=>a+Number(b.amount||0),0);
+    const paid = teacherPayments(tc.id).reduce((a,b)=>a+Number(b.amount||0)+((STF.loaded&&!STF.err)?stfRecoveredIn(tc.id,b.month):0),0);
     return dashListRow(tc.name, tc.subject || '', `₨${fmt(paid)}`, `openTeacherDetail('${tc.id}')`);
   }).join('') : dashEmptyRow();
   showModal(t.teacherSalaries, `<div class="list-card">${body}</div>`);
@@ -6531,6 +6552,7 @@ function dashIndexTouch(e) {
 }
 
 function tplDashboard() {
+  if (!STF.loaded && !STF.loading) { STF.loading = true; stfLoad().then(() => { STF.loading = false; if (TAB === 'dashboard' && STF.loaded) safeRenderTab(); }).catch(() => { STF.loading = false; }); }
   if (DASH_VIEW === 'activity') {
     return `<div style="padding-top:16px;">
       <button class="btn-ghost" style="margin-bottom:12px;" onclick="DASH_VIEW=null;dashActivityView='menu';renderTab()">‹ ${esc(qt('Dashboard','ڈیش بورڈ'))}</button>
@@ -8003,9 +8025,14 @@ function tplStudentsResults() {
     .filter(s => {
       const q = studentSearch.trim().toLowerCase();
       if (!q) return true;
-      const nameMatch = (s.name+ (s.father_name||'') + (s.class_name||'')).toLowerCase().includes(q);
-      const dueMatch = String(Math.max(0, studentBalance(s.id))).includes(studentSearch.trim());
-      return nameMatch || dueMatch;
+      const nameMatch = ((s.name||'') + ' ' + (s.name_ur||'') + ' ' + (s.father_name||'') + ' ' + (s.class_name||'')).toLowerCase().includes(q);
+      const qDigits = q.replace(/[\s\-+()]/g, '');
+      const idMatch = String(s.admission_number || '').toLowerCase().includes(q);
+      const phoneMatch = qDigits.length >= 3 && /^\d+$/.test(qDigits) && String(s.contact || '').replace(/[\s\-+()]/g, '').includes(qDigits);
+      // Balance is matched only when explicitly asked for with a prefix, e.g. "rs500" or "₨500"
+      const dm = q.match(/^(?:rs|₨)\s*(\d+)$/);
+      const dueMatch = !!dm && String(Math.max(0, studentBalance(s.id))).includes(dm[1]);
+      return nameMatch || idMatch || phoneMatch || dueMatch;
     })
     .filter(s => studentTypeFilter==='all' || (s.student_type||'paying')===studentTypeFilter)
     .filter(s => duesFilter==='all' || (duesFilter==='due' ? studentBalance(s.id) > 0 : duesRangeMatch(studentBalance(s.id), Number(duesFilter))));
@@ -8035,8 +8062,8 @@ function tplStudentsResults() {
       ? `<button class="print-btn" title="${esc(t.sendSmsToFather)}" onclick="event.stopPropagation(); sendOverdueReminderWhatsapp('${s.id}')">💬</button>`
       : '';
     return `
-      <button class="card-btn" onclick="openStudentDetail('${s.id}')">
-        <div><div class="nm">${esc(s.name)}</div><div class="sub">${esc(t.fatherName)}: ${esc(s.father_name||'')}${concessionAmount(s) > 0 ? ' · 🏷 −₨' + fmt(concessionAmount(s)) : ''}</div></div>
+      <button class="card-btn" style="${s.status === 'inactive' ? 'opacity:.6;' : ''}" onclick="openStudentDetail('${s.id}')">
+        <div><div class="nm">${esc(s.name)}${esc(leftTag(s))}</div><div class="sub">${esc(t.fatherName)}: ${esc(s.father_name||'')}${concessionAmount(s) > 0 ? ' · 🏷 −₨' + fmt(concessionAmount(s)) : ''}</div></div>
         <div style="display:flex;align-items:center;gap:6px;">${smsBtn}${pill}</div>
       </button>`;
   };
@@ -8115,15 +8142,61 @@ function openPromoteAllConfirm() {
     <div class="list-card" style="margin:10px 0;">${rows || `<div class="empty">Koi active student nahi mila</div>`}</div>
     ${unknownCount ? `<p class="err">⚠️ ${unknownCount} student(s) ki class list me nahi hai (custom/typo) — inki class promote nahi hogi.</p>` : ''}
     <p style="font-size:12px;opacity:.6;">Fee/DMC records par koi asar nahi padega — sirf class field badlega.</p>
+    ${(() => { const u = _promoUndoRead(); return u && u.map ? `<div style="padding:8px 10px;border-radius:10px;background:rgba(200,150,40,.14);font-size:12px;margin-top:8px;">${esc(qt('Last Promote All: ', 'پچھلا Promote All: '))}${esc(new Date(u.ts).toLocaleString())} — ${Object.keys(u.map).length} ${esc(qt('students', 'طلبہ'))}. <button class="btn-ghost" style="padding:4px 10px;font-size:12px;" onclick="undoPromoteAll()">↩ ${esc(qt('Undo', 'واپس'))}</button><div style="opacity:.7;margin-top:4px;">${esc(qt('Undo is available on this device only.', 'واپسی صرف اسی ڈیوائس پر ممکن ہے۔'))}</div></div>` : ''; })()}
+    <label style="margin-top:10px;"><span>${esc(qt('Type PROMOTE to confirm', 'تصدیق کے لیے PROMOTE لکھیں'))}</span><input id="promo-typed" autocomplete="off"></label>
     <div style="display:flex;gap:8px;margin-top:14px;">
       <button class="btn-ghost" style="flex:1;" onclick="closeModal()">Cancel</button>
-      <button class="btn-primary" style="flex:1;" onclick="runPromoteAllStudents()">Confirm — Promote All</button>
+      <button class="btn-primary" style="flex:1;" onclick="guardedSubmit(this, runPromoteAllStudents)">Confirm — Promote All</button>
     </div>
   `);
 }
 
+let _promoteBusy = false;
+function _promoUndoKey() { return 'promote_undo_' + (CURRENT_USER ? CURRENT_USER.id : ''); }
+function _promoUndoRead() { try { return JSON.parse(localStorage.getItem(_promoUndoKey()) || 'null'); } catch (e) { return null; } }
+async function _bulkSetClass(map) {
+  // map: { studentId: className } — grouped so it is one request per target class
+  const byTarget = {};
+  Object.entries(map).forEach(([id, cls]) => { (byTarget[cls] = byTarget[cls] || []).push(id); });
+  for (const [cls, ids] of Object.entries(byTarget)) {
+    ids.forEach(id => { const i = DATA.students.findIndex(x => x.id === id); if (i >= 0) { DATA.students[i] = { ...DATA.students[i], class_name: cls }; idbPutRow('students', DATA.students[i]); } });
+    let done = false;
+    if (navigator.onLine) {
+      try { const { error } = await sb.from('students').update({ class_name: cls }).in('id', ids); if (!error) done = true; else if (!isNetworkError(error)) { console.error(error.message); done = true; } } catch (e) {}
+    }
+    if (!done) await idbQueueAdd({ table: 'students', action: 'bulk_update', payload: { class_name: cls }, ids, baseRow: null, ts: Date.now() });
+  }
+}
+async function undoPromoteAll() {
+  const u = _promoUndoRead(); if (!u || !u.map) { alert(qt('Nothing to undo.', 'واپس کرنے کے لیے کچھ نہیں۔')); return; }
+  // Only students still sitting in the class they were promoted to are moved back; anyone changed since is left alone.
+  const back = {}; let skipped = 0;
+  Object.entries(u.map).forEach(([id, v]) => {
+    const st = DATA.students.find(x => x.id === id);
+    if (st && st.class_name === v.to) back[id] = v.from; else skipped++;
+  });
+  const n = Object.keys(back).length;
+  if (!n) { alert(qt('No student can be moved back (their classes were changed after the promotion).', 'کوئی طالب علم واپس نہیں جا سکتا (پروموشن کے بعد ان کی جماعت بدل چکی ہے)۔')); return; }
+  if (!confirm(qt('Undo the last Promote All? ' + n + ' students go back to their old class.' + (skipped ? ' ' + skipped + ' students changed since then and are left as they are.' : ''), 'پچھلا Promote All واپس کریں؟ ' + n + ' طلبہ پرانی جماعت میں لوٹ جائیں گے۔' + (skipped ? ' ' + skipped + ' طلبہ کی جماعت اس کے بعد بدل چکی ہے، انہیں چھوڑ دیا جائے گا۔' : '')))) return;
+  await _bulkSetClass(back);
+  try { localStorage.removeItem(_promoUndoKey()); } catch (e) {}
+  logCustomActivity('Undid Promote All — ' + n + ' students restored to their previous class' + (skipped ? ' (' + skipped + ' skipped)' : ''), 'update', 'students');
+  closeModal(); await loadAllData(); renderTab();
+}
 async function runPromoteAllStudents() {
+  if (_promoteBusy) return;
+  const typed = ((document.getElementById('promo-typed') || {}).value || '').trim().toUpperCase();
+  if (typed !== 'PROMOTE') { alert(qt('Type PROMOTE in the box to confirm.', 'تصدیق کے لیے خانے میں PROMOTE لکھیں۔')); return; }
+  _promoteBusy = true;
+  try { await _runPromoteAllStudentsInner(); } finally { _promoteBusy = false; }
+}
+async function _runPromoteAllStudentsInner() {
   const active = DATA.students.filter(s => s.status !== 'inactive');
+  // Snapshot for undo (old class of every student that will move)
+  const snap = {};
+  active.forEach(s => { const i = CLASS_OPTIONS.indexOf(s.class_name); if (i >= 0 && i < CLASS_OPTIONS.length - 1) snap[s.id] = { from: s.class_name, to: CLASS_OPTIONS[i + 1] }; });
+  try { localStorage.setItem(_promoUndoKey(), JSON.stringify({ ts: Date.now(), map: snap })); } catch (e) {}
+  logCustomActivity('Promote All — ' + Object.keys(snap).length + ' students moved to the next class', 'update', 'students');
   const byClass = {};
   active.forEach(s => { const c = s.class_name || ''; (byClass[c] = byClass[c] || []).push(s.id); });
 
@@ -8178,22 +8251,8 @@ function openOverdueReminders() {
   `);
 }
 
-function openAddStudent() {
-  showModal(t.addStudent, `
-    <label><span>${esc(t.studentName)}</span><input id="f-name"></label>
-    <label><span>${esc(t.studentNameUr)}</span><input id="f-name-ur" dir="rtl"></label>
-    <label><span>${esc(t.fatherName)}</span><input id="f-father"></label>
-    <label><span>${esc(t.className)}</span><select id="f-class" onchange="onAddClassChange()">${CLASS_OPTIONS.map(c=>`<option>${c}</option>`).join('')}</select></label>
-    <label><span>${esc(t.studentType)}</span><select id="f-type" onchange="onAddTypeChange()">${STUDENT_TYPES.map(v=>`<option value="${v}">${esc(typeLabel(v))}</option>`).join('')}</select></label>
-    <label><span>${esc(t.admissionDate)}</span><input id="f-admission" type="date" value="${todayISO()}"></label>
-    <label><span>${esc(t.contact)}</span><input id="f-contact" type="tel" placeholder="03XXXXXXXXX"></label>
-    <label><span>${esc(t.monthlyFee)}</span><input id="f-fee" type="number" min="0" value="0"></label>
-    <div class="flexgap">
-      <button class="btn-ghost" onclick="closeModal()">${esc(t.cancel)}</button>
-      <button class="btn-primary" style="flex:1" onclick="guardedSubmit(this, submitAddStudent)">${esc(t.save)}</button>
-    </div>
-  `);
-}
+// The short form had no validation, no admission number and no register entry — the full New Admission form is used instead.
+function openAddStudent() { openNewAdmission(); }
 function onAddClassChange() {
   const f = document.getElementById('f-fee'), c = document.getElementById('f-class'), ty = document.getElementById('f-type');
   if (f && c && !f.disabled && (!ty || ty.value === 'paying')) { const d = setupDefaultFee(c.value); if (d) f.value = d; }
@@ -8500,6 +8559,15 @@ function openStudentDetail(id, viewYear) {
       ${s.dob ? `<span>${esc(t.dateOfBirth)}: ${esc(fmtDate(s.dob))}</span>` : ''}
       ${s.contact ? `<span>${esc(t.contact)}: ${esc(s.contact)}</span>` : ''}
     </div>
+    ${s.status === 'inactive' ? `<div style="padding:8px 10px;border-radius:10px;background:rgba(150,150,150,.15);font-size:12px;margin-bottom:12px;">${esc(qt('Left the school', 'اسکول چھوڑ گیا'))}${s.left_date ? ': ' + esc(fmtDate(s.left_date)) : ''}${s.left_reason ? ' — ' + esc(s.left_reason) : ''}${studentBalance(id) > 0 ? '<br><b style="color:var(--rust);">' + esc(qt('Balance due', 'بقایا')) + ': ₨' + fmt(studentBalance(id)) + '</b>' : ''}</div>` : ''}
+    <h4 class="section-title" style="margin-top:0;">✏️ ${esc(qt('Student details', 'طالب علم کی تفصیل'))}</h4>
+    <label><span>${esc(t.studentName)}</span><input id="d-name" value="${esc(s.name||'')}"></label>
+    <label><span>${esc(t.fatherName)}</span><input id="d-father" value="${esc(s.father_name||'')}"></label>
+    <div class="row2">
+      <label style="margin-bottom:0;"><span>${esc(t.contact)}</span><input id="d-contact" type="tel" value="${esc(s.contact||'')}" placeholder="03XXXXXXXXX"></label>
+      <label style="margin-bottom:0;"><span>${esc(t.dateOfBirth)}</span><input id="d-dob" type="date" max="${todayISO()}" value="${esc(String(s.dob||'').slice(0,10))}"></label>
+    </div>
+    <button class="btn-ghost" style="margin:8px 0 16px;" onclick="guardedSubmit(this, ()=>updateStudentIdentity('${id}'))">${esc(t.save)}</button>
     <div class="row2" style="align-items:end;margin-bottom:16px;">
       <label style="margin-bottom:0;"><span>${esc(t.studentType)}</span>
         <select id="d-type">${STUDENT_TYPES.map(v=>`<option value="${v}" ${((s.student_type||'paying')===v)?'selected':''}>${esc(typeLabel(v))}</option>`).join('')}</select>
@@ -8949,24 +9017,60 @@ function feeCalcSummary(studentId) {
 // from rosters, fee lists, dashboards, etc, while their full fee/admission
 // history stays intact and can still be viewed/printed from their record,
 // and "un-strike" is always possible if this was done by mistake.
+const STUDENT_LEFT_SQL = "alter table public.students add column if not exists left_date date;\nalter table public.students add column if not exists left_reason text;\nnotify pgrst, 'reload schema';";
 function confirmStrikeOffStudent(id) {
+  const st = DATA.students.find(x => x.id === id); if (!st) return;
+  const bal = studentBalance(id);
   showModal(t.strikeOffStudent, `
-    <p style="font-size:14px;">${esc(t.confirmStrikeOff)}</p>
+    <p style="font-size:15px;margin-bottom:6px;"><b>${esc(st.name)}</b></p>
+    ${bal > 0 ? `<p style="font-size:13px;color:var(--rust);margin-bottom:10px;">⚠️ ${esc(qt('This student still owes ₨' + fmt(bal) + '. The balance is kept and he/she will still show in the overdue list as (Left).', 'اس طالب علم کے ذمے ابھی ₨' + fmt(bal) + ' باقی ہیں۔ بقایا محفوظ رہے گا اور وہ (چھوڑ چکا) کے نشان کے ساتھ بقایا فہرست میں نظر آئے گا۔'))}</p>` : ''}
+    <p style="font-size:13px;margin-bottom:10px;">${esc(t.confirmStrikeOff)}</p>
+    <label><span>${esc(qt('Date of leaving', 'چھوڑنے کی تاریخ'))}</span><input id="so-date" type="date" max="${todayISO()}" value="${todayISO()}"></label>
+    <label><span>${esc(qt('Reason (required)', 'وجہ (ضروری)'))}</span>
+      <select id="so-reason-sel" onchange="document.getElementById('so-reason').style.display = this.value === '__other' ? '' : 'none'">
+        <option value="${esc(qt('Left the school', 'اسکول چھوڑ دیا'))}">${esc(qt('Left the school', 'اسکول چھوڑ دیا'))}</option>
+        <option value="${esc(qt('Transferred to another school', 'دوسرے اسکول منتقل'))}">${esc(qt('Transferred to another school', 'دوسرے اسکول منتقل'))}</option>
+        <option value="${esc(qt('Non-payment of fees', 'فیس ادا نہ کرنا'))}">${esc(qt('Non-payment of fees', 'فیس ادا نہ کرنا'))}</option>
+        <option value="${esc(qt('Long absence', 'طویل غیر حاضری'))}">${esc(qt('Long absence', 'طویل غیر حاضری'))}</option>
+        <option value="__other">${esc(qt('Other…', 'دیگر…'))}</option>
+      </select>
+      <input id="so-reason" style="display:none;margin-top:6px;" placeholder="${esc(qt('Write the reason', 'وجہ لکھیں'))}">
+    </label>
     <div class="flexgap">
-      <button class="btn-ghost" onclick="closeModal()">${esc(t.no)}</button>
+      <button class="btn-ghost" onclick="openStudentDetail('${id}')">${esc(t.no)}</button>
       <button class="btn-primary" style="flex:1;background:var(--rust);" onclick="guardedSubmit(this, ()=>strikeOffStudent('${id}'))">${esc(t.yes)}</button>
     </div>
   `);
 }
 async function strikeOffStudent(id) {
-  const { error } = await offlineUpdateStudent(id, { status: 'inactive' });
-  if (reportSaveError(error)) return;
+  const st = DATA.students.find(x => x.id === id); if (!st) return;
+  const day = (document.getElementById('so-date') || {}).value || todayISO();
+  if (day > todayISO()) { alert(qt('The date cannot be in the future.', 'تاریخ آنے والی نہیں ہو سکتی۔')); return; }
+  const sel = (document.getElementById('so-reason-sel') || {}).value || '';
+  const reason = (sel === '__other' ? ((document.getElementById('so-reason') || {}).value || '') : sel).trim();
+  if (!reason) { alert(qt('Please give a reason.', 'براہ کرم وجہ لکھیں۔')); return; }
+  // Only send left_date / left_reason when we know the columns exist (a row already carries them) or we are online
+  // (online, a missing column is detected and handled below). Offline with unknown columns: status only, so the queued sync can't fail.
+  const colsKnown = DATA.students.some(x => 'left_date' in x);
+  const patch = { status: 'inactive' };
+  if (colsKnown || navigator.onLine) { patch.left_date = day; patch.left_reason = reason; }
+  let { queued, error } = await offlineUpdateStudent(id, patch);
+  if (!queued && error && /left_date|left_reason|column|schema cache/i.test(String(error.message || ''))) {
+    // Columns not created yet: still strike off (status only) and tell the owner the one-time SQL.
+    await loadAllData();
+    const r = await offlineUpdateStudent(id, { status: 'inactive' });
+    if (!r.queued && reportSaveError(r.error)) return;
+    alert(qt('Student struck off. To also save the date and reason, run this once in Supabase > SQL Editor:\n' + STUDENT_LEFT_SQL, 'طالب علم نشان زد ہو گیا۔ تاریخ اور وجہ بھی محفوظ کرنے کے لیے Supabase > SQL Editor میں ایک بار یہ چلائیں:\n' + STUDENT_LEFT_SQL));
+  } else if (!queued && reportSaveError(error)) return;
   closeModal();
   await loadAllData();
   openStudentDetail(id);
 }
 async function unstrikeStudent(id) {
-  const { error } = await offlineUpdateStudent(id, { status: 'active' });
+  const _st = DATA.students.find(x => x.id === id);
+  const _patch = { status: 'active' };
+  if (_st && 'left_date' in _st) { _patch.left_date = null; _patch.left_reason = null; }
+  const { error } = await offlineUpdateStudent(id, _patch);
   if (reportSaveError(error)) return;
   await loadAllData();
   openStudentDetail(id);
@@ -9061,6 +9165,24 @@ function openConcessionReport() {
     ${listHtml}`);
 }
 
+async function updateStudentIdentity(studentId) {
+  const st = DATA.students.find(x => x.id === studentId); if (!st) return;
+  const g = id => ((document.getElementById(id) || {}).value || '').trim();
+  const name = g('d-name'), father = g('d-father'), contact = g('d-contact'), dob = g('d-dob');
+  if (!name) { alert(qt('Student name cannot be empty.', 'طالب علم کا نام خالی نہیں ہو سکتا۔')); return; }
+  if (contact) {
+    const digits = contact.replace(/[\s\-+()]/g, '');
+    if (!/^\d{10,13}$/.test(digits)) { alert(qt('Phone number looks wrong. Use digits only, e.g. 03XXXXXXXXX.', 'فون نمبر درست نہیں لگتا۔ صرف ہندسے لکھیں، مثلاً 03XXXXXXXXX۔')); return; }
+  }
+  if (dob && dob > todayISO()) { alert(qt('Date of birth cannot be in the future.', 'تاریخ پیدائش آنے والی نہیں ہو سکتی۔')); return; }
+  const same = DATA.students.find(x => x.id !== studentId && String(x.name || '').trim().toLowerCase() === name.toLowerCase() && String(x.father_name || '').trim().toLowerCase() === father.toLowerCase());
+  if (same && !confirm(qt('Another student with the same name and father name already exists (' + (same.class_name || '—') + '). Save anyway?', 'اسی نام اور والد کے نام کا ایک اور طالب علم موجود ہے (' + (same.class_name || '—') + ')۔ پھر بھی محفوظ کریں؟'))) return;
+  const patch = { name, father_name: father || null, contact: contact || null, dob: dob || null };
+  const { queued, error } = await offlineUpdateStudent(studentId, patch);
+  if (!queued && reportSaveError(error)) return;
+  if (!queued) await reloadTable('students');
+  openStudentDetail(studentId);
+}
 async function updateStudentNameUr(studentId) {
   const nameUr = document.getElementById('d-name-ur').value.trim();
   const { queued, error } = await offlineUpdateStudent(studentId, { name_ur: nameUr || null });
@@ -11516,7 +11638,28 @@ function tplIncomeExpenseChart() {
       </svg>
     </div>`;
 }
+const TXNV = { q: '', type: 'all', month: 'all', limit: 100 };
+function txnSetQ(v) { TXNV.q = v; TXNV.limit = 100; reFocusAfterRender('txn-q'); }
+function txnSetType(v) { TXNV.type = v; TXNV.limit = 100; renderTab(); }
+function txnSetMonth(v) { TXNV.month = v; TXNV.limit = 100; renderTab(); }
+function txnMore() { TXNV.limit += 100; renderTab(); }
+function txnFiltered() {
+  const q = TXNV.q.trim().toLowerCase();
+  return DATA.transactions.filter(x => {
+    if (TXNV.type !== 'all' && x.type !== TXNV.type) return false;
+    if (TXNV.month !== 'all' && String(x.txn_date || '').slice(0, 7) !== TXNV.month) return false;
+    if (q && !((txnDesc(x) + ' ' + (x.category || '') + ' ' + (x.account_id ? finAccName(x.account_id) : '') + ' ' + x.amount).toLowerCase().includes(q))) return false;
+    return true;
+  }).sort((a, b) => String(b.txn_date || '').localeCompare(String(a.txn_date || '')));
+}
 function tplFinance() {
+  const all = txnFiltered();
+  const shown = all.slice(0, TXNV.limit);
+  const real = all.filter(x => !isTransferTxn(x));
+  const inc = real.filter(x => x.type === 'income').reduce((a, b) => a + Number(b.amount || 0), 0);
+  const exp = real.filter(x => x.type === 'expense').reduce((a, b) => a + Number(b.amount || 0), 0);
+  const months = [...new Set(DATA.transactions.map(x => String(x.txn_date || '').slice(0, 7)).filter(Boolean))].sort().reverse();
+  const linked = new Set(FINV.loaded ? FINV.entries.filter(e => e.txn_id).map(e => e.txn_id) : []);
   return `
     <div style="padding-top:16px;">
       <div style="display:flex;justify-content:flex-end;margin-bottom:12px;">
@@ -11524,10 +11667,26 @@ function tplFinance() {
       </div>
       ${finPanel()}
       ${tplIncomeExpenseChart()}
-      ${DATA.transactions.length===0 ? `<div class="empty">${esc(t.noTransactions)}</div>` :
-        `<div class="list-card">` + DATA.transactions.map(x=>`
+      ${DATA.transactions.length===0 ? `<div class="empty">${esc(t.noTransactions)}</div>` : `
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
+          <input id="txn-q" style="flex:2;min-width:140px;" placeholder="${esc(qt('Search description, head, account, amount…', 'تفصیل، مد، اکاؤنٹ، رقم تلاش کریں…'))}" value="${esc(TXNV.q)}" oninput="txnSetQ(this.value)">
+          <select style="flex:1;min-width:100px;" onchange="txnSetType(this.value)">
+            <option value="all" ${TXNV.type==='all'?'selected':''}>${esc(qt('All', 'سب'))}</option>
+            <option value="income" ${TXNV.type==='income'?'selected':''}>${esc(t.income)}</option>
+            <option value="expense" ${TXNV.type==='expense'?'selected':''}>${esc(t.expense)}</option>
+          </select>
+          <select style="flex:1;min-width:110px;" onchange="txnSetMonth(this.value)">
+            <option value="all" ${TXNV.month==='all'?'selected':''}>${esc(qt('All months', 'تمام مہینے'))}</option>
+            ${months.map(m => `<option value="${m}" ${TXNV.month===m?'selected':''}>${esc(monthLabel(m))}</option>`).join('')}
+          </select>
+        </div>
+        <div style="display:flex;gap:8px;margin-bottom:10px;font-size:12px;flex-wrap:wrap;">
+          <span class="amt-pos">${esc(t.income)}: ₨${fmt(inc)}</span><span class="amt-neg">${esc(t.expense)}: ₨${fmt(exp)}</span><b>${esc(qt('Net', 'خالص'))}: ${inc - exp < 0 ? '−' : ''}₨${fmt(Math.abs(inc - exp))}</b><span style="opacity:.6;">(${all.length} ${esc(qt('entries', 'اندراجات'))})</span>
+        </div>
+        ${all.length === 0 ? `<div class="empty">${esc(qt('No entries match.', 'کوئی اندراج نہیں ملا۔'))}</div>` :
+        `<div class="list-card">` + shown.map(x=>`
           <div class="list-row">
-            <div><div class="nm">${esc(txnDesc(x))}</div><div class="sub">${isTransferTxn(x) ? '↔ ' + esc(qt('Transfer', 'منتقلی')) : esc(x.category||'')}${x.account_id ? ' · ' + esc(finAccName(x.account_id)) : ''} · ${esc(fmtDate(x.txn_date)||'')}</div></div>
+            <div><div class="nm">${esc(txnDesc(x))}${linked.has(x.id) ? ' 🔗' : ''}</div><div class="sub">${isTransferTxn(x) ? '↔ ' + esc(qt('Transfer', 'منتقلی')) : esc(x.category||'')}${x.account_id ? ' · ' + esc(finAccName(x.account_id)) : ''} · ${esc(fmtDate(x.txn_date)||'')}</div></div>
             <div style="display:flex;align-items:center;gap:8px;">
               <span class="${x.type==='income'?'amt-pos':'amt-neg'}">${x.type==='income'?'+':'−'}₨${fmt(x.amount)}</span>
               ${isTransferTxn(x) ? '' : `<button class="print-btn" title="${esc(qt('Edit', 'ترمیم'))}" onclick="openAddTxn('${x.id}')">✏️</button>
@@ -11535,6 +11694,7 @@ function tplFinance() {
               <button class="del-btn" onclick="deleteTxn('${x.id}')">✕</button>
             </div>
           </div>`).join('') + `</div>`}
+        ${all.length > shown.length ? `<button class="btn-ghost" style="width:100%;margin-top:10px;" onclick="txnMore()">${esc(qt('Show more', 'مزید دکھائیں'))} (${all.length - shown.length})</button>` : ''}`}
     </div>`;
 }
 
@@ -11555,6 +11715,7 @@ function openAddTxn(editId) {
     <div class="field-box"><label><span>${esc(t.category)}</span><select id="f-cat"></select></label></div>
     ${finAccountSelectHtml()}
     <div class="field-box"><label><span>${esc(t.date)}</span><input id="f-date" type="date" max="${todayISO()}" value="${ex ? esc(String(ex.txn_date).slice(0, 10)) : todayISO()}"></label></div>
+    ${ex ? `<div class="field-box"><label><span>${esc(qt('Reason for editing (required)', 'ترمیم کی وجہ (ضروری)'))}</span><input id="f-edit-reason" autocomplete="off"></label></div>` : ''}
     <div class="flexgap">
       <button class="btn-ghost" onclick="closeModal()">${esc(t.cancel)}</button>
       <button class="btn-primary" style="flex:1" onclick="guardedSubmit(this, submitAddTxn)">${esc(t.save)}</button>
@@ -11634,7 +11795,17 @@ function removeTxnItem(i) {
 }
 async function submitAddTxn() {
   const validItems = txnItems.filter(it => it.name.trim() !== '' && it.price !== '' && Number(it.price) > 0);
-  if (validItems.length === 0) return;
+  if (validItems.length === 0) { alert(qt('Enter at least one item with its name and a price above 0.', 'کم از کم ایک چیز کا نام اور 0 سے زیادہ قیمت لکھیں۔')); return; }
+  if (txnEditId) {
+    if (!FINV.loaded && navigator.onLine) await finvLoad();
+    const _le = FINV.loaded ? FINV.entries.find(e => e.txn_id === txnEditId) : null;
+    if (_le) {
+      if (!needOnline()) return;
+      if (txnType !== 'expense') { alert(qt('This entry is a vendor payment, so it must stay an Expense.', 'یہ وینڈر کی ادائیگی ہے، اس لیے اس کا Expense رہنا ضروری ہے۔')); return; }
+    }
+  }
+  const _editWhy = ((document.getElementById('f-edit-reason') || {}).value || '').trim();
+  if (txnEditId && _editWhy.length < 3) { alert(qt('Please write the reason for editing this entry.', 'براہ کرم اس اندراج میں ترمیم کی وجہ لکھیں۔')); return; }
   const desc = validItems.map(it => `${it.name.trim()} (₨${fmt(Number(it.price))})`).join('; ');
   const amt = validItems.reduce((a,b)=>a+Number(b.price),0);
   const date = dateVal('f-date');
@@ -11648,11 +11819,19 @@ async function submitAddTxn() {
     if (accEl) payload.account_id = accEl.value || null;
     const { queued, error } = await offlineWrite({
       table: 'transactions', action: 'update', payload, id: ex.id, baseRow: ex,
-      logNote: 'Edited: Rs ' + fmt(ex.amount) + ' (' + String(ex.txn_date).slice(0, 10) + ') to Rs ' + fmt(amt) + ' (' + date + ')',
+      logNote: 'Edited: Rs ' + fmt(ex.amount) + ' (' + String(ex.txn_date).slice(0, 10) + ') to Rs ' + fmt(amt) + ' (' + date + ') — Reason: ' + _editWhy,
       run: () => sb.from('transactions').update(payload).eq('id', ex.id),
       optimisticApply: () => { const i = DATA.transactions.findIndex(x => x.id === ex.id); if (i >= 0) DATA.transactions[i] = payload; idbPutRow('transactions', payload); }
     });
     if (!queued && reportSaveError(error)) return;
+    try {
+      if (!FINV.loaded) await finvLoad();
+      const le = FINV.entries.find(e => e.txn_id === ex.id);
+      if (le && navigator.onLine) {
+        await sb.from('fin_vendor_entries').update({ amount: amt, entry_date: date }).eq('id', le.id);
+        await finvLoad();
+      }
+    } catch (e) {}
     txnEditId = null; closeModal(); if (!queued) await loadAllData(); renderTab();
     return;
   }
@@ -11682,7 +11861,7 @@ function deleteTxn(id) {
     <p style="font-size:14px;margin-bottom:6px;"><b>${esc(txnDesc(x))}</b> — ${x.type === 'income' ? '+' : '−'}₨${fmt(x.amount)} — ${esc(fmtDate(x.txn_date) || '')}</p>
     <p style="font-size:13px;color:var(--rust);margin-bottom:10px;">${esc(isTransferTxn(x)
       ? qt('Both sides of this transfer will be removed.', 'اس منتقلی کے دونوں اندراجات حذف ہو جائیں گے۔')
-      : qt('This removes the entry for good from the Day Book, reports and account balance.', 'اس سے یہ اندراج روزنامچے، رپورٹس اور اکاؤنٹ بیلنس سے ہمیشہ کے لیے ہٹ جائے گا۔'))}</p>
+      : qt('This removes the entry for good from the Day Book, reports and account balance.', 'اس سے یہ اندراج روزنامچے، رپورٹس اور اکاؤنٹ بیلنس سے ہمیشہ کے لیے ہٹ جائے گا۔'))}${FINV.loaded && FINV.entries.some(e => e.txn_id === id) ? ' ' + esc(qt('It is also linked to a vendor payment: that vendor entry will be removed too.', 'یہ ایک وینڈر ادائیگی سے بھی جڑی ہے: وینڈر کی وہ انٹری بھی ہٹ جائے گی۔')) : ''}</p>
     <label>${esc(qt('Reason for deleting (required)', 'حذف کرنے کی وجہ (ضروری)'))}
       <textarea id="del-reason" rows="2" placeholder="${esc(qt('e.g. entered twice by mistake', 'مثلاً غلطی سے دو بار درج ہو گیا'))}"></textarea></label>
     <div class="flexgap" style="margin-top:12px;">
@@ -11694,6 +11873,8 @@ async function doDeleteTxn(id) {
   const x = DATA.transactions.find(r => r.id === id); if (!x) { closeModal(); return; }
   const reason = ((document.getElementById('del-reason') || {}).value || '').trim();
   if (reason.length < 3) { alert(qt('Please write the reason for deleting this entry.', 'براہ کرم اس اندراج کو حذف کرنے کی وجہ لکھیں۔')); return; }
+  if (!FINV.loaded && navigator.onLine) { try { await finvLoad(); } catch (e) {} }
+  if (FINV.loaded && FINV.entries.some(e => e.txn_id === id) && !needOnline()) return;   // vendor ledger must be updated together
   const legs = [x];
   if (isTransferTxn(x)) {
     const m = String(x.description || '').match(/\[T:([a-z0-9]+)\]/);
@@ -11708,6 +11889,16 @@ async function doDeleteTxn(id) {
     });
     if (!queued) anyOnline = true;
   }
+  // A payment made from a vendor's page also lives in that vendor's ledger — remove it there too, so the vendor balance stays right.
+  try {
+    if (!FINV.loaded) await finvLoad();
+    const links = FINV.entries.filter(e => legs.some(y => y.id === e.txn_id));
+    if (links.length && navigator.onLine) {
+      for (const le of links) await sb.from('fin_vendor_entries').delete().eq('id', le.id);
+      logCustomActivity('Removed ' + links.length + ' vendor ledger entr' + (links.length > 1 ? 'ies' : 'y') + ' together with its Day Book payment — Reason: ' + reason, 'delete', 'fin_vendor_entries');
+      await finvLoad();
+    }
+  } catch (e) {}
   closeModal(); if (anyOnline) await loadAllData(); renderTab();
 }
 
@@ -11846,12 +12037,24 @@ function feeMoneyLines(p) {
   } else { const a = Number(p.amount || 0); if (a) res.push({ d: String(p.pay_date || '').slice(0, 10), a, m: p.pay_method, tag: p.receipt_no || '' }); }
   return res;
 }
+// Every money movement of one salary row: each installment keeps its own date and method (net paid, advance recovery excluded).
+function salMoneyLines(p) {
+  const inst = Array.isArray(p.installments) ? p.installments : [], res = [];
+  const dflt = String(p.pay_date || '').slice(0, 10);
+  if (inst.length) {
+    const sum = money2(inst.reduce((q, x) => q + Number(x.a || 0), 0));
+    inst.forEach(x => { const a = Number(x.a || 0); if (a) res.push({ d: String(x.d || dflt).slice(0, 10), a, m: x.m || p.pay_method || 'cash' }); });
+    const rest = money2(Number(p.amount || 0) - sum);
+    if (Math.abs(rest) > 0.005) res.push({ d: dflt, a: rest, m: p.pay_method || 'cash' });
+  } else { const a = Number(p.amount || 0); if (a) res.push({ d: dflt, a, m: p.pay_method || 'cash' }); }
+  return res;
+}
 function finAccBalance(a) {
   let bal = DATA.transactions.filter(x => x.account_id === a.id)
     .reduce((q, x) => q + (x.type === 'income' ? 1 : -1) * Number(x.amount || 0), Number(a.opening_balance || 0));
   DATA.feePayments.forEach(p => feeMoneyLines(p).forEach(l => { if (finMethodAccount(l.m, l.d) === a.id) bal += l.a; }));
-  DATA.salaryPayments.forEach(p => { if (finMethodAccount(p.pay_method || 'cash', p.pay_date) === a.id) bal -= Number(p.amount || 0); });
-  if (STF.loaded && !STF.err) STF.advances.forEach(x => { if (finMethodAccount('cash', x.given_date) === a.id) bal -= Number(x.amount || 0); });
+  DATA.salaryPayments.forEach(p => salMoneyLines(p).forEach(l => { if (finMethodAccount(l.m, l.d) === a.id) bal -= l.a; }));
+  if (STF.loaded && !STF.err) STF.advances.forEach(x => { if (finMethodAccount(x.pay_method || 'cash', x.given_date) === a.id) bal -= Number(x.amount || 0); });
   return money2(bal);
 }
 function finAccountSelectHtml() {
@@ -11892,19 +12095,30 @@ function openFinHeads() {
 let finHT = 'expense';
 function finHeadType(ty) { finHT = ty; document.getElementById('fh-income').className = ty === 'income' ? 'on-income' : ''; document.getElementById('fh-expense').className = ty === 'expense' ? 'on-expense' : ''; }
 async function finAddHead() {
+  if (!needOnline()) return;
   const name = (document.getElementById('fh-name').value || '').trim(); if (!name) return;
   const { error } = await sb.from('fin_heads').insert({ owner_id: CURRENT_USER.id, name, type: finHT });
   if (reportSaveError(error)) return;
+  logCustomActivity('Added head: ' + name + ' (' + finHT + ')', 'insert', 'fin_heads');
   await finLoad(); openFinHeads();
 }
 async function finDelete(table, id) {
+  if (!needOnline()) return;
   if (table === 'fin_accounts') {
-    const n = DATA.transactions.filter(x => x.account_id === id).length;
+    const acc = FIN.accounts.find(x => x.id === id);
+    let n = DATA.transactions.filter(x => x.account_id === id).length;
+    if (acc) {
+      DATA.feePayments.forEach(p => feeMoneyLines(p).forEach(l => { if (finMethodAccount(l.m, l.d) === id) n++; }));
+      DATA.salaryPayments.forEach(p => salMoneyLines(p).forEach(l => { if (finMethodAccount(l.m, l.d) === id) n++; }));
+      if (STF.loaded && !STF.err) STF.advances.forEach(x => { if (finMethodAccount(x.pay_method || 'cash', x.given_date) === id) n++; });
+    }
     if (n) { alert(qt('This account has ' + n + ' recorded entries, so it cannot be deleted (its history would be lost). You can rename it instead.', 'اس اکاؤنٹ میں ' + n + ' اندراجات ہیں، اس لیے یہ حذف نہیں ہو سکتا (اس کی تاریخ ضائع ہو جائے گی)۔ آپ اس کا نام بدل سکتے ہیں۔')); return; }
   }
   if (!confirm(table === 'fin_heads' ? qt('Delete this head? Existing entries keep their category name.', 'یہ مد حذف کریں؟ پرانے اندراجات میں مد کا نام برقرار رہے گا۔') : qt('Delete this account?', 'یہ اکاؤنٹ حذف کریں؟'))) return;
+  const _row = (table === 'fin_accounts' ? FIN.accounts : FIN.heads).find(x => x.id === id);
   const { error } = await sb.from(table).delete().eq('id', id);
   if (reportSaveError(error)) return;
+  logCustomActivity('Deleted ' + (table === 'fin_accounts' ? 'account' : 'head') + ': ' + (_row ? _row.name : id), 'delete', table);
   await finLoad(); table === 'fin_heads' ? openFinHeads() : openFinAccounts();
 }
 function openFinEdit(table, id) {
@@ -11922,9 +12136,18 @@ async function finSaveEdit(table, id) {
   const row = (table === 'fin_accounts' ? FIN.accounts : FIN.heads).find(x => x.id === id); if (!row) return;
   const name = ((document.getElementById('fe-name') || {}).value || '').trim(); if (!name) return;
   const patch = { name };
-  if (table === 'fin_accounts') { const o = Number((document.getElementById('fe-open') || {}).value); patch.opening_balance = Number.isFinite(o) ? o : 0; }
+  let _note = '';
+  if (table === 'fin_accounts') {
+    const o = Number((document.getElementById('fe-open') || {}).value); patch.opening_balance = Number.isFinite(o) ? o : 0;
+    if (patch.opening_balance !== Number(row.opening_balance || 0)) {
+      const why = await askReason(qt('Opening balance change', 'ابتدائی بیلنس میں تبدیلی'), esc(qt('Opening balance is changing from Rs' + fmt(row.opening_balance || 0) + ' to Rs' + fmt(patch.opening_balance) + '.', 'ابتدائی بیلنس Rs' + fmt(row.opening_balance || 0) + ' سے Rs' + fmt(patch.opening_balance) + ' ہو رہا ہے۔')), t.save);
+      if (!why) { openFinEdit(table, id); return; }
+      _note = ' — Opening balance Rs' + fmt(row.opening_balance || 0) + ' to Rs' + fmt(patch.opening_balance) + ' — Reason: ' + why;
+    }
+  }
   const { error } = await sb.from(table).update(patch).eq('id', id);
   if (reportSaveError(error)) return;
+  logCustomActivity('Edited ' + (table === 'fin_accounts' ? 'account' : 'head') + ': ' + row.name + (name !== row.name ? ' → ' + name : '') + _note, 'update', table);
   if (table === 'fin_heads' && name !== row.name) {
     const r = await sb.from('transactions').update({ category: name }).eq('category', row.name).eq('type', row.type);
     if (r.error) alert(qt('The head was renamed, but old entries could not be updated: ', 'مد کا نام بدل گیا، لیکن پرانے اندراجات اپڈیٹ نہیں ہو سکے: ') + friendlyErrorMsg(r.error));
@@ -11946,6 +12169,7 @@ function openFinAccounts() {
     <div class="list-card" style="margin-top:12px;">${FIN.accounts.map(row).join('') || `<div class="empty">${esc(qt('No accounts yet.', 'ابھی کوئی اکاؤنٹ نہیں۔'))}</div>`}</div>`);
 }
 async function finAddAccount() {
+  if (!needOnline()) return;
   const name = (document.getElementById('fa-name').value || '').trim(); if (!name) return;
   const { error } = await sb.from('fin_accounts').insert({ owner_id: CURRENT_USER.id, name,
     kind: document.getElementById('fa-kind').value, opening_balance: Number(document.getElementById('fa-open').value || 0) });
@@ -11976,14 +12200,20 @@ function finEntries(from, to, acct) {
   // and an advance given out is its own line. Those two are loans, flagged so Profit & Loss leaves them out.
   const stfOk = STF.loaded && !STF.err;
   DATA.salaryPayments.forEach(p => {
-    if (!inR(p.pay_date)) return;
-    const aid = finMethodAccount(p.pay_method || 'cash', p.pay_date);
-    if (acct !== 'all' && aid !== acct) return;
     const tc = DATA.teachers.find(z => z.id === p.teacher_id);
     const rec = stfOk ? stfRecoveredIn(p.teacher_id, p.month) : 0;
-    const accName = aid ? finAccName(aid) : (p.pay_method ? feeMethodLabel(p.pay_method) : '—');
-    out.push({ d: String(p.pay_date).slice(0, 10), type: 'expense', head: qt('Salaries', 'تنخواہیں'), desc: tc ? tc.name : '', amt: Number(p.amount || 0) + rec, acc: accName });
-    if (rec > 0) out.push({ d: String(p.pay_date).slice(0, 10), type: 'income', head: qt('Advance Recovered', 'ایڈوانس کٹوتی'), desc: tc ? tc.name : '', amt: rec, acc: accName, loan: true });
+    const lines = salMoneyLines(p);
+    if (!lines.length && rec > 0) lines.push({ d: String(p.pay_date || '').slice(0, 10), a: 0, m: p.pay_method || 'cash' });
+    lines.forEach((l, i) => {
+      // the advance-recovery portion belongs to the last installment of the row
+      const r = i === lines.length - 1 ? rec : 0;
+      if (!inR(l.d)) return;
+      const aid = finMethodAccount(l.m, l.d);
+      if (acct !== 'all' && aid !== acct) return;
+      const accName = aid ? finAccName(aid) : (l.m ? feeMethodLabel(l.m) : '—');
+      out.push({ d: l.d, type: 'expense', head: qt('Salaries', 'تنخواہیں'), desc: tc ? tc.name : '', amt: l.a + r, acc: accName });
+      if (r > 0) out.push({ d: l.d, type: 'income', head: qt('Advance Recovered', 'ایڈوانس کٹوتی'), desc: tc ? tc.name : '', amt: r, acc: accName, loan: true });
+    });
   });
   if (stfOk) STF.advances.forEach(x => {
     if (!inR(x.given_date)) return;
@@ -12171,15 +12401,24 @@ async function openFinVendors() {
     ${FINV.vendors.length ? `<button class="btn-ghost" style="width:100%;margin-top:10px;" onclick="exportVendorsSummary()">📥 ${esc(qt('Download Excel', 'ایکسل ڈاؤن لوڈ'))}</button>` : ''}`);
 }
 async function finvAddVendor() {
+  if (!needOnline()) return;
   const name = (document.getElementById('vn-name').value || '').trim(); if (!name) return;
   const { error } = await sb.from('fin_vendors').insert({ owner_id: CURRENT_USER.id, name, kind: document.getElementById('vn-kind').value, contact: (document.getElementById('vn-contact').value || '').trim() || null });
   if (reportSaveError(error)) return;
+  logCustomActivity('Added vendor: ' + name, 'insert', 'fin_vendors');
   await finvLoad(); openFinVendors();
 }
 async function finvDeleteVendor(id) {
-  if (!confirm(qt('Delete this vendor and all its entries? (Payments already in the Day Book stay there.)', 'یہ وینڈر اور اس کی تمام اندراجات حذف کریں؟ (ڈے بک میں درج ادائیگیاں رہیں گی۔)'))) return;
+  if (!needOnline()) return;
+  const lockedE = FINV.entries.find(x => x.vendor_id === id && feeMonthLocked(String(x.entry_date).slice(0, 7)));
+  if (lockedE) { feeLockAlert(String(lockedE.entry_date).slice(0, 7)); return; }
+  const cnt = FINV.entries.filter(x => x.vendor_id === id).length, bal = finvBalance(id);
+  const why = await askReason(qt('Delete vendor', 'وینڈر حذف کریں'), esc(qt('Delete this vendor and its ' + cnt + ' entries? Balance now: Rs' + fmt(Math.abs(bal)) + '. (Payments already in the Day Book stay there.)', 'یہ وینڈر اور اس کے ' + cnt + ' اندراجات حذف کریں؟ موجودہ بیلنس: Rs' + fmt(Math.abs(bal)) + '۔ (ڈے بک میں درج ادائیگیاں رہیں گی۔)')));
+  if (!why) { openFinVendors(); return; }
+  const _vn = (FINV.vendors.find(x => x.id === id) || {}).name || '';
   const { error } = await sb.from('fin_vendors').delete().eq('id', id);
   if (reportSaveError(error)) return;
+  logCustomActivity('Deleted vendor: ' + _vn + ' (' + cnt + ' entries, balance Rs' + fmt(Math.abs(bal)) + ') — Reason: ' + why, 'delete', 'fin_vendors');
   await finvLoad(); openFinVendors();
 }
 function finvType(ty) {
@@ -12217,10 +12456,13 @@ async function openFinVendor(id) {
     <button class="btn-ghost" style="width:100%;margin-top:8px;" onclick="openFinVendors()">← ${esc(qt('All vendors', 'تمام وینڈرز'))}</button>`);
 }
 async function finvAddEntry() {
+  if (!needOnline()) return;
   const amt = Number(document.getElementById('vd-amt').value || 0); if (!(amt > 0)) return;
   const date = document.getElementById('vd-date').value || todayISO();
   const note = (document.getElementById('vd-note').value || '').trim() || null;
   const v = FINV.vendors.find(x => x.id === FINV_CUR); if (!v) return;
+  if (date > todayISO()) { alert(qt('The date cannot be in the future.', 'تاریخ آنے والی نہیں ہو سکتی۔')); return; }
+  if (feeMonthLocked(date.slice(0, 7))) { feeLockAlert(date.slice(0, 7)); return; }
   let txn_id = null;
   if (FINV_TYPE === 'payment') {
     const sel = document.getElementById('vd-acc').value;
@@ -12234,14 +12476,19 @@ async function finvAddEntry() {
   }
   const { error } = await sb.from('fin_vendor_entries').insert({ owner_id: CURRENT_USER.id, vendor_id: FINV_CUR, entry_type: FINV_TYPE, amount: amt, entry_date: date, note, txn_id });
   if (reportSaveError(error)) { if (txn_id) await sb.from('transactions').delete().eq('id', txn_id); return; }
+  logCustomActivity('Vendor ' + v.name + ': ' + FINV_TYPE + ' of Rs' + fmt(amt) + ' on ' + date, 'insert', 'fin_vendor_entries');
   await finvLoad(); if (txn_id) await loadAllData();
   openFinVendor(FINV_CUR);
 }
 async function finvDeleteEntry(id) {
+  if (!needOnline()) return;
   const e = FINV.entries.find(x => x.id === id); if (!e) return;
-  if (!confirm(qt('Delete this entry?', 'یہ اندراج حذف کریں؟') + (e.txn_id ? '\n' + qt('Its Day Book payment will also be removed.', 'ڈے بک کی ادائیگی بھی ہٹ جائے گی۔') : ''))) return;
+  if (feeMonthLocked(String(e.entry_date).slice(0, 7))) { feeLockAlert(String(e.entry_date).slice(0, 7)); return; }
+  const why = await askReason(qt('Delete entry', 'اندراج حذف کریں'), esc(qt('Delete this ' + e.entry_type + ' of Rs' + fmt(e.amount) + '?', 'کیا یہ ' + (e.entry_type === 'bill' ? 'بل' : 'ادائیگی') + ' (Rs' + fmt(e.amount) + ') حذف کریں؟')) + (e.txn_id ? '<br>' + esc(qt('Its Day Book payment will also be removed.', 'ڈے بک کی ادائیگی بھی ہٹ جائے گی۔')) : ''));
+  if (!why) { openFinVendor(FINV_CUR); return; }
   const { error } = await sb.from('fin_vendor_entries').delete().eq('id', id);
   if (reportSaveError(error)) return;
+  logCustomActivity('Deleted vendor ' + e.entry_type + ' of Rs' + fmt(e.amount) + ' (' + String(e.entry_date).slice(0, 10) + ') — Reason: ' + why, 'delete', 'fin_vendor_entries');
   if (e.txn_id) { await sb.from('transactions').delete().eq('id', e.txn_id); await loadAllData(); }
   await finvLoad(); openFinVendor(FINV_CUR);
 }
@@ -12329,14 +12576,14 @@ function repData() {
   const inR = d => { const x = String(d || '').slice(0, 10); return x >= R.from && x <= R.to; };
   const stfOk = STF.loaded && !STF.err;
   let fees = 0;
-  DATA.students.forEach(s => studentPayments(s.id).forEach(p => { if (inR(p.pay_date)) fees += Number(p.amount || 0); }));
+  DATA.students.forEach(s => studentPayments(s.id).forEach(p => feeMoneyLines(p).forEach(l => { if (inR(l.d)) fees += l.a; })));
   const sumTx = type => DATA.transactions.filter(x => x.type === type && !isTransferTxn(x) && inR(x.txn_date)).reduce((a, b) => a + Number(b.amount || 0), 0);
   const otherInc = sumTx('income'), otherExp = sumTx('expense');
   let salNet = 0, salCut = 0;
   const staff = [];
   DATA.teachers.forEach(tc => {
     let net = 0, cut = 0;
-    teacherPayments(tc.id).forEach(p => { if (!inR(p.pay_date)) return; net += Number(p.amount || 0); if (stfOk) cut += stfRecoveredIn(tc.id, p.month); });
+    teacherPayments(tc.id).forEach(p => { const ls = salMoneyLines(p); ls.forEach(l => { if (inR(l.d)) net += l.a; }); if (stfOk && ls.length && inR(ls[ls.length - 1].d)) cut += stfRecoveredIn(tc.id, p.month); });
     const given = stfOk ? stfTeacherAdvances(tc.id).filter(a => inR(a.given_date)).reduce((a, b) => a + Number(b.amount || 0), 0) : 0;
     const outstanding = stfOk ? stfTeacherOutstanding(tc.id) : 0;
     const att = calcAttendanceSalary(tc.id, R.mk);
@@ -12353,7 +12600,7 @@ function repData() {
     const key = st.class_name || '—'; const c = per[key] || (per[key] = { count: 0, collected: 0, dues: 0 });
     const active = st.status !== 'inactive', bal = Math.max(0, studentBalance(st.id));
     if (active) { c.count++; c.dues += bal; activeDues += bal; } else leftDues += bal;
-    studentPayments(st.id).forEach(p => { if (inR(p.pay_date)) c.collected += Number(p.amount || 0); });
+    studentPayments(st.id).forEach(p => feeMoneyLines(p).forEach(l => { if (inR(l.d)) c.collected += l.a; }));
   });
   const classes = Object.entries(per).map(([name, d]) => ({ name, count: d.count, collected: money2(d.collected), dues: money2(d.dues) }));
   const s = computeStats();
@@ -16996,6 +17243,16 @@ async function submitEditAdmissionEntry(id) {
     }
   });
   if (!queued && reportSaveError(error)) return;
+  // Keep the linked student record in step with the register (name / father / date of birth)
+  if (entry.student_id) {
+    const stu = DATA.students.find(x => x.id === entry.student_id);
+    if (stu) {
+      const sp = { name: entry.student_name, name_ur: entry.student_name_ur, father_name: entry.father_name || stu.father_name };
+      if (entry.dob_figures) sp.dob = entry.dob_figures;
+      const changed = Object.keys(sp).some(k => (sp[k] || null) !== (stu[k] || null));
+      if (changed) await offlineUpdateStudent(entry.student_id, sp);
+    }
+  }
   closeModal(); if (!queued) await loadAllData(); renderTab();
 }
 
@@ -17012,22 +17269,59 @@ function showModal(title, bodyHtml) {
   // the Admission Register's Add/Edit form) — see initRegBookScroll().
   initRegBookScroll();
 }
-function closeModal() { document.getElementById('modal-root').innerHTML = ''; }
+function closeModal() {
+  document.getElementById('modal-root').innerHTML = '';
+  if (typeof _askReasonResolve === 'function') { const r = _askReasonResolve; _askReasonResolve = null; r(null); }   // a closed reason dialog counts as Cancel
+}
+// Reason dialog that returns a Promise<string|null>. (window.prompt is blocked in many Android WebViews, so it is not used.)
+let _askReasonResolve = null;
+function askReason(title, messageHtml, okLabel) {
+  return new Promise(resolve => {
+    _askReasonResolve = resolve;
+    showModal(title, `
+      <div style="font-size:13px;margin-bottom:10px;line-height:1.6;">${messageHtml}</div>
+      <label><span>${esc(qt('Reason (required)', 'وجہ (ضروری)'))}</span><input id="ask-reason" autocomplete="off"></label>
+      <div class="flexgap">
+        <button class="btn-ghost" onclick="askReasonDone(null)">${esc(t.cancel)}</button>
+        <button class="btn-primary" style="flex:1;background:var(--rust);" onclick="askReasonDone(true)">${esc(okLabel || t.yes)}</button>
+      </div>`);
+  });
+}
+function askReasonDone(ok) {
+  const v = ((document.getElementById('ask-reason') || {}).value || '').trim();
+  if (ok && v.length < 3) { alert(qt('Please write the reason.', 'براہ کرم وجہ لکھیں۔')); return; }
+  const r = _askReasonResolve; _askReasonResolve = null; closeModal();
+  if (r) r(ok ? v : null);
+}
+function needOnline() {
+  if (navigator.onLine) return true;
+  alert(qt('This needs an internet connection. Please connect and try again.', 'اس کام کے لیے انٹرنیٹ چاہیے۔ جڑ کر دوبارہ کوشش کریں۔'));
+  return false;
+}
 
-function confirmDelete(kind, id) {
+function confirmDelete(kind, id, _staffTried) {
+  if (kind === 'teacher' && !STF.loaded && !_staffTried) {
+    // Advances / leaves live in separate tables: load them first so the warning shows the true numbers.
+    stfLoad().then(() => confirmDelete(kind, id, true)).catch(() => confirmDelete(kind, id, true));
+    return;
+  }
+  if (kind === 'teacher' && !STF.loaded && !navigator.onLine && !confirm(qt('Offline: advances and leaves could not be counted. They will also be deleted. Continue?', 'آف لائن: ایڈوانس اور چھٹیاں گنی نہیں جا سکیں۔ وہ بھی حذف ہو جائیں گی۔ جاری رکھیں؟'))) return;
   if (kind === 'teacher') {
     // Deleting a teacher also erases all of their salary records — say so, with the real numbers.
     const tc = DATA.teachers.find(x => x.id === id);
     const pays = DATA.salaryPayments.filter(x => x.teacher_id === id);
     const lockedRow = pays.find(x => feeMonthLocked(x.month));
     if (lockedRow) { alert(qt('This teacher has salary records in a closed (locked) month, so the record cannot be deleted. Use "Has left" instead.', 'اس استاد کے تنخواہ ریکارڈ بند (لاک) مہینے میں ہیں، اس لیے حذف نہیں ہو سکتا۔ "چھوڑ گئے" استعمال کریں۔')); return; }
-    if (tc && pays.length) {
+    const _adv = STF.advances.filter(x => String(x.teacher_id) === String(id)).length;
+    const _lv = STF.leaves.filter(x => String(x.teacher_id) === String(id)).length;
+    const _att = DATA.teacherAttendance.filter(x => String(x.teacher_id) === String(id)).length;
+    if (tc && (pays.length || _adv || _lv || _att)) {
       const paid = pays.reduce((a, x) => a + Number(x.amount || 0), 0);
       showModal(t.delete, `
         <p style="font-size:15px;margin-bottom:6px;"><b>${esc(tc.name)}</b></p>
         <p style="font-size:13px;color:var(--rust);margin-bottom:10px;">${esc(qt(
-          'This will ALSO permanently erase ' + pays.length + ' salary record(s) totalling ₨' + fmt(paid) + ', plus attendance, leaves and advances. Those salaries will disappear from the Day Book, reports and totals. This cannot be undone.',
-          'اس سے ' + pays.length + ' تنخواہ ریکارڈ (کل ₨' + fmt(paid) + ')، حاضری، چھٹیاں اور ایڈوانس بھی ہمیشہ کے لیے مٹ جائیں گے۔ یہ تنخواہیں روزنامچے، رپورٹس اور ٹوٹلز سے غائب ہو جائیں گی۔ یہ واپس نہیں ہو سکتا۔'))}</p>
+          'This will permanently erase: ' + pays.length + ' salary record(s) totalling ₨' + fmt(paid) + ', ' + _att + ' attendance record(s), ' + _lv + ' leave(s) and ' + _adv + ' advance(s). Salaries will disappear from the Day Book, reports and totals. This cannot be undone.',
+          'یہ ہمیشہ کے لیے مٹ جائے گا: ' + pays.length + ' تنخواہ ریکارڈ (کل ₨' + fmt(paid) + ')، ' + _att + ' حاضری ریکارڈ، ' + _lv + ' چھٹیاں اور ' + _adv + ' ایڈوانس۔ تنخواہیں روزنامچے، رپورٹس اور ٹوٹلز سے غائب ہو جائیں گی۔ یہ واپس نہیں ہو سکتا۔'))}</p>
         <p style="font-size:13px;margin-bottom:10px;">${esc(qt('If the teacher has only left the school, use "Has left" instead — it keeps all history.', 'اگر استاد نے صرف ادارہ چھوڑا ہے تو حذف کے بجائے "چھوڑ گئے" استعمال کریں — اس سے تمام تاریخ محفوظ رہتی ہے۔'))}</p>
         <button class="btn-ghost" style="width:100%;margin-bottom:10px;" onclick="confirmStrikeOffTeacher('${id}')">🚪 ${esc(qt('Has left', 'چھوڑ گئے'))}</button>
         <label style="display:flex;gap:8px;align-items:flex-start;font-size:13px;margin-bottom:12px;"><input type="checkbox" style="width:auto;margin-top:3px;" onchange="document.getElementById('del-yes').disabled=!this.checked"> <span>${esc(qt('I understand, delete the teacher and all records', 'مجھے معلوم ہے، استاد اور تمام ریکارڈ حذف کریں'))}</span></label>
@@ -17054,12 +17348,26 @@ function confirmDelete(kind, id) {
         <p style="font-size:13px;margin-bottom:10px;">${esc(qt('If the student has only left the school, use Strike Off instead — it keeps all fee history.', 'اگر طالب علم نے صرف اسکول چھوڑا ہے تو حذف کے بجائے "اسکول چھوڑنے پر نشان زد" استعمال کریں — اس سے فیس کی تاریخ محفوظ رہتی ہے۔'))}</p>
         <button class="btn-ghost" style="width:100%;margin-bottom:10px;" onclick="confirmStrikeOffStudent('${id}')">${esc(t.strikeOffStudent)}</button>
         <label style="display:flex;gap:8px;align-items:flex-start;font-size:13px;margin-bottom:12px;"><input type="checkbox" id="del-ack" style="width:auto;margin-top:3px;" onchange="document.getElementById('del-yes').disabled=!this.checked"> <span>${esc(qt('I understand, delete the student and all fee records', 'مجھے معلوم ہے، طالب علم اور تمام فیس ریکارڈ حذف کریں'))}</span></label>
+        <label><span>${esc(qt('Reason (required)', 'وجہ (ضروری)'))}</span><input id="del-reason" autocomplete="off"></label>
         <div class="flexgap">
           <button class="btn-ghost" onclick="closeModal()">${esc(t.no)}</button>
           <button id="del-yes" class="btn-primary" disabled style="flex:1;background:var(--rust);" onclick="doDelete('${kind}','${id}')">${esc(t.yes)}</button>
         </div>`);
       return;
     }
+  }
+  if (kind === 'student') {
+    const st0 = DATA.students.find(x => x.id === id);
+    showModal(t.delete, `
+      <p style="font-size:15px;margin-bottom:6px;"><b>${esc(st0 ? st0.name : '')}</b></p>
+      <p style="font-size:13px;margin-bottom:10px;">${esc(qt('This student record will be deleted permanently. If the student has only left, use Strike Off instead.', 'یہ طالب علم کا ریکارڈ ہمیشہ کے لیے حذف ہو جائے گا۔ اگر صرف اسکول چھوڑا ہے تو "اسکول چھوڑنے پر نشان زد" استعمال کریں۔'))}</p>
+      <label><span>${esc(qt('Reason (required)', 'وجہ (ضروری)'))}</span><input id="del-reason" autocomplete="off"></label>
+      <div class="flexgap">
+        <button class="btn-ghost" onclick="closeModal()">${esc(t.no)}</button>
+        <button class="btn-ghost" onclick="confirmStrikeOffStudent('${id}')">${esc(t.strikeOffStudent)}</button>
+        <button class="btn-primary" style="flex:1;background:var(--rust);" onclick="guardedSubmit(this, ()=>doDelete('${kind}','${id}'))">${esc(t.yes)}</button>
+      </div>`);
+    return;
   }
   showModal(t.delete, `
     <p style="font-size:14px;">${esc(t.confirmDelete)}</p>
@@ -17073,6 +17381,10 @@ async function doDelete(kind, id) {
   // Delete dependent ledger rows first so a missing FK-cascade rule on the
   // database can't silently block the delete or leave orphaned payment records.
   let err = null;
+  const _delReason = ((document.getElementById('del-reason') || {}).value || '').trim();
+  if (kind === 'student' && document.getElementById('del-reason') && _delReason.length < 3) {
+    alert(qt('Please write the reason for deleting this record.', 'براہ کرم اس ریکارڈ کو حذف کرنے کی وجہ لکھیں۔')); return;
+  }
   if (kind==='student') {
     // Offline-aware: queues the student's fee_payments deletes and the
     // student delete itself; all applied to the local cache immediately.
@@ -17088,7 +17400,7 @@ async function doDelete(kind, id) {
     }
     const baseStudent = DATA.students.find(x => x.id === id) || null;
     const r2 = await offlineWrite({
-      table: 'students', action: 'delete', payload: null, id, baseRow: baseStudent,
+      table: 'students', action: 'delete', payload: null, id, baseRow: baseStudent, logNote: _delReason ? 'Reason: ' + _delReason : null,
       run: () => sb.from('students').delete().eq('id', id),
       optimisticApply: () => { DATA.students = DATA.students.filter(x => x.id !== id); idbDeleteRow('students', id); }
     });
@@ -18343,6 +18655,7 @@ function renderClassPortalManageStudents() {
 
 function confirmClassPortalStrikeOff(studentId, studentName) {
   showModal(t.strikeOffStudent, `
+    <p style="font-size:15px;margin-bottom:6px;"><b>${esc(studentName || '')}</b></p>
     <p style="font-size:14px;">${esc(t.confirmStrikeOff)}</p>
     <div class="flexgap">
       <button class="btn-ghost" onclick="closeModal()">${esc(t.no)}</button>
@@ -18408,7 +18721,11 @@ async function submitClassPortalAddStudent() {
   const name = nameInput ? nameInput.value.trim() : '';
   const fatherName = fatherInput ? fatherInput.value.trim() : '';
   const phone = phoneInput ? phoneInput.value.trim() : '';
-  if (!session || !name) return;
+  if (!session) return;
+  if (!name) { msg.innerHTML = `<div class="err">${esc(qt('Student name is required.', 'طالب علم کا نام ضروری ہے۔'))}</div>`; return; }
+  if (phone && !/^\d{10,13}$/.test(phone.replace(/[\s\-+()]/g, ''))) { msg.innerHTML = `<div class="err">${esc(qt('Phone number looks wrong. Use digits only, e.g. 03XXXXXXXXX.', 'فون نمبر درست نہیں لگتا۔ صرف ہندسے لکھیں، مثلاً 03XXXXXXXXX۔'))}</div>`; return; }
+  const _dup = (session.students || []).find(x => String(x.name || '').trim().toLowerCase() === name.toLowerCase() && String(x.father_name || '').trim().toLowerCase() === fatherName.toLowerCase());
+  if (_dup && !confirm(qt('A student with the same name and father name is already in your class. Add anyway?', 'اسی نام اور والد کے نام کا طالب علم آپ کی جماعت میں پہلے سے ہے۔ پھر بھی شامل کریں؟'))) { msg.textContent = ''; return; }
   msg.textContent = '…';
   if (!navigator.onLine) { queueOfflineAddStudent(session, name, fatherName, phone, msg, nameInput, fatherInput, phoneInput); return; }
   try {
