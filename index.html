@@ -2259,6 +2259,12 @@ window.addEventListener('error', e => _logClientError('error', e.error || e.mess
 // afterwards (e.g. a validation error kept the same modal open), both the label
 // and disabled state are restored; on success the modal/tab normally re-renders
 // anyway, replacing the button fresh.
+// Shared phone check: empty is fine, otherwise 10-13 digits (same rule the student profile already used).
+function phoneLooksBad(contact) {
+  const d = String(contact || '').replace(/[\s\-+()]/g, '');
+  return !!d && !/^\d{10,13}$/.test(d);
+}
+const PHONE_BAD_MSG = () => qt('Phone number looks wrong. Use digits only, e.g. 03XXXXXXXXX.', 'فون نمبر درست نہیں لگتا۔ صرف ہندسے لکھیں، مثلاً 03XXXXXXXXX۔');
 async function guardedSubmit(btn, fn) {
   if (!btn || btn.disabled) return;
   const savingLabel = LANG === 'ur' ? 'محفوظ ہو رہا ہے…' : 'Saving…';
@@ -2803,6 +2809,11 @@ async function flushSyncQueue() {
           // A brand-new month entry saved offline. If another phone already saved this student + month, a plain
           // upsert would silently overwrite that payment — look first and hand it to the user instead.
           const r = await sb.from('fee_payments').select('*').eq('student_id', item.payload.student_id).eq('month', item.payload.month).maybeSingle();
+          if (r.error) { if (isTransientResult(r)) { stoppedEarly = true; break; } }
+          else if (r.data) { serverRow = r.data; newEntryClash = true; }
+        } else if (item.table === 'salary_payments' && item.action === 'upsert' && item.payload && !item.baseRow) {
+          // Same protection for salaries: another phone may already have paid this teacher + month.
+          const r = await sb.from('salary_payments').select('*').eq('teacher_id', item.payload.teacher_id).eq('month', item.payload.month).maybeSingle();
           if (r.error) { if (isTransientResult(r)) { stoppedEarly = true; break; } }
           else if (r.data) { serverRow = r.data; newEntryClash = true; }
         }
@@ -8142,6 +8153,7 @@ function openPromoteAllConfirm() {
     <div class="list-card" style="margin:10px 0;">${rows || `<div class="empty">Koi active student nahi mila</div>`}</div>
     ${unknownCount ? `<p class="err">⚠️ ${unknownCount} student(s) ki class list me nahi hai (custom/typo) — inki class promote nahi hogi.</p>` : ''}
     <p style="font-size:12px;opacity:.6;">Fee/DMC records par koi asar nahi padega — sirf class field badlega.</p>
+    <p style="font-size:12px;color:var(--rust);">⚠️ ${esc(qt('Monthly fee does NOT change with the class. After promoting, check each class\'s fee and update students whose fee differs in the new class.', 'جماعت بدلنے سے ماہانہ فیس خود نہیں بدلتی۔ پروموشن کے بعد ہر جماعت کی فیس چیک کریں اور جن طلبہ کی فیس نئی جماعت میں مختلف ہے ان کی اپڈیٹ کریں۔'))}</p>
     ${(() => { const u = _promoUndoRead(); return u && u.map ? `<div style="padding:8px 10px;border-radius:10px;background:rgba(200,150,40,.14);font-size:12px;margin-top:8px;">${esc(qt('Last Promote All: ', 'پچھلا Promote All: '))}${esc(new Date(u.ts).toLocaleString())} — ${Object.keys(u.map).length} ${esc(qt('students', 'طلبہ'))}. <button class="btn-ghost" style="padding:4px 10px;font-size:12px;" onclick="undoPromoteAll()">↩ ${esc(qt('Undo', 'واپس'))}</button><div style="opacity:.7;margin-top:4px;">${esc(qt('Undo is available on this device only.', 'واپسی صرف اسی ڈیوائس پر ممکن ہے۔'))}</div></div>` : ''; })()}
     <label style="margin-top:10px;"><span>${esc(qt('Type PROMOTE to confirm', 'تصدیق کے لیے PROMOTE لکھیں'))}</span><input id="promo-typed" autocomplete="off"></label>
     <div style="display:flex;gap:8px;margin-top:14px;">
@@ -8187,6 +8199,9 @@ async function runPromoteAllStudents() {
   if (_promoteBusy) return;
   const typed = ((document.getElementById('promo-typed') || {}).value || '').trim().toUpperCase();
   if (typed !== 'PROMOTE') { alert(qt('Type PROMOTE in the box to confirm.', 'تصدیق کے لیے خانے میں PROMOTE لکھیں۔')); return; }
+  const _pu = _promoUndoRead();
+  if (_pu && _pu.ts && (Date.now() - _pu.ts) < 150 * 86400000 &&
+      !confirm(qt('Promote All was already done recently (' + new Date(_pu.ts).toLocaleDateString() + '). Doing it again will move every student up ANOTHER class.\n\nContinue anyway?', 'Promote All حال ہی میں ہو چکا ہے (' + new Date(_pu.ts).toLocaleDateString() + ')۔ دوبارہ کرنے سے ہر طالب علم ایک اور جماعت اوپر چلا جائے گا۔\n\nپھر بھی جاری رکھیں؟'))) return;
   _promoteBusy = true;
   try { await _runPromoteAllStudentsInner(); } finally { _promoteBusy = false; }
 }
@@ -8380,6 +8395,9 @@ async function submitNewAdmission() {
   if (!father) { alert(qt("Father's name is required.", 'والد کا نام ضروری ہے۔')); return; }
   if (type === 'paying' && (feeRaw === '' || !(Number(feeRaw) >= 0))) { alert(t.feeInvalid); return; }
   if (!moneyOk(g('na-arrears').value || 0)) { alert(MONEY_NEG_MSG()); return; }
+  if (phoneLooksBad(g('na-contact').value)) { alert(PHONE_BAD_MSG()); return; }
+  if (g('na-dob').value && g('na-dob').value > todayISO()) { alert(qt('Date of birth cannot be in the future.', 'تاریخ پیدائش آنے والی نہیں ہو سکتی۔')); return; }
+  if (g('na-date').value && g('na-date').value > todayISO()) { alert(qt('Admission date cannot be in the future.', 'داخلے کی تاریخ آنے والی نہیں ہو سکتی۔')); return; }
   const fee = type === 'paying' ? Number(feeRaw) : 0;
 
   // Concession (only for fee-paying students) — same rules as the student profile.
@@ -9391,7 +9409,7 @@ function printReceipt(studentId, entryId) {
     [t.examFeeCol, e.exam_fee],
     [t.otherFeeCol, e.other_fee],
     [t.totalDuesCol, totalDues],
-  ].map(([lbl,val]) => `<tr><td class="lbl">${esc(lbl)}</td><td style="text-align:right;">₨${fmt(val)}</td></tr>`).join('');
+  ].map(([lbl,val]) => `<tr><td class="lbl">${esc(lbl)}</td><td style="text-align:right;">${Number(val) < 0 ? esc(fmtBal(val)) : '₨' + fmt(val)}</td></tr>`).join('');
 
   // The first print of a receipt is the original; every later print of the same receipt says DUPLICATE COPY.
   // (A new payment on the same month changes the receipt, so it prints as an original again.)
@@ -9579,7 +9597,7 @@ function teacherMonthDue(tc, mk) {
 }
 function tplTeachersResults() {
   const leftCount = DATA.teachers.filter(teacherIsLeft).length;
-  const full = DATA.teachers.filter(tc => (teacherShowLeft || !teacherIsLeft(tc)) && (tc.name+(tc.subject||'')).toLowerCase().includes(teacherSearch.toLowerCase()));
+  const full = DATA.teachers.filter(tc => (teacherShowLeft || !teacherIsLeft(tc)) && (tc.name+' '+(tc.subject||'')).toLowerCase().includes(teacherSearch.trim().toLowerCase()));
   const totalPages = Math.max(1, Math.ceil(full.length / TEACHERS_PAGE_SIZE));
   if (teacherPage > totalPages) teacherPage = totalPages;
   const start = (teacherPage - 1) * TEACHERS_PAGE_SIZE;
@@ -9627,8 +9645,10 @@ async function submitAddTeacher() {
   const name = document.getElementById('f-name').value.trim();
   const qualification = document.getElementById('f-qualification').value.trim();
   const salary = document.getElementById('f-salary').value;
-  if (!name || !qualification || salary==='') return;
+  if (!name || !qualification || salary==='') { alert(qt('Name, qualification and salary are required.', 'نام، تعلیمی قابلیت اور تنخواہ ضروری ہیں۔')); return; }
   if (!moneyOk(salary)) { alert(MONEY_NEG_MSG()); return; }
+  if (phoneLooksBad(document.getElementById('f-contact').value)) { alert(PHONE_BAD_MSG()); return; }
+  { const jd = dateVal('f-join'); if (jd > todayISO()) { alert(qt('Joining date cannot be in the future.', 'تقرری کی تاریخ آنے والی نہیں ہو سکتی۔')); return; } }
   { const dup = DATA.teachers.find(x => !teacherIsLeft(x) && String(x.name || '').trim().toLowerCase() === name.toLowerCase());
     if (dup && !confirm(qt('A teacher named "' + dup.name + '" already exists. Add another one with the same name?', '"' + dup.name + '" نام کا استاد پہلے سے موجود ہے۔ کیا اسی نام کا ایک اور شامل کریں؟'))) return; }
   const payload = {
@@ -9672,6 +9692,8 @@ async function submitEditTeacher(id) {
   const salary = document.getElementById('f-salary').value;
   if (!name || !qualification || salary === '') { alert(qt('Name, qualification and salary are required.', 'نام، تعلیمی قابلیت اور تنخواہ ضروری ہیں۔')); return; }
   if (!moneyOk(salary)) { alert(MONEY_NEG_MSG()); return; }
+  if (phoneLooksBad(document.getElementById('f-contact').value)) { alert(PHONE_BAD_MSG()); return; }
+  { const jd = dateVal('f-join'); if (jd > todayISO()) { alert(qt('Joining date cannot be in the future.', 'تقرری کی تاریخ آنے والی نہیں ہو سکتی۔')); return; } }
   { const dup = DATA.teachers.find(x => x.id !== id && !teacherIsLeft(x) && String(x.name || '').trim().toLowerCase() === name.toLowerCase());
     if (dup && !confirm(qt('Another teacher named "' + dup.name + '" already exists. Save anyway?', '"' + dup.name + '" نام کا ایک اور استاد موجود ہے۔ پھر بھی محفوظ کریں؟'))) return; }
   const payload = { ...tc, name, subject: document.getElementById('f-subject').value, qualification, monthly_salary: Number(salary),
@@ -9800,6 +9822,10 @@ function setAttendanceMark(teacherId, session, status) {
 }
 
 async function submitAttendance(date) {
+  // Sundays / school holidays: ask before marking so a wrong day is not saved by mistake.
+  if (isHoliday(date) && !confirm(qt('Today is a Sunday / holiday. Mark attendance anyway?', 'آج اتوار / چھٹی ہے۔ پھر بھی حاضری لگائیں؟'))) return;
+  // A teacher whose marks were all taken off again must lose the saved row too (it used to stay).
+  const clears = DATA.teacherAttendance.filter(a => a.date === date && attendanceDraft[a.teacher_id] && !attendanceDraft[a.teacher_id].am && !attendanceDraft[a.teacher_id].pm);
   const rows = Object.keys(attendanceDraft)
     .filter(id => attendanceDraft[id].am || attendanceDraft[id].pm)
     .map(id => {
@@ -9817,12 +9843,21 @@ async function submitAttendance(date) {
         }
       };
     });
-  if (!rows.length) { closeModal(); return; }
+  if (!rows.length && !clears.length) { closeModal(); return; }
   // Offline-aware: each teacher's row is upserted individually, keyed on the
   // (teacher_id, date) UNIQUE constraint (same duplicate-prevention approach
   // as fee/salary payments), so it queues and syncs the same way — with a
   // conflict prompt if another device marked this same teacher+date meanwhile.
   let anyError = null, anyQueued = false;
+  for (const ca of clears) {
+    const { queued, error } = await offlineWrite({
+      table: 'teacher_attendance', action: 'delete', payload: null, id: ca.id, baseRow: ca,
+      run: () => sb.from('teacher_attendance').delete().eq('id', ca.id),
+      optimisticApply: () => { DATA.teacherAttendance = DATA.teacherAttendance.filter(x => x.id !== ca.id); idbDeleteRow('teacher_attendance', ca.id); }
+    });
+    if (queued) anyQueued = true;
+    if (!queued && error) anyError = error;
+  }
   for (const { existingRow, payload } of rows) {
     const { queued, error } = await offlineWrite({
       table: 'teacher_attendance', action: 'upsert', payload, id: payload.id, onConflict: 'teacher_id,date',
@@ -9860,12 +9895,13 @@ function calcAttendanceSalary(teacherId, month) {
   const present = recs.filter(r => r.status === 'present').length;
   const leave = recs.filter(r => r.status === 'leave').length;
   const absent = recs.filter(r => r.status === 'absent').length;
+  const sick = recs.filter(r => r.status === 'sick').length;
   const [y, m] = month.split('-').map(Number);
   const daysInMonth = new Date(y, m, 0).getDate();
   const dailyRate = Number(tc && tc.monthly_salary || 0) / daysInMonth;
   const deductedDays = Math.max(0, absent - salaryFreeAbsents());
   const amount = Math.max(0, Math.round(Number(tc && tc.monthly_salary || 0) - dailyRate * deductedDays));
-  return { present, leave, absent, deductedDays, hasRecords: recs.length > 0, amount };
+  return { present, leave, absent, sick, deductedDays, hasRecords: recs.length > 0, amount };
 }
 function updateAttendanceSalaryInfo(teacherId) {
   const monthInput = document.getElementById('p-month');
@@ -9879,7 +9915,7 @@ function updateAttendanceSalaryInfo(teacherId) {
   const repEl = document.getElementById('p-replace-sal');
   const replace = !!(repEl && repEl.checked);
   infoEl.innerHTML = r.hasRecords
-    ? `${esc(t.present)}: ${r.present} · ${esc(t.leave)}: ${r.leave} · ${esc(t.absent)}: ${r.absent}${r.deductedDays > 0 ? ` (-${r.deductedDays}d)` : ''} — ${esc(t.suggestedSalary)}: ₨${fmt(r.amount)}`
+    ? `${esc(t.present)}: ${r.present} · ${esc(t.leave)}: ${r.leave} · ${r.sick ? ` · ${esc(t.sick)}: ${r.sick}` : ''} · ${esc(t.absent)}: ${r.absent}${r.deductedDays > 0 ? ` (-${r.deductedDays}d)` : ''} — ${esc(t.suggestedSalary)}: ₨${fmt(r.amount)}`
     : esc(t.noAttendanceMarked);
   const box = document.getElementById('sal-exist');
   if (box) box.innerHTML = ex ? `<div style="font-size:12px;margin-top:8px;padding:8px 10px;border-radius:10px;background:rgba(200,150,40,.14);line-height:1.5;">
@@ -9919,6 +9955,10 @@ function registerCellInfo(teacherId, date, session) {
   const rec = DATA.teacherAttendance.find(a => a.teacher_id === teacherId && a.date === date);
   const explicit = rec ? (session === 'am' ? rec.status_am : rec.status_pm) : null;
   if (explicit) return { code: explicit[0].toUpperCase(), status: explicit, pending: false };
+  { // Before the joining date or after the leaving date nothing is expected, so it must not read as Absent.
+    const _tc = DATA.teachers.find(x => x.id === teacherId);
+    if (_tc && ((_tc.join_date && date < String(_tc.join_date).slice(0, 10)) || (teacherIsLeft(_tc) && _tc.left_date && date > String(_tc.left_date).slice(0, 10)))) return { code: '—', status: null, pending: true };
+  }
   const today = todayISO();
   let due;
   if (date < today) due = true;
@@ -10023,20 +10063,41 @@ function tplTeacherRegister() {
 // Tapping a cell cycles Present -> Leave -> Absent -> (cleared, back to computed
 // default) and saves immediately, so corrections don't need the Mark Attendance modal.
 async function registerCycleMark(teacherId, date, session) {
-  const rec = DATA.teacherAttendance.find(a => a.teacher_id === teacherId && a.date === date) || {};
-  const cur = session === 'am' ? rec.status_am : rec.status_pm;
+  if (date > todayISO()) { alert(qt('You cannot mark attendance for a future date.', 'آنے والی تاریخ کی حاضری نہیں لگ سکتی۔')); return; }
+  const rec = DATA.teacherAttendance.find(a => a.teacher_id === teacherId && a.date === date) || null;
+  const cur = rec ? (session === 'am' ? rec.status_am : rec.status_pm) : null;
   const order = ['present','leave','absent','sick', null];
   const next = order[(order.indexOf(cur || null) + 1) % order.length];
-  const otherSession = session === 'am' ? (rec.status_pm || null) : (rec.status_am || null);
-  const payload = {
-    owner_id: CURRENT_USER.id, teacher_id: teacherId, date,
-    status_am: session === 'am' ? next : (rec.status_am || null),
-    status_pm: session === 'pm' ? next : (rec.status_pm || null),
-  };
-  payload.status = deriveDayStatus(payload.status_am, payload.status_pm);
-  const { error } = await sb.from('teacher_attendance').upsert(payload, { onConflict: 'teacher_id,date' });
-  if (reportSaveError(error)) return;
-  await loadAllData();
+  const status_am = session === 'am' ? next : (rec ? (rec.status_am || null) : null);
+  const status_pm = session === 'pm' ? next : (rec ? (rec.status_pm || null) : null);
+  let queued = false, error = null;
+  if (!status_am && !status_pm) {
+    if (!rec) return;
+    // Both sessions cleared: remove the saved row (works offline too).
+    ({ queued, error } = await offlineWrite({
+      table: 'teacher_attendance', action: 'delete', payload: null, id: rec.id, baseRow: rec,
+      run: () => sb.from('teacher_attendance').delete().eq('id', rec.id),
+      optimisticApply: () => { DATA.teacherAttendance = DATA.teacherAttendance.filter(x => x.id !== rec.id); idbDeleteRow('teacher_attendance', rec.id); }
+    }));
+  } else {
+    const payload = {
+      id: rec ? rec.id : (crypto.randomUUID ? crypto.randomUUID() : `local-${Date.now()}-${teacherId}`),
+      owner_id: CURRENT_USER.id, teacher_id: teacherId, date, status_am, status_pm,
+      status: deriveDayStatus(status_am, status_pm)
+    };
+    ({ queued, error } = await offlineWrite({
+      table: 'teacher_attendance', action: 'upsert', payload, id: payload.id, onConflict: 'teacher_id,date', baseRow: rec,
+      run: () => sb.from('teacher_attendance').upsert(payload, { onConflict: 'teacher_id,date' }),
+      optimisticApply: () => {
+        const idx = DATA.teacherAttendance.findIndex(x => x.id === payload.id);
+        if (idx >= 0) DATA.teacherAttendance[idx] = { ...DATA.teacherAttendance[idx], ...payload };
+        else DATA.teacherAttendance.push(payload);
+        idbPutRow('teacher_attendance', payload);
+      }
+    }));
+  }
+  if (!queued && reportSaveError(error)) { await loadAllData(); if (TAB === 'teacherRegister') renderTab(); return; }
+  if (!queued) await loadAllData();
   if (TAB === 'teacherRegister') renderTab();
 }
 
@@ -10878,7 +10939,7 @@ function openTeacherDetail(id) {
       <input id="p-month" type="month" value="${curMonth}" onchange="updateAttendanceSalaryInfo('${id}')">
       <label style="margin-bottom:0;"><span>${esc(t.baseSalary)}</span><input id="p-amount" type="number" min="0" placeholder="${esc(t.enterAmount)}" value="${attInfo.hasRecords ? attInfo.amount : (tc.monthly_salary||'')}"></label>
     </div>
-    <div id="attendance-info" style="font-size:11px;opacity:.7;margin-top:6px;">${attInfo.hasRecords ? `${esc(t.present)}: ${attInfo.present} · ${esc(t.leave)}: ${attInfo.leave} · ${esc(t.absent)}: ${attInfo.absent}${attInfo.deductedDays > 0 ? ` (-${attInfo.deductedDays}d)` : ''} — ${esc(t.suggestedSalary)}: ₨${fmt(attInfo.amount)}` : esc(t.noAttendanceMarked)}</div>
+    <div id="attendance-info" style="font-size:11px;opacity:.7;margin-top:6px;">${attInfo.hasRecords ? `${esc(t.present)}: ${attInfo.present} · ${esc(t.leave)}: ${attInfo.leave} · ${attInfo.sick ? ` · ${esc(t.sick)}: ${attInfo.sick}` : ''} · ${esc(t.absent)}: ${attInfo.absent}${attInfo.deductedDays > 0 ? ` (-${attInfo.deductedDays}d)` : ''} — ${esc(t.suggestedSalary)}: ₨${fmt(attInfo.amount)}` : esc(t.noAttendanceMarked)}</div>
     <div class="row2" style="margin-top:8px;">
       <label style="margin-bottom:0;"><span>${esc(t.attendanceBonus)}</span><input id="p-bonus" type="number" min="0" value="0"></label>
       <label style="margin-bottom:0;"><span>${esc(t.extraClass)}</span><input id="p-extra" type="number" min="0" value="0"></label>
@@ -11395,6 +11456,9 @@ async function stfAddLeave() {
   if (to < from) { alert(qt('"To" date cannot be before "From" date.', '"تک" کی تاریخ "سے" سے پہلے نہیں ہو سکتی۔')); return; }
   const days = stfDatesBetween(from, to).filter(d => !isHoliday(d)).length;
   if (!days) { alert(qt('All these dates are Sundays or holidays.', 'یہ تمام تاریخیں اتوار یا چھٹی کے دن ہیں۔')); return; }
+  if (STF.leaves.some(x => String(x.teacher_id) === String(tid) && x.status !== 'rejected' && String(x.from_date).slice(0, 10) <= to && String(x.to_date).slice(0, 10) >= from)) {
+    alert(qt('This teacher already has a leave (pending or approved) that overlaps these dates.', 'اس استاد کی ان تاریخوں سے ملتی ہوئی چھٹی پہلے سے موجود ہے (زیر غور یا منظور)۔')); return;
+  }
   const { error } = await sb.from('staff_leaves').insert({
     owner_id: CURRENT_USER.id, teacher_id: String(tid), from_date: from, to_date: to, days,
     reason: (document.getElementById('sl-reason').value || '').trim() || null
@@ -11496,6 +11560,8 @@ async function stfAddAdvance() {
   if (note.length < 3) { alert(qt('Please write the reason for this advance.', 'براہ کرم ایڈوانس کی وجہ لکھیں۔')); return; }
   if (!txnDateOk(given)) return;
   if (feeMonthLocked(String(given).slice(0, 7))) { feeLockAlert(String(given).slice(0, 7)); return; }
+  { const _tc = DATA.teachers.find(x => String(x.id) === String(tid)); const _sal = Number(_tc && _tc.monthly_salary || 0);
+    if (_sal > 0 && money2(amount + stfTeacherOutstanding(tid)) > _sal && !confirm(qt('This advance (with what is already outstanding, ₨' + fmt(money2(amount + stfTeacherOutstanding(tid))) + ') is more than the monthly salary (₨' + fmt(_sal) + '). Give it anyway?', 'یہ ایڈوانس (پہلے سے باقی رقم سمیت ₨' + fmt(money2(amount + stfTeacherOutstanding(tid))) + ') ماہانہ تنخواہ (₨' + fmt(_sal) + ') سے زیادہ ہے۔ پھر بھی دیں؟'))) return; }
   const payload = { id: crypto.randomUUID ? crypto.randomUUID() : `local-${Date.now()}`, owner_id: CURRENT_USER.id,
     teacher_id: String(tid), amount, given_date: given, recover_from: from, installment: inst > 0 ? inst : null, note,
     ...stfPmPatch(method, null) };
@@ -11653,6 +11719,8 @@ function txnFiltered() {
   }).sort((a, b) => String(b.txn_date || '').localeCompare(String(a.txn_date || '')));
 }
 function tplFinance() {
+  // A month filter whose entries were all deleted would leave an empty list with the dropdown showing "All months".
+  if (TXNV.month !== 'all' && !DATA.transactions.some(x => String(x.txn_date || '').slice(0, 7) === TXNV.month)) TXNV.month = 'all';
   const all = txnFiltered();
   const shown = all.slice(0, TXNV.limit);
   const real = all.filter(x => !isTransferTxn(x));
@@ -11740,7 +11808,7 @@ function setTxnType(type) {
 function fillCatOptions() {
   const base = txnType==='income' ? INCOME_CATS : EXPENSE_CATS;
   const cats = base.concat(FIN.heads.filter(h => h.type === txnType && !base.includes(h.name)).map(h => h.name));
-  document.getElementById('f-cat').innerHTML = cats.map(c=>`<option>${c}</option>`).join('');
+  document.getElementById('f-cat').innerHTML = cats.map(c=>`<option>${esc(c)}</option>`).join('');
 }
 function txnItemsTotal() {
   return txnItems.reduce((a,b)=>a+Number(b.price||0),0);
@@ -11806,7 +11874,7 @@ async function submitAddTxn() {
   }
   const _editWhy = ((document.getElementById('f-edit-reason') || {}).value || '').trim();
   if (txnEditId && _editWhy.length < 3) { alert(qt('Please write the reason for editing this entry.', 'براہ کرم اس اندراج میں ترمیم کی وجہ لکھیں۔')); return; }
-  const desc = validItems.map(it => `${it.name.trim()} (₨${fmt(Number(it.price))})`).join('; ');
+  const desc = validItems.map(it => `${it.name.trim().replace(/;/g, ',')} (₨${fmt(Number(it.price))})`).join('; ');
   const amt = validItems.reduce((a,b)=>a+Number(b.price),0);
   const date = dateVal('f-date');
   const ex = txnEditId ? DATA.transactions.find(x => x.id === txnEditId) : null;
@@ -11953,7 +12021,7 @@ function parseItemizedTxnDesc(desc) {
   const parts = desc.split('; ');
   const items = [];
   for (const p of parts) {
-    const m = p.match(/^(.*) \(₨([\d,]+)\)$/);
+    const m = p.match(/^(.*) \(₨([\d,]+(?:\.\d+)?)\)$/);
     if (!m) return null;
     items.push({ name: m[1], price: Number(m[2].replace(/,/g, '')) });
   }
@@ -12096,7 +12164,10 @@ let finHT = 'expense';
 function finHeadType(ty) { finHT = ty; document.getElementById('fh-income').className = ty === 'income' ? 'on-income' : ''; document.getElementById('fh-expense').className = ty === 'expense' ? 'on-expense' : ''; }
 async function finAddHead() {
   if (!needOnline()) return;
-  const name = (document.getElementById('fh-name').value || '').trim(); if (!name) return;
+  const name = (document.getElementById('fh-name').value || '').trim();
+  if (!name) { alert(qt('Please write the head name.', 'براہ کرم مد کا نام لکھیں۔')); return; }
+  if (name.toLowerCase() === TRANSFER_CAT.toLowerCase()) { alert(qt('"Transfer" is reserved for moving money between accounts. Choose another name.', '"Transfer" اکاؤنٹس کے درمیان منتقلی کے لیے مخصوص ہے۔ کوئی اور نام رکھیں۔')); return; }
+  if (FIN.heads.some(h => h.type === finHT && String(h.name).trim().toLowerCase() === name.toLowerCase()) || (finHT === 'income' ? INCOME_CATS : EXPENSE_CATS).some(c => c.toLowerCase() === name.toLowerCase())) { alert(qt('A head with this name already exists.', 'اس نام کی مد پہلے سے موجود ہے۔')); return; }
   const { error } = await sb.from('fin_heads').insert({ owner_id: CURRENT_USER.id, name, type: finHT });
   if (reportSaveError(error)) return;
   logCustomActivity('Added head: ' + name + ' (' + finHT + ')', 'insert', 'fin_heads');
@@ -12134,7 +12205,11 @@ function openFinEdit(table, id) {
 async function finSaveEdit(table, id) {
   if (!navigator.onLine) { alert(qt('Connect to the internet to edit accounts and heads.', 'اکاؤنٹس اور مدات میں ترمیم کے لیے انٹرنیٹ سے جڑیں۔')); return; }
   const row = (table === 'fin_accounts' ? FIN.accounts : FIN.heads).find(x => x.id === id); if (!row) return;
-  const name = ((document.getElementById('fe-name') || {}).value || '').trim(); if (!name) return;
+  const name = ((document.getElementById('fe-name') || {}).value || '').trim();
+  if (!name) { alert(qt('The name cannot be empty.', 'نام خالی نہیں ہو سکتا۔')); return; }
+  if (table === 'fin_heads' && name.toLowerCase() === TRANSFER_CAT.toLowerCase()) { alert(qt('"Transfer" is reserved for moving money between accounts. Choose another name.', '"Transfer" اکاؤنٹس کے درمیان منتقلی کے لیے مخصوص ہے۔ کوئی اور نام رکھیں۔')); return; }
+  { const list = table === 'fin_accounts' ? FIN.accounts : FIN.heads.filter(h => h.type === row.type);
+    if (list.some(x => x.id !== id && String(x.name).trim().toLowerCase() === name.toLowerCase())) { alert(qt('Another entry with this name already exists.', 'اس نام کی ایک اور اندراج پہلے سے موجود ہے۔')); return; } }
   const patch = { name };
   let _note = '';
   if (table === 'fin_accounts') {
@@ -12170,7 +12245,9 @@ function openFinAccounts() {
 }
 async function finAddAccount() {
   if (!needOnline()) return;
-  const name = (document.getElementById('fa-name').value || '').trim(); if (!name) return;
+  const name = (document.getElementById('fa-name').value || '').trim();
+  if (!name) { alert(qt('Please write the account name.', 'براہ کرم اکاؤنٹ کا نام لکھیں۔')); return; }
+  if (FIN.accounts.some(a => String(a.name).trim().toLowerCase() === name.toLowerCase())) { alert(qt('An account with this name already exists.', 'اس نام کا اکاؤنٹ پہلے سے موجود ہے۔')); return; }
   const { error } = await sb.from('fin_accounts').insert({ owner_id: CURRENT_USER.id, name,
     kind: document.getElementById('fa-kind').value, opening_balance: Number(document.getElementById('fa-open').value || 0) });
   if (reportSaveError(error)) return;
@@ -12273,7 +12350,8 @@ function openFinReport(kind) {
   finRefresh();
 }
 function finRefresh() {
-  FINR.from = document.getElementById('fr-from').value; FINR.to = document.getElementById('fr-to').value; FINR.acct = document.getElementById('fr-acct').value;
+  FINR.from = document.getElementById('fr-from').value || '0000-01-01'; FINR.to = document.getElementById('fr-to').value || todayISO(); FINR.acct = document.getElementById('fr-acct').value;
+  if (FINR.from > FINR.to) { document.getElementById('fr-body').innerHTML = `<div class="err">${esc(qt('"From" date cannot be after "To" date.', '"سے" کی تاریخ "تک" کی تاریخ کے بعد نہیں ہو سکتی۔'))}</div>`; return; }
   document.getElementById('fr-body').innerHTML = finReportHtml();
 }
 function printFinReport() {
@@ -12402,7 +12480,9 @@ async function openFinVendors() {
 }
 async function finvAddVendor() {
   if (!needOnline()) return;
-  const name = (document.getElementById('vn-name').value || '').trim(); if (!name) return;
+  const name = (document.getElementById('vn-name').value || '').trim();
+  if (!name) { alert(qt('Please write the name.', 'براہ کرم نام لکھیں۔')); return; }
+  if (FINV.vendors.some(x => String(x.name).trim().toLowerCase() === name.toLowerCase()) && !confirm(qt('A vendor with this name already exists. Add another one?', 'اس نام کا وینڈر پہلے سے موجود ہے۔ ایک اور شامل کریں؟'))) return;
   const { error } = await sb.from('fin_vendors').insert({ owner_id: CURRENT_USER.id, name, kind: document.getElementById('vn-kind').value, contact: (document.getElementById('vn-contact').value || '').trim() || null });
   if (reportSaveError(error)) return;
   logCustomActivity('Added vendor: ' + name, 'insert', 'fin_vendors');
@@ -12457,7 +12537,8 @@ async function openFinVendor(id) {
 }
 async function finvAddEntry() {
   if (!needOnline()) return;
-  const amt = Number(document.getElementById('vd-amt').value || 0); if (!(amt > 0)) return;
+  const amt = Number(document.getElementById('vd-amt').value || 0);
+  if (!(amt > 0)) { alert(qt('Enter an amount greater than 0.', '0 سے زیادہ رقم لکھیں۔')); return; }
   const date = document.getElementById('vd-date').value || todayISO();
   const note = (document.getElementById('vd-note').value || '').trim() || null;
   const v = FINV.vendors.find(x => x.id === FINV_CUR); if (!v) return;
@@ -12467,7 +12548,7 @@ async function finvAddEntry() {
   if (FINV_TYPE === 'payment') {
     const sel = document.getElementById('vd-acc').value;
     if (sel !== '__skip') {
-      const payload = { owner_id: CURRENT_USER.id, type: 'expense', category: qt('Vendor Payments', 'وینڈر ادائیگیاں'), description: v.name + (note ? ' - ' + note : ''), amount: amt, txn_date: date };
+      const payload = { owner_id: CURRENT_USER.id, type: 'expense', category: 'Vendor Payments', description: v.name + (note ? ' - ' + note : ''), amount: amt, txn_date: date };
       if (sel && sel !== '__none') payload.account_id = sel;
       const r = await sb.from('transactions').insert(payload).select('id').single();
       if (reportSaveError(r.error)) return;
@@ -12489,7 +12570,7 @@ async function finvDeleteEntry(id) {
   const { error } = await sb.from('fin_vendor_entries').delete().eq('id', id);
   if (reportSaveError(error)) return;
   logCustomActivity('Deleted vendor ' + e.entry_type + ' of Rs' + fmt(e.amount) + ' (' + String(e.entry_date).slice(0, 10) + ') — Reason: ' + why, 'delete', 'fin_vendor_entries');
-  if (e.txn_id) { await sb.from('transactions').delete().eq('id', e.txn_id); await loadAllData(); }
+  if (e.txn_id) { const _r2 = await sb.from('transactions').delete().eq('id', e.txn_id); if (_r2.error) reportSaveError(_r2.error); await loadAllData(); }
   await finvLoad(); openFinVendor(FINV_CUR);
 }
 function finvStatementRows(id) {
