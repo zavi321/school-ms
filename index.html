@@ -1894,6 +1894,18 @@ function concessionReasonLabel(r) {
 }
 const EXPENSE_CATS = ['Electricity','Rent','Stationery','Salary','Transport','Maintenance','Other'];
 const INCOME_CATS = ['Donation','Grant','Sale','Fundraiser','Other'];
+// A transfer between two of the school's own accounts (e.g. cash deposited in the bank) is stored as two entries
+// (one out, one in) in the category below. It moves money between accounts but is NOT income or expense.
+const TRANSFER_CAT = 'Transfer';
+function isTransferTxn(x) { return !!x && x.category === TRANSFER_CAT; }
+function txnDesc(x) { return String((x && x.description) || '').replace(/\s*\[T:[a-z0-9]+\]$/, ''); }
+// Date rule for finance entries: not in the future, and not inside a closed (locked) month.
+function txnDateOk(d, lockOnly) {
+  const day = String(d || '').slice(0, 10);
+  if (!lockOnly && day > todayISO()) { alert(qt('The date cannot be in the future.', 'تاریخ آنے والی نہیں ہو سکتی۔')); return false; }
+  if (feeMonthLocked(day.slice(0, 7))) { feeLockAlert(day.slice(0, 7)); return false; }
+  return true;
+}
 
 const fmt = n => Number(n||0).toLocaleString('en-US');
 // Money maths in JS floats can leave dust like 0.30000000000000004, which would show a
@@ -1941,6 +1953,7 @@ function feeColMissing(c) { try { return localStorage.getItem('fee_col_missing_'
 function feeColSetMissing(c, v) { try { localStorage.setItem('fee_col_missing_' + c, v ? '1' : '0'); } catch (e) {} }
 async function probeFeeColumns() {
   if (!navigator.onLine) return;
+  probeSalCols();
   for (const c of ['pay_method', 'adjustment', 'adjustment_note']) {
     try {
       const r = await sb.from('fee_payments').select(c).limit(1);
@@ -2039,6 +2052,23 @@ function sessionMonthOrder() { const sm = sessionStartMonth(), o = []; for (let 
 function sessionMonthKeys(startYear) {
   const sm = sessionStartMonth();
   return sessionMonthOrder().map(m => `${m >= sm ? startYear : startYear + 1}-${String(m).padStart(2, '0')}`);
+}
+// ---- Month lock: fee records of closed months cannot be added, changed or deleted ----
+// Saved on the school's profile when the column exists (alter table public.profiles add column if not exists fee_lock_month text;),
+// and always on this device as a fallback — same approach as the session start month.
+function feeLockMonth() {
+  try {
+    const pm = CURRENT_PROFILE && CURRENT_PROFILE.fee_lock_month;
+    if (/^\d{4}-\d{2}$/.test(pm || '')) return pm;
+    const lm = localStorage.getItem('sms_fee_lock_' + (CURRENT_USER && CURRENT_USER.id));
+    if (/^\d{4}-\d{2}$/.test(lm || '')) return lm;
+  } catch (e) {}
+  return '';
+}
+function feeMonthLocked(mk) { const L = feeLockMonth(); return !!L && !!mk && String(mk) <= L; }
+function feeLockAlert(mk) {
+  alert(qt('The records of ' + monthLabel(mk) + ' are locked (closed) and cannot be changed.\n\nTo change them: Settings > "Lock fee & finance records up to" and choose an earlier month.',
+           monthLabel(mk) + ' کے ریکارڈ بند (لاک) ہیں اور تبدیل نہیں ہو سکتے۔\n\nتبدیلی کے لیے: سیٹنگز > "فیس اور مالی ریکارڈ لاک کریں" میں پہلے کا مہینہ چنیں۔'));
 }
 function sessionLabel(startYear) { return sessionStartMonth() === 1 ? String(startYear) : `${startYear}–${startYear + 1}`; }
 
@@ -2570,7 +2600,7 @@ function withTimeout(promise, ms = 6000) {
 // or the device is offline, this silently does nothing.
 const ACTIVITY_LOG_TABLES = new Set([
   'students', 'fee_payments', 'teachers', 'salary_payments',
-  'transactions', 'admission_register', 'class_logins'
+  'transactions', 'admission_register', 'class_logins', 'staff_advances'
   // teacher_attendance / holidays intentionally excluded — too high-volume
   // (marked daily) to be a useful audit trail and would drown out everything else.
 ]);
@@ -2585,7 +2615,10 @@ function describeActivity(table, action, payload, baseRow) {
     const sid = row.student_id || (baseRow && baseRow.student_id);
     const s = DATA.students.find(x => x.id === sid);
     const month = row.month || (baseRow && baseRow.month);
-    return `${verb} fee payment: ${s ? s.name : 'student'}${month ? ' — ' + monthLabel(month) : ''}${row.amount != null ? ' — Rs ' + fmt(row.amount) : ''}`;
+    return `${verb} fee payment: ${s ? s.name : 'student'}${month ? ' — ' + monthLabel(month) : ''}${row.amount != null ? ' — Rs ' + fmt(row.amount) : ''}${row.receipt_no ? ' — Receipt ' + row.receipt_no : ''}${row.pay_method ? ' — ' + row.pay_method : ''}`;
+  }
+  if (table === 'staff_advances') {
+    return `${verb} staff advance: ${typeof stfName === 'function' ? stfName(row.teacher_id) : 'teacher'} — Rs ${fmt(row.amount || 0)}`;
   }
   if (table === 'teachers') {
     const name = row.name || (baseRow && baseRow.name) || 'teacher';
@@ -2610,11 +2643,28 @@ function describeActivity(table, action, payload, baseRow) {
   }
   return `${verb} ${table} record`;
 }
-function logActivity(table, action, payload, id, baseRow) {
+// Activity-log lines written while the phone is offline are kept on the device and sent when it is back online.
+function _logqRead() { try { return JSON.parse(localStorage.getItem('sms_pending_activity') || '[]'); } catch (e) { return []; } }
+function _logqWrite(a) { try { localStorage.setItem('sms_pending_activity', JSON.stringify(a.slice(-300))); } catch (e) {} }
+function flushActivityQueue() {
+  if (!navigator.onLine || !CURRENT_USER) return;
+  const q = _logqRead(); if (!q.length) return;
+  _logqWrite([]);
+  q.forEach(r => {
+    try {
+      sb.from('activity_log').insert({ owner_id: CURRENT_USER.id, actor_email: CURRENT_USER.email || null, action: r.action, table_name: r.table_name,
+        description: r.description + ' (done offline, ' + r.at + ')' })
+        .then(res => { if (res && res.error && isNetworkError(res.error)) _logqWrite(_logqRead().concat([r])); }).catch(() => _logqWrite(_logqRead().concat([r])));
+    } catch (e) {}
+  });
+}
+function logActivity(table, action, payload, id, baseRow, logNote) {
   if (!ACTIVITY_LOG_TABLES.has(table)) return;
-  if (!navigator.onLine || !CURRENT_USER) return; // best-effort only — no offline queueing for log entries
+  if (!CURRENT_USER) return;
   try {
-    const description = describeActivity(table, action, payload, baseRow);
+    const description = describeActivity(table, action, payload, baseRow) + (logNote ? ' — ' + logNote : '');
+    if (!navigator.onLine) { const q = _logqRead(); q.push({ action, table_name: table, description, at: new Date().toLocaleString() }); _logqWrite(q); return; }
+    flushActivityQueue();
     sb.from('activity_log').insert({
       owner_id: CURRENT_USER.id,
       actor_email: CURRENT_USER.email || null,
@@ -2623,10 +2673,10 @@ function logActivity(table, action, payload, id, baseRow) {
   } catch (e) { /* never let logging break the actual save */ }
 }
 
-async function offlineWrite({ table, action, payload, id, onConflict, baseRow, run, optimisticApply }) {
+async function offlineWrite({ table, action, payload, id, onConflict, baseRow, run, optimisticApply, logNote }) {
   optimisticApply();
   bumpIdx();
-  logActivity(table, action, payload, id, baseRow);
+  logActivity(table, action, payload, id, baseRow, logNote);
   if (navigator.onLine) {
     try {
       const result = await run();
@@ -2701,6 +2751,7 @@ function isDupKey(error) { return !!error && (error.code === '23505' || /duplica
 // success and the queued change was DELETED from the queue (silent data loss).
 async function execQueueItem(item) {
   if (item.table === 'fee_payments' && item.action === 'upsert') return await feeUpsert(item.payload);
+  if (item.table === 'salary_payments' && item.action === 'upsert') return await salUpsert(item.payload);
   // Salary advance recovery saved offline: replace whatever is recorded for that teacher+month.
   // Delete-then-insert is safe to repeat, so a retry after a dropped connection never double-counts.
   if (item.table === 'staff_advance_recoveries' && item.action === 'stf_recovery') {
@@ -2742,14 +2793,20 @@ async function flushSyncQueue() {
     for (const item of queue) {
       if (item.failed) continue;                       // waiting for the user (see openFailedSync)
       try {
-        let serverRow = null;
+        let serverRow = null, newEntryClash = false;
         if (item.id && item.baseRow) {
           const r = await sb.from(item.table).select('*').eq('id', item.id).maybeSingle();
           if (r.error) {
             if (isTransientResult(r)) { stoppedEarly = true; break; }   // keep order, retry later
           } else serverRow = r.data;
+        } else if (item.table === 'fee_payments' && item.action === 'upsert' && item.payload && !item.baseRow) {
+          // A brand-new month entry saved offline. If another phone already saved this student + month, a plain
+          // upsert would silently overwrite that payment — look first and hand it to the user instead.
+          const r = await sb.from('fee_payments').select('*').eq('student_id', item.payload.student_id).eq('month', item.payload.month).maybeSingle();
+          if (r.error) { if (isTransientResult(r)) { stoppedEarly = true; break; } }
+          else if (r.data) { serverRow = r.data; newEntryClash = true; }
         }
-        const changed = item.baseRow && serverRow && JSON.stringify(serverRow) !== JSON.stringify(item.baseRow);
+        const changed = newEntryClash || (item.baseRow && serverRow && JSON.stringify(serverRow) !== JSON.stringify(item.baseRow));
         if (changed) { conflicts.push({ ...item, serverRow }); continue; } // held for the user, not overwritten
         const r = await execQueueItem(item);
         if (!r.error || (item.action === 'insert' && isDupKey(r.error))) {
@@ -2786,6 +2843,7 @@ async function flushSyncQueue() {
     try { if (!(await idbGetAll('sync_queue')).some(x => x.table === 'staff_advance_recoveries')) await stfLoad(); } catch (e) {}
     await loadAllData(); if (TAB) safeRenderTab();
     notifyDuplicateReceipts();
+    flushActivityQueue();
   }
 }
 
@@ -2802,15 +2860,45 @@ function renderSyncConflictModal() {
     ${rows(c.payload)}
     <div style="font-weight:700;margin-top:12px;">${esc(LANG==='ur'?'سرور کا ورژن':'Server version')}</div>
     ${rows(c.serverRow)}
-    <div style="display:flex;gap:10px;margin-top:16px;">
+    ${c.table === 'fee_payments' && c.action === 'upsert' ? `<button class="btn-primary" style="width:100%;margin-top:14px;" onclick="resolveConflict('merge')">${esc(LANG==='ur'?'دونوں ادائیگیاں ملا دیں (تجویز کردہ)':'Merge both payments (recommended)')}</button>
+      <div style="font-size:11px;opacity:.65;margin-top:4px;">${esc(LANG==='ur'?'دونوں ڈیوائسز کی ادائیگیاں جمع ہو جائیں گی، کوئی ضائع نہیں ہوگی۔':'Both devices\' payments are added together — nothing is lost.')}</div>` : ''}
+    <div style="display:flex;gap:10px;margin-top:12px;">
       <button class="btn-primary" style="flex:1;" onclick="resolveConflict('mine')">${esc(LANG==='ur'?'میرا رکھیں':'Keep Mine')}</button>
       <button class="btn-ghost" style="flex:1;" onclick="resolveConflict('server')">${esc(LANG==='ur'?'سرور کا رکھیں':'Keep Server')}</button>
     </div>
   `);
 }
+// Combines an offline fee entry with the server's version of the same student + month: payments of both are kept.
+function mergeFeePayments(base, mine, server) {
+  const key = x => [String(x.d || ''), Number(x.a || 0), String(x.r || ''), String(x.m || '')].join('|');
+  const sInst = Array.isArray(server.installments) ? server.installments : [];
+  const mInst = Array.isArray(mine.installments) ? mine.installments : [];
+  const bInst = base && Array.isArray(base.installments) ? base.installments : [];
+  const skip = new Set(bInst.concat(sInst).map(key));
+  const mineNew = mInst.filter(x => !skip.has(key(x)));
+  const addAmt = money2(Number(mine.amount || 0) - Number((base && base.amount) || 0));
+  const toks = v => String(v || '').split(',').map(x => x.trim()).filter(Boolean);
+  const rc = toks(server.receipt_no); toks(mine.receipt_no).forEach(x => { if (!rc.includes(x)) rc.push(x); });
+  const merged = { ...server, amount: money2(Number(server.amount || 0) + addAmt), receipt_no: rc.join(', ') || null,
+    pay_date: String(mine.pay_date || '') > String(server.pay_date || '') ? mine.pay_date : server.pay_date };
+  if (mine.pay_method) merged.pay_method = mine.pay_method;
+  if (mInst.length || sInst.length) merged.installments = sInst.concat(mineNew);
+  return merged;
+}
 async function resolveConflict(choice) {
   const c = PENDING_CONFLICTS[0];
   if (!c) return;
+  if (choice === 'merge' && c.table === 'fee_payments') {
+    const merged = mergeFeePayments(c.baseRow, c.payload, c.serverRow);
+    let r; try { r = await feeUpsert(merged); } catch (e) { r = { error: e }; }
+    if (r.error) {
+      alert(LANG === 'ur' ? 'ابھی محفوظ نہیں ہو سکا۔ تبدیلی قطار میں موجود ہے، بعد میں دوبارہ کوشش ہوگی۔' : 'Could not apply it right now. It stays queued and will be retried.');
+      PENDING_CONFLICTS.shift(); closeModal(); scheduleSyncRetry();
+      if (PENDING_CONFLICTS.length) renderSyncConflictModal();
+      return;
+    }
+    logActivity('fee_payments', 'upsert', merged, merged.id, c.serverRow, 'merged two offline payments');
+  }
   if (choice === 'mine') {
     let r;
     try { r = await execQueueItem(c); } catch (e) { r = { error: e }; }
@@ -3868,6 +3956,63 @@ function _indexed(name, arr, key) {
   return _IDX[name].map;
 }
 function studentPayments(id){ return (_indexed('fp', DATA.feePayments, 'student_id').get(id) || []).slice(); }
+function teacherIsLeft(tc) { return !!tc && tc.status === 'left'; }
+function activeTeachers() { return DATA.teachers.filter(tc => !teacherIsLeft(tc)); }
+// A teacher who left still shows in the attendance register for the months up to the leaving date.
+function teacherActiveIn(tc, mk) {
+  if (!teacherIsLeft(tc)) return true;
+  return !!tc.left_date && String(tc.left_date).slice(0, 7) >= mk;
+}
+// Absent days that are NOT deducted from salary each month (school policy; Settings can change it, default 2).
+function salaryFreeAbsents() {
+  try {
+    const pv = CURRENT_PROFILE && CURRENT_PROFILE.salary_free_absents;
+    if (pv != null && pv !== '' && Number.isFinite(Number(pv)) && Number(pv) >= 0) return Number(pv);
+    const lv = localStorage.getItem('sms_free_abs_' + (CURRENT_USER && CURRENT_USER.id));
+    if (lv != null && lv !== '' && Number.isFinite(Number(lv)) && Number(lv) >= 0) return Number(lv);
+  } catch (e) {}
+  return 2;
+}
+// ---- Optional salary_payments columns: pay_method (text), installments (jsonb). A missing column is dropped from the save
+// (the total stays right) and reported once, same approach as the fee columns. ----
+const SAL_OPT_COLS = ['pay_method', 'installments'];
+const SAL_NEW_SQL = "alter table public.salary_payments add column if not exists pay_method text;\nalter table public.salary_payments add column if not exists installments jsonb;\nnotify pgrst, 'reload schema';";
+function salColMissing(c) { try { return localStorage.getItem('sal_col_missing_' + c) === '1'; } catch (e) { return false; } }
+function salColSetMissing(c, v) { try { localStorage.setItem('sal_col_missing_' + c, v ? '1' : '0'); } catch (e) {} }
+async function probeSalCols() {
+  if (!navigator.onLine) return;
+  for (const c of SAL_OPT_COLS) {
+    try {
+      const r = await sb.from('salary_payments').select(c).limit(1);
+      if (r.error) { if (/column|schema cache/i.test(String(r.error.message || ''))) salColSetMissing(c, true); }
+      else salColSetMissing(c, false);
+    } catch (e) {}
+  }
+}
+let _salColsWarned = false;
+function warnSalColsMissing() {
+  if (_salColsWarned) return; _salColsWarned = true;
+  try { alert(qt('Saved, but the payment method / part-payment details of this salary could NOT be stored: the database is missing columns. The total is correct.\n\nRun once in Supabase > SQL Editor:\n' + SAL_NEW_SQL,
+                 'محفوظ ہو گیا، لیکن اس تنخواہ کا طریقہ ادائیگی / اقساط کی تفصیل محفوظ نہیں ہو سکی: ڈیٹابیس میں کالم موجود نہیں۔ کل رقم درست ہے۔\n\nSupabase > SQL Editor میں ایک بار چلائیں:\n' + SAL_NEW_SQL)); } catch (e) {}
+}
+function salColsWarnHtml() {
+  if (!SAL_OPT_COLS.some(salColMissing)) return '';
+  return `<div style="margin-top:10px;padding:9px 11px;border-radius:10px;background:rgba(200,150,40,.14);font-size:12px;line-height:1.5;">⚠ ${esc(qt('Salary payment method and part-payment history are not being saved: the database is missing columns. Run once in Supabase → SQL Editor:', 'تنخواہ کا طریقہ ادائیگی اور اقساط کی تفصیل محفوظ نہیں ہو رہی: ڈیٹابیس میں کالم موجود نہیں۔ Supabase → SQL Editor میں ایک بار چلائیں:'))}
+    <div dir="ltr" style="margin-top:4px;font-family:monospace;font-size:11px;user-select:all;white-space:pre-wrap;word-break:break-all;">${esc(SAL_NEW_SQL)}</div></div>`;
+}
+async function salUpsert(payload) {
+  const body = { ...payload };
+  SAL_OPT_COLS.forEach(c => { if (salColMissing(c)) delete body[c]; });
+  for (let tries = 0; tries < 4; tries++) {
+    const r = await sb.from('salary_payments').upsert(body, { onConflict: 'teacher_id,month' });
+    if (!r.error) return r;
+    const msg = String(r.error.message || '');
+    const col = SAL_OPT_COLS.find(c => c in body && new RegExp('\\b' + c + '\\b', 'i').test(msg));
+    if (!col) return r;
+    salColSetMissing(col, true); warnSalColsMissing(); delete body[col];
+  }
+  return { error: { message: 'salary_payments save failed (columns)' } };
+}
 function teacherPayments(id){ return (_indexed('sp', DATA.salaryPayments, 'teacher_id').get(id) || []).slice(); }
 
 // Running ledger balance for a student (positive = amount still due, negative = credit)
@@ -3936,7 +4081,7 @@ function computeStats() {
   // paid this month — together the "Expenses (this month)" figure that
   // mirrors the existing this-month Fees Collected / Fees Due cards.
   const otherExpenseThisMonth = DATA.transactions
-    .filter(x => x.type === 'expense' && String(x.txn_date||'').slice(0,7) === cur)
+    .filter(x => x.type === 'expense' && !isTransferTxn(x) && String(x.txn_date||'').slice(0,7) === cur)
     .reduce((a,b)=>a+Number(b.amount),0);
   const totalExpenseThisMonth = salaryPaidThisMonth + otherExpenseThisMonth;
 
@@ -3944,8 +4089,8 @@ function computeStats() {
   DATA.students.forEach(s=>{ totalCollectedAllTime += studentPayments(s.id).reduce((a,b)=>a+Number(b.amount),0); });
   let totalSalariesAllTime=0;
   DATA.teachers.forEach(tc=>{ totalSalariesAllTime += teacherPayments(tc.id).reduce((a,b)=>a+Number(b.amount),0); });
-  const totalOtherIncomeAllTime = DATA.transactions.filter(x=>x.type==='income').reduce((a,b)=>a+Number(b.amount),0);
-  const totalOtherExpenseAllTime = DATA.transactions.filter(x=>x.type==='expense').reduce((a,b)=>a+Number(b.amount),0);
+  const totalOtherIncomeAllTime = DATA.transactions.filter(x=>x.type==='income' && !isTransferTxn(x)).reduce((a,b)=>a+Number(b.amount),0);
+  const totalOtherExpenseAllTime = DATA.transactions.filter(x=>x.type==='expense' && !isTransferTxn(x)).reduce((a,b)=>a+Number(b.amount),0);
   const totalIncomeAllTime = totalCollectedAllTime + totalOtherIncomeAllTime;
   const totalExpenseAllTime = totalSalariesAllTime + totalOtherExpenseAllTime;
   const netBalance = totalIncomeAllTime - totalExpenseAllTime;
@@ -4651,11 +4796,11 @@ function generateSuggestions() {
   }
 
   // 5. Teacher salaries still pending this month
-  const unpaidTeachers = DATA.teachers.filter(tc => !teacherPayments(tc.id).some(p => p.month === cur));
-  if (DATA.teachers.length > 0 && unpaidTeachers.length > 0) {
+  const unpaidTeachers = activeTeachers().filter(tc => !teacherPayments(tc.id).some(p => p.month === cur));
+  if (activeTeachers().length > 0 && unpaidTeachers.length > 0) {
     list.push({ icon:'🧑‍🏫',
-      en:`${unpaidTeachers.length} of ${DATA.teachers.length} teachers haven't been paid yet this month. Timely salary payments help with staff retention.`,
-      ur:`${DATA.teachers.length} میں سے ${unpaidTeachers.length} اساتذہ کو اس مہینے تنخواہ ابھی تک ادا نہیں کی گئی۔ بروقت تنخواہ عملے کو برقرار رکھنے میں مددگار ہوتی ہے۔` });
+      en:`${unpaidTeachers.length} of ${activeTeachers().length} teachers haven't been paid yet this month. Timely salary payments help with staff retention.`,
+      ur:`${activeTeachers().length} میں سے ${unpaidTeachers.length} اساتذہ کو اس مہینے تنخواہ ابھی تک ادا نہیں کی گئی۔ بروقت تنخواہ عملے کو برقرار رکھنے میں مددگار ہوتی ہے۔` });
   }
 
   // 6. Outstanding dues large relative to a normal month's collection
@@ -4701,7 +4846,7 @@ function generateAlerts() {
   // that the admin approves. After 9 AM show ONE summary alert (not one per teacher),
   // plus one alert if requests are waiting for approval.
   if (now.getHours() >= 9) {
-    const missing = DATA.teachers.filter(tc => {
+    const missing = activeTeachers().filter(tc => {
       const rec = DATA.teacherAttendance.find(a => String(a.teacher_id) === String(tc.id) && a.date === today);
       return !teacherHasMark(rec);
     }).length;
@@ -5072,6 +5217,14 @@ function openSettings() {
     <label><span>${esc(qt('Academic session starts in', 'تعلیمی سیشن شروع ہونے کا مہینہ'))}</span>
       <select id="set-session-start">${(LANG === 'ur' ? UR_MONTH_NAMES : ['January','February','March','April','May','June','July','August','September','October','November','December'])
         .map((n, i) => `<option value="${i + 1}"${sessionStartMonth() === i + 1 ? ' selected' : ''}>${esc(n)}</option>`).join('')}</select></label>
+    <label><span>${esc(qt('Lock fee & finance records up to (closed months)', 'فیس اور مالی ریکارڈ لاک کریں (بند مہینے)'))}</span>
+      <select id="set-fee-lock">${(() => {
+        const cur = feeLockMonth(), now = new Date(), set = new Set();
+        for (let i = 0; i < 30; i++) set.add(monthKey(new Date(now.getFullYear(), now.getMonth() - i, 1)));
+        if (cur) set.add(cur);
+        return `<option value=""${cur ? '' : ' selected'}>${esc(qt('No lock', 'کوئی لاک نہیں'))}</option>` + [...set].sort().reverse().map(mk => `<option value="${mk}"${mk === cur ? ' selected' : ''}>${esc(monthLabel(mk))}</option>`).join('');
+      })()}</select></label>
+    <label><span>${esc(qt('Absent days NOT deducted from teacher salary (per month)', 'تنخواہ سے نہ کٹنے والی غیر حاضریاں (ماہانہ)'))}</span><input id="set-free-abs" type="number" min="0" max="31" value="${salaryFreeAbsents()}"></label>
     <label><span>${esc(t.changePassword)}</span><input id="set-pw" type="password" autocomplete="new-password"></label>
     <div id="set-msg"></div>
     <button class="btn-primary" onclick="submitSettings()">${esc(t.saveSettings)}</button>
@@ -5571,13 +5724,37 @@ async function submitSettings() {
     } else CURRENT_PROFILE.session_start_month = newSm;
     if (TAB) safeRenderTab();
   }
+  const lockEl = document.getElementById('set-fee-lock');
+  if (lockEl && lockEl.value !== feeLockMonth()) {
+    const nv = lockEl.value, old = feeLockMonth();
+    if (old && (!nv || nv < old) && !confirm(qt('This opens closed fee months for changes again. Continue?', 'اس سے بند فیس مہینے دوبارہ تبدیلی کے لیے کھل جائیں گے۔ جاری رکھیں؟'))) return;
+    try { if (nv) localStorage.setItem('sms_fee_lock_' + CURRENT_USER.id, nv); else localStorage.removeItem('sms_fee_lock_' + CURRENT_USER.id); } catch (e) {}
+    const { error } = await sb.from('profiles').update({ fee_lock_month: nv || null }).eq('id', CURRENT_USER.id);
+    if (error) {
+      delete CURRENT_PROFILE.fee_lock_month;
+      sessionNote += qt(' Fee lock saved on this device only. To keep it on every device run once in Supabase > SQL Editor: alter table public.profiles add column if not exists fee_lock_month text;',
+                        ' فیس لاک صرف اس ڈیوائس پر محفوظ ہوا۔ ہر ڈیوائس پر رکھنے کے لیے Supabase > SQL Editor میں ایک بار چلائیں: alter table public.profiles add column if not exists fee_lock_month text;');
+    } else CURRENT_PROFILE.fee_lock_month = nv || null;
+    if (TAB) safeRenderTab();
+  }
+  const faEl = document.getElementById('set-free-abs');
+  if (faEl && faEl.value !== '' && Number(faEl.value) !== salaryFreeAbsents()) {
+    const nv = Math.max(0, Math.min(31, Math.round(Number(faEl.value) || 0)));
+    try { localStorage.setItem('sms_free_abs_' + CURRENT_USER.id, String(nv)); } catch (e) {}
+    const { error } = await sb.from('profiles').update({ salary_free_absents: nv }).eq('id', CURRENT_USER.id);
+    if (error) {
+      delete CURRENT_PROFILE.salary_free_absents;
+      sessionNote += qt(' Free-absence setting saved on this device only. To keep it on every device run once in Supabase > SQL Editor: alter table public.profiles add column if not exists salary_free_absents int;',
+                        ' غیر حاضری کی سیٹنگ صرف اس ڈیوائس پر محفوظ ہوئی۔ ہر ڈیوائس پر رکھنے کے لیے Supabase > SQL Editor میں ایک بار چلائیں: alter table public.profiles add column if not exists salary_free_absents int;');
+    } else CURRENT_PROFILE.salary_free_absents = nv;
+  }
   if (newPw) {
     const { error } = await sb.auth.updateUser({ password: newPw });
     if (error) { msg.innerHTML = `<div class="err">${esc(friendlyErrorMsg(error))}</div>`; return; }
   }
   msg.innerHTML = `<div class="ok">${esc(t.settingsSaved)}${esc(sessionNote)}</div>`;
   document.querySelector('header .eyebrow').textContent = CURRENT_PROFILE.school_name;
-  setTimeout(closeModal, sessionNote ? 3500 : 800);
+  setTimeout(closeModal, sessionNote ? 7000 : 800);
 }
 
 
@@ -6079,7 +6256,7 @@ function dashBuildStatMap() {
   const ur = LANG==='ur';
   const m = {
     stu:{g:'ov', ic:'stu', c:'c2', n:t.students,  l:t.totalStudents, v:dv(s.activeCount), open:'openDashStudentsModal()'},
-    tea:{g:'ov', ic:'tea', c:'c4', n:t.teachers,  l:t.totalTeachers, v:dv(DATA.teachers.length), open:'openDashTeachersModal()'},
+    tea:{g:'ov', ic:'tea', c:'c4', n:t.teachers,  l:t.totalTeachers, v:dv(activeTeachers().length), open:'openDashTeachersModal()'},
     inc:{g:'ov', ic:'inc', c:'c3', n:ur?'آمدنی':'Income',  l:t.totalIncome,  v:dv('₨'+fmt(s.totalIncomeAllTime)),  col:'var(--sage)', open:'openDashIncomeExpenseModal()'},
     exp:{g:'ov', ic:'exp', c:'c5', n:ur?'اخراجات':'Expense', l:t.totalExpense, v:dv('₨'+fmt(s.totalExpenseAllTime)), col:'var(--rust)', open:'openDashIncomeExpenseModal()'},
     sal:{g:'ov', ic:'sal', c:'c8', n:ur?'تنخواہیں':'Salaries', l:t.teacherSalaries, v:dv('₨'+fmt(s.totalSalariesAllTime)), open:'openDashTeacherSalariesModal()'},
@@ -6087,7 +6264,7 @@ function dashBuildStatMap() {
     due:{g:'ov', ic:'due', c:'c1', n:ur?'واجبات':'Total Dues', l:t.totalDuesAllTime, v:dv('₨'+fmt(s.totalDuesAllTime)), col:'var(--rust)', open:'openDashDuesModal()'},
 
     sat:{g:'td', ic:'att', c:'c1', n:t.students, l:t.todayAttendance, v:dv(todayStudentAttendanceSummary().marked+'/'+s.activeCount), open:'openDashTodayAttendanceModal()'},
-    tat:{g:'td', ic:'tea', c:'c4', n:t.teachers, l:t.teacherAttendanceToday, v:dv(todayTeacherAttendanceSummary().checkedIn+'/'+DATA.teachers.length), open:'openDashTeacherAttendanceModal()'},
+    tat:{g:'td', ic:'tea', c:'c4', n:t.teachers, l:t.teacherAttendanceToday, v:dv(todayTeacherAttendanceSummary().checkedIn+'/'+activeTeachers().length), open:'openDashTeacherAttendanceModal()'},
 
     fcl:{g:'mo', ic:'dol', c:'c3', n:ur?'وصول':'Collected', l:t.feesCollected, v:dv('₨'+fmt(s.feesCollectedThisMonth)), open:'openDashFeesCollectedModal()'},
     fdu:{g:'mo', ic:'due', c:'c1', n:ur?'واجب':'Fees Due', l:t.feesDue, v:dv('₨'+fmt(s.feesDueThisMonth)), open:'openDashFeesDueModal()'},
@@ -6190,7 +6367,7 @@ function tplDashHero(s) {
   const pct = (coll + due) > 0 ? Math.round(coll / (coll + due) * 100) : 0;
   const kpi = (ic, c, val, label, open, col) => `<button class="dh-kpi" onclick="${open}"><span class="d-tile d-md ${c}">${diSvg(ic)}</span><span style="min-width:0;"><div class="v" style="${col ? 'color:' + col + ';' : ''}">${esc(String(val))}</div><div class="l">${esc(label)}</div></span></button>`;
   const sa = todayStudentAttendanceSummary(), ta = todayTeacherAttendanceSummary();
-  const nStu = s.activeCount, nTea = DATA.teachers.length;
+  const nStu = s.activeCount, nTea = activeTeachers().length;
   const sPct = nStu ? sa.present / nStu : 0, tPct = nTea ? ta.checkedIn / nTea : 0;
   const ring = (pctV, color, title, big, l1, l2, open) => `<button class="dh-ring" onclick="${open}">${dhRing(na ? 0 : pctV, color)}<span style="min-width:0;"><div class="n">${esc(title)}</div><div class="p">${esc(big)}</div><div class="s">${l1}<br>${l2}</div></span></button>`;
   const income = coll, expense = s.totalExpenseThisMonth, mx = Math.max(income, expense, 1);
@@ -6398,7 +6575,7 @@ function tplDashActivity() {
   }
 
   if (dashActivityView === 'expenses') {
-    const rows = DATA.transactions.filter(x=>x.type==='expense').slice().sort((a,b)=> new Date(b.txn_date) - new Date(a.txn_date));
+    const rows = DATA.transactions.filter(x=>x.type==='expense' && !isTransferTxn(x)).slice().sort((a,b)=> new Date(b.txn_date) - new Date(a.txn_date));
     return `
       <div class="list-card">
         ${backRow(t.recentActivity, 'menu')}
@@ -7189,6 +7366,7 @@ function openGenerateFees() {
 async function gmSave() {
   GM.mk = (document.getElementById('gm-month') || {}).value || '';
   if (!/^\d{4}-\d{2}$/.test(GM.mk)) { alert(gmL('pickMonth')); return; }
+  if (feeMonthLocked(GM.mk)) { feeLockAlert(GM.mk); return; }
   const c = gmCalc(GM.mk); if (!c.list.length) return;
   if (!confirm(`${gmL('confirm')} ${c.list.length} ${gmL('confirm2')} ₨${fmt(c.total)}${gmL('confirm3')} ${monthLabel(GM.mk)}`)) return;
   const btn = document.getElementById('gm-save'); if (btn) { btn.disabled = true; btn.textContent = gmL('saving'); }
@@ -7287,6 +7465,7 @@ function gnReset() { gnSaveSent(GN.mk, new Set()); openFeeNotice(GN.mk); }
 async function gmRemove() {
   GM.mk = (document.getElementById('gm-month') || {}).value || '';
   if (!/^\d{4}-\d{2}$/.test(GM.mk)) { alert(gmL('pickMonth')); return; }
+  if (feeMonthLocked(GM.mk)) { feeLockAlert(GM.mk); return; }
   const rm = gmRemovable(GM.mk); if (!rm.free.length) return;
   if (!confirm(`${gmL('rmConfirm1')} ${rm.free.length} ${gmL('rmConfirm2')} ₨${fmt(rm.charged)}) — ${monthLabel(GM.mk)}?` + (rm.kept ? `\n${rm.kept} ${gmL('rmKeep')}` : ''))) return;
   const btn = document.getElementById('gm-remove'); if (btn) { btn.disabled = true; btn.textContent = gmL('saving'); }
@@ -7875,6 +8054,7 @@ function tplStudentsResults() {
               🎓 Promote All (New Year)
             </button>
           </div>
+          ${lfBannerHtml()}
           <button class="btn-ghost" style="width:100%;margin-bottom:12px;" onclick="openConcessionReport()">🏷 ${esc(t.concReport)}</button>`;
       })()}
       ${list.length===0 ? `<div class="empty">${esc(t.noStudents)}</div>` :
@@ -8397,7 +8577,7 @@ function openStudentDetail(id, viewYear) {
       <label style="margin-bottom:0;"><span>${esc(t.totalPaidCol)}</span><input id="p-amount" type="number" min="0" oninput="feeAmountTyped('${id}')" placeholder="${esc(t.enterAmount)}" value="${effectiveMonthlyFee(s)||''}"></label>
     </div>
     <div class="row2" style="margin-top:8px;">
-      <label style="margin-bottom:0;"><span>${esc(t.dateCol)}</span><input id="p-date" type="date" value="${todayISO()}"></label>
+      <label style="margin-bottom:0;"><span>${esc(t.dateCol)}</span><input id="p-date" type="date" max="${todayISO()}" value="${todayISO()}"></label>
       <label style="margin-bottom:0;"><span>${esc(qt('Payment method', 'ادائیگی کا طریقہ'))}</span><select id="p-method">${feeMethodOptions(lastFeeMethod())}</select></label>
     </div>
     <div id="p-summary" style="margin-top:10px;"></div>
@@ -8570,6 +8750,7 @@ async function submitFeeAdjust(studentId) {
   if (!(c.amt > 0)) { alert(qt('Enter an amount greater than 0.', '0 سے زیادہ رقم لکھیں۔')); return; }
   if (!note) { alert(qt('Please write a reason / note.', 'براہ کرم وجہ / نوٹ لکھیں۔')); return; }
   if (c.err) { alert(c.err); return; }
+  { const lm = c.type === 'refund' ? (c.entry && c.entry.month) : ((document.getElementById('fa-month') || {}).value || monthKey()); if (feeMonthLocked(lm)) { feeLockAlert(lm); return; } }
   const today = todayISO();
   const label = c.type === 'writeoff' ? qt('Write-off', 'معافی') : c.type === 'charge' ? qt('Extra charge', 'اضافی چارج') : qt('Refund', 'واپسی');
   const line = today + ' ' + label + ' ₨' + fmt(c.amt) + ': ' + note;
@@ -8617,6 +8798,7 @@ async function submitFeeAdjust(studentId) {
 // ---------------- Late fee (applied to the ledger) ----------------
 function lfCalc(mk) {
   const list = [];
+  if (feeMonthLocked(mk)) return list;
   DATA.feePayments.filter(e => e.month === mk).forEach(e => {
     const st = DATA.students.find(x => x.id === e.student_id);
     if (!st || st.status === 'inactive' || !isFeePaying(st)) return;
@@ -8626,10 +8808,23 @@ function lfCalc(mk) {
   });
   return list;
 }
-function openApplyLateFee() {
+function lfBannerHtml() {
+  try {
+    const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - 1);
+    const mk = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+    if (localStorage.getItem('sms_lf_dismiss_' + mk) === '1') return '';
+    const n = lfCalc(mk).length; if (!n) return '';
+    return `<div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;padding:9px 11px;border-radius:12px;background:rgba(200,150,40,.14);font-size:12.5px;line-height:1.45;">
+      <div style="flex:1;">⏰ ${esc(qt(n + ' students still owe the ' + monthLabel(mk) + ' fee and no late fee has been applied.', n + ' طلبہ کی ' + monthLabel(mk) + ' کی فیس باقی ہے اور جرمانہ ابھی نہیں لگا۔'))}</div>
+      <button class="btn-ghost" style="flex:none;padding:6px 10px;font-size:12px;" onclick="openApplyLateFee('${mk}')">${esc(qt('Apply', 'لگائیں'))}</button>
+      <button class="btn-ghost" style="flex:none;padding:6px 10px;font-size:12px;" title="${esc(qt('Not needed', 'ضرورت نہیں'))}" onclick="lfDismiss('${mk}')">✕</button></div>`;
+  } catch (e) { return ''; }
+}
+function lfDismiss(mk) { try { localStorage.setItem('sms_lf_dismiss_' + mk, '1'); } catch (e) {} if (TAB) safeRenderTab(); }
+function openApplyLateFee(mk) {
   showModal(qt('Apply late fee', 'تاخیر کا جرمانہ لگائیں'), `
     <div style="font-size:12.5px;opacity:.8;margin-bottom:10px;line-height:1.5;">${esc(qt('Adds a late fee to the ledger of every student whose fee for the chosen month is still (partly) unpaid. A student is never charged twice for the same month.', 'منتخب مہینے کی فیس جن طلبہ کی (جزوی طور پر) باقی ہے ان کے لیڈجر میں تاخیر کا جرمانہ لگتا ہے۔ ایک مہینے کا جرمانہ دو بار نہیں لگتا۔'))}</div>
-    <label><span>${esc(qt('Month', 'مہینہ'))}</span><select id="lf-month" onchange="lfRefresh()">${gmMonthOptions(monthKey())}</select></label>
+    <label><span>${esc(qt('Month', 'مہینہ'))}</span><select id="lf-month" onchange="lfRefresh()">${gmMonthOptions(mk || monthKey())}</select></label>
     <label><span>${esc(qt('Late fee per student', 'فی طالب علم جرمانہ'))} (₨)</span><input id="lf-fine" type="number" min="0" oninput="lfRefresh()"></label>
     <div id="lf-summary" style="margin:10px 0;font-size:13px;line-height:1.5;"></div>
     <button id="lf-apply" class="btn-primary" style="width:100%;" onclick="guardedSubmit(this, lfApply)">${esc(qt('Apply late fee', 'جرمانہ لگائیں'))}</button>`);
@@ -8900,6 +9095,14 @@ async function submitFeePayment(studentId) {
     if (!Number.isFinite(Number(v))) { alert(LANG === 'ur' ? '\u0641\u06cc\u0633 \u06a9\u06cc \u0631\u0642\u0645 \u0645\u06cc\u06ba \u063a\u0644\u0637\u06cc \u06c1\u06d2\u06d4' : 'One of the fee amounts is not a valid number.'); return; }
   }
 
+  // Closed (locked) months can't be changed; payment dates can't be in the future.
+  if (feeMonthLocked(month)) { feeLockAlert(month); return; }
+  {
+    const today = todayISO();
+    if (date > today) { alert(qt('The payment date cannot be in the future.', 'ادائیگی کی تاریخ آنے والی نہیں ہو سکتی۔')); return; }
+    const ago = Math.round((new Date(today) - new Date(date)) / 86400000);
+    if (ago > 31 && !confirm(qt('The payment date (' + fmtDate(date) + ') is ' + ago + ' days in the past. Is that correct?', 'ادائیگی کی تاریخ (' + fmtDate(date) + ') ' + ago + ' دن پرانی ہے۔ کیا یہ درست ہے؟'))) return;
+  }
   // Looked up from the local cache (works offline too) — this is purely for
   // the parent-notification decision below (new entry vs. correcting an
   // existing one), and doubles as the "before" snapshot for conflict checks.
@@ -8999,6 +9202,7 @@ async function submitFeePayment(studentId) {
   const { queued, error } = await offlineWrite({
     table: 'fee_payments', action: 'upsert', payload, id: payload.id, onConflict: 'student_id,month',
     baseRow: existingRow,
+    logNote: (existingRow && !isInstallment) ? 'Corrected: paid Rs ' + fmt(existingRow.amount) + ' to Rs ' + fmt(payAmount) + (existingRow.receipt_no ? ', receipt ' + existingRow.receipt_no + ' to ' + payReceipt : '') : (isInstallment ? 'Installment Rs ' + fmt(enteredAmount) + ' added' : null),
     run: () => feeUpsert(payload),
     optimisticApply: () => {
       const idx = DATA.feePayments.findIndex(x => x.id === payload.id);
@@ -9067,10 +9271,19 @@ function printReceipt(studentId, entryId) {
     [t.totalDuesCol, totalDues],
   ].map(([lbl,val]) => `<tr><td class="lbl">${esc(lbl)}</td><td style="text-align:right;">₨${fmt(val)}</td></tr>`).join('');
 
+  // The first print of a receipt is the original; every later print of the same receipt says DUPLICATE COPY.
+  // (A new payment on the same month changes the receipt, so it prints as an original again.)
+  let isCopy = false;
+  try {
+    const pk = 'sms_printed_' + (CURRENT_USER && CURRENT_USER.id), sig = e.id + ':' + money2(Number(e.amount || 0));
+    const seen = JSON.parse(localStorage.getItem(pk) || '{}');
+    isCopy = !!seen[sig]; seen[sig] = 1; localStorage.setItem(pk, JSON.stringify(seen));
+  } catch (er) {}
   document.getElementById('print-area').innerHTML = `
     <div class="receipt-box">
       <h2>${esc(CURRENT_PROFILE.school_name || 'School')}</h2>
       <div class="sub">${esc(t.feeReceipt)} — ${esc(monthLabel(e.month))}</div>
+      ${isCopy ? `<div style="text-align:center;font-weight:800;letter-spacing:2px;border:2px solid #000;padding:3px 0;margin:6px 0;">${esc(qt('DUPLICATE COPY', 'نقل (DUPLICATE)'))}</div>` : ''}
       <table>
         <tr><td class="lbl">${esc(t.receivedFrom)}</td><td style="text-align:right;">${esc(s.name)}</td></tr>
         <tr><td class="lbl">${esc(t.className)}</td><td style="text-align:right;">${esc(s.class_name||'')}</td></tr>
@@ -9089,18 +9302,34 @@ function printReceipt(studentId, entryId) {
     </div>`;
   window.print();
 }
-async function deleteFeePayment(paymentId, studentId) {
+// Deleting a fee entry now asks WHY (required when money was recorded). The reason, receipt number,
+// method and amount are written to the Activity Log, so a deleted payment can always be explained.
+function deleteFeePayment(paymentId, studentId) {
+  const row = DATA.feePayments.find(x => x.id === paymentId);
+  if (!row) return;
+  if (feeMonthLocked(row.month)) { feeLockAlert(row.month); return; }
+  const paid = Number(row.amount || 0);
+  const hasMoney = paid > 0 || (Array.isArray(row.installments) && row.installments.length > 0);
+  showModal(qt('Delete fee entry', 'فیس انٹری حذف کریں'), `
+    <p style="font-size:14px;margin-bottom:6px;"><b>${esc(monthLabel(row.month))}</b>${paid > 0 ? ' — ₨' + fmt(paid) + ' ' + esc(qt('paid', 'ادا شدہ')) : ''}${row.receipt_no ? ' — ' + esc(qt('Receipt', 'رسید')) + ' ' + esc(row.receipt_no) : ''}</p>
+    ${hasMoney ? `<p style="font-size:13px;color:var(--rust);margin-bottom:10px;">${esc(qt('This removes the payment record for good: the money will no longer show as received in the fee card, reports and Day Book.', 'اس سے ادائیگی کا ریکارڈ ہمیشہ کے لیے مٹ جائے گا اور یہ رقم فیس کارڈ، رپورٹس اور روزنامچے میں وصول شدہ نہیں دکھائی جائے گی۔'))}</p>` : ''}
+    <label>${esc(hasMoney ? qt('Reason for deleting (required)', 'حذف کرنے کی وجہ (ضروری)') : qt('Reason (optional)', 'وجہ (اختیاری)'))}
+      <textarea id="del-reason" rows="2" placeholder="${esc(qt('e.g. entered twice by mistake', 'مثلاً غلطی سے دو بار درج ہو گئی'))}"></textarea></label>
+    <div class="flexgap" style="margin-top:12px;">
+      <button class="btn-ghost" onclick="openStudentDetail('${studentId}')">${esc(t.no)}</button>
+      <button class="btn-primary" style="flex:1;background:var(--rust);" onclick="guardedSubmit(this, ()=>doDeleteFeePayment('${paymentId}','${studentId}',${hasMoney ? 'true' : 'false'}))">${esc(t.yes)}</button>
+    </div>`);
+}
+async function doDeleteFeePayment(paymentId, studentId, reasonRequired) {
   const baseRow = DATA.feePayments.find(x => x.id === paymentId) || null;
-  if (baseRow) {
-    const paidAmt = Number(baseRow.amount || 0);
-    const warn = paidAmt > 0
-      ? qt('Delete the fee entry for ' + monthLabel(baseRow.month) + '?\n\nIt has ₨' + fmt(paidAmt) + ' PAID recorded. Deleting removes that payment record and the money will no longer show as received.\n\nThis cannot be undone.',
-           monthLabel(baseRow.month) + ' کی فیس انٹری حذف کریں؟\n\nاس میں ₨' + fmt(paidAmt) + ' ادا شدہ درج ہیں۔ حذف کرنے سے ادائیگی کا ریکارڈ مٹ جائے گا اور یہ رقم وصول شدہ نہیں دکھائی جائے گی۔\n\nیہ واپس نہیں ہو سکتا۔')
-      : qt('Delete the (unpaid) fee entry for ' + monthLabel(baseRow.month) + '?', monthLabel(baseRow.month) + ' کی (بغیر ادائیگی) فیس انٹری حذف کریں؟');
-    if (!confirm(warn)) return;
+  const reason = ((document.getElementById('del-reason') || {}).value || '').trim();
+  if (reasonRequired && reason.length < 3) {
+    alert(qt('Please write the reason for deleting this payment.', 'براہ کرم اس ادائیگی کو حذف کرنے کی وجہ لکھیں۔'));
+    return;
   }
   const { queued, error } = await offlineWrite({
     table: 'fee_payments', action: 'delete', payload: null, id: paymentId, baseRow,
+    logNote: reason ? 'Reason: ' + reason : null,
     run: () => sb.from('fee_payments').delete().eq('id', paymentId),
     optimisticApply: () => { DATA.feePayments = DATA.feePayments.filter(x => x.id !== paymentId); idbDeleteRow('fee_payments', paymentId); }
   });
@@ -9211,8 +9440,24 @@ function tplTeachers() {
     </div>`;
 }
 
+let teacherShowLeft = false;
+// What is still to be paid for a month: the attendance-adjusted salary (or the plain monthly salary) minus the base salary already paid.
+function teacherMonthDue(tc, mk) {
+  if (teacherIsLeft(tc) && tc.left_date && String(tc.left_date).slice(0, 7) < mk) return 0;
+  if (tc.join_date && String(tc.join_date).slice(0, 7) > mk) return 0;
+  const att = calcAttendanceSalary(tc.id, mk);
+  const target = att.hasRecords ? att.amount : Number(tc.monthly_salary || 0);
+  const rows = teacherPayments(tc.id).filter(p => p.month === mk);
+  let basePaid = 0;
+  if (rows.length) {
+    const rec = STF.loaded ? stfRecoveredIn(tc.id, mk) : 0;
+    basePaid = rows.reduce((q, p) => q + Number(p.amount || 0) - Number(p.attendance_bonus || 0) - Number(p.extra_class_fee || 0), 0) + rec;
+  }
+  return Math.max(0, money2(target - basePaid));
+}
 function tplTeachersResults() {
-  const full = DATA.teachers.filter(tc => (tc.name+(tc.subject||'')).toLowerCase().includes(teacherSearch.toLowerCase()));
+  const leftCount = DATA.teachers.filter(teacherIsLeft).length;
+  const full = DATA.teachers.filter(tc => (teacherShowLeft || !teacherIsLeft(tc)) && (tc.name+(tc.subject||'')).toLowerCase().includes(teacherSearch.toLowerCase()));
   const totalPages = Math.max(1, Math.ceil(full.length / TEACHERS_PAGE_SIZE));
   if (teacherPage > totalPages) teacherPage = totalPages;
   const start = (teacherPage - 1) * TEACHERS_PAGE_SIZE;
@@ -9224,18 +9469,20 @@ function tplTeachersResults() {
       <span style="font-size:12px;opacity:.65;white-space:nowrap;">${teacherPage} / ${totalPages}</span>
       <button class="btn-ghost" ${teacherPage>=totalPages?'disabled':''} onclick="setTeacherPage(${teacherPage+1})">${esc(t.next)} ›</button>
     </div>`;
+  const leftToggle = leftCount ? `<button class="btn-ghost" style="width:100%;margin-top:12px;font-size:12px;" onclick="teacherShowLeft=!teacherShowLeft; teacherPage=1; document.getElementById('teachers-results').innerHTML = tplTeachersResults();">${esc(teacherShowLeft ? qt('Hide staff who left', 'چھوڑ جانے والا عملہ چھپائیں') : qt('Show staff who left', 'چھوڑ جانے والا عملہ دکھائیں') + ' (' + leftCount + ')')}</button>` : '';
   return `
       ${list.length===0 ? `<div class="empty">${esc(t.noTeachers)}</div>` :
         list.map(tc=>{
-          const paid = teacherPayments(tc.id).filter(p=>p.month===cur).reduce((a,b)=>a+Number(b.amount),0);
-          const due = Math.max(0, Number(tc.monthly_salary||0)-paid);
+          const left = teacherIsLeft(tc);
+          const due = left ? 0 : teacherMonthDue(tc, cur);
           return `
           <button class="card-btn" onclick="openTeacherDetail('${tc.id}')">
             <div><div class="nm">${esc(tc.name)}</div><div class="sub">${esc(tc.subject||'')}</div></div>
-            <span class="pill ${due>0?'bad':'good'}">${due>0 ? '₨'+fmt(due)+' '+esc(t.due) : esc(t.paid)}</span>
+            <span class="pill ${left ? 'free' : due>0?'bad':'good'}">${left ? esc(qt('Left', 'چھوڑ گئے')) : due>0 ? '₨'+fmt(due)+' '+esc(t.due) : esc(t.paid)}</span>
           </button>`;
         }).join('')}
       ${pager}
+      ${leftToggle}
     `;
 }
 
@@ -9260,6 +9507,8 @@ async function submitAddTeacher() {
   const salary = document.getElementById('f-salary').value;
   if (!name || !qualification || salary==='') return;
   if (!moneyOk(salary)) { alert(MONEY_NEG_MSG()); return; }
+  { const dup = DATA.teachers.find(x => !teacherIsLeft(x) && String(x.name || '').trim().toLowerCase() === name.toLowerCase());
+    if (dup && !confirm(qt('A teacher named "' + dup.name + '" already exists. Add another one with the same name?', '"' + dup.name + '" نام کا استاد پہلے سے موجود ہے۔ کیا اسی نام کا ایک اور شامل کریں؟'))) return; }
   const payload = {
     id: crypto.randomUUID ? crypto.randomUUID() : `local-${Date.now()}`,
     owner_id: CURRENT_USER.id,
@@ -9276,6 +9525,79 @@ async function submitAddTeacher() {
     optimisticApply: () => { DATA.teachers.push(payload); idbPutRow('teachers', payload); }
   });
   if (!queued && reportSaveError(error)) return;
+  closeModal(); if (!queued) await loadAllData(); renderTab();
+}
+
+function openEditTeacher(id) {
+  const tc = DATA.teachers.find(x => x.id === id); if (!tc) return;
+  showModal(qt('Edit teacher', 'استاد میں ترمیم'), `
+    <label><span>${esc(t.teacherName)}</span><input id="f-name" value="${esc(tc.name || '')}"></label>
+    <label><span>${esc(t.subject)}</span><input id="f-subject" value="${esc(tc.subject || '')}"></label>
+    <label><span>${esc(t.qualification)}</span><input id="f-qualification" value="${esc(tc.qualification || '')}"></label>
+    <label><span>${esc(t.monthlySalary)}</span><input id="f-salary" type="number" min="0" value="${esc(tc.monthly_salary || 0)}"></label>
+    <div style="font-size:11px;opacity:.65;margin:-4px 0 10px;">${esc(qt('A new salary applies from the next payment; payments already made are not changed.', 'نئی تنخواہ اگلی ادائیگی سے لاگو ہوگی؛ پہلے کی ادائیگیاں نہیں بدلتیں۔'))}</div>
+    <label><span>${esc(t.joinDate)}</span><input id="f-join" type="date" value="${esc(String(tc.join_date || '').slice(0, 10))}"></label>
+    <label><span>${esc(t.contact)}</span><input id="f-contact" type="tel" value="${esc(tc.contact || '')}" placeholder="03XXXXXXXXX"></label>
+    <div class="flexgap">
+      <button class="btn-ghost" onclick="openTeacherDetail('${id}')">${esc(t.cancel)}</button>
+      <button class="btn-primary" style="flex:1" onclick="guardedSubmit(this, () => submitEditTeacher('${id}'))">${esc(t.save)}</button>
+    </div>`);
+}
+async function submitEditTeacher(id) {
+  const tc = DATA.teachers.find(x => x.id === id); if (!tc) return;
+  const name = document.getElementById('f-name').value.trim();
+  const qualification = document.getElementById('f-qualification').value.trim();
+  const salary = document.getElementById('f-salary').value;
+  if (!name || !qualification || salary === '') { alert(qt('Name, qualification and salary are required.', 'نام، تعلیمی قابلیت اور تنخواہ ضروری ہیں۔')); return; }
+  if (!moneyOk(salary)) { alert(MONEY_NEG_MSG()); return; }
+  { const dup = DATA.teachers.find(x => x.id !== id && !teacherIsLeft(x) && String(x.name || '').trim().toLowerCase() === name.toLowerCase());
+    if (dup && !confirm(qt('Another teacher named "' + dup.name + '" already exists. Save anyway?', '"' + dup.name + '" نام کا ایک اور استاد موجود ہے۔ پھر بھی محفوظ کریں؟'))) return; }
+  const payload = { ...tc, name, subject: document.getElementById('f-subject').value, qualification, monthly_salary: Number(salary),
+    join_date: dateVal('f-join'), contact: document.getElementById('f-contact').value };
+  const changes = [];
+  if (Number(tc.monthly_salary || 0) !== Number(salary)) changes.push('salary Rs ' + fmt(tc.monthly_salary || 0) + ' to Rs ' + fmt(salary));
+  if ((tc.name || '') !== name) changes.push('name ' + (tc.name || '') + ' to ' + name);
+  const { queued, error } = await offlineWrite({
+    table: 'teachers', action: 'update', payload, id, baseRow: tc, logNote: changes.length ? 'Edited: ' + changes.join(', ') : null,
+    run: () => sb.from('teachers').update(payload).eq('id', id),
+    optimisticApply: () => { const i = DATA.teachers.findIndex(x => x.id === id); if (i >= 0) DATA.teachers[i] = payload; idbPutRow('teachers', payload); }
+  });
+  if (!queued && reportSaveError(error)) return;
+  if (!queued) await loadAllData();
+  openTeacherDetail(id); if (TAB) safeRenderTab();
+}
+// A teacher who has left: kept with all history (salaries, attendance, advances) but hidden from the active lists.
+const TEACHER_STATUS_SQL = "alter table public.teachers add column if not exists status text default 'active';\nalter table public.teachers add column if not exists left_date date;\nnotify pgrst, 'reload schema';";
+function confirmStrikeOffTeacher(id) {
+  const tc = DATA.teachers.find(x => x.id === id); if (!tc) return;
+  showModal(qt('Teacher has left', 'استاد نے ادارہ چھوڑ دیا'), `
+    <p style="font-size:14px;margin-bottom:8px;"><b>${esc(tc.name)}</b></p>
+    <p style="font-size:13px;margin-bottom:10px;">${esc(qt('The teacher is hidden from the active list, attendance and unpaid-salary reminders. All salary, attendance and advance history is kept. You can bring the teacher back later.', 'استاد فعال فہرست، حاضری اور بقایا تنخواہ کی یاد دہانی سے ہٹ جائے گا۔ تنخواہ، حاضری اور ایڈوانس کی تمام تاریخ محفوظ رہے گی۔ بعد میں واپس لایا جا سکتا ہے۔'))}</p>
+    <label><span>${esc(qt('Last working day', 'آخری کام کا دن'))}</span><input id="tl-date" type="date" max="${todayISO()}" value="${todayISO()}"></label>
+    <div class="flexgap">
+      <button class="btn-ghost" onclick="openTeacherDetail('${id}')">${esc(t.cancel)}</button>
+      <button class="btn-primary" style="flex:1;background:var(--rust);" onclick="guardedSubmit(this, () => setTeacherStatus('${id}','left'))">${esc(t.yes)}</button>
+    </div>`);
+}
+async function setTeacherStatus(id, status) {
+  const tc = DATA.teachers.find(x => x.id === id); if (!tc) return;
+  const left = status === 'left';
+  const day = left ? ((document.getElementById('tl-date') || {}).value || todayISO()) : null;
+  if (left && day > todayISO()) { alert(qt('The date cannot be in the future.', 'تاریخ آنے والی نہیں ہو سکتی۔')); return; }
+  const payload = { ...tc, status: left ? 'left' : 'active', left_date: day };
+  const { queued, error } = await offlineWrite({
+    table: 'teachers', action: 'update', payload, id, baseRow: tc, logNote: left ? 'Marked as left on ' + day : 'Brought back as active',
+    run: () => sb.from('teachers').update({ status: payload.status, left_date: payload.left_date }).eq('id', id),
+    optimisticApply: () => { const i = DATA.teachers.findIndex(x => x.id === id); if (i >= 0) DATA.teachers[i] = payload; idbPutRow('teachers', payload); }
+  });
+  if (!queued && error) {
+    await loadAllData();
+    if (/status|left_date|column|schema cache/i.test(String(error.message || ''))) {
+      alert(qt('This needs two new database columns. Run once in Supabase > SQL Editor, then try again:\n' + TEACHER_STATUS_SQL, 'اس کے لیے ڈیٹابیس میں دو نئے کالم چاہییں۔ Supabase > SQL Editor میں ایک بار چلائیں، پھر دوبارہ کوشش کریں:\n' + TEACHER_STATUS_SQL));
+      openTeacherDetail(id); return;
+    }
+    reportSaveError(error); return;
+  }
   closeModal(); if (!queued) await loadAllData(); renderTab();
 }
 
@@ -9318,12 +9640,12 @@ function openMarkAttendance() {
 }
 
 function renderAttendanceRoster() {
-  if (!DATA.teachers.length) return `<div class="empty">${esc(t.noTeachers)}</div>`;
+  if (!activeTeachers().length) return `<div class="empty">${esc(t.noTeachers)}</div>`;
   const opt = (id, session, val, label, color) => {
     const cur = (attendanceDraft[id] || {})[session];
     return `<button type="button" onclick="setAttendanceMark('${id}','${session}','${val}')" style="flex:1;padding:6px 3px;border-radius:8px;font-size:10.5px;font-weight:600;border:1.5px solid ${cur===val?color:'var(--line)'};background:${cur===val?color:'#fff'};color:${cur===val?'#fff':'var(--ink)'};">${esc(label)}</button>`;
   };
-  return DATA.teachers.map(tc => `
+  return activeTeachers().map(tc => `
     <div style="border-bottom:1px solid var(--line);padding:8px 0;">
       <div style="font-size:13px;font-weight:600;margin-bottom:6px;">${esc(tc.name)}</div>
       <div style="display:flex;align-items:center;gap:6px;margin-bottom:5px;">
@@ -9419,7 +9741,7 @@ function calcAttendanceSalary(teacherId, month) {
   const [y, m] = month.split('-').map(Number);
   const daysInMonth = new Date(y, m, 0).getDate();
   const dailyRate = Number(tc && tc.monthly_salary || 0) / daysInMonth;
-  const deductedDays = Math.max(0, absent - 2);
+  const deductedDays = Math.max(0, absent - salaryFreeAbsents());
   const amount = Math.max(0, Math.round(Number(tc && tc.monthly_salary || 0) - dailyRate * deductedDays));
   return { present, leave, absent, deductedDays, hasRecords: recs.length > 0, amount };
 }
@@ -9429,12 +9751,24 @@ function updateAttendanceSalaryInfo(teacherId) {
   const amountEl = document.getElementById('p-amount');
   if (!monthInput || !infoEl || !amountEl) return;
   const tc = DATA.teachers.find(x => x.id === teacherId);
-  const r = calcAttendanceSalary(teacherId, monthInput.value);
+  const mk = monthInput.value;
+  const r = calcAttendanceSalary(teacherId, mk);
+  const ex = DATA.salaryPayments.find(x => x.teacher_id === teacherId && x.month === mk) || null;
+  const repEl = document.getElementById('p-replace-sal');
+  const replace = !!(repEl && repEl.checked);
   infoEl.innerHTML = r.hasRecords
     ? `${esc(t.present)}: ${r.present} · ${esc(t.leave)}: ${r.leave} · ${esc(t.absent)}: ${r.absent}${r.deductedDays > 0 ? ` (-${r.deductedDays}d)` : ''} — ${esc(t.suggestedSalary)}: ₨${fmt(r.amount)}`
     : esc(t.noAttendanceMarked);
-  amountEl.value = r.hasRecords ? r.amount : (tc && tc.monthly_salary || '');
-  const advEl = document.getElementById('p-adv'); if (advEl) advEl.value = stfDueDeduction(teacherId, monthInput.value);
+  const box = document.getElementById('sal-exist');
+  if (box) box.innerHTML = ex ? `<div style="font-size:12px;margin-top:8px;padding:8px 10px;border-radius:10px;background:rgba(200,150,40,.14);line-height:1.5;">
+      ${esc(qt('Already paid for this month: ₨' + fmt(ex.amount) + ' (' + fmtDate(ex.pay_date) + '). What you enter here is ADDED as a further payment.', 'اس مہینے پہلے ادا ہو چکا: ₨' + fmt(ex.amount) + ' (' + fmtDate(ex.pay_date) + ')۔ یہاں جو لکھیں گے وہ مزید ادائیگی کے طور پر شامل ہوگا۔'))}
+      <label style="display:flex;gap:8px;align-items:center;margin:6px 0 0;"><input type="checkbox" id="p-replace-sal" style="width:auto;" ${replace ? 'checked' : ''} onchange="updateAttendanceSalaryInfo('${teacherId}')"> <span>${esc(qt('Correct this entry instead (replace the whole month)', 'اس اندراج کو درست کریں (پورا مہینہ بدل دیں)'))}</span></label></div>` : '';
+  const suggested = r.hasRecords ? r.amount : Number(tc && tc.monthly_salary || 0);
+  const recIn = ex && STF.loaded ? stfRecoveredIn(teacherId, mk) : 0;
+  const basePaid = ex ? money2(Number(ex.amount || 0) + recIn - Number(ex.attendance_bonus || 0) - Number(ex.extra_class_fee || 0)) : 0;
+  amountEl.value = ex && !replace ? Math.max(0, money2(suggested - basePaid)) : (suggested || '');
+  const advEl = document.getElementById('p-adv');
+  if (advEl) { const due = stfDueDeduction(teacherId, mk); advEl.value = ex && !replace ? Math.max(0, money2(due - recIn)) : due; }
 }
 
 // ---------------- Teacher Attendance Register (month grid, Morning + Afternoon per date) ----------------
@@ -9512,7 +9846,7 @@ async function toggleHoliday(date) {
 }
 
 function tplTeacherRegister() {
-  const teachersToShow = registerTeacherFilter === 'all' ? DATA.teachers : DATA.teachers.filter(x => x.id === registerTeacherFilter);
+  const teachersToShow = registerTeacherFilter === 'all' ? DATA.teachers.filter(x => teacherActiveIn(x, registerMonth)) : DATA.teachers.filter(x => x.id === registerTeacherFilter);
   const dates = datesInMonth(registerMonth);
   const colCount = 1 + teachersToShow.length * 2;
   const head1 = teachersToShow.map(tc => `<th colspan="2">${esc(tc.name)}</th>`).join('');
@@ -9546,7 +9880,7 @@ function tplTeacherRegister() {
         <label><span>${esc(t.registerSelectTeacher)}</span>
           <select onchange="registerTeacherFilter=this.value; renderTab();">
             <option value="all" ${registerTeacherFilter==='all'?'selected':''}>${esc(t.registerAllTeachers)}</option>
-            ${DATA.teachers.map(tc => `<option value="${tc.id}" ${registerTeacherFilter===tc.id?'selected':''}>${esc(tc.name)}</option>`).join('')}
+            ${DATA.teachers.filter(x => teacherActiveIn(x, registerMonth)).map(tc => `<option value="${tc.id}" ${registerTeacherFilter===tc.id?'selected':''}>${esc(tc.name)}</option>`).join('')}
           </select>
         </label>
       </div>
@@ -10405,7 +10739,14 @@ function openTeacherDetail(id) {
       <span>${esc(t.qualification)}: ${esc(tc.qualification||'')}</span>
       <span>${esc(t.monthlySalary)}: ₨${fmt(tc.monthly_salary)}</span>
     </div>
+    ${teacherIsLeft(tc) ? `<div style="padding:8px 10px;border-radius:10px;background:rgba(150,150,150,.15);font-size:12px;margin-bottom:10px;">${esc(qt('Left the school', 'ادارہ چھوڑ گئے'))}${tc.left_date ? ': ' + esc(fmtDate(tc.left_date)) : ''}</div>` : ''}
     <div class="greenbox"><div class="lbl">${esc(t.totalSalariesAllTime)}</div><div class="val">₨${fmt(totalPaid)}</div></div>
+    <div class="flexgap" style="margin:10px 0 0;">
+       <button class="btn-ghost" onclick="openEditTeacher('${id}')">✏️ ${esc(qt('Edit', 'ترمیم'))}</button>
+       ${teacherIsLeft(tc)
+         ? `<button class="btn-ghost" onclick="guardedSubmit(this, () => setTeacherStatus('${id}','active'))">↩ ${esc(qt('Bring back', 'واپس لائیں'))}</button>`
+         : `<button class="btn-ghost" onclick="confirmStrikeOffTeacher('${id}')">🚪 ${esc(qt('Has left', 'چھوڑ گئے'))}</button>`}
+    </div>
     <div class="flexgap" style="margin:10px 0;">
        <button class="btn-ghost" onclick="openStaffAdvances('${id}')">💸 ${esc(qt('Advance / Loan', 'ایڈوانس / قرض'))}${(STF.loaded && !STF.err && stfTeacherOutstanding(id) > 0) ? ' · ₨' + fmt(stfTeacherOutstanding(id)) : ''}</button>
        <button class="btn-ghost" onclick="openStaffLeaves('${id}')">🗓 ${esc(qt('Leave', 'چھٹی'))}</button>
@@ -10421,7 +10762,12 @@ function openTeacherDetail(id) {
       <label style="margin-bottom:0;"><span>${esc(t.extraClass)}</span><input id="p-extra" type="number" min="0" value="0"></label>
     </div>
     ${stfAdvRowHtml(id, curMonth)}
-    <div style="margin-top:8px;"><input id="p-date" type="date" value="${todayISO()}"></div>
+    <div id="sal-exist"></div>
+    <div class="row2" style="margin-top:8px;">
+      <label style="margin-bottom:0;"><span>${esc(t.dateCol)}</span><input id="p-date" type="date" max="${todayISO()}" value="${todayISO()}"></label>
+      <label style="margin-bottom:0;"><span>${esc(qt('Payment method', 'ادائیگی کا طریقہ'))}</span><select id="p-method">${feeMethodOptions(lastFeeMethod())}</select></label>
+    </div>
+    ${salColsWarnHtml()}
     <div style="margin-top:8px;"><button class="btn-primary" onclick="guardedSubmit(this, ()=>submitSalaryPayment('${id}'))">+ ${esc(t.save)}</button></div>
     <div class="section-title">${esc(t.salaryLedger)}</div>
     <div class="ledger">
@@ -10444,6 +10790,7 @@ function openTeacherDetail(id) {
     </div>
     <div style="margin-top:16px;"><button class="btn-ghost danger" onclick="confirmDelete('teacher','${id}')">${esc(t.delete)}</button></div>
   `);
+  updateAttendanceSalaryInfo(id);
 }
 
 function teacherWaLink(phone, message) {
@@ -10462,33 +10809,50 @@ async function submitSalaryPayment(teacherId) {
   if (![base, bonus, extra].every(moneyOk) || (advEl0 => advEl0 && Number(advEl0.value || 0) < 0)(document.getElementById('p-adv'))) { alert(MONEY_NEG_MSG()); return; }
   const gross = base + bonus + extra;
   if (!gross) { alert(qt('Please enter the salary amount.', 'براہ کرم تنخواہ کی رقم لکھیں۔')); return; }
+  if (feeMonthLocked(month)) { feeLockAlert(month); return; }
+  if (!txnDateOk(date)) return;
+  const tc = DATA.teachers.find(x => x.id === teacherId);
+  if (tc && tc.join_date && month < String(tc.join_date).slice(0, 7) &&
+      !confirm(qt('This month is before the joining date (' + fmtDate(tc.join_date) + '). Save anyway?', 'یہ مہینہ تقرری کی تاریخ (' + fmtDate(tc.join_date) + ') سے پہلے کا ہے۔ پھر بھی محفوظ کریں؟'))) return;
+  const method = (document.getElementById('p-method') || {}).value || 'cash';
+  const replace = !!((document.getElementById('p-replace-sal') || {}).checked);
+  // Looked up from the local cache (works offline too) — doubles as the "before" snapshot for conflict checks.
+  const existingRow = DATA.salaryPayments.find(x => x.teacher_id === teacherId && x.month === month) || null;
+  // Same month already paid: by default this is a FURTHER payment added to it. "Correct this entry" replaces instead.
+  const isAdd = !!existingRow && !replace;
+  const recExisting = isAdd && STF.loaded ? stfRecoveredIn(teacherId, month) : 0;
   const advEl = document.getElementById('p-adv');
   let ded = advEl ? Math.max(0, Number(advEl.value || 0)) : 0;
-  ded = Math.min(ded, gross, stfTeacherOutstanding(teacherId, month));
-  const amount = gross - ded;
-
-  // Looked up from the local cache (works offline too) — doubles as the
-  // "before" snapshot for conflict checks when the queue is later replayed.
-  const existingRow = DATA.salaryPayments.find(x => x.teacher_id === teacherId && x.month === month) || null;
-
-  const payload = {
-    id: existingRow ? existingRow.id : (crypto.randomUUID ? crypto.randomUUID() : `local-${Date.now()}`),
-    owner_id: CURRENT_USER.id, teacher_id: teacherId, month,
-    amount, attendance_bonus: bonus, extra_class_fee: extra, pay_date: date
-  };
-  // Root-level duplicate prevention: an atomic upsert keyed on the
-  // (teacher_id, month) UNIQUE constraint in the database (same fix, and same
-  // one-time SQL migration, as fee_payments above) — makes a duplicate salary
-  // entry for the same teacher+month impossible, even under a race condition.
-  //
-  // Offline-aware: with no signal this is applied to the local copy right
-  // away and queued — it syncs automatically once the connection is back
-  // (see offlineWrite/flushSyncQueue), with a manual conflict prompt if
-  // another device changed this same month's entry in the meantime.
+  const cap = isAdd ? Math.max(0, stfTeacherOutstanding(teacherId, month) - recExisting) : stfTeacherOutstanding(teacherId, month);
+  ded = Math.min(ded, gross, cap);
+  const net = gross - ded;
+  // Soft guard: total BASE salary of the month would pass the monthly salary.
+  const basePaidBefore = isAdd ? money2(Number(existingRow.amount || 0) + recExisting - Number(existingRow.attendance_bonus || 0) - Number(existingRow.extra_class_fee || 0)) : 0;
+  if (tc && money2(basePaidBefore + base) > Number(tc.monthly_salary || 0) + 0.005 &&
+      !confirm(qt('Base salary paid for this month would be ₨' + fmt(money2(basePaidBefore + base)) + ', more than the monthly salary (₨' + fmt(tc.monthly_salary) + '). Save anyway?',
+                  'اس مہینے کی بنیادی تنخواہ ₨' + fmt(money2(basePaidBefore + base)) + ' ہو جائے گی، جو ماہانہ تنخواہ (₨' + fmt(tc.monthly_salary) + ') سے زیادہ ہے۔ پھر بھی محفوظ کریں؟'))) return;
+  let payload;
+  if (isAdd) {
+    const prev = Array.isArray(existingRow.installments) ? existingRow.installments.slice() : [];
+    if (!prev.length && Number(existingRow.amount) > 0) prev.push({ d: existingRow.pay_date || date, a: Number(existingRow.amount), m: existingRow.pay_method || '' });
+    payload = { id: existingRow.id, owner_id: CURRENT_USER.id, teacher_id: teacherId, month,
+      amount: money2(Number(existingRow.amount || 0) + net),
+      attendance_bonus: money2(Number(existingRow.attendance_bonus || 0) + bonus), extra_class_fee: money2(Number(existingRow.extra_class_fee || 0) + extra),
+      pay_date: date, pay_method: method, installments: prev.concat({ d: date, a: net, m: method }) };
+  } else {
+    payload = { id: existingRow ? existingRow.id : (crypto.randomUUID ? crypto.randomUUID() : `local-${Date.now()}`),
+      owner_id: CURRENT_USER.id, teacher_id: teacherId, month,
+      amount: net, attendance_bonus: bonus, extra_class_fee: extra, pay_date: date, pay_method: method,
+      installments: net > 0 ? [{ d: date, a: net, m: method }] : [] };
+  }
+  try { localStorage.setItem('sms_last_pay_method', method); } catch (e) {}
+  // Atomic upsert on the (teacher_id, month) UNIQUE constraint: a duplicate salary row for one month is impossible.
+  // Offline-aware: applied locally at once and queued; conflicts are held for the user when it syncs.
   const { queued, error } = await offlineWrite({
     table: 'salary_payments', action: 'upsert', payload, id: payload.id, onConflict: 'teacher_id,month',
     baseRow: existingRow,
-    run: () => sb.from('salary_payments').upsert(payload, { onConflict: 'teacher_id,month' }),
+    logNote: isAdd ? 'Further payment Rs ' + fmt(net) + ' (month total Rs ' + fmt(payload.amount) + ')' : (existingRow ? 'Corrected: Rs ' + fmt(existingRow.amount) + ' to Rs ' + fmt(net) : null),
+    run: () => salUpsert(payload),
     optimisticApply: () => {
       const idx = DATA.salaryPayments.findIndex(x => x.id === payload.id);
       if (idx >= 0) DATA.salaryPayments[idx] = { ...DATA.salaryPayments[idx], ...payload };
@@ -10498,35 +10862,51 @@ async function submitSalaryPayment(teacherId) {
   });
   if (!queued && reportSaveError(error)) return;
   if (advEl) {
-    const rErr = await stfApplyRecovery(teacherId, month, ded);
-    if (rErr) alert(qt('Salary was saved, but the advance recovery could not be recorded (' + rErr.message + '). Open this teacher and save the same month again.', 'تنخواہ محفوظ ہو گئی، مگر ایڈوانس کی کٹوتی درج نہیں ہو سکی (' + rErr.message + ')۔ اسی استاد کو کھول کر وہی مہینہ دوبارہ محفوظ کریں۔'));
+    const rErr = await stfApplyRecovery(teacherId, month, isAdd ? recExisting + ded : ded);
+    if (rErr) alert(qt('Salary was saved, but the advance recovery could not be recorded (' + rErr.message + '). Open this teacher and save the same month again.', 'تنخواہ محفوظ ہو گئی، مگر ایڈوانس کی کٹوتی درج نہیں ہو سکی (' + rErr.message + ')۔ اس استاد کو کھول کر یہی مہینہ دوبارہ محفوظ کریں۔'));
   }
-  const tc = DATA.teachers.find(x=>x.id===teacherId);
-  // No longer skipped while queued offline — the sms: link opens the phone's
-  // own Messages app with no internet needed at all (unlike the old wa.me link).
-  if (tc && tc.contact) {
+  // The message tells the teacher what was paid just now (not for a pure correction of an old entry).
+  if (tc && tc.contact && (!existingRow || isAdd)) {
     const parts = [`${t.baseSalary}: ${LANG==='ur'?'روپے':'Rs'} ${fmt(base)}`];
     if (bonus > 0) parts.push(`${t.attendanceBonus}: ${LANG==='ur'?'روپے':'Rs'} ${fmt(bonus)}`);
     if (extra > 0) parts.push(`${t.extraClass}: ${LANG==='ur'?'روپے':'Rs'} ${fmt(extra)}`);
     if (ded > 0) parts.push(`${qt('Advance recovered','ایڈوانس کٹوتی')}: -${LANG==='ur'?'روپے':'Rs'} ${fmt(ded)}`);
     const breakdown = parts.map(p => `- ${p}`).join('\n');
     const msg = LANG==='ur'
-      ? `السلام علیکم ${tc.name}،\nآپ کی تنخواہ ماہ ${monthLabel(month)} کے لیے ادا کر دی گئی ہے:\n${breakdown}\nکل: روپے ${fmt(amount)}\nشکریہ۔`
-      : `Assalam-o-Alaikum ${tc.name},\nYour salary for ${monthLabel(month)} has been paid:\n${breakdown}\nTotal: Rs ${fmt(amount)}\nThank you.`;
+      ? `السلام علیکم ${tc.name}،\nآپ کی تنخواہ ماہ ${monthLabel(month)} کے لیے ادا کر دی گئی ہے:\n${breakdown}\nکل: روپے ${fmt(net)}\nشکریہ۔`
+      : `Assalam-o-Alaikum ${tc.name},\nYour salary for ${monthLabel(month)} has been paid:\n${breakdown}\nTotal: Rs ${fmt(net)}\nThank you.`;
     const link = teacherWaLink(tc.contact, msg);
     if (link) location.href = link;
   }
   if (!queued) await loadAllData();
   openTeacherDetail(teacherId);
 }
-async function deleteSalaryPayment(paymentId, teacherId) {
+// Deleting a salary entry asks WHY; the reason, amount and month are written to the Activity Log.
+function deleteSalaryPayment(paymentId, teacherId) {
+  const p = DATA.salaryPayments.find(x => x.id === paymentId); if (!p) return;
+  if (feeMonthLocked(p.month)) { feeLockAlert(p.month); return; }
+  const rec = STF.loaded ? stfRecoveredIn(teacherId, p.month) : 0;
+  showModal(qt('Delete salary entry', 'تنخواہ کا اندراج حذف کریں'), `
+    <p style="font-size:14px;margin-bottom:6px;"><b>${esc(monthLabel(p.month))}</b> — ₨${fmt(p.amount)} — ${esc(fmtDate(p.pay_date) || '')}</p>
+    <p style="font-size:13px;color:var(--rust);margin-bottom:10px;">${esc(qt('This removes the salary payment for good from the ledger, Day Book and reports.', 'اس سے تنخواہ کی ادائیگی لیجر، روزنامچے اور رپورٹس سے ہمیشہ کے لیے ہٹ جائے گی۔'))}${rec > 0 ? ' ' + esc(qt('The advance recovery of ₨' + fmt(rec) + ' for this month is undone too.', 'اس مہینے کی ₨' + fmt(rec) + ' ایڈوانس کٹوتی بھی ختم ہو جائے گی۔')) : ''}</p>
+    <label>${esc(qt('Reason for deleting (required)', 'حذف کرنے کی وجہ (ضروری)'))}
+      <textarea id="del-reason" rows="2" placeholder="${esc(qt('e.g. entered twice by mistake', 'مثلاً غلطی سے دو بار درج ہو گئی'))}"></textarea></label>
+    <div class="flexgap" style="margin-top:12px;">
+      <button class="btn-ghost" onclick="openTeacherDetail('${teacherId}')">${esc(t.no)}</button>
+      <button class="btn-primary" style="flex:1;background:var(--rust);" onclick="guardedSubmit(this, () => doDeleteSalaryPayment('${paymentId}','${teacherId}'))">${esc(t.yes)}</button>
+    </div>`);
+}
+async function doDeleteSalaryPayment(paymentId, teacherId) {
   const baseRow = DATA.salaryPayments.find(x => x.id === paymentId) || null;
+  const reason = ((document.getElementById('del-reason') || {}).value || '').trim();
+  if (reason.length < 3) { alert(qt('Please write the reason for deleting this entry.', 'براہ کرم اس اندراج کو حذف کرنے کی وجہ لکھیں۔')); return; }
+  if (baseRow && feeMonthLocked(baseRow.month)) { feeLockAlert(baseRow.month); return; }
   if (baseRow && stfRecoveredIn(teacherId, baseRow.month) > 0) {
     const rErr = await stfApplyRecovery(teacherId, baseRow.month, 0);   // removes this month's recovery (queued if offline)
     if (reportSaveError(rErr)) return;
   }
   const { queued } = await offlineWrite({
-    table: 'salary_payments', action: 'delete', payload: null, id: paymentId, baseRow,
+    table: 'salary_payments', action: 'delete', payload: null, id: paymentId, baseRow, logNote: 'Reason: ' + reason,
     run: () => sb.from('salary_payments').delete().eq('id', paymentId),
     optimisticApply: () => { DATA.salaryPayments = DATA.salaryPayments.filter(x => x.id !== paymentId); idbDeleteRow('salary_payments', paymentId); }
   });
@@ -10556,6 +10936,8 @@ function printSalaryVoucher(paymentId, teacherId) {
         ${bonus ? `<tr><td class="lbl">${esc(t.attendanceBonus)}</td><td style="text-align:right;">₨${fmt(bonus)}</td></tr>` : ''}
         ${extra ? `<tr><td class="lbl">${esc(t.extraClass)}</td><td style="text-align:right;">₨${fmt(extra)}</td></tr>` : ''}
         ${ded ? `<tr><td class="lbl">${esc(LANG==='ur'?'ایڈوانس کٹوتی':'Advance Recovered')}</td><td style="text-align:right;">-₨${fmt(ded)}</td></tr>` : ''}
+        ${Array.isArray(p.installments) && p.installments.length >= 2 ? p.installments.map((x, i) => `<tr><td class="lbl">${esc(qt('Payment', 'ادائیگی'))} ${i + 1} · ${esc(fmtDate(x.d) || '')}${x.m ? ' · ' + esc(feeMethodLabel(x.m)) : ''}</td><td style="text-align:right;">₨${fmt(x.a)}</td></tr>`).join('') : ''}
+        ${p.pay_method ? `<tr><td class="lbl">${esc(qt('Payment method', 'ادائیگی کا طریقہ'))}</td><td style="text-align:right;">${esc(feeMethodLabel(p.pay_method))}</td></tr>` : ''}
         <tr><td class="lbl">${esc(t.dateCol)}</td><td style="text-align:right;">${esc(fmtDate(p.pay_date)||'')}</td></tr>
         <tr class="total-row"><td>${esc(t.totalAmount)}</td><td style="text-align:right;">₨${fmt(p.amount)}</td></tr>
       </table>
@@ -10763,13 +11145,29 @@ async function stfLoad() {
     if (!STF.err) stfCacheSave();
   } catch (e) { if (!STF.loaded) { STF.loaded = false; stfCacheRestore(); } }
 }
+const STF_PM_SQL = "alter table public.staff_advances add column if not exists pay_method text;\nnotify pgrst, 'reload schema';";
+// pay_method is only written when it is not Cash (or the column is already known to exist), so Cash advances keep working without the new column.
+function stfPmPatch(method, row) {
+  const known = (row && 'pay_method' in row) || (STF.advances.length && 'pay_method' in STF.advances[0]);
+  return (known || (method && method !== 'cash')) ? { pay_method: method || 'cash' } : {};
+}
+function stfSaveFail(error) {
+  if (!error) return false;
+  if (/pay_method|schema cache|column/i.test(String(error.message || ''))) {
+    alert(qt('Paying an advance by bank/other needs one new database column. Run once in Supabase > SQL Editor, then try again:\n' + STF_PM_SQL, 'بینک یا دوسرے طریقے سے ایڈوانس دینے کے لیے ڈیٹابیس میں ایک نیا کالم چاہیے۔ Supabase > SQL Editor میں ایک بار چلائیں، پھر دوبارہ کوشش کریں:\n' + STF_PM_SQL));
+    return true;
+  }
+  return reportSaveError(error);
+}
+function stfLocalApply(fn) { fn(); stfCacheSave(); }
 function stfNote() {
   if (STF.err) return `<div class="err">${esc(qt('Leave & Advance tables are not set up yet. Run the "ONE-TIME SETUP for Staff Leave & Salary Advance" SQL (top of index.html) in Supabase.', 'چھٹی اور ایڈوانس کے ٹیبل ابھی نہیں بنے۔ index.html کے شروع میں دی گئی Staff Leave & Salary Advance والی SQL سپابیس میں چلائیں۔'))}</div>`;
-  if (!STF.loaded || STF.cached) return `<div class="err">${esc(qt('You are offline. Connect to the internet to use this.', 'آپ آف لائن ہیں۔ اسے استعمال کرنے کے لیے انٹرنیٹ سے جڑیں۔'))}</div>`;
+  if (!STF.loaded) return `<div class="err">${esc(qt('You are offline and no saved copy is on this phone yet. Connect to the internet once to use this.', 'آپ آف لائن ہیں اور اس فون پر ابھی محفوظ کاپی نہیں ہے۔ ایک بار انٹرنیٹ سے جڑیں۔'))}</div>`;
+  if (STF.cached) return `<div style="font-size:12px;opacity:.75;margin-bottom:8px;">${esc(qt('Offline: changes are saved on this phone and sent automatically when the internet is back.', 'آف لائن: تبدیلیاں اس فون پر محفوظ ہوں گی اور انٹرنیٹ آتے ہی خود بھیج دی جائیں گی۔'))}</div>`;
   return '';
 }
 const stfName = id => { const tc = DATA.teachers.find(x => String(x.id) === String(id)); return tc ? tc.name : '—'; };
-const stfTeacherOpts = sel => DATA.teachers.map(tc => `<option value="${esc(tc.id)}" ${String(tc.id) === String(sel) ? 'selected' : ''}>${esc(tc.name)}</option>`).join('');
+const stfTeacherOpts = sel => activeTeachers().map(tc => `<option value="${esc(tc.id)}" ${String(tc.id) === String(sel) ? 'selected' : ''}>${esc(tc.name)}</option>`).join('');
 function stfNextMonth() { const d = new Date(); return monthKey(new Date(d.getFullYear(), d.getMonth() + 1, 1)); }
 function stfDatesBetween(a, b) {
   const out = [], d = new Date(a + 'T00:00:00'), e = new Date(b + 'T00:00:00');
@@ -10920,7 +11318,8 @@ async function stfDecideLeave(id, decision) {
 
 // ----- Advances / loans -----
 async function openStaffAdvances(teacherId) {
-  if (navigator.onLine) await stfLoad();
+  let _pend = false; try { _pend = (await idbGetAll('sync_queue')).length > 0; } catch (e) {}
+  if (navigator.onLine && !_pend) await stfLoad(); else if (!STF.loaded) stfCacheRestore();
   STF_AD_TEACHER = teacherId ? String(teacherId) : '';
   const list = STF.advances.filter(a => !STF_AD_TEACHER || String(a.teacher_id) === STF_AD_TEACHER);
   const outTotal = list.reduce((s, a) => s + stfOutstanding(a), 0);
@@ -10931,26 +11330,29 @@ async function openStaffAdvances(teacherId) {
         <div>
           <div style="font-size:14px;font-weight:600;">${esc(stfName(a.teacher_id))}</div>
           <div style="font-size:12px;opacity:.75;">₨${fmt(a.amount)} · ${esc(fmtDate(a.given_date))}</div>
-          <div style="font-size:11px;opacity:.6;">${esc(qt('Recover from', 'کٹوتی کا آغاز'))}: ${esc(monthLabel(a.recover_from))}${a.installment ? ' · ' + esc(qt('per month', 'ماہانہ')) + ' ₨' + fmt(a.installment) : ''}${a.note ? ' · ' + esc(a.note) : ''}</div>
+          <div style="font-size:11px;opacity:.6;">${esc(qt('Recover from', 'کٹوتی کا آغاز'))}: ${esc(monthLabel(a.recover_from))}${a.installment ? ' · ' + esc(qt('per month', 'ماہانہ')) + ' ₨' + fmt(a.installment) : ''} · ${esc(feeMethodLabel(a.pay_method || 'cash'))}${a.note ? ' · ' + esc(a.note) : ''}</div>
         </div>
         <div style="text-align:right;white-space:nowrap;">
           <span class="pill ${out > 0 ? 'bad' : 'good'}">${out > 0 ? '₨' + fmt(out) + ' ' + esc(qt('left', 'باقی')) : esc(qt('Cleared', 'ادا'))}</span>
-          ${rec <= 0 ? `<button class="del-btn" onclick="stfDeleteAdvance('${a.id}')">✕</button>` : ''}
+          <button class="print-btn" title="${esc(qt('Edit', 'ترمیم'))}" onclick="stfEditAdvance('${a.id}')">✏️</button>${rec <= 0 ? `<button class="del-btn" onclick="stfDeleteAdvance('${a.id}')">✕</button>` : ''}
         </div>
       </div></div>`;
   };
-  const ok = STF.loaded && !STF.err && !STF.cached;
+  const ok = STF.loaded && !STF.err;
   const form = !ok ? '' : `
     <div class="field-box"><label><span>${esc(qt('Teacher', 'استاد'))}</span><select id="sa-teacher">${stfTeacherOpts(STF_AD_TEACHER)}</select></label></div>
     <div class="row2">
       <label><span>${esc(qt('Amount (Rs)', 'رقم (روپے)'))}</span><input id="sa-amount" type="number" min="0"></label>
-      <label><span>${esc(qt('Date given', 'تاریخ'))}</span><input id="sa-date" type="date" value="${todayISO()}"></label>
+      <label><span>${esc(qt('Date given', 'تاریخ'))}</span><input id="sa-date" type="date" max="${todayISO()}" value="${todayISO()}"></label>
     </div>
     <div class="row2">
       <label><span>${esc(qt('Recover from month', 'کٹوتی کس مہینے سے'))}</span><input id="sa-from" type="month" value="${stfNextMonth()}"></label>
       <label><span>${esc(qt('Max per month (optional)', 'ماہانہ زیادہ سے زیادہ (اختیاری)'))}</span><input id="sa-inst" type="number" min="0"></label>
     </div>
-    <div class="field-box"><label><span>${esc(qt('Note (optional)', 'نوٹ (اختیاری)'))}</span><input id="sa-note"></label></div>
+    <div class="row2">
+      <label><span>${esc(qt('Paid from / method', 'ادائیگی کا طریقہ'))}</span><select id="sa-method">${feeMethodOptions(lastFeeMethod())}</select></label>
+      <label><span>${esc(qt('Reason (required)', 'وجہ (ضروری)'))}</span><input id="sa-note" placeholder="${esc(qt('e.g. medical, family need', 'مثلاً علاج، گھریلو ضرورت'))}"></label>
+    </div>
     <button class="btn-primary" onclick="guardedSubmit(this, stfAddAdvance)">+ ${esc(qt('Give advance', 'ایڈوانس دیں'))}</button>`;
   showModal(qt('Salary Advance / Loan', 'تنخواہ ایڈوانس / قرض') + (STF_AD_TEACHER ? ' — ' + stfName(STF_AD_TEACHER) : ''), `
     ${stfNote()}
@@ -10960,28 +11362,106 @@ async function openStaffAdvances(teacherId) {
       <div class="ledger">${list.length ? list.map(row).join('') : `<div style="padding:10px;text-align:center;font-size:12px;opacity:.5;">—</div>`}</div>` : ''}`);
 }
 async function stfAddAdvance() {
-  if (!navigator.onLine) { alert(qt('You are offline.', 'آپ آف لائن ہیں۔')); return; }
   const tid = document.getElementById('sa-teacher').value;
   const amount = Number(document.getElementById('sa-amount').value || 0);
   const given = dateVal('sa-date');
   const from = (document.getElementById('sa-from').value || '').trim() || stfNextMonth();
   const inst = Number(document.getElementById('sa-inst').value || 0);
   const note = (document.getElementById('sa-note').value || '').trim();
+  const method = (document.getElementById('sa-method') || {}).value || 'cash';
   if (!tid || !(amount > 0)) { alert(qt('Please choose a teacher and enter the amount.', 'براہ کرم استاد منتخب کریں اور رقم لکھیں۔')); return; }
-  const { error } = await sb.from('staff_advances').insert({
-    owner_id: CURRENT_USER.id, teacher_id: String(tid), amount, given_date: given, recover_from: from,
-    installment: inst > 0 ? inst : null, note: note || null
+  if (!moneyOk(amount) || inst < 0) { alert(MONEY_NEG_MSG()); return; }
+  if (note.length < 3) { alert(qt('Please write the reason for this advance.', 'براہ کرم ایڈوانس کی وجہ لکھیں۔')); return; }
+  if (!txnDateOk(given)) return;
+  if (feeMonthLocked(String(given).slice(0, 7))) { feeLockAlert(String(given).slice(0, 7)); return; }
+  const payload = { id: crypto.randomUUID ? crypto.randomUUID() : `local-${Date.now()}`, owner_id: CURRENT_USER.id,
+    teacher_id: String(tid), amount, given_date: given, recover_from: from, installment: inst > 0 ? inst : null, note,
+    ...stfPmPatch(method, null) };
+  try { localStorage.setItem('sms_last_pay_method', method); } catch (e) {}
+  const { queued, error } = await offlineWrite({
+    table: 'staff_advances', action: 'insert', payload, id: payload.id, baseRow: null, logNote: 'Reason: ' + note + ' · ' + feeMethodLabel(method),
+    run: () => sb.from('staff_advances').insert(payload),
+    optimisticApply: () => stfLocalApply(() => { STF.advances.unshift({ ...payload, created_at: new Date().toISOString() }); })
   });
-  if (reportSaveError(error)) return;
-  await stfLoad();
+  if (!queued && error) { stfLocalApply(() => { STF.advances = STF.advances.filter(x => x.id !== payload.id); }); stfSaveFail(error); await openStaffAdvances(STF_AD_TEACHER); return; }
+  if (!queued) await stfLoad();
   await openStaffAdvances(STF_AD_TEACHER);
 }
-async function stfDeleteAdvance(id) {
-  if (!navigator.onLine) { alert(qt('You are offline.', 'آپ آف لائن ہیں۔')); return; }
-  if (!confirm(qt('Delete this advance?', 'یہ ایڈوانس حذف کریں؟'))) return;
-  const { error } = await sb.from('staff_advances').delete().eq('id', id).eq('owner_id', CURRENT_USER.id);
-  if (reportSaveError(error)) return;
-  await stfLoad();
+function stfDeleteAdvance(id) {
+  const a = STF.advances.find(x => x.id === id); if (!a) return;
+  if (stfRecovered(a.id) > 0) { alert(qt('Part of this advance has already been recovered from salary, so it cannot be deleted.', 'اس ایڈوانس کا کچھ حصہ تنخواہ سے کٹ چکا ہے، اس لیے حذف نہیں ہو سکتا۔')); return; }
+  if (feeMonthLocked(String(a.given_date || '').slice(0, 7))) { feeLockAlert(String(a.given_date).slice(0, 7)); return; }
+  showModal(qt('Delete advance', 'ایڈوانس حذف کریں'), `
+    <p style="font-size:14px;margin-bottom:6px;"><b>${esc(stfName(a.teacher_id))}</b> — ₨${fmt(a.amount)} — ${esc(fmtDate(a.given_date))}</p>
+    <p style="font-size:13px;color:var(--rust);margin-bottom:10px;">${esc(qt('This removes the advance from the list and from the Day Book for good.', 'اس سے ایڈوانس فہرست اور روزنامچے سے ہمیشہ کے لیے ہٹ جائے گا۔'))}</p>
+    <label>${esc(qt('Reason for deleting (required)', 'حذف کرنے کی وجہ (ضروری)'))}<textarea id="del-reason" rows="2"></textarea></label>
+    <div class="flexgap" style="margin-top:12px;">
+      <button class="btn-ghost" onclick="openStaffAdvances('${STF_AD_TEACHER}')">${esc(t.no)}</button>
+      <button class="btn-primary" style="flex:1;background:var(--rust);" onclick="guardedSubmit(this, () => doStfDeleteAdvance('${id}'))">${esc(t.yes)}</button>
+    </div>`);
+}
+async function doStfDeleteAdvance(id) {
+  const a = STF.advances.find(x => x.id === id); if (!a) return;
+  const reason = ((document.getElementById('del-reason') || {}).value || '').trim();
+  if (reason.length < 3) { alert(qt('Please write the reason for deleting this advance.', 'براہ کرم اس ایڈوانس کو حذف کرنے کی وجہ لکھیں۔')); return; }
+  if (stfRecovered(a.id) > 0) { alert(qt('Part of this advance has already been recovered from salary, so it cannot be deleted.', 'اس ایڈوانس کا کچھ حصہ تنخواہ سے کٹ چکا ہے، اس لیے حذف نہیں ہو سکتا۔')); return; }
+  const { queued, error } = await offlineWrite({
+    table: 'staff_advances', action: 'delete', payload: null, id, baseRow: a, logNote: 'Reason: ' + reason,
+    run: () => sb.from('staff_advances').delete().eq('id', id).eq('owner_id', CURRENT_USER.id),
+    optimisticApply: () => stfLocalApply(() => { STF.advances = STF.advances.filter(x => x.id !== id); })
+  });
+  if (!queued && error) { await stfLoad(); stfSaveFail(error); await openStaffAdvances(STF_AD_TEACHER); return; }
+  if (!queued) await stfLoad();
+  await openStaffAdvances(STF_AD_TEACHER);
+}
+function stfEditAdvance(id) {
+  const a = STF.advances.find(x => x.id === id); if (!a) return;
+  const rec = stfRecovered(a.id);
+  showModal(qt('Edit advance', 'ایڈوانس میں ترمیم') + ' — ' + stfName(a.teacher_id), `
+    <div class="row2">
+      <label><span>${esc(qt('Amount (Rs)', 'رقم (روپے)'))}</span><input id="se-amount" type="number" min="${rec}" value="${esc(a.amount)}"></label>
+      <label><span>${esc(qt('Date given', 'تاریخ'))}</span><input id="se-date" type="date" max="${todayISO()}" value="${esc(String(a.given_date).slice(0, 10))}"></label>
+    </div>
+    <div class="row2">
+      <label><span>${esc(qt('Recover from month', 'کٹوتی کس مہینے سے'))}</span><input id="se-from" type="month" value="${esc(String(a.recover_from || '').slice(0, 7))}"></label>
+      <label><span>${esc(qt('Max per month (optional)', 'ماہانہ زیادہ سے زیادہ (اختیاری)'))}</span><input id="se-inst" type="number" min="0" value="${esc(a.installment || '')}"></label>
+    </div>
+    <div class="row2">
+      <label><span>${esc(qt('Paid from / method', 'ادائیگی کا طریقہ'))}</span><select id="se-method">${feeMethodOptions(a.pay_method || 'cash')}</select></label>
+      <label><span>${esc(qt('Reason / note', 'وجہ / نوٹ'))}</span><input id="se-note" value="${esc(a.note || '')}"></label>
+    </div>
+    <div class="field-box"><label><span>${esc(qt('Why are you changing it? (required if you change anything)', 'تبدیلی کی وجہ (کچھ بدلیں تو ضروری)'))}</span><input id="se-why"></label></div>
+    ${rec > 0 ? `<div style="font-size:12px;opacity:.7;margin-bottom:8px;">${esc(qt('₨' + fmt(rec) + ' is already recovered, so the amount cannot go below that.', '₨' + fmt(rec) + ' پہلے کٹ چکے ہیں، اس لیے رقم اس سے کم نہیں ہو سکتی۔'))}</div>` : ''}
+    <div class="flexgap">
+      <button class="btn-ghost" onclick="openStaffAdvances('${STF_AD_TEACHER}')">${esc(t.cancel)}</button>
+      <button class="btn-primary" style="flex:1" onclick="guardedSubmit(this, () => stfSaveAdvance('${id}'))">${esc(t.save)}</button>
+    </div>`);
+}
+async function stfSaveAdvance(id) {
+  const a = STF.advances.find(x => x.id === id); if (!a) return;
+  const g = k => (document.getElementById(k) || {}).value;
+  const amount = Number(g('se-amount') || 0), given = g('se-date'), from = (g('se-from') || '').trim(), inst = Number(g('se-inst') || 0), note = (g('se-note') || '').trim();
+  const method = g('se-method') || 'cash', why = (g('se-why') || '').trim();
+  const rec = stfRecovered(a.id);
+  if (!(amount > 0) || amount + 0.005 < rec) { alert(qt('Enter a valid amount (not less than what is already recovered).', 'درست رقم لکھیں (جو پہلے کٹ چکا اس سے کم نہیں)۔')); return; }
+  if (note.length < 3) { alert(qt('Please write the reason for this advance.', 'براہ کرم ایڈوانس کی وجہ لکھیں۔')); return; }
+  if (!txnDateOk(given)) return;
+  if (feeMonthLocked(String(a.given_date || '').slice(0, 7))) { feeLockAlert(String(a.given_date).slice(0, 7)); return; }
+  if (feeMonthLocked(String(given).slice(0, 7))) { feeLockAlert(String(given).slice(0, 7)); return; }
+  const patch = { amount, given_date: given, recover_from: from || a.recover_from, installment: inst > 0 ? inst : null, note };
+  Object.assign(patch, stfPmPatch(method, a));
+  const changed = amount !== Number(a.amount) || given !== String(a.given_date).slice(0, 10) || patch.recover_from !== a.recover_from ||
+    (patch.installment || null) !== (a.installment ? Number(a.installment) : null) || method !== (a.pay_method || 'cash') || note !== (a.note || '');
+  if (!changed) { await openStaffAdvances(STF_AD_TEACHER); return; }
+  if (why.length < 3) { alert(qt('Please write why you are changing this advance.', 'براہ کرم تبدیلی کی وجہ لکھیں۔')); return; }
+  const { queued, error } = await offlineWrite({
+    table: 'staff_advances', action: 'update', payload: patch, id, baseRow: a,
+    logNote: 'Edited: Rs ' + fmt(a.amount) + ' (' + String(a.given_date).slice(0, 10) + ') to Rs ' + fmt(amount) + ' (' + given + ') — Reason: ' + why,
+    run: () => sb.from('staff_advances').update(patch).eq('id', id).eq('owner_id', CURRENT_USER.id),
+    optimisticApply: () => stfLocalApply(() => { const i = STF.advances.findIndex(x => x.id === id); if (i >= 0) STF.advances[i] = { ...STF.advances[i], ...patch }; })
+  });
+  if (!queued && error) { await stfLoad(); stfSaveFail(error); await openStaffAdvances(STF_AD_TEACHER); return; }
+  if (!queued) await stfLoad();
   await openStaffAdvances(STF_AD_TEACHER);
 }
 
@@ -10997,7 +11477,7 @@ function monthlyIncomeExpenseSeries(n) {
     months.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
   }
   return months.map(mk => {
-    const rows = DATA.transactions.filter(x => String(x.txn_date || '').slice(0, 7) === mk);
+    const rows = DATA.transactions.filter(x => !isTransferTxn(x) && String(x.txn_date || '').slice(0, 7) === mk);
     const income = rows.filter(x => x.type === 'income').reduce((a, b) => a + Number(b.amount || 0), 0);
     const expense = rows.filter(x => x.type === 'expense').reduce((a, b) => a + Number(b.amount || 0), 0);
     return { month: mk, income, expense };
@@ -11047,10 +11527,11 @@ function tplFinance() {
       ${DATA.transactions.length===0 ? `<div class="empty">${esc(t.noTransactions)}</div>` :
         `<div class="list-card">` + DATA.transactions.map(x=>`
           <div class="list-row">
-            <div><div class="nm">${esc(x.description||'')}</div><div class="sub">${esc(x.category||'')} · ${esc(fmtDate(x.txn_date)||'')}</div></div>
+            <div><div class="nm">${esc(txnDesc(x))}</div><div class="sub">${isTransferTxn(x) ? '↔ ' + esc(qt('Transfer', 'منتقلی')) : esc(x.category||'')}${x.account_id ? ' · ' + esc(finAccName(x.account_id)) : ''} · ${esc(fmtDate(x.txn_date)||'')}</div></div>
             <div style="display:flex;align-items:center;gap:8px;">
               <span class="${x.type==='income'?'amt-pos':'amt-neg'}">${x.type==='income'?'+':'−'}₨${fmt(x.amount)}</span>
-              <button class="print-btn" title="${esc(t.print)}" onclick="printTxnVoucher('${x.id}')">🖨️</button>
+              ${isTransferTxn(x) ? '' : `<button class="print-btn" title="${esc(qt('Edit', 'ترمیم'))}" onclick="openAddTxn('${x.id}')">✏️</button>
+              <button class="print-btn" title="${esc(t.print)}" onclick="printTxnVoucher('${x.id}')">🖨️</button>`}
               <button class="del-btn" onclick="deleteTxn('${x.id}')">✕</button>
             </div>
           </div>`).join('') + `</div>`}
@@ -11059,24 +11540,34 @@ function tplFinance() {
 
 let txnType = 'expense';
 let txnItems = [];
-function openAddTxn() {
-  txnType = 'expense';
-  txnItems = [{ name: '', price: '' }];
-  showModal(t.addTransaction, `
+let txnEditId = null;
+function openAddTxn(editId) {
+  const ex = editId ? DATA.transactions.find(x => x.id === editId) : null;
+  txnEditId = ex ? ex.id : null;
+  txnType = ex ? ex.type : 'expense';
+  txnItems = ex ? (parseItemizedTxnDesc(ex.description) || [{ name: ex.description || '', price: String(ex.amount) }]) : [{ name: '', price: '' }];
+  showModal(ex ? qt('Edit entry', 'اندراج میں ترمیم') : t.addTransaction, `
     <div class="type-toggle">
-      <button id="btn-income" onclick="setTxnType('income')">${esc(t.income)}</button>
-      <button id="btn-expense" class="on-expense" onclick="setTxnType('expense')">${esc(t.expense)}</button>
+      <button id="btn-income" class="${txnType === 'income' ? 'on-income' : ''}" onclick="setTxnType('income')">${esc(t.income)}</button>
+      <button id="btn-expense" class="${txnType === 'expense' ? 'on-expense' : ''}" onclick="setTxnType('expense')">${esc(t.expense)}</button>
     </div>
     <div id="txn-items"></div>
     <div class="field-box"><label><span>${esc(t.category)}</span><select id="f-cat"></select></label></div>
     ${finAccountSelectHtml()}
-    <div class="field-box"><label><span>${esc(t.date)}</span><input id="f-date" type="date" value="${todayISO()}"></label></div>
+    <div class="field-box"><label><span>${esc(t.date)}</span><input id="f-date" type="date" max="${todayISO()}" value="${ex ? esc(String(ex.txn_date).slice(0, 10)) : todayISO()}"></label></div>
     <div class="flexgap">
       <button class="btn-ghost" onclick="closeModal()">${esc(t.cancel)}</button>
       <button class="btn-primary" style="flex:1" onclick="guardedSubmit(this, submitAddTxn)">${esc(t.save)}</button>
     </div>
   `);
   fillCatOptions();
+  if (ex) {
+    const sel = document.getElementById('f-cat');
+    if (ex.category && ![...sel.options].some(o => o.value === ex.category)) sel.insertAdjacentHTML('afterbegin', `<option>${esc(ex.category)}</option>`);
+    sel.value = ex.category || sel.value;
+    const fa = document.getElementById('f-acc');
+    if (fa) { if (ex.account_id) fa.value = ex.account_id; else { fa.insertAdjacentHTML('afterbegin', '<option value="">—</option>'); fa.value = ''; } }
+  }
   renderTxnItems();
 }
 function setTxnType(type) {
@@ -11146,12 +11637,31 @@ async function submitAddTxn() {
   if (validItems.length === 0) return;
   const desc = validItems.map(it => `${it.name.trim()} (₨${fmt(Number(it.price))})`).join('; ');
   const amt = validItems.reduce((a,b)=>a+Number(b.price),0);
+  const date = dateVal('f-date');
+  const ex = txnEditId ? DATA.transactions.find(x => x.id === txnEditId) : null;
+  if (!txnDateOk(date)) return;
+  if (ex && !txnDateOk(String(ex.txn_date).slice(0, 10), true)) return;      // the entry's original month must be open too
+  const accEl = document.getElementById('f-acc');
+  const category = document.getElementById('f-cat').value;
+  if (ex) {
+    const payload = { ...ex, type: txnType, category, description: desc, amount: amt, txn_date: date };
+    if (accEl) payload.account_id = accEl.value || null;
+    const { queued, error } = await offlineWrite({
+      table: 'transactions', action: 'update', payload, id: ex.id, baseRow: ex,
+      logNote: 'Edited: Rs ' + fmt(ex.amount) + ' (' + String(ex.txn_date).slice(0, 10) + ') to Rs ' + fmt(amt) + ' (' + date + ')',
+      run: () => sb.from('transactions').update(payload).eq('id', ex.id),
+      optimisticApply: () => { const i = DATA.transactions.findIndex(x => x.id === ex.id); if (i >= 0) DATA.transactions[i] = payload; idbPutRow('transactions', payload); }
+    });
+    if (!queued && reportSaveError(error)) return;
+    txnEditId = null; closeModal(); if (!queued) await loadAllData(); renderTab();
+    return;
+  }
   const payload = {
     id: crypto.randomUUID ? crypto.randomUUID() : `local-${Date.now()}`,
     owner_id: CURRENT_USER.id,
-    type: txnType, category: document.getElementById('f-cat').value, description: desc,
-    amount: amt, txn_date: dateVal('f-date'),
-    ...(document.getElementById('f-acc') && document.getElementById('f-acc').value ? { account_id: document.getElementById('f-acc').value } : {})
+    type: txnType, category, description: desc,
+    amount: amt, txn_date: date,
+    ...(accEl && accEl.value ? { account_id: accEl.value } : {})
   };
   // Offline-aware: a brand-new transaction, so there's nothing on the server
   // yet to conflict with — safe to just insert once the connection is back.
@@ -11163,14 +11673,88 @@ async function submitAddTxn() {
   if (!queued && reportSaveError(error)) return;
   closeModal(); if (!queued) await loadAllData(); renderTab();
 }
-async function deleteTxn(id) {
-  const baseRow = DATA.transactions.find(x => x.id === id) || null;
-  const { queued } = await offlineWrite({
-    table: 'transactions', action: 'delete', payload: null, id, baseRow,
-    run: () => sb.from('transactions').delete().eq('id', id),
-    optimisticApply: () => { DATA.transactions = DATA.transactions.filter(x => x.id !== id); idbDeleteRow('transactions', id); }
-  });
-  if (!queued) await loadAllData(); renderTab();
+// Deleting an income / expense entry asks WHY; the reason is written to the Activity Log with the entry's details.
+function deleteTxn(id) {
+  const x = DATA.transactions.find(r => r.id === id); if (!x) return;
+  const mk = String(x.txn_date || '').slice(0, 7);
+  if (feeMonthLocked(mk)) { feeLockAlert(mk); return; }
+  showModal(qt('Delete entry', 'اندراج حذف کریں'), `
+    <p style="font-size:14px;margin-bottom:6px;"><b>${esc(txnDesc(x))}</b> — ${x.type === 'income' ? '+' : '−'}₨${fmt(x.amount)} — ${esc(fmtDate(x.txn_date) || '')}</p>
+    <p style="font-size:13px;color:var(--rust);margin-bottom:10px;">${esc(isTransferTxn(x)
+      ? qt('Both sides of this transfer will be removed.', 'اس منتقلی کے دونوں اندراجات حذف ہو جائیں گے۔')
+      : qt('This removes the entry for good from the Day Book, reports and account balance.', 'اس سے یہ اندراج روزنامچے، رپورٹس اور اکاؤنٹ بیلنس سے ہمیشہ کے لیے ہٹ جائے گا۔'))}</p>
+    <label>${esc(qt('Reason for deleting (required)', 'حذف کرنے کی وجہ (ضروری)'))}
+      <textarea id="del-reason" rows="2" placeholder="${esc(qt('e.g. entered twice by mistake', 'مثلاً غلطی سے دو بار درج ہو گیا'))}"></textarea></label>
+    <div class="flexgap" style="margin-top:12px;">
+      <button class="btn-ghost" onclick="closeModal()">${esc(t.no)}</button>
+      <button class="btn-primary" style="flex:1;background:var(--rust);" onclick="guardedSubmit(this, () => doDeleteTxn('${id}'))">${esc(t.yes)}</button>
+    </div>`);
+}
+async function doDeleteTxn(id) {
+  const x = DATA.transactions.find(r => r.id === id); if (!x) { closeModal(); return; }
+  const reason = ((document.getElementById('del-reason') || {}).value || '').trim();
+  if (reason.length < 3) { alert(qt('Please write the reason for deleting this entry.', 'براہ کرم اس اندراج کو حذف کرنے کی وجہ لکھیں۔')); return; }
+  const legs = [x];
+  if (isTransferTxn(x)) {
+    const m = String(x.description || '').match(/\[T:([a-z0-9]+)\]/);
+    if (m) DATA.transactions.forEach(y => { if (y.id !== x.id && isTransferTxn(y) && String(y.description || '').includes('[T:' + m[1] + ']')) legs.push(y); });
+  }
+  let anyOnline = false;
+  for (const y of legs) {
+    const { queued } = await offlineWrite({
+      table: 'transactions', action: 'delete', payload: null, id: y.id, baseRow: y, logNote: 'Reason: ' + reason,
+      run: () => sb.from('transactions').delete().eq('id', y.id),
+      optimisticApply: () => { DATA.transactions = DATA.transactions.filter(r => r.id !== y.id); idbDeleteRow('transactions', y.id); }
+    });
+    if (!queued) anyOnline = true;
+  }
+  closeModal(); if (anyOnline) await loadAllData(); renderTab();
+}
+
+// ---- Transfer between two accounts (e.g. cash deposited in the bank) ----
+function openFinTransfer() {
+  if (FIN.accounts.length < 2) { alert(qt('Add at least two accounts (for example Cash and Bank) first.', 'پہلے کم از کم دو اکاؤنٹس بنائیں (مثلاً کیش اور بینک)۔')); return; }
+  const opts = FIN.accounts.map(a => `<option value="${a.id}">${esc(a.name)} (₨${fmt(finAccBalance(a))})</option>`).join('');
+  showModal(qt('Transfer between accounts', 'اکاؤنٹس کے درمیان منتقلی'), `
+    <div class="field-box"><label><span>${esc(qt('From', 'سے'))}</span><select id="tr-from">${opts}</select></label></div>
+    <div class="field-box"><label><span>${esc(qt('To', 'میں'))}</span><select id="tr-to">${opts}</select></label></div>
+    <div class="field-box"><label><span>${esc(qt('Amount (Rs)', 'رقم (روپے)'))}</span><input id="tr-amt" type="number" min="0"></label></div>
+    <div class="field-box"><label><span>${esc(t.date)}</span><input id="tr-date" type="date" max="${todayISO()}" value="${todayISO()}"></label></div>
+    <div class="field-box"><label><span>${esc(qt('Note (optional)', 'نوٹ (اختیاری)'))}</span><input id="tr-note"></label></div>
+    <div class="flexgap">
+      <button class="btn-ghost" onclick="closeModal()">${esc(t.cancel)}</button>
+      <button class="btn-primary" style="flex:1" onclick="guardedSubmit(this, submitFinTransfer)">${esc(t.save)}</button>
+    </div>`);
+  document.getElementById('tr-to').selectedIndex = 1;
+}
+async function submitFinTransfer() {
+  const g = id => (document.getElementById(id) || {}).value;
+  const from = g('tr-from'), to = g('tr-to'), amt = money2(Number(g('tr-amt')) || 0), date = g('tr-date'), note = (g('tr-note') || '').trim();
+  if (!from || !to || from === to) { alert(qt('Choose two different accounts.', 'دو مختلف اکاؤنٹس چنیں۔')); return; }
+  if (!(amt > 0)) { alert(qt('Enter an amount greater than 0.', '0 سے زیادہ رقم لکھیں۔')); return; }
+  if (!txnDateOk(date)) return;
+  const A = FIN.accounts.find(x => x.id === from), B = FIN.accounts.find(x => x.id === to);
+  if (!A || !B) return;
+  const have = finAccBalance(A);
+  if (have < amt && !confirm(qt(A.name + ' has only ₨' + fmt(have) + '. Transfer ₨' + fmt(amt) + ' anyway?', A.name + ' میں صرف ₨' + fmt(have) + ' ہیں۔ پھر بھی ₨' + fmt(amt) + ' منتقل کریں؟'))) return;
+  const tag = '[T:' + Math.random().toString(36).slice(2, 10) + ']';
+  const mk = (type, acc, other) => ({ id: crypto.randomUUID ? crypto.randomUUID() : `local-${Date.now()}-${type}`, owner_id: CURRENT_USER.id, type, category: TRANSFER_CAT,
+    description: (type === 'expense' ? 'Transfer to ' : 'Transfer from ') + other.name + (note ? ' — ' + note : '') + ' ' + tag, amount: amt, txn_date: date, account_id: acc });
+  const legs = [mk('expense', from, B), mk('income', to, A)], done = [];
+  for (const payload of legs) {
+    const { queued, error } = await offlineWrite({
+      table: 'transactions', action: 'insert', payload, id: payload.id, baseRow: null, logNote: 'Transfer between accounts',
+      run: () => sb.from('transactions').insert(payload),
+      optimisticApply: () => { DATA.transactions.push(payload); idbPutRow('transactions', payload); }
+    });
+    if (!queued && error) {
+      // Never leave half a transfer behind: take back the first side if the second failed.
+      for (const d of done) { try { await sb.from('transactions').delete().eq('id', d.id); } catch (e) {} DATA.transactions = DATA.transactions.filter(r => r.id !== d.id); idbDeleteRow('transactions', d.id); }
+      reportSaveError(error); return;
+    }
+    done.push(payload);
+  }
+  closeModal(); await loadAllData(); renderTab();
 }
 
 function parseItemizedTxnDesc(desc) {
@@ -11235,9 +11819,40 @@ async function finLoad() {
   } catch (e) { FIN.err = true; }
 }
 function finAccName(id) { const a = FIN.accounts.find(x => x.id === id); return a ? a.name : '—'; }
+// Fee money and salaries have no account of their own, so they are matched to one automatically:
+// cash -> the Cash account; bank -> the Bank account; JazzCash / EasyPaisa -> an account with that name (else the Bank account).
+// Only money dated on/after the account was created is counted (earlier money is already inside its opening balance).
+function finAccSince(a) { return String(a.created_at || '').slice(0, 10) || '0000-00-00'; }
+function finMethodAccount(method, date) {
+  const accs = FIN.accounts; if (!accs.length) return null;
+  const m = String(method || '').toLowerCase();
+  const bank = re => accs.find(x => x.kind === 'bank' && !re.test(x.name || ''));
+  let a = null;
+  if (m === 'jazzcash') a = accs.find(x => /jazz/i.test(x.name || '')) || bank(/easy/i) || accs.find(x => x.kind === 'bank');
+  else if (m === 'easypaisa') a = accs.find(x => /easy/i.test(x.name || '')) || bank(/jazz/i) || accs.find(x => x.kind === 'bank');
+  else if (m === 'bank') a = bank(/jazz|easy/i) || accs.find(x => x.kind === 'bank');
+  else a = accs.find(x => x.kind === 'cash');
+  if (!a) return null;
+  return String(date || '').slice(0, 10) >= finAccSince(a) ? a.id : null;
+}
+// Every money movement of one fee row: each installment (own date + method); refunds are negative.
+function feeMoneyLines(p) {
+  const inst = Array.isArray(p.installments) ? p.installments : [], res = [];
+  if (inst.length) {
+    const sum = money2(inst.reduce((q, x) => q + Number(x.a || 0), 0));
+    inst.forEach(x => { const a = Number(x.a || 0); if (a) res.push({ d: String(x.d || p.pay_date || '').slice(0, 10), a, m: x.m || p.pay_method, tag: x.r && x.r !== 'REFUND' ? x.r : '' }); });
+    const rest = money2(Number(p.amount || 0) - sum);
+    if (Math.abs(rest) > 0.005) res.push({ d: String(p.pay_date || '').slice(0, 10), a: rest, m: p.pay_method, tag: '' });
+  } else { const a = Number(p.amount || 0); if (a) res.push({ d: String(p.pay_date || '').slice(0, 10), a, m: p.pay_method, tag: p.receipt_no || '' }); }
+  return res;
+}
 function finAccBalance(a) {
-  return DATA.transactions.filter(x => x.account_id === a.id)
-    .reduce((s, x) => s + (x.type === 'income' ? 1 : -1) * Number(x.amount || 0), Number(a.opening_balance || 0));
+  let bal = DATA.transactions.filter(x => x.account_id === a.id)
+    .reduce((q, x) => q + (x.type === 'income' ? 1 : -1) * Number(x.amount || 0), Number(a.opening_balance || 0));
+  DATA.feePayments.forEach(p => feeMoneyLines(p).forEach(l => { if (finMethodAccount(l.m, l.d) === a.id) bal += l.a; }));
+  DATA.salaryPayments.forEach(p => { if (finMethodAccount(p.pay_method || 'cash', p.pay_date) === a.id) bal -= Number(p.amount || 0); });
+  if (STF.loaded && !STF.err) STF.advances.forEach(x => { if (finMethodAccount('cash', x.given_date) === a.id) bal -= Number(x.amount || 0); });
+  return money2(bal);
 }
 function finAccountSelectHtml() {
   if (!FIN.accounts.length) return '';
@@ -11246,6 +11861,7 @@ function finAccountSelectHtml() {
 }
 function finPanel() {
   if (!FIN.loaded) finLoad().then(() => { if (TAB === 'finance') renderTab(); });
+  if (!STF.loaded && !STF.loading && navigator.onLine) { STF.loading = true; stfLoad().then(() => { STF.loading = false; if (TAB === 'finance') renderTab(); }); }
   const cards = FIN.accounts.map(a => `<div class="card" style="padding:10px 14px;min-width:130px;flex:1;">
       <div style="font-size:11px;opacity:.65;">${a.kind === 'bank' ? '🏦' : '💵'} ${esc(a.name)}</div>
       <div style="font-weight:700;color:var(--navy);">₨${fmt(finAccBalance(a))}</div></div>`).join('');
@@ -11257,6 +11873,7 @@ function finPanel() {
       ${btn('📊 ' + esc(qt('Profit & Loss', 'منافع و نقصان')), "openFinReport('pl')")}
       ${btn('🏷️ ' + esc(qt('Heads', 'مدات')), 'openFinHeads()')}
       ${btn('🏦 ' + esc(qt('Accounts', 'اکاؤنٹس')), 'openFinAccounts()')}
+      ${btn('↔ ' + esc(qt('Transfer', 'منتقلی')), 'openFinTransfer()')}
     </div>${cards ? `<div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px;">${cards}</div>` : ''}`;
 }
 function finSetupNote() {
@@ -11265,7 +11882,7 @@ function finSetupNote() {
 // ---- Custom heads ----
 function openFinHeads() {
   const row = h => `<div class="list-row"><div><div class="nm">${esc(h.name)}</div><div class="sub">${h.type === 'income' ? esc(t.income) : esc(t.expense)}</div></div>
-    <button class="del-btn" onclick="finDelete('fin_heads','${h.id}')">✕</button></div>`;
+    <div style="display:flex;gap:6px;"><button class="print-btn" title="${esc(qt('Edit', 'ترمیم'))}" onclick="openFinEdit('fin_heads','${h.id}')">✏️</button><button class="del-btn" onclick="finDelete('fin_heads','${h.id}')">✕</button></div></div>`;
   showModal(qt('Custom Heads', 'اپنی مدات'), `${finSetupNote()}
     <div class="type-toggle"><button id="fh-income" onclick="finHeadType('income')">${esc(t.income)}</button><button id="fh-expense" class="on-expense" onclick="finHeadType('expense')">${esc(t.expense)}</button></div>
     <div class="field-box"><label><span>${esc(qt('Head name', 'مد کا نام'))}</span><input id="fh-name"></label></div>
@@ -11281,18 +11898,47 @@ async function finAddHead() {
   await finLoad(); openFinHeads();
 }
 async function finDelete(table, id) {
-  if (!confirm(qt('Delete this?', 'حذف کریں؟'))) return;
+  if (table === 'fin_accounts') {
+    const n = DATA.transactions.filter(x => x.account_id === id).length;
+    if (n) { alert(qt('This account has ' + n + ' recorded entries, so it cannot be deleted (its history would be lost). You can rename it instead.', 'اس اکاؤنٹ میں ' + n + ' اندراجات ہیں، اس لیے یہ حذف نہیں ہو سکتا (اس کی تاریخ ضائع ہو جائے گی)۔ آپ اس کا نام بدل سکتے ہیں۔')); return; }
+  }
+  if (!confirm(table === 'fin_heads' ? qt('Delete this head? Existing entries keep their category name.', 'یہ مد حذف کریں؟ پرانے اندراجات میں مد کا نام برقرار رہے گا۔') : qt('Delete this account?', 'یہ اکاؤنٹ حذف کریں؟'))) return;
   const { error } = await sb.from(table).delete().eq('id', id);
   if (reportSaveError(error)) return;
-  if (table === 'fin_accounts') DATA.transactions.forEach(x => { if (x.account_id === id) x.account_id = null; });
   await finLoad(); table === 'fin_heads' ? openFinHeads() : openFinAccounts();
+}
+function openFinEdit(table, id) {
+  const row = (table === 'fin_accounts' ? FIN.accounts : FIN.heads).find(x => x.id === id); if (!row) return;
+  showModal(qt('Edit', 'ترمیم'), `
+    <div class="field-box"><label><span>${esc(table === 'fin_accounts' ? qt('Account name', 'اکاؤنٹ کا نام') : qt('Head name', 'مد کا نام'))}</span><input id="fe-name" value="${esc(row.name)}"></label></div>
+    ${table === 'fin_accounts' ? `<div class="field-box"><label><span>${esc(qt('Opening balance (Rs)', 'ابتدائی بیلنس (روپے)'))}</span><input id="fe-open" type="number" value="${esc(row.opening_balance || 0)}"></label></div>` : `<div style="font-size:12px;opacity:.7;margin-bottom:10px;">${esc(qt('Renaming also updates the category of all existing entries of this head.', 'نام بدلنے سے اس مد کے تمام پرانے اندراجات کی مد بھی بدل جائے گی۔'))}</div>`}
+    <div class="flexgap">
+      <button class="btn-ghost" onclick="${table === 'fin_heads' ? 'openFinHeads()' : 'openFinAccounts()'}">${esc(t.cancel)}</button>
+      <button class="btn-primary" style="flex:1" onclick="guardedSubmit(this, () => finSaveEdit('${table}','${id}'))">${esc(t.save)}</button>
+    </div>`);
+}
+async function finSaveEdit(table, id) {
+  if (!navigator.onLine) { alert(qt('Connect to the internet to edit accounts and heads.', 'اکاؤنٹس اور مدات میں ترمیم کے لیے انٹرنیٹ سے جڑیں۔')); return; }
+  const row = (table === 'fin_accounts' ? FIN.accounts : FIN.heads).find(x => x.id === id); if (!row) return;
+  const name = ((document.getElementById('fe-name') || {}).value || '').trim(); if (!name) return;
+  const patch = { name };
+  if (table === 'fin_accounts') { const o = Number((document.getElementById('fe-open') || {}).value); patch.opening_balance = Number.isFinite(o) ? o : 0; }
+  const { error } = await sb.from(table).update(patch).eq('id', id);
+  if (reportSaveError(error)) return;
+  if (table === 'fin_heads' && name !== row.name) {
+    const r = await sb.from('transactions').update({ category: name }).eq('category', row.name).eq('type', row.type);
+    if (r.error) alert(qt('The head was renamed, but old entries could not be updated: ', 'مد کا نام بدل گیا، لیکن پرانے اندراجات اپڈیٹ نہیں ہو سکے: ') + friendlyErrorMsg(r.error));
+  }
+  await finLoad(); await loadAllData();
+  table === 'fin_heads' ? openFinHeads() : openFinAccounts();
 }
 // ---- Cash / bank accounts ----
 function openFinAccounts() {
   const row = a => `<div class="list-row"><div><div class="nm">${a.kind === 'bank' ? '🏦' : '💵'} ${esc(a.name)}</div>
     <div class="sub">${esc(qt('Opening', 'ابتدائی'))} ₨${fmt(a.opening_balance)} · ${esc(qt('Balance', 'بیلنس'))} ₨${fmt(finAccBalance(a))}</div></div>
-    <button class="del-btn" onclick="finDelete('fin_accounts','${a.id}')">✕</button></div>`;
+    <div style="display:flex;gap:6px;"><button class="print-btn" title="${esc(qt('Edit', 'ترمیم'))}" onclick="openFinEdit('fin_accounts','${a.id}')">✏️</button><button class="del-btn" onclick="finDelete('fin_accounts','${a.id}')">✕</button></div></div>`;
   showModal(qt('Cash & Bank Accounts', 'کیش اور بینک اکاؤنٹس'), `${finSetupNote()}
+    <div style="font-size:11.5px;opacity:.7;margin-bottom:10px;line-height:1.5;">${esc(qt('Fee collection and salaries are added to these balances automatically: Cash → your Cash account; Bank → your Bank account; JazzCash / EasyPaisa → an account with that name (otherwise your Bank account). Only money dated on or after the account was created is counted.', 'فیس کی وصولی اور تنخواہیں ان بیلنس میں خود شامل ہوتی ہیں: کیش ← آپ کا کیش اکاؤنٹ؛ بینک ← آپ کا بینک اکاؤنٹ؛ جاز کیش / ایزی پیسہ ← اسی نام کا اکاؤنٹ (ورنہ بینک اکاؤنٹ)۔ صرف اکاؤنٹ بننے کی تاریخ یا اس کے بعد کی رقم گنی جاتی ہے۔'))}</div>
     <div class="field-box"><label><span>${esc(qt('Account name', 'اکاؤنٹ کا نام'))}</span><input id="fa-name"></label></div>
     <div class="field-box"><label><span>${esc(qt('Type', 'قسم'))}</span><select id="fa-kind"><option value="cash">${esc(qt('Cash in Hand', 'کیش ان ہینڈ'))}</option><option value="bank">${esc(qt('Bank', 'بینک'))}</option></select></label></div>
     <div class="field-box"><label><span>${esc(qt('Opening balance (Rs)', 'ابتدائی بیلنس (روپے)'))}</span><input id="fa-open" type="number" value="0"></label></div>
@@ -11310,33 +11956,78 @@ async function finAddAccount() {
 function finEntries(from, to, acct) {
   const inR = d => { d = String(d || '').slice(0, 10); return d >= from && d <= to; };
   const out = [];
-  DATA.transactions.forEach(x => { if (inR(x.txn_date) && (acct === 'all' || x.account_id === acct))
-    out.push({ d: String(x.txn_date).slice(0, 10), type: x.type, head: x.category || '—', desc: x.description || '', amt: Number(x.amount || 0), acc: finAccName(x.account_id) }); });
-  if (acct === 'all') {
-    DATA.feePayments.forEach(p => { if (inR(p.pay_date)) { const s = DATA.students.find(z => z.id === p.student_id);
-      out.push({ d: String(p.pay_date).slice(0, 10), type: 'income', head: qt('Fee Collection', 'فیس وصولی'), desc: s ? s.name : '', amt: Number(p.amount || 0), acc: '—' }); } });
-    DATA.salaryPayments.forEach(p => { if (inR(p.pay_date)) { const tc = DATA.teachers.find(z => z.id === p.teacher_id);
-      out.push({ d: String(p.pay_date).slice(0, 10), type: 'expense', head: qt('Salaries', 'تنخواہیں'), desc: tc ? tc.name : '', amt: Number(p.amount || 0), acc: '—' }); } });
-  }
+  DATA.transactions.forEach(x => {
+    if (!inR(x.txn_date) || !(acct === 'all' || x.account_id === acct)) return;
+    if (acct === 'all' && isTransferTxn(x)) return;       // moves money between own accounts: neither income nor expense
+    out.push({ d: String(x.txn_date).slice(0, 10), type: x.type, head: isTransferTxn(x) ? qt('Transfer', 'منتقلی') : (x.category || '—'), desc: txnDesc(x), amt: Number(x.amount || 0), acc: finAccName(x.account_id), transfer: isTransferTxn(x) });
+  });
+  // Fee money is counted per installment (its own date and payment method); refunds show as expenses.
+  DATA.feePayments.forEach(p => {
+    const st = DATA.students.find(z => z.id === p.student_id);
+    feeMoneyLines(p).forEach(l => {
+      if (!l.a || !inR(l.d)) return;
+      const aid = finMethodAccount(l.m, l.d);
+      if (acct !== 'all' && aid !== acct) return;
+      out.push({ d: l.d, type: l.a < 0 ? 'expense' : 'income', head: l.a < 0 ? qt('Fee Refund', 'فیس واپسی') : qt('Fee Collection', 'فیس وصولی'),
+        desc: (st ? st.name : '') + (l.tag ? ' — ' + l.tag : ''), amt: Math.abs(l.a), acc: aid ? finAccName(aid) : feeMethodLabel(l.m) });
+    });
+  });
+  // Salaries are shown in full (net paid + advance recovered); the recovered part comes back as a separate "Advance Recovered" line,
+  // and an advance given out is its own line. Those two are loans, flagged so Profit & Loss leaves them out.
+  const stfOk = STF.loaded && !STF.err;
+  DATA.salaryPayments.forEach(p => {
+    if (!inR(p.pay_date)) return;
+    const aid = finMethodAccount(p.pay_method || 'cash', p.pay_date);
+    if (acct !== 'all' && aid !== acct) return;
+    const tc = DATA.teachers.find(z => z.id === p.teacher_id);
+    const rec = stfOk ? stfRecoveredIn(p.teacher_id, p.month) : 0;
+    const accName = aid ? finAccName(aid) : (p.pay_method ? feeMethodLabel(p.pay_method) : '—');
+    out.push({ d: String(p.pay_date).slice(0, 10), type: 'expense', head: qt('Salaries', 'تنخواہیں'), desc: tc ? tc.name : '', amt: Number(p.amount || 0) + rec, acc: accName });
+    if (rec > 0) out.push({ d: String(p.pay_date).slice(0, 10), type: 'income', head: qt('Advance Recovered', 'ایڈوانس کٹوتی'), desc: tc ? tc.name : '', amt: rec, acc: accName, loan: true });
+  });
+  if (stfOk) STF.advances.forEach(x => {
+    if (!inR(x.given_date)) return;
+    const aid = finMethodAccount(x.pay_method || 'cash', x.given_date);
+    if (acct !== 'all' && aid !== acct) return;
+    out.push({ d: String(x.given_date).slice(0, 10), type: 'expense', head: qt('Staff Advance', 'عملے کا ایڈوانس'), desc: stfName(x.teacher_id), amt: Number(x.amount || 0), acc: aid ? finAccName(aid) : feeMethodLabel(x.pay_method || 'cash'), loan: true });
+  });
   return out.sort((a, b) => a.d < b.d ? -1 : a.d > b.d ? 1 : 0);
 }
+function finDayBefore(iso) { const d = new Date(iso + 'T00:00:00'); d.setDate(d.getDate() - 1); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
+// Day Book rows; for ONE account it also carries the opening balance and a running balance.
+function finDaybookData(from, to, acct) {
+  const rows = finEntries(from, to, acct);
+  const a = acct === 'all' ? null : FIN.accounts.find(x => x.id === acct);
+  if (!a) return { rows, hasBal: false };
+  const prior = from ? finEntries('0000-01-01', finDayBefore(from), acct) : [];
+  let bal = money2(Number(a.opening_balance || 0) + prior.reduce((q, r) => q + (r.type === 'income' ? r.amt : -r.amt), 0));
+  const opening = bal;
+  rows.forEach(r => { bal = money2(bal + (r.type === 'income' ? r.amt : -r.amt)); r.bal = bal; });
+  return { rows, hasBal: true, opening, closing: bal };
+}
 function finReportHtml() {
-  const { kind, from, to, acct } = FINR, rows = finEntries(from, to, acct);
+  const { kind, from, to, acct } = FINR;
+  const D = kind === 'daybook' ? finDaybookData(from, to, acct) : null;
+  const rows = D ? D.rows : finEntries(from, to, acct).filter(r => !r.transfer && !r.loan);
   const inc = rows.filter(r => r.type === 'income'), exp = rows.filter(r => r.type === 'expense');
-  const sum = a => a.reduce((s, r) => s + r.amt, 0);
+  const sum = a => a.reduce((q, r) => q + r.amt, 0);
   const th = 'style="text-align:left;"', num = 'style="text-align:right;"';
   if (kind === 'daybook') {
-    return `<table><tr><th ${th}>${esc(t.dateCol)}</th><th ${th}>${esc(qt('Head', 'مد'))}</th><th ${th}>${esc(qt('Details', 'تفصیل'))}</th><th ${th}>${esc(qt('Account', 'اکاؤنٹ'))}</th><th ${num}>${esc(qt('Receipt', 'آمد'))}</th><th ${num}>${esc(qt('Payment', 'خرچ'))}</th></tr>` +
-      (rows.map(r => `<tr><td>${esc(fmtDate(r.d))}</td><td>${esc(r.head)}</td><td>${esc(r.desc)}</td><td>${esc(r.acc)}</td><td ${num}>${r.type === 'income' ? fmt(r.amt) : ''}</td><td ${num}>${r.type === 'expense' ? fmt(r.amt) : ''}</td></tr>`).join('') ||
-        `<tr><td colspan="6" style="text-align:center;">${esc(t.noTransactions)}</td></tr>`) +
-      `<tr style="font-weight:700;"><td colspan="4">${esc(qt('Total', 'کل'))}</td><td ${num}>${fmt(sum(inc))}</td><td ${num}>${fmt(sum(exp))}</td></tr></table>`;
+    const cols = D.hasBal ? 7 : 6;
+    return `<table><tr><th ${th}>${esc(t.dateCol)}</th><th ${th}>${esc(qt('Head', 'مد'))}</th><th ${th}>${esc(qt('Details', 'تفصیل'))}</th><th ${th}>${esc(qt('Account', 'اکاؤنٹ'))}</th><th ${num}>${esc(qt('Receipt', 'آمد'))}</th><th ${num}>${esc(qt('Payment', 'خرچ'))}</th>${D.hasBal ? `<th ${num}>${esc(qt('Balance', 'بیلنس'))}</th>` : ''}</tr>` +
+      (D.hasBal ? `<tr style="font-weight:700;"><td colspan="${cols - 1}">${esc(qt('Opening balance', 'ابتدائی بیلنس'))}</td><td ${num}>${fmt(D.opening)}</td></tr>` : '') +
+      (rows.map(r => `<tr><td>${esc(fmtDate(r.d))}</td><td>${esc(r.head)}</td><td>${esc(r.desc)}</td><td>${esc(r.acc)}</td><td ${num}>${r.type === 'income' ? fmt(r.amt) : ''}</td><td ${num}>${r.type === 'expense' ? fmt(r.amt) : ''}</td>${D.hasBal ? `<td ${num}>${fmt(r.bal)}</td>` : ''}</tr>`).join('') ||
+        `<tr><td colspan="${cols}" style="text-align:center;">${esc(t.noTransactions)}</td></tr>`) +
+      `<tr style="font-weight:700;"><td colspan="4">${esc(qt('Total', 'کل'))}</td><td ${num}>${fmt(sum(inc))}</td><td ${num}>${fmt(sum(exp))}</td>${D.hasBal ? '<td></td>' : ''}</tr>` +
+      (D.hasBal ? `<tr style="font-weight:700;"><td colspan="${cols - 1}">${esc(qt('Closing balance', 'اختتامی بیلنس'))}</td><td ${num}>${fmt(D.closing)}</td></tr>` : '') + `</table>`;
   }
   const group = a => { const m = {}; a.forEach(r => m[r.head] = (m[r.head] || 0) + r.amt); return Object.entries(m).sort((x, y) => y[1] - x[1]); };
   const sec = (title, a) => `<tr><th colspan="2" ${th}>${esc(title)}</th></tr>` + group(a).map(([h, v]) => `<tr><td>${esc(h)}</td><td ${num}>${fmt(v)}</td></tr>`).join('') +
     `<tr style="font-weight:700;"><td>${esc(qt('Total', 'کل'))}</td><td ${num}>${fmt(sum(a))}</td></tr>`;
   const net = sum(inc) - sum(exp);
   return `<table>${sec(qt('Income', 'آمدنی'), inc)}${sec(qt('Expenses', 'اخراجات'), exp)}
-    <tr style="font-weight:700;"><td>${esc(net >= 0 ? qt('Net Profit', 'خالص منافع') : qt('Net Loss', 'خالص نقصان'))}</td><td ${num}>${fmt(Math.abs(net))}</td></tr></table>`;
+    <tr style="font-weight:700;"><td>${esc(net >= 0 ? qt('Net Profit', 'خالص منافع') : qt('Net Loss', 'خالص نقصان'))}</td><td ${num}>${fmt(Math.abs(net))}</td></tr></table>
+    <div style="font-size:11px;opacity:.65;margin-top:8px;">${esc(qt('Cash basis: fees are counted when received, not when due. Transfers between accounts and staff advances are not income or expense.', 'نقد بنیاد: فیس وصول ہونے پر گنی جاتی ہے، واجب ہونے پر نہیں۔ اکاؤنٹس کے درمیان منتقلی آمدن یا خرچ نہیں۔'))}</div>`;
 }
 function openFinReport(kind) {
   const d = new Date(), y = d.getFullYear(), m = String(d.getMonth() + 1).padStart(2, '0');
@@ -11369,14 +12060,18 @@ function printFinReport() {
 // ---- Excel export + Accounts dashboard (single-entry) ----
 function exportFinReport() {
   if (typeof XLSX === 'undefined') { alert(qt('Excel library is not loaded yet. Connect to the internet once and try again.', 'ایکسل لائبریری لوڈ نہیں ہوئی۔ ایک بار انٹرنیٹ سے جڑ کر دوبارہ کوشش کریں۔')); return; }
-  const { kind, from, to, acct } = FINR, rows = finEntries(from, to, acct);
+  const { kind, from, to, acct } = FINR;
+  const D = kind === 'daybook' ? finDaybookData(from, to, acct) : null;
+  const rows = D ? D.rows : finEntries(from, to, acct).filter(r => !r.transfer && !r.loan);
   const inc = rows.filter(r => r.type === 'income'), exp = rows.filter(r => r.type === 'expense');
   const sum = a => a.reduce((s, r) => s + r.amt, 0);
   let aoa;
   if (kind === 'daybook') {
-    aoa = [['Date', 'Head', 'Details', 'Account', 'Income', 'Expense']];
-    rows.forEach(r => aoa.push([fmtDate(r.d), r.head, r.desc, r.acc, r.type === 'income' ? r.amt : '', r.type === 'expense' ? r.amt : '']));
+    aoa = [D.hasBal ? ['Date', 'Head', 'Details', 'Account', 'Income', 'Expense', 'Balance'] : ['Date', 'Head', 'Details', 'Account', 'Income', 'Expense']];
+    if (D.hasBal) aoa.push(['Opening balance', '', '', '', '', '', D.opening]);
+    rows.forEach(r => aoa.push([fmtDate(r.d), r.head, r.desc, r.acc, r.type === 'income' ? r.amt : '', r.type === 'expense' ? r.amt : ''].concat(D.hasBal ? [r.bal] : [])));
     aoa.push(['Total', '', '', '', sum(inc), sum(exp)]);
+    if (D.hasBal) aoa.push(['Closing balance', '', '', '', '', '', D.closing]);
   } else {
     const group = a => { const m = {}; a.forEach(r => m[r.head] = (m[r.head] || 0) + r.amt); return Object.entries(m).sort((x, y) => y[1] - x[1]); };
     const net = sum(inc) - sum(exp);
@@ -11398,7 +12093,7 @@ async function openFinDashboard() {
   const vt = finvTotals();
   const now = new Date(), months = [];
   for (let i = 11; i >= 0; i--) { const d = new Date(now.getFullYear(), now.getMonth() - i, 1); months.push(d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0')); }
-  const rows = finEntries(months[0] + '-01', todayISO(), 'all');
+  const rows = finEntries(months[0] + '-01', todayISO(), 'all').filter(r => !r.loan);
   const sum = a => a.reduce((s, r) => s + r.amt, 0);
   const inc = rows.filter(r => r.type === 'income'), exp = rows.filter(r => r.type === 'expense');
   const net = sum(inc) - sum(exp);
@@ -16164,6 +16859,52 @@ function showModal(title, bodyHtml) {
 function closeModal() { document.getElementById('modal-root').innerHTML = ''; }
 
 function confirmDelete(kind, id) {
+  if (kind === 'teacher') {
+    // Deleting a teacher also erases all of their salary records — say so, with the real numbers.
+    const tc = DATA.teachers.find(x => x.id === id);
+    const pays = DATA.salaryPayments.filter(x => x.teacher_id === id);
+    const lockedRow = pays.find(x => feeMonthLocked(x.month));
+    if (lockedRow) { alert(qt('This teacher has salary records in a closed (locked) month, so the record cannot be deleted. Use "Has left" instead.', 'اس استاد کے تنخواہ ریکارڈ بند (لاک) مہینے میں ہیں، اس لیے حذف نہیں ہو سکتا۔ "چھوڑ گئے" استعمال کریں۔')); return; }
+    if (tc && pays.length) {
+      const paid = pays.reduce((a, x) => a + Number(x.amount || 0), 0);
+      showModal(t.delete, `
+        <p style="font-size:15px;margin-bottom:6px;"><b>${esc(tc.name)}</b></p>
+        <p style="font-size:13px;color:var(--rust);margin-bottom:10px;">${esc(qt(
+          'This will ALSO permanently erase ' + pays.length + ' salary record(s) totalling ₨' + fmt(paid) + ', plus attendance, leaves and advances. Those salaries will disappear from the Day Book, reports and totals. This cannot be undone.',
+          'اس سے ' + pays.length + ' تنخواہ ریکارڈ (کل ₨' + fmt(paid) + ')، حاضری، چھٹیاں اور ایڈوانس بھی ہمیشہ کے لیے مٹ جائیں گے۔ یہ تنخواہیں روزنامچے، رپورٹس اور ٹوٹلز سے غائب ہو جائیں گی۔ یہ واپس نہیں ہو سکتا۔'))}</p>
+        <p style="font-size:13px;margin-bottom:10px;">${esc(qt('If the teacher has only left the school, use "Has left" instead — it keeps all history.', 'اگر استاد نے صرف ادارہ چھوڑا ہے تو حذف کے بجائے "چھوڑ گئے" استعمال کریں — اس سے تمام تاریخ محفوظ رہتی ہے۔'))}</p>
+        <button class="btn-ghost" style="width:100%;margin-bottom:10px;" onclick="confirmStrikeOffTeacher('${id}')">🚪 ${esc(qt('Has left', 'چھوڑ گئے'))}</button>
+        <label style="display:flex;gap:8px;align-items:flex-start;font-size:13px;margin-bottom:12px;"><input type="checkbox" style="width:auto;margin-top:3px;" onchange="document.getElementById('del-yes').disabled=!this.checked"> <span>${esc(qt('I understand, delete the teacher and all records', 'مجھے معلوم ہے، استاد اور تمام ریکارڈ حذف کریں'))}</span></label>
+        <div class="flexgap">
+          <button class="btn-ghost" onclick="closeModal()">${esc(t.no)}</button>
+          <button id="del-yes" class="btn-primary" disabled style="flex:1;background:var(--rust);" onclick="doDelete('${kind}','${id}')">${esc(t.yes)}</button>
+        </div>`);
+      return;
+    }
+  }
+  if (kind === 'student') {
+    const lockedRow = DATA.feePayments.find(x => x.student_id === id && feeMonthLocked(x.month));
+    if (lockedRow) { alert(qt('This student has fee records in a closed (locked) month, so the record cannot be deleted. Use Strike Off instead.', 'اس طالب علم کے فیس ریکارڈ بند (لاک) مہینے میں ہیں، اس لیے حذف نہیں ہو سکتا۔ "اسکول چھوڑنے پر نشان زد" استعمال کریں۔')); return; }
+    // Deleting a student also erases all of their fee records — say so, with the real numbers.
+    const st = DATA.students.find(x => x.id === id);
+    const pays = DATA.feePayments.filter(x => x.student_id === id);
+    const paid = pays.reduce((a, x) => a + Number(x.amount || 0), 0);
+    if (st && pays.length) {
+      showModal(t.delete, `
+        <p style="font-size:15px;margin-bottom:6px;"><b>${esc(st.name)}</b></p>
+        <p style="font-size:13px;color:var(--rust);margin-bottom:10px;">${esc(qt(
+          'This will ALSO permanently erase ' + pays.length + ' fee record(s) with ₨' + fmt(paid) + ' collected. That money will disappear from the fee card, reports and Day Book. This cannot be undone.',
+          'اس سے ' + pays.length + ' فیس ریکارڈ بھی ہمیشہ کے لیے مٹ جائیں گے جن میں ₨' + fmt(paid) + ' وصول شدہ ہیں۔ یہ رقم فیس کارڈ، رپورٹس اور روزنامچے سے غائب ہو جائے گی۔ یہ واپس نہیں ہو سکتا۔'))}</p>
+        <p style="font-size:13px;margin-bottom:10px;">${esc(qt('If the student has only left the school, use Strike Off instead — it keeps all fee history.', 'اگر طالب علم نے صرف اسکول چھوڑا ہے تو حذف کے بجائے "اسکول چھوڑنے پر نشان زد" استعمال کریں — اس سے فیس کی تاریخ محفوظ رہتی ہے۔'))}</p>
+        <button class="btn-ghost" style="width:100%;margin-bottom:10px;" onclick="confirmStrikeOffStudent('${id}')">${esc(t.strikeOffStudent)}</button>
+        <label style="display:flex;gap:8px;align-items:flex-start;font-size:13px;margin-bottom:12px;"><input type="checkbox" id="del-ack" style="width:auto;margin-top:3px;" onchange="document.getElementById('del-yes').disabled=!this.checked"> <span>${esc(qt('I understand, delete the student and all fee records', 'مجھے معلوم ہے، طالب علم اور تمام فیس ریکارڈ حذف کریں'))}</span></label>
+        <div class="flexgap">
+          <button class="btn-ghost" onclick="closeModal()">${esc(t.no)}</button>
+          <button id="del-yes" class="btn-primary" disabled style="flex:1;background:var(--rust);" onclick="doDelete('${kind}','${id}')">${esc(t.yes)}</button>
+        </div>`);
+      return;
+    }
+  }
   showModal(t.delete, `
     <p style="font-size:14px;">${esc(t.confirmDelete)}</p>
     <div class="flexgap">
@@ -16183,6 +16924,7 @@ async function doDelete(kind, id) {
     for (const fp of relatedPayments) {
       const r1 = await offlineWrite({
         table: 'fee_payments', action: 'delete', payload: null, id: fp.id, baseRow: fp,
+        logNote: 'removed together with the student record',
         run: () => sb.from('fee_payments').delete().eq('id', fp.id),
         optimisticApply: () => { DATA.feePayments = DATA.feePayments.filter(x => x.id !== fp.id); idbDeleteRow('fee_payments', fp.id); }
       });
@@ -16200,11 +16942,23 @@ async function doDelete(kind, id) {
     // Offline-aware: queues the teacher's salary_payments + attendance deletes
     // and the teacher delete itself; all applied to the local cache immediately
     // (mirrors the student/fee_payments cascade above).
-    try { if (navigator.onLine) { await sb.from('staff_advances').delete().eq('teacher_id', String(id)); await sb.from('staff_leaves').delete().eq('teacher_id', String(id)); STF.loaded = false; } } catch (e) {}
+    try {
+      if (navigator.onLine) { await sb.from('staff_advances').delete().eq('teacher_id', String(id)); await sb.from('staff_leaves').delete().eq('teacher_id', String(id)); STF.loaded = false; }
+      else {
+        // Offline: queue the removal of this teacher's advances and leaves (their recoveries go with the advances).
+        if (!STF.loaded) stfCacheRestore();
+        for (const a of stfTeacherAdvances(id)) await idbQueueAdd({ table: 'staff_advances', action: 'delete', payload: null, id: a.id, baseRow: null, ts: Date.now() });
+        for (const l of STF.leaves.filter(x => String(x.teacher_id) === String(id))) await idbQueueAdd({ table: 'staff_leaves', action: 'delete', payload: null, id: l.id, baseRow: null, ts: Date.now() });
+        STF.advances = STF.advances.filter(x => String(x.teacher_id) !== String(id));
+        STF.leaves = STF.leaves.filter(x => String(x.teacher_id) !== String(id));
+        STF.recoveries = STF.recoveries.filter(x => String(x.teacher_id) !== String(id));
+        stfCacheSave(); renderOfflineBanner();
+      }
+    } catch (e) {}
     const relatedSalary = DATA.salaryPayments.filter(x => x.teacher_id === id);
     for (const sp of relatedSalary) {
       const r1 = await offlineWrite({
-        table: 'salary_payments', action: 'delete', payload: null, id: sp.id, baseRow: sp,
+        table: 'salary_payments', action: 'delete', payload: null, id: sp.id, baseRow: sp, logNote: 'removed together with the teacher record',
         run: () => sb.from('salary_payments').delete().eq('id', sp.id),
         optimisticApply: () => { DATA.salaryPayments = DATA.salaryPayments.filter(x => x.id !== sp.id); idbDeleteRow('salary_payments', sp.id); }
       });
