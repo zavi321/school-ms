@@ -14044,6 +14044,33 @@ function setDMCMark(i, j, v) {
   r.marks = r.marks || {};
   r.marks[dmcSubjects[j].name] = Number(v) || 0;
   saveDMCUpload();
+  dmcRefreshAutoPositions();
+}
+
+// One key per class, ignoring case and any extra / invisible spaces ("Nur", "Nur ", "nur"
+// and a non-breaking-space copy are all the same class). Positions are ranked per this
+// key — comparing the raw text split one class into several small groups, each with its own
+// 1st, 2nd, 3rd ... and pushed everybody else's position out of place.
+function dmcClassKey(c) {
+  return String(c == null ? '' : c).replace(/[\s\u00A0\u200B-\u200F\u202A-\u202E\uFEFF]+/g, ' ').trim().toLowerCase();
+}
+
+// Automatic class position (dense ranking, same rule the certificate uses) — used to
+// pre-fill the editable Position box in the edit table.
+function dmcAutoPos(r) {
+  const tot = x => dmcSubjects.reduce((a, s) => a + (Number((x.marks || {})[s.name]) || 0), 0);
+  const mine = tot(r);
+  const totals = dmcResults.filter(x => dmcClassKey(x.class) === dmcClassKey(r.class)).map(tot);
+  return [...new Set(totals)].sort((a, b) => b - a).indexOf(mine) + 1;
+}
+// After marks change, re-fill every Position box that the user has not edited by hand.
+function dmcRefreshAutoPositions() {
+  dmcResults.forEach((r, k) => {
+    const el = document.getElementById('dmc-pos-' + k);
+    if (!el || document.activeElement === el) return;
+    const ov = (r.positionOverride == null ? '' : String(r.positionOverride)).trim();
+    if (!ov) el.value = dmcAutoPos(r);
+  });
 }
 
 function renderDMCEditTable() {
@@ -14063,6 +14090,7 @@ function renderDMCEditTable() {
       <div style="width:22px;font-size:13px;color:var(--ink);flex-shrink:0;">${r.serialNo}.</div>
       <input type="text" autocomplete="off" style="flex:1;" value="${esc(r.studentName)}" placeholder="Student Name" oninput="dmcResults[${i}].studentName=this.value;saveDMCUpload();">
       <input type="text" autocomplete="off" style="width:110px;flex-shrink:0;" value="${esc(r.rollNo)}" placeholder="Roll No." oninput="dmcResults[${i}].rollNo=this.value;saveDMCUpload();">
+      <input type="text" id="dmc-pos-${i}" autocomplete="off" style="width:70px;flex-shrink:0;" value="${esc((r.positionOverride != null && String(r.positionOverride).trim()) ? r.positionOverride : dmcAutoPos(r))}" placeholder="Position" title="Position is filled automatically from marks — you can change it." oninput="dmcResults[${i}].positionOverride=this.value;saveDMCUpload();" onblur="if(!this.value.trim()){dmcResults[${i}].positionOverride='';this.value=dmcAutoPos(dmcResults[${i}]);saveDMCUpload();}">
     </div>
     ${dmcSubjects.length ? `<div style="display:flex;flex-wrap:wrap;gap:8px;padding:6px 0 10px 32px;border-bottom:1px solid var(--line);">${dmcSubjects.map((sub, j) => `
       <label style="display:flex;flex-direction:column;font-size:11px;opacity:.85;">
@@ -14084,7 +14112,7 @@ function handleDMCExcelUpload(file) {
       const rows = XLSX.utils.sheet_to_json(ws);
 
       dmcResults = rows.map((r, idx) => {
-        const excelClass = r['Class'] || r['جماعت'] || '';
+        const excelClass = String(r['Class'] || r['جماعت'] || '').replace(/[\s\u00A0]+/g, ' ').trim();
         return {
           serialNo: idx + 1,
           studentName: r['Student Name'] || r['Name'] || r['Student'] || '',
@@ -14228,7 +14256,7 @@ function renderDMCCertificate(result) {
 
   // Position in class — dense ranking: a 3-way tie at 1st is followed by
   // 2nd next (not 4th), so ties never skip position numbers.
-  const classResults = dmcResults.filter(r => r.class === result.class);
+  const classResults = dmcResults.filter(r => dmcClassKey(r.class) === dmcClassKey(result.class));
   const classTotals = classResults.map(r => dmcSubjects.reduce((a, s) => a + (Number(r.marks[s.name]) || 0), 0));
   const sortedTotals = [...new Set(classTotals)].sort((a, b) => b - a);
   const position = sortedTotals.indexOf(totalObtained) + 1;
@@ -14236,6 +14264,16 @@ function renderDMCCertificate(result) {
     const s = ['th','st','nd','rd'], v = n % 100;
     return n + (s[(v - 20) % 10] || s[v] || s[0]);
   };
+
+  // Position can be edited per student; empty = automatic rank. A number gets its
+  // ordinal (3 -> 3rd), any other text is shown exactly as typed.
+  const posOv = (result.positionOverride == null ? '' : String(result.positionOverride)).trim();
+  const positionText = posOv ? (/^\d+$/.test(posOv) ? ordinal(Number(posOv)) : posOv) : ordinal(position);
+
+  // Only the first 15 positions are printed. Beyond that the certificate shows just
+  // %age and Grade (the Position column is removed). A non-numeric typed position is always shown.
+  const posNumeric = posOv ? (/^\d+$/.test(posOv) ? Number(posOv) : null) : position;
+  const hidePosition = posNumeric != null && posNumeric > 15;
 
   // Design values are per-school (dmcDesign), so the same rendering logic
   // below produces a differently-styled certificate for every school.
@@ -14412,16 +14450,16 @@ function renderDMCCertificate(result) {
                    under OBTAINED MARKS, Grade sits under GRADE (same last column). -->
               <tr style="border-top:2px solid ${pc};font-weight:900;">
                 <td colspan="2" style="padding:8px 12px;text-align:left;vertical-align:top;"><span style="display:inline-block;background:rgba(255,255,255,.92);color:#000;padding:2px 9px;border-radius:5px;font-size:12px;letter-spacing:.04em;-webkit-print-color-adjust:exact;print-color-adjust:exact;">RESULT</span></td>
-                <td style="padding:8px 12px;text-align:center;color:${pc};">
+                <td colspan="${hidePosition ? 2 : 1}" style="padding:8px 12px;text-align:center;color:${pc};">
                   <div style="font-size:11px;letter-spacing:.04em;font-weight:900;text-shadow:${glow};">%AGE</div>
                   <div style="font-size:16px;line-height:1;margin-top:2px;">&#128200;</div>
                   <div style="font-size:34px;line-height:1;text-shadow:${shadow3D};">${percentage}%</div>
                 </td>
-                <td style="padding:8px 12px;text-align:center;color:${pc};">
+                ${hidePosition ? '' : `<td style="padding:8px 12px;text-align:center;color:${pc};">
                   <div style="font-size:11px;letter-spacing:.04em;font-weight:900;text-shadow:${glow};">POSITION</div>
                   <div style="font-size:16px;line-height:1;margin-top:2px;">&#129351;</div>
-                  <div style="font-size:62px;font-weight:900;line-height:1;-webkit-text-stroke:0.4px ${pc};text-shadow:${shadow3D};">${dmcDesign.showPosition ? ordinal(position) : '\u2014'}</div>
-                </td>
+                  <div style="font-size:62px;font-weight:900;line-height:1;-webkit-text-stroke:0.4px ${pc};text-shadow:${shadow3D};">${dmcDesign.showPosition ? esc(positionText) : '\u2014'}</div>
+                </td>`}
                 <td style="padding:8px 12px;text-align:center;color:${dmcGradeColor(grade)};">
                   <div style="font-size:11px;letter-spacing:.04em;font-weight:900;text-shadow:${glow};">GRADE</div>
                   <div style="font-size:16px;line-height:1;margin-top:2px;">&#127895;</div>
@@ -14539,9 +14577,11 @@ async function saveDMCRecords(results) {
     const totalObtained = dmcSubjects.reduce((a, s) => a + (Number(r.marks[s.name]) || 0), 0);
     const totalPossible = dmcSubjects.reduce((a, s) => a + s.total, 0);
     const percentage = totalPossible ? +(totalObtained / totalPossible * 100).toFixed(1) : 0;
-    const classTotals = results.filter(x => x.class === r.class)
+    const classTotals = results.filter(x => dmcClassKey(x.class) === dmcClassKey(r.class))
       .map(x => dmcSubjects.reduce((a, s) => a + (Number(x.marks[s.name]) || 0), 0));
-    const position = [...new Set(classTotals)].sort((a, b) => b - a).indexOf(totalObtained) + 1;
+    const autoPos = [...new Set(classTotals)].sort((a, b) => b - a).indexOf(totalObtained) + 1;
+    const ovTxt = (r.positionOverride == null ? '' : String(r.positionOverride)).trim();
+    const position = /^\d+$/.test(ovTxt) ? Number(ovTxt) : autoPos;
     return {
       owner_id: CURRENT_USER.id, academic_year: year, class_name: r.class || '',
       roll_no: r.rollNo || '', student_name: r.studentName || '', father_name: r.fatherName || '',
@@ -14573,7 +14613,7 @@ async function viewSavedDMCRecord(id) {
   dmcBatchDateOfIssue = rec.date_of_issue || todayISO();
   dmcResults = (cohort || []).map(c => ({ studentName: c.student_name, class: c.class_name, marks: c.marks }));
 
-  const pseudo = { studentName: rec.student_name, fatherName: rec.father_name, rollNo: rec.roll_no, class: rec.class_name, marks: rec.marks };
+  const pseudo = { studentName: rec.student_name, fatherName: rec.father_name, rollNo: rec.roll_no, class: rec.class_name, marks: rec.marks, positionOverride: rec.position == null ? '' : String(rec.position) };
   const certHtml = renderDMCCertificate(pseudo);
 
   dmcSubjects = backup.subjects; dmcAcademicSession = backup.session; dmcBatchSection = backup.section;
@@ -14626,7 +14666,7 @@ async function printSavedDMCRecord(id) {
   dmcBatchDateOfIssue = rec.date_of_issue || todayISO();
   dmcResults = (cohort || []).map(c => ({ studentName: c.student_name, class: c.class_name, marks: c.marks }));
 
-  const pseudo = { studentName: rec.student_name, fatherName: rec.father_name, rollNo: rec.roll_no, class: rec.class_name, marks: rec.marks };
+  const pseudo = { studentName: rec.student_name, fatherName: rec.father_name, rollNo: rec.roll_no, class: rec.class_name, marks: rec.marks, positionOverride: rec.position == null ? '' : String(rec.position) };
   const certHtml = renderDMCCertificate(pseudo);
 
   dmcSubjects = backup.subjects; dmcAcademicSession = backup.session; dmcBatchSection = backup.section;
