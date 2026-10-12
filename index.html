@@ -13706,7 +13706,8 @@ let dmcDesign = {
   gradeCuts: { 'A+': 80, 'A': 70, 'B': 60, 'C': 50, 'D': 40 },   // minimum % for each grade; below D = F
   positionLimit: 15,               // positions beyond this are not printed (0 = print every position)
   positionPassedOnly: false,       // true = only students who passed are ranked
-  showVerifyCode: true             // print Cert. No. + Verification Code at the bottom of each certificate
+  showVerifyCode: true,            // print Cert. No. + Verification Code at the bottom of each certificate
+  layout: 'std'                    // certificate format: 'std' (original) | 'formal' | 'modern'
 };
 const DMC_DESIGN_DEFAULT = JSON.parse(JSON.stringify(dmcDesign));
 
@@ -13792,6 +13793,16 @@ function tplDMC() {
         <span>${dqt("Date of Issue", "تاریخِ اجراء")}</span>
         <input type="date" id="dmc-batch-date" value="${esc(dmcBatchDateOfIssue || todayISO())}" onchange="dmcBatchDateOfIssue=this.value; saveDMCUpload();">
       </label>
+    </div>
+
+    <div class="card">
+      <h3 style="margin-top:0;">${dqt('Certificate Format', 'سرٹیفکیٹ کا فارمیٹ')}</h3>
+      <select id="dmc-layout" onchange="dmcSetRule('layout', this.value)">
+        <option value="std" ${(dmcDesign.layout || 'std') === 'std' ? 'selected' : ''}>${dqt('Format 1 - Standard (with watermark)', 'فارمیٹ 1 - اسٹینڈرڈ (واٹر مارک کے ساتھ)')}</option>
+        <option value="formal" ${dmcDesign.layout === 'formal' ? 'selected' : ''}>${dqt('Format 2 - Classic Formal (plain)', 'فارمیٹ 2 - کلاسک فارمل (سادہ)')}</option>
+        <option value="modern" ${dmcDesign.layout === 'modern' ? 'selected' : ''}>${dqt('Format 3 - Modern Compact', 'فارمیٹ 3 - ماڈرن کمپیکٹ')}</option>
+      </select>
+      <p style="font-size:12px;opacity:.65;margin:8px 0 0;">${dqt('Format 2 and 3 take their colours from the school logo (dark shade). Without a logo they stay black / navy.', 'فارمیٹ 2 اور 3 کے رنگ اسکول کے لوگو سے لیے جاتے ہیں۔ لوگو نہ ہو تو کالا / نیلا رہتا ہے۔')}</p>
     </div>
 
     <div class="card">
@@ -13917,6 +13928,7 @@ function dmcSyncRuleFields() {
   setV('dmc-pos-limit', Number(dmcDesign.positionLimit) || 0);
   setC('dmc-pos-passed', dmcDesign.positionPassedOnly);
   setC('dmc-show-verify', dmcDesign.showVerifyCode !== false);
+  setV('dmc-layout', dmcDesign.layout || 'std');
 }
 function dmcRulesChanged() {
   saveDMCConfig();
@@ -13932,6 +13944,8 @@ function dmcSetRule(key, val) {
     dmcDesign.positionLimit = Math.max(0, Math.floor(Number(val) || 0));
   } else if (key === 'failIfAnySubjectFails' || key === 'positionPassedOnly' || key === 'showVerifyCode') {
     dmcDesign[key] = !!val;
+  } else if (key === 'layout') {
+    dmcDesign.layout = (val === 'formal' || val === 'modern') ? val : 'std';
   } else return;
   dmcRulesChanged();
 }
@@ -15028,7 +15042,152 @@ function dmcEnsureNameFont() {
   } catch (e) {}
 }
 
+// ---- Extra certificate formats: 'formal' and 'modern' (settings: dmcDesign.layout) ----
+// Same data and rules as the standard certificate; only the look differs. Dark colours come from the logo
+// (its darkened colour), and stay black / navy when the school has no logo. Both keep the
+// .dmc-cert > .dmc-frame > .dmc-card structure that the A4 print fitting relies on.
+function dmcLum(hex) {
+  const h = String(hex || '#000000').replace('#', '');
+  const n = parseInt(h.length === 3 ? h.split('').map(c => c + c).join('') : h, 16) || 0;
+  const f = v => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); };
+  return 0.2126 * f((n >> 16) & 255) + 0.7152 * f((n >> 8) & 255) + 0.0722 * f(n & 255);
+}
+function dmcOn(hex) { return dmcLum(hex) > 0.45 ? '#111111' : '#FFFFFF'; }
+function dmcInkFor(fallback) {
+  if (!dmcLogo) return fallback;
+  let c = dmcDesign.primaryColor || fallback;
+  if (!/^#[0-9a-f]{6}$/i.test(c)) return fallback;
+  for (let i = 0; i < 6 && dmcLum(c) > 0.16; i++) c = darkenColor(c, 0.2);   // always dark enough to read
+  return c;
+}
+function dmcPalette(kind) {
+  const logo = !!dmcLogo;
+  if (kind === 'formal') {
+    const ink = dmcInkFor('#111111');
+    return { ink, txt: logo ? darkenColor(ink, 0.5) : '#111111', soft: logo ? lightenColor(ink, 0.9) : '#EEEEEE' };
+  }
+  const ink = dmcInkFor('#12355B');
+  const acc = logo ? (dmcDesign.accentColor || ink) : '#E07A1F';
+  return { ink, txt: logo ? darkenColor(ink, 0.5) : '#14202E', acc, accOn: dmcOn(acc),
+    bg: logo ? lightenColor(acc, 0.93) : '#F4F7FB', row: logo ? lightenColor(acc, 0.86) : '#EAF0F7', line: logo ? lightenColor(acc, 0.6) : '#D5DEEA' };
+}
+function dmcCertCommon(result) {
+  const ev = dmcEvaluate(result);
+  const percentage = ev.possible ? ev.pct.toFixed(1) : 0;
+  const grade = dmcCertGrade(percentage);
+  const remarkGrade = ev.pass ? grade : 'F';
+  const remarkText = dmcRemarkFor(remarkGrade) + (ev.subjFail ? ' \u2014 Fail: ' + ev.failedSubjects.join(', ') : '');
+  const position = dmcRankOf(result, dmcResults);
+  const ordinal = n => { const s = ['th', 'st', 'nd', 'rd'], v = n % 100; return n + (s[(v - 20) % 10] || s[v] || s[0]); };
+  const posOv = (result.positionOverride == null ? '' : String(result.positionOverride)).trim();
+  const positionText = posOv ? (/^\d+$/.test(posOv) ? ordinal(Number(posOv)) : posOv) : (position > 0 ? ordinal(position) : '\u2014');
+  const posNumeric = posOv ? (/^\d+$/.test(posOv) ? Number(posOv) : null) : position;
+  const posLimit = Math.max(0, Math.floor(Number(dmcDesign.positionLimit) || 0));
+  const hidePosition = posNumeric != null && posLimit > 0 && posNumeric > posLimit;
+  const rows = dmcSubjects.map((s, i) => {
+    const rawMark = (result.marks || {})[s.name];
+    const mState = dmcMarkState(rawMark);
+    const marks = Number(rawMark) || 0;
+    const subjPct = s.total ? (marks / s.total) * 100 : 0;
+    return { n: i + 1, name: s.name, total: s.total,
+      mark: mState === 'abs' ? 'Abs' : mState === 'blank' ? '\u2014' : marks,
+      grade: mState === 'num' ? dmcCertGrade(subjPct) : '\u2014' };
+  });
+  return { ev, percentage, grade, remarkGrade, remarkText, positionText, hidePosition, rows,
+    obtained: ev.obtained, possible: ev.possible, pass: ev.pass, status: ev.pass ? 'PASS' : 'FAIL' };
+}
+function dmcRenderAlt(result, kind) {
+  const d = dmcCertCommon(result), p = dmcPalette(kind), formal = kind === 'formal';
+  const nl = (dmcSchoolName || '').length;
+  const logoImg = (size, extra) => dmcLogo ? `<img src="${dmcLogo}" style="width:${size}px;height:${size}px;object-fit:contain;border-radius:50%;${extra}">` : '';
+  const bgImg = dmcDesign.bgImage ? `<div style="position:absolute;inset:0;z-index:-1;pointer-events:none;background:url('${dmcDesign.bgImage}') center/${dmcDesign.bgImageFit === 'contain' ? 'contain' : 'cover'} no-repeat;opacity:${dmcDesign.bgImageOpacity == null ? 0.25 : dmcDesign.bgImageOpacity};-webkit-print-color-adjust:exact;print-color-adjust:exact;"></div>` : '';
+  const title = esc((dmcDesign.certTitle || 'DETAIL MARKS CERTIFICATE').toUpperCase());
+  const tl = esc((dmcDesign.teacherLabel || 'CLASS TEACHER SIGNATURE').toUpperCase()), pl = esc((dmcDesign.principalLabel || 'PRINCIPAL SIGNATURE').toUpperCase());
+  const verify = dmcDesign.showVerifyCode === false ? '' : `<div style="text-align:center;font-size:11px;font-weight:700;letter-spacing:.05em;color:${p.txt};">Cert. No: ${esc(dmcCertNo(result))} &nbsp;&middot;&nbsp; Verification Code: <b style="font-size:13px;letter-spacing:.08em;">${esc(dmcVerifyCode(result))}</b></div>`;
+  const posTxt = dmcDesign.showPosition ? esc(d.positionText) : '\u2014';
+  const resColor = d.pass ? '#2F7D4F' : '#B24A32';
+  const session = dmcAcademicSession ? esc(dmcAcademicSession) : '';
+  const info = [['Student Name', result.studentName], ['Class', result.class], ['Father Name', result.fatherName],
+    ['Section', result.section || dmcBatchSection], ['Roll No.', result.rollNo], ['Date of Issue', fmtDate(dmcBatchDateOfIssue || todayISO())]];
+  const stamp = (w, col) => dmcDesign.showStamp ? `<div style="flex-shrink:0;width:${w}px;height:${w}px;border:1px dashed ${col};border-radius:50%;display:flex;align-items:center;justify-content:center;text-align:center;font-size:8px;font-weight:700;color:${col};">SCHOOL<br>STAMP</div>` : '';
+  const wrapOpen = (frameBg, frameRadius, cardCss, font) => `<div class="dmc-cert" style="page-break-inside:avoid;break-inside:avoid;margin-bottom:24px;font-family:${font};color:${p.txt};"><div class="dmc-frame" style="max-width:800px;margin:0 auto;background:${frameBg};padding:${formal ? 8 : 6}px;border-radius:${frameRadius}px;position:relative;overflow:hidden;"><div class="dmc-card" style="${cardCss}position:relative;z-index:0;overflow:hidden;display:flex;flex-direction:column;gap:16px;box-sizing:border-box;">`;
+  const wrapClose = '</div></div></div>';
+
+  if (formal) {
+    const fs = nl > 42 ? 22 : nl > 34 ? 26 : nl > 26 ? 29 : 33;
+    const head = 'font-family:Fraunces,\'Aref Ruqaa\',Georgia,serif;color:' + p.ink + ';';
+    const f = (l, v) => `<div style="display:flex;gap:8px;border-bottom:1px solid ${p.ink};padding:4px 0;font-size:15px;"><b style="flex-shrink:0;width:112px;">${l}</b><span style="flex:1;min-width:0;font-weight:700;">${esc(v || '\u2014')}</span></div>`;
+    const th = `border:1px solid ${p.ink};padding:8px 10px;font-size:12px;letter-spacing:.08em;text-align:center;background:${p.soft};-webkit-print-color-adjust:exact;print-color-adjust:exact;`;
+    const td = `border:1px solid ${p.ink};padding:8px 10px;font-size:15px;text-align:center;`;
+    const rows = d.rows.map(r => `<tr><td style="${td}">${r.n}</td><td style="${td}text-align:left;">${esc(r.name)}</td><td style="${td}">${r.total}</td><td style="${td}">${r.mark}</td><td style="${td}">${r.grade}</td></tr>`).join('');
+    const cells = [['PERCENTAGE', d.percentage + '%']].concat(d.hidePosition ? [] : [['POSITION', posTxt]]).concat([['GRADE', esc(d.grade)], ['RESULT', `<span style="color:${resColor};">${d.status}</span>`]]);
+    const summary = `<div style="display:grid;grid-template-columns:repeat(${cells.length},1fr);border:1px solid ${p.ink};text-align:center;">${cells.map((c, i) => `<div style="padding:10px 6px;${i < cells.length - 1 ? 'border-right:1px solid ' + p.ink + ';' : ''}"><div style="font-size:11px;letter-spacing:.08em;font-weight:700;">${c[0]}</div><div style="font-size:26px;font-weight:700;line-height:1.2;">${c[1]}</div></div>`).join('')}</div>`;
+    return wrapOpen('#fff', 0, `background:#fff;border:4px double ${p.ink};padding:26px 34px;`, "Georgia,'Times New Roman','Aref Ruqaa',serif") + `
+      ${bgImg}
+      <div style="text-align:center;">
+        ${dmcLogo ? logoImg(84, `border:2px solid ${p.ink};margin:0 auto 8px;display:block;`) : ''}
+        <div style="${head}font-size:${fs}px;font-weight:700;letter-spacing:.04em;line-height:1.2;">${esc(dmcSchoolName)}</div>
+        ${dmcTagline ? `<div style="font-size:13px;font-style:italic;margin-top:4px;">${esc(dmcTagline)}</div>` : ''}
+        <div style="${head}margin-top:14px;display:inline-block;border-top:1px solid ${p.ink};border-bottom:1px solid ${p.ink};padding:7px 26px;font-size:17px;font-weight:700;letter-spacing:.12em;">${title}</div>
+        ${session ? `<div style="font-size:13px;margin-top:8px;">Academic Session: <b>${session}</b></div>` : ''}
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px 30px;">${info.map(x => f(x[0], x[1])).join('')}</div>
+      <table style="width:100%;border-collapse:collapse;">
+        <tr><th style="${th}width:52px;">S.NO</th><th style="${th}text-align:left;">SUBJECT</th><th style="${th}">TOTAL MARKS</th><th style="${th}">OBTAINED MARKS</th><th style="${th}">GRADE</th></tr>
+        ${rows}
+        <tr style="font-weight:700;"><td colspan="2" style="${td}text-align:left;background:${p.soft};-webkit-print-color-adjust:exact;print-color-adjust:exact;">TOTAL</td><td style="${td}background:${p.soft};-webkit-print-color-adjust:exact;print-color-adjust:exact;">${d.possible}</td><td style="${td}background:${p.soft};-webkit-print-color-adjust:exact;print-color-adjust:exact;">${d.obtained}</td><td style="${td}background:${p.soft};-webkit-print-color-adjust:exact;print-color-adjust:exact;">${esc(d.grade)}</td></tr>
+      </table>
+      ${summary}
+      <div style="font-size:16px;"><b>Remarks:</b> ${esc(d.remarkText)}</div>
+      <div style="display:flex;justify-content:space-between;align-items:flex-end;gap:22px;padding:6px 8px 0;">
+        <div style="flex:1;border-top:1px solid ${p.ink};padding-top:6px;text-align:center;font-size:10px;font-weight:700;letter-spacing:.05em;">${tl}</div>
+        ${stamp(60, p.ink)}
+        <div style="flex:1;border-top:1px solid ${p.ink};padding-top:6px;text-align:center;font-size:10px;font-weight:700;letter-spacing:.05em;">${pl}</div>
+      </div>
+      ${verify}` + wrapClose;
+  }
+
+  // modern
+  const fs = nl > 42 ? 20 : nl > 34 ? 23 : nl > 26 ? 26 : 29;
+  const lab = `font-size:11px;letter-spacing:.08em;font-weight:700;color:${p.ink};`;
+  const card = (l, v) => `<div style="background:#fff;border:1px solid ${p.line};border-radius:10px;padding:8px 12px;min-width:0;"><div style="${lab}">${l}</div><div style="font-size:15px;font-weight:700;margin-top:2px;word-break:break-word;">${esc(v || '\u2014')}</div></div>`;
+  const rows = d.rows.map((r, i) => { const bg = i % 2 ? p.row : '#fff', c = `padding:9px 12px;background:${bg};-webkit-print-color-adjust:exact;print-color-adjust:exact;`; return `<tr><td style="${c}text-align:center;">${r.n}</td><td style="${c}font-weight:600;">${esc(r.name)}</td><td style="${c}text-align:center;">${r.total}</td><td style="${c}text-align:center;font-weight:700;">${r.mark}</td><td style="${c}text-align:center;">${r.grade}</td></tr>`; }).join('');
+  const tc = `padding:10px 12px;background:#fff;border-top:2px solid ${p.ink};font-weight:700;`;
+  const sc = (l, v) => `<div style="background:#fff;border:1px solid ${p.line};border-radius:12px;padding:12px;text-align:center;"><div style="${lab}">${l}</div><div style="font-size:32px;font-weight:700;line-height:1.2;color:${p.ink};">${v}</div></div>`;
+  const stats = [sc('PERCENTAGE', d.percentage + '%')].concat(d.hidePosition ? [] : [sc('POSITION', posTxt)]).concat([sc('GRADE / RESULT', `${esc(d.grade)} <span style="font-size:15px;color:${resColor};">${d.status}</span>`)]);
+  const th = `padding:9px 12px;background:${p.ink};color:#fff;font-size:12px;letter-spacing:.08em;-webkit-print-color-adjust:exact;print-color-adjust:exact;`;
+  return wrapOpen(p.ink, 22, `background:${p.bg};border-radius:17px;padding:0;`, "Inter,'Aref Ruqaa',sans-serif") + `
+      ${bgImg}
+      <div style="background:${p.ink};color:#fff;padding:22px 30px;display:flex;align-items:center;gap:16px;-webkit-print-color-adjust:exact;print-color-adjust:exact;">
+        ${dmcLogo ? `<div style="flex-shrink:0;width:84px;height:84px;border-radius:50%;background:#fff;display:flex;align-items:center;justify-content:center;overflow:hidden;">${logoImg(76, '')}</div>` : ''}
+        <div style="flex:1;min-width:0;"><div style="font-size:${fs}px;font-weight:700;line-height:1.2;">${esc(dmcSchoolName)}</div>${dmcTagline ? `<div style="font-size:13px;margin-top:4px;">${esc(dmcTagline)}</div>` : ''}</div>
+        ${session ? `<div style="flex-shrink:0;border:1px solid #fff;border-radius:999px;padding:5px 14px;font-size:11px;font-weight:600;letter-spacing:.06em;">SESSION ${session}</div>` : ''}
+      </div>
+      <div style="padding:0 30px;display:flex;flex-direction:column;gap:14px;">
+        <div style="text-align:center;"><div style="font-size:19px;font-weight:700;letter-spacing:.14em;color:${p.ink};">${title}</div><div style="width:64px;height:4px;background:${p.acc};margin:8px auto 0;-webkit-print-color-adjust:exact;print-color-adjust:exact;"></div></div>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;">${info.map(x => card(x[0].toUpperCase(), x[1])).join('')}</div>
+        <div style="border:1px solid ${p.line};border-radius:10px;overflow:hidden;"><table style="width:100%;border-collapse:collapse;font-size:15px;">
+          <tr><th style="${th}width:52px;">S.NO</th><th style="${th}text-align:left;">SUBJECT</th><th style="${th}">TOTAL</th><th style="${th}">OBTAINED</th><th style="${th}">GRADE</th></tr>
+          ${rows}
+          <tr><td colspan="2" style="${tc}">TOTAL</td><td style="${tc}text-align:center;">${d.possible}</td><td style="${tc}text-align:center;">${d.obtained}</td><td style="${tc}text-align:center;">${esc(d.grade)}</td></tr>
+        </table></div>
+        <div style="display:grid;grid-template-columns:repeat(${stats.length},1fr);gap:12px;">${stats.join('')}</div>
+        <div style="display:flex;border-radius:10px;overflow:hidden;border:1px solid ${p.line};background:#fff;"><div style="background:${p.acc};color:${p.accOn};font-weight:700;font-size:13px;letter-spacing:.08em;padding:11px 18px;-webkit-print-color-adjust:exact;print-color-adjust:exact;">REMARKS</div><div style="flex:1;padding:11px 16px;font-size:15px;font-weight:700;color:${dmcGradeColor(d.remarkGrade)};">${esc(d.remarkText)}</div></div>
+      </div>
+      <div style="padding:0 30px 22px;display:flex;flex-direction:column;gap:12px;">
+        <div style="display:flex;justify-content:space-between;align-items:flex-end;gap:30px;">
+          <div style="flex:1;border-top:2px solid ${p.ink};padding-top:6px;text-align:center;font-size:10px;font-weight:700;letter-spacing:.06em;">${tl}</div>
+          ${stamp(60, p.ink)}
+          <div style="flex:1;border-top:2px solid ${p.ink};padding-top:6px;text-align:center;font-size:10px;font-weight:700;letter-spacing:.06em;">${pl}</div>
+        </div>
+        ${verify}
+      </div>` + wrapClose;
+}
+
 function renderDMCCertificate(result) {
+  if (dmcDesign.layout === 'formal' || dmcDesign.layout === 'modern') {
+    try { return dmcRenderAlt(result, dmcDesign.layout); } catch (e) { console.error('DMC format failed, using the standard one', e); }
+  }
   const ev = dmcEvaluate(result);
   const totalObtained = ev.obtained, totalPossible = ev.possible;
   const percentage = totalPossible ? ev.pct.toFixed(1) : 0;
@@ -22983,7 +23142,7 @@ function sylpPrintFull() {
   setTimeout(cleanup, 3000);
 }
 
-console.log('SchoolMS build: 2026-10-12a-qpaper-fixes-dashboard-icons-fast-open-idcard-offline-lesson-plan-staff-leave-advance-xlsx-lazy-load-fit-any-paper-print-logo-tint-watermark-fixed-text-editable-footer-single-syllabus-no-flicker-editable-headings-school-logo-no-legacy-syllabus-monthwise-grid-money-round-single-table-reload-csp-blob-img-fix-daily-quiz-7am-latest-result-lightsync-staffreq-chat-voice-syllabus'); // bump this string on every deploy to verify (in browser console) which version is actually running
+console.log('SchoolMS build: 2026-10-13a-dmc-formats-qpaper-fixes-dashboard-icons-fast-open-idcard-offline-lesson-plan-staff-leave-advance-xlsx-lazy-load-fit-any-paper-print-logo-tint-watermark-fixed-text-editable-footer-single-syllabus-no-flicker-editable-headings-school-logo-no-legacy-syllabus-monthwise-grid-money-round-single-table-reload-csp-blob-img-fix-daily-quiz-7am-latest-result-lightsync-staffreq-chat-voice-syllabus'); // bump this string on every deploy to verify (in browser console) which version is actually running
 </script>
 </body>
 </html>
