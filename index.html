@@ -13691,6 +13691,7 @@ function lightenColor(hex, pct) {
 function tplDMC() {
   return `
     <h2>${dqt("📜 Detail Marks Certificate (DMC)", "📜 تفصیلی نمبر سرٹیفکیٹ (DMC)")}</h2>
+    <button class="btn-ghost" style="margin-bottom:10px;" onclick="var e=document.getElementById('dmc-verify-code'); if(e){e.scrollIntoView({behavior:'smooth',block:'center'}); setTimeout(function(){e.focus();},400);}">${dqt('🔍 Verify a Certificate (code check)', '🔍 سرٹیفکیٹ کی تصدیق (کوڈ چیک)')}</button>
 
     <div class="card">
       <h3 style="margin-top:0;">${dqt("School Configuration for DMC", "DMC کے لیے اسکول کی ترتیبات")}</h3>
@@ -13915,7 +13916,7 @@ function dmcSetCut(g, val) {
 // onto the in-memory settings used by the certificate generator.
 function applyDMCConfig(data) {
   if (!data) return;
-  if (data.subjects) dmcSubjects = data.subjects;
+  if (data.subjects && !dmcSubjectsTouched) dmcSubjects = data.subjects;
   if (data.school_name) dmcSchoolName = data.school_name;
   if (data.logo) dmcLogo = data.logo;
   if (data.tagline) dmcTagline = data.tagline;
@@ -13948,7 +13949,7 @@ function dmcResetSession() {
   dmcResults = []; dmcSubjects = []; dmcLogo = null; dmcSchoolName = 'SCHOOL NAME';
   dmcTagline = ''; dmcAcademicSession = ''; dmcQuote = ''; dmcBatchSection = '';
   dmcBatchDateOfIssue = todayISO(); dmcSelectedClass = ''; dmcLastUploadMsg = '';
-  dmcArchiveStatus = ''; dmcUploadBackup = null; dmcConfigLoaded = false;
+  dmcArchiveStatus = ''; dmcUploadBackup = null; dmcConfigLoaded = false; dmcSubjectsTouched = false; dmcNewSubjDraft = { name: '', total: '' };
   clearTimeout(_dmcUploadTimer); _dmcUploadTimer = null; dmcPreviewRefs = null; dmcEditFilter = ''; dmcEditLimit = 25;
   dmcDesign = JSON.parse(JSON.stringify(DMC_DESIGN_DEFAULT));
 }
@@ -13978,6 +13979,15 @@ async function loadDMCConfig() {
     return;
   }
   dmcConfigLoaded = true;
+  // If the phone holds a newer copy than the server (e.g. the last save never reached the server),
+  // keep the phone's copy and push it to the server again instead of resetting everything.
+  const cached = await dmcCachedConfig();
+  const ts = v => { const t = Date.parse(v || ''); return isNaN(t) ? 0 : t; };
+  if (cached && (!data || ts(cached.updated_at) > ts(data.updated_at))) {
+    applyDMCConfig(cached);
+    saveDMCConfig();
+    return;
+  }
   if (!data) return;
   applyDMCConfig(data);
   await idbPutRow('dmc_config', { ...data, id: dmcCacheId() });
@@ -14072,7 +14082,13 @@ async function _saveDMCConfigNow() {
     run: () => sb.from('dmc_config').upsert(payload),
     optimisticApply: () => {}
   });
-  if (res && res.error) console.error('DMC config save failed:', res.error.message);
+  if (res && res.error) {
+    console.error('DMC config save failed:', res.error.message);
+    if (navigator.onLine && !window.__dmcCfgErrShown) {
+      window.__dmcCfgErrShown = true;
+      alert('Certificate ki settings (naam, logo, subjects) server par save nahi ho saki. Abhi yeh sirf is phone mein save hain.\n\nWajah: ' + res.error.message);
+    }
+  }
 }
 
 // Re-renders the (already-generated) certificate preview after a design
@@ -14168,6 +14184,8 @@ function removeDMCBg() {
 }
 
 // ---- Subjects & Total Marks (manual add / edit / remove) ----
+let dmcNewSubjDraft = { name: '', total: '' }; // what is typed in the "new subject" boxes (survives any redraw)
+let dmcSubjectsTouched = false;                // true once subjects were added/edited in this session
 function renderDMCSubjects() {
   const box = document.getElementById('dmc-subjects-box');
   if (!box) return;
@@ -14179,14 +14197,19 @@ function renderDMCSubjects() {
       <input type="number" inputmode="numeric" min="1" style="width:80px;flex-shrink:0;" value="${esc(sub.total)}" placeholder="Total" onchange="updateDMCSubjectTotal(${j}, this.value)">
       <button class="btn-ghost" style="flex-shrink:0;" onclick="removeDMCSubject(${j})">✕</button>
     </div>`).join('');
+  // Same subjects as last time -> leave the boxes alone (a redraw would wipe what is being typed).
+  const sig = rows;
+  if (box.dataset.sig === sig && box.querySelector('#dmc-new-subj-name')) return;
+  box.dataset.sig = sig;
   box.innerHTML = (rows || '<p style="font-size:12px;opacity:.5;">Abhi koi subject nahi hai. Neeche se add karein ya Excel upload karein.</p>') + `
     <div style="display:flex;align-items:center;gap:8px;margin-top:12px;">
-      <input type="text" id="dmc-new-subj-name" autocomplete="off" style="flex:1;min-width:0;" placeholder="Subject name">
-      <input type="number" id="dmc-new-subj-total" inputmode="numeric" min="1" style="width:80px;flex-shrink:0;" placeholder="Total">
+      <input type="text" id="dmc-new-subj-name" autocomplete="off" style="flex:1;min-width:0;" placeholder="Subject name" value="${esc(dmcNewSubjDraft.name)}" oninput="dmcNewSubjDraft.name=this.value">
+      <input type="number" id="dmc-new-subj-total" inputmode="numeric" min="1" style="width:80px;flex-shrink:0;" placeholder="Total" value="${esc(dmcNewSubjDraft.total)}" oninput="dmcNewSubjDraft.total=this.value">
       <button class="btn-ghost" style="flex-shrink:0;" onclick="addDMCSubject()">+ Add</button>
     </div>`;
 }
 function dmcSubjectsChanged() {
+  dmcSubjectsTouched = true;
   saveDMCConfig();
   saveDMCUpload();
   renderDMCEditTable(true);
@@ -14203,6 +14226,7 @@ function addDMCSubject() {
   dmcSubjects.push({ name, total });
   dmcResults.forEach(r => { r.marks = r.marks || {}; if (r.marks[name] === undefined) r.marks[name] = ''; });
   nameEl.value = ''; totalEl.value = '';
+  dmcNewSubjDraft = { name: '', total: '' };
   renderDMCSubjects();
   dmcSubjectsChanged();
 }
@@ -14696,8 +14720,21 @@ function handleDMCExcelUpload(file) {
           subjectMap.set(col, parsed);
         });
       }
+      // Subjects already saved here stay (with their totals) until the user removes them with the cross.
+      // An Excel header with an explicit total ("Urdu/75") updates that subject's total; a plain header keeps the saved total.
+      const prevSubjects = dmcSubjects.map(s => ({ name: s.name, total: s.total }));
+      const keptOnly = [];
+      subjectMap.forEach(x => {
+        const prev = prevSubjects.find(p => String(p.name).trim().toLowerCase() === String(x.name).trim().toLowerCase());
+        if (prev) {
+          if (!x.assumed) prev.total = x.total;
+          x.name = prev.name; x.total = prev.total; x.assumed = false;
+        } else prevSubjects.push({ name: x.name, total: x.total });
+      });
+      prevSubjects.forEach(p => { if (!Array.from(subjectMap.values()).some(x => x.name === p.name)) keptOnly.push(p.name); });
       const assumedNames = Array.from(subjectMap.values()).filter(x => x.assumed).map(x => x.name);
-      dmcSubjects = Array.from(subjectMap.values()).map(x => ({ name: x.name, total: x.total }));
+      dmcSubjects = prevSubjects;
+      dmcSubjectsTouched = true;
       saveDMCConfig();
 
       let overCells = 0, badCells = 0, absCells = 0;
@@ -14716,6 +14753,7 @@ function handleDMCExcelUpload(file) {
           if (n > subj.total) { overCells++; n = subj.total; }
           r.marks[subj.name] = n;
         });
+        dmcSubjects.forEach(s => { if (r.marks[s.name] === undefined) r.marks[s.name] = ''; });
       });
       // Drop completely empty rows (blank lines at the end of an Excel sheet)
       const beforeCount = dmcResults.length;
@@ -14730,6 +14768,7 @@ function handleDMCExcelUpload(file) {
       const upNotes = [];
       if (skippedRows) upNotes.push(`${skippedRows} khali rows chhor di gayin.`);
       if (assumedNames.length) upNotes.push(`⚠️ In subjects ke total marks header mein nahi mile, 100 maane gaye: ${assumedNames.join(', ')} — neeche "Subjects & Total Marks" mein theek karein (ya header "Urdu/75" ki tarah likhein).`);
+      if (keptOnly.length) upNotes.push(`ℹ️ Pehle se saved subjects list mein rakhe gaye (Excel mein nahi the): ${keptOnly.join(', ')} — zaroorat na ho to \"Subjects & Total Marks\" mein ✕ dabayen.`);
       if (overCells) upNotes.push(`⚠️ ${overCells} marks subject ke total se zyada the, total ke barabar kar diye gaye.`);
       const blankCells = dmcResults.reduce((a, r) => a + Object.values(r.marks).filter(v => v === '').length, 0);
       if (badCells) upNotes.push(`⚠️ ${badCells} cells mein marks ki jagah text tha — unhe khali chhoda gaya hai. Absent ke liye "Abs" likhein.`);
@@ -14880,7 +14919,7 @@ function renderDMCCertificate(result) {
   // A student who fails (overall, or in a subject when that rule is on) gets the failing remark/colour.
   const remarkGrade = ev.pass ? grade : 'F';
   const remarkText = dmcRemarkFor(remarkGrade) + (ev.subjFail ? ' \u2014 Fail: ' + ev.failedSubjects.join(', ') : '');
-  const verifyLine = dmcDesign.showVerifyCode === false ? '' : `<div style="text-align:center;margin-top:8px;font-size:9px;letter-spacing:.05em;color:#000;opacity:.75;">Cert. No: ${esc(dmcCertNo(result))} &nbsp;&middot;&nbsp; Verification Code: <b>${esc(dmcVerifyCode(result))}</b></div>`;
+  const verifyLine = dmcDesign.showVerifyCode === false ? '' : `<div style="text-align:center;margin-top:8px;font-size:11px;font-weight:700;letter-spacing:.05em;color:#000;">Cert. No: ${esc(dmcCertNo(result))} &nbsp;&middot;&nbsp; Verification Code: <b style="font-size:13px;letter-spacing:.08em;">${esc(dmcVerifyCode(result))}</b></div>`;
 
   // Position in class — dense ranking: a 3-way tie at 1st is followed by
   // 2nd next (not 4th), so ties never skip position numbers.
@@ -15511,8 +15550,6 @@ async function printDMCResults(results) {
   if (!preW) { alert('Print window block ho gayi. Browser mein is site ke liye pop-ups allow karein, phir dobara try karein.'); return; }
   _dmcPrinting = true;
   try {
-    const overwrites = await dmcCountArchiveOverwrites(results);
-    if (overwrites && !confirm(`Archive me ${overwrites} students ka record pehle se hai (session "${dmcArchiveYear()}") aur marks alag hain.\n\nPrint karne se purana archive record replace ho jayega.\n\nJari rakhein?`)) { try { preW.close(); } catch (e) {} return; }
     let body = '';
     _dmcRankCache = { map: dmcRankMap(dmcResults), members: new Set(dmcResults) };
     try { results.forEach(r => { body += renderDMCCertificate(r); }); } finally { _dmcRankCache = null; }
