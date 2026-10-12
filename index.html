@@ -16951,7 +16951,7 @@ let pqSaveTimer = null, pqReady = false;
 function pqSnapshot(withImages) {
   const meta = Object.assign({}, paperMeta);
   if (!withImages || (typeof dmcLogo !== 'undefined' && meta.logo === dmcLogo)) meta.logo = null; // default logo is refilled automatically
-  return { v:1, t:Date.now(), uid:((typeof CURRENT_USER !== 'undefined' && CURRENT_USER) ? CURRENT_USER.id : null), paperMeta:meta, paperMcqMarksEach, paperMcqs, paperBlanks, paperTF,
+  return { v:1, t:Date.now(), uid:((typeof CURRENT_USER !== 'undefined' && CURRENT_USER) ? CURRENT_USER.id : pqDraftUid), paperMeta:meta, paperMcqMarksEach, paperMcqs, paperBlanks, paperTF,
            paperMatchA, paperMatchB, paperShort, paperLong, paperInstructions, paperSectionTitles, paperBreaks,
            paperEndImage: withImages ? paperEndImage : null, paperMode, kgBlocks: [], paperTables };
 }
@@ -17006,9 +17006,15 @@ function pqHasContent() {
     Object.values(paperInstructions).some(Boolean) || Object.values(paperSectionTitles).some(Boolean) ||
     Object.values(paperBreaks).some(arr => (arr||[]).some(Boolean)));
 }
-function pqStoreBackup() {
-  try { localStorage.setItem(PQ_BACKUP_KEY, JSON.stringify(pqSnapshot(true))); }
-  catch (e) { try { localStorage.setItem(PQ_BACKUP_KEY, JSON.stringify(pqSnapshot(false))); } catch (e2) {} }
+function pqStoreBackup() {   // 1 = saved fully, 2 = saved without images, 0 = could not save
+  try { localStorage.setItem(PQ_BACKUP_KEY, JSON.stringify(pqSnapshot(true))); return 1; }
+  catch (e) { try { localStorage.setItem(PQ_BACKUP_KEY, JSON.stringify(pqSnapshot(false))); return 2; } catch (e2) { return 0; } }
+}
+function pqBackupOk(ur, bk) {
+  if (bk === 1) return true;
+  return confirm(bk === 2
+    ? (ur ? '\u0645\u0646\u0638\u0648\u0631\u0634\u062f\u06c1 \u0628\u06cc\u06a9 \u0627\u067e \u0645\u06cc\u06ba \u062a\u0635\u0627\u0648\u06cc\u0631 \u0645\u062d\u0641\u0648\u0638 \u0646\u06c1\u06cc\u06ba \u06c1\u0648\u06ba \u06af\u06cc (\u0627\u0633\u0679\u0648\u0631\u06cc\u062c \u06a9\u0645 \u06c1\u06d2)\u06d4 \u062c\u0627\u0631\u06cc \u0631\u06a9\u06be\u06cc\u06ba\u061f' : 'Storage is low: the previous-paper backup will keep the text only (images will not be saved). Continue?')
+    : (ur ? '\u0628\u06cc\u06a9 \u0627\u067e \u0645\u062d\u0641\u0648\u0638 \u0646\u06c1\u06cc\u06ba \u06c1\u0648 \u0633\u06a9\u0627 (\u0627\u0633\u0679\u0648\u0631\u06cc\u062c \u0628\u06be\u0631 \u06af\u06cc\u0627)\u06d4 \u0645\u0648\u062c\u0648\u062f\u06c1 \u067e\u06cc\u067e\u0631 \u0636\u0627\u0626\u0639 \u06c1\u0648 \u062c\u0627\u0626\u06d2 \u06af\u0627\u06d4 \u062c\u0627\u0631\u06cc \u0631\u06a9\u06be\u06cc\u06ba\u061f' : 'Could not save a backup (storage is full). The current paper will be lost. Continue?'));
 }
 function pqHasBackup() { try { return !!localStorage.getItem(PQ_BACKUP_KEY); } catch (e) { return false; } }
 function pqResetPaper() {
@@ -17032,7 +17038,7 @@ function newPaper() {
   if (pqHasContent()) {
     if (!confirm(ur ? 'سب کچھ صاف کر کے نیا پرچہ شروع کریں؟ موجودہ پرچہ محفوظ رہے گا، آپ اسے واپس لا سکتے ہیں۔'
                     : 'Clear everything and start a new paper? The current paper is kept, so you can restore it.')) return;
-    pqStoreBackup();
+    if (!pqBackupOk(ur, pqStoreBackup())) return;
   }
   pqResetPaper();
   pqFlush();
@@ -17417,17 +17423,25 @@ function pqMeta(lines) { const m = {}, h = lines.slice(0, 14).join('\n'), cl = v
   if (tm) m.total_marks = tm; if (tl) m.time_allowed = tl; if (c) m.class_name = c; if (sb) m.subject = sb; if (ex) m.exam_name = ex; return m; }
 function pqParseStd(lines) {
   const o = { mcq: [], blank: [], tf: [], short: [], long: [], meta: pqMeta(lines) };
-  const secOf = l => /true\s*[\/&]?\s*(or)?\s*false/i.test(l) ? 'tf' : /multiple\s*choice|\bmcqs?\b|correct (answer|option)/i.test(l) ? 'mcq' : /blanks?\b/i.test(l) ? 'blank' : /short/i.test(l) ? 'short' : /long|detail/i.test(l) ? 'long' : null;
+  const secOf = l => /true\s*[\/&]?\s*(or)?\s*false/i.test(l) ? 'tf' : /multiple\s*choice|\bmcqs?\b|correct (answer|option)/i.test(l) ? 'mcq' : /blanks?\b/i.test(l) ? 'blank' : /short/i.test(l) ? 'short' : /long|detail/i.test(l) ? 'long' : /match|columns?\b/i.test(l) ? 'match' : null;
   const qRe = /^\s*(?:Q\.?\s*)?(\d{1,3})\s*[.):\-]\s*(.+)/i, mkRe = /\(\s*(\d+)\s*(?:marks?)?\s*\)\s*$/i, tfRe = /\(\s*true\s*\/?\s*false\s*\)/i;
   let sec = 'mcq', cur = null;
   const flush = () => { if (!cur) return; const raw = cur.t.replace(/\s+/g, ' ').trim(); cur = null; if (!raw) return;
+    if (sec === 'match') { o.matchSkipped = (o.matchSkipped || 0) + 1; return; }
     const parts = raw.split(/(?:^|\s)\(?[a-dA-D][.)]\s+/), mk = raw.match(mkRe), t = raw.replace(mkRe, '').trim();
     if (parts.length >= 3) { const op = parts.slice(1, 5).map(x => x.trim()); while (op.length < 4) op.push(''); o.mcq.push({ q: parts[0].trim(), o: op }); }
     else if (sec === 'tf' || tfRe.test(raw)) o.tf.push({ q: t.replace(tfRe, '').trim() });
     else if (sec === 'blank' || /_{2,}|…|\.{4,}/.test(raw)) o.blank.push({ q: t });
     else (sec === 'long' ? o.long : o.short).push({ q: t, m: mk ? mk[1] : '' }); };
-  lines.forEach(l => { const sc = secOf(l), q = l.match(qRe);
-    if (sc && l.length < 110 && !/_{3,}|\?\s*$/.test(l) && (/^\s*(section|part|q\.?\s*\d)/i.test(l) || !q)) { flush(); sec = sc; return; }
+  const noise = /^\s*(page\s*\d+(\s*(of|\/)\s*\d+)?|-?\s*\d{1,3}\s*-?|(best of luck|good luck|all the best)\b.*|[-*\s]*end of (the )?(paper|exam|test)\b.*|[-*\s]*end[-*\s]*)\s*$/i;
+  const wc = s => s.trim().split(/\s+/).length;
+  const qHead = r => /\bof the following\b/i.test(r) ? false : /\bfollowing\b|:\s*$/i.test(r) ? true
+    : /^(answer|attempt|fill|choose|tick|circle|encircle|select|true|multiple|short|long|mcqs?|objective|subjective|match)\b/i.test(r) ? wc(r) <= 10
+    : /^(define|describe|explain|write|what|why|how|state|discuss|differentiate|distinguish|list|name|give|draw|solve|find|calculate|compare|mention|identify)\b/i.test(r) ? false : wc(r) <= 5;
+  const hStart = /^\s*(multiple|true|fill|short|long|detail(?:ed)?|blanks?|objective|subjective|mcqs?|match|answer|attempt|choose)\b/i;
+  const isHead = (l, q) => !q ? (/^\s*(section|part|q\.?\s*\d)\b/i.test(l) || /:\s*$/.test(l) || (wc(l) <= 6 && (!cur || hStart.test(l)))) : (/^\s*q\.?\s*\d/i.test(l) && qHead(q[2]));
+  lines.forEach(l => { if (noise.test(l)) return; const sc = secOf(l), q = l.match(qRe);
+    if (sc && l.length < 110 && !/_{3,}|\?\s*$/.test(l) && isHead(l, q)) { flush(); sec = sc; return; }
     if (q) { flush(); cur = { t: q[2] }; } else if (cur) cur.t += ' ' + l; });
   flush(); return o; }
 function pqParseKg(lines) {
@@ -17448,7 +17462,7 @@ function pqApplyStd(lines) { const o = pqParseStd(lines), arr = (a, d) => a.leng
   paperTF = arr(o.tf.map((x, i) => ({ no: i + 1, q: x.q })), [{ no: 1, q: '' }]);
   paperShort = arr(o.short.map((x, i) => ({ no: i + 1, q: x.q, marks: x.m })), [{ no: 1, q: '', marks: '' }]);
   paperLong = arr(o.long.map((x, i) => ({ no: i + 1, q: x.q, marks: x.m })), [{ no: 1, q: '', marks: '' }]);
-  Object.assign(paperMeta, o.meta); return o.mcq.length + o.blank.length + o.tf.length + o.short.length + o.long.length; }
+  window.pqLastSkipped = o.matchSkipped || 0; Object.assign(paperMeta, o.meta); return o.mcq.length + o.blank.length + o.tf.length + o.short.length + o.long.length; }
 function pqApplyKg(lines) { kgBlocks = pqParseKg(lines); kgLibOpen = -1; kgLibT = null; kgCmpT = null; Object.assign(paperMeta, pqMeta(lines)); return kgBlocks.length; }
 async function pqImportFile(file) {
   if (!file) return;
@@ -17467,9 +17481,9 @@ async function pqImportFile(file) {
     } else lines = await pqOcr(await pqImgCanvas(file), 1, 1);
     lines = lines.map(pqNorm).filter(Boolean);
     if (!lines.length) { pqImpMsg('❌ No text found in the file', 4000); return; }
-    if (has) { if (kg) { await kgKvSet('backup', kgSnap()); kgHasBackup = true; } else pqStoreBackup(); }
+    if (has) { if (kg) { await kgKvSet('backup', kgSnap()); kgHasBackup = true; } else if (!pqBackupOk(ur, pqStoreBackup())) { pqImpMsg('Import cancelled', 3000); return; } }
     const n = kg ? pqApplyKg(lines) : pqApplyStd(lines);
-    pqFlush(); renderTab(); pqImpMsg('✅ ' + n + (kg ? ' question blocks' : ' questions') + ' imported — please check and edit', 5000);
+    pqFlush(); renderTab(); pqImpMsg('✅ ' + n + (kg ? ' question blocks' : ' questions') + (!kg && window.pqLastSkipped ? ' (Match section not imported - add it manually)' : '') + ' imported — please check and edit', 5000);
   } catch (e) { pqImpMsg('❌ ' + ((e && e.message) || e), 6000); } }
 const pqImportBtn = () => `<label class="btn-ghost" style="display:block;width:100%;margin-top:10px;text-align:center;cursor:pointer;box-sizing:border-box;">📄 ${LANG==='ur' ? 'PDF / تصویر سے پرچہ لائیں' : 'Import paper from PDF / photo'}<input type="file" accept="application/pdf,image/*" style="display:none;" onchange="pqImportFile(this.files[0]);this.value=''"></label>`;
 const KG_SETS = { cap:'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split(''), low:'abcdefghijklmnopqrstuvwxyz'.split(''),
@@ -22969,7 +22983,7 @@ function sylpPrintFull() {
   setTimeout(cleanup, 3000);
 }
 
-console.log('SchoolMS build: 2026-10-08g-dashboard-icons-fast-open-idcard-offline-lesson-plan-staff-leave-advance-xlsx-lazy-load-fit-any-paper-print-logo-tint-watermark-fixed-text-editable-footer-single-syllabus-no-flicker-editable-headings-school-logo-no-legacy-syllabus-monthwise-grid-money-round-single-table-reload-csp-blob-img-fix-daily-quiz-7am-latest-result-lightsync-staffreq-chat-voice-syllabus'); // bump this string on every deploy to verify (in browser console) which version is actually running
+console.log('SchoolMS build: 2026-10-12a-qpaper-fixes-dashboard-icons-fast-open-idcard-offline-lesson-plan-staff-leave-advance-xlsx-lazy-load-fit-any-paper-print-logo-tint-watermark-fixed-text-editable-footer-single-syllabus-no-flicker-editable-headings-school-logo-no-legacy-syllabus-monthwise-grid-money-round-single-table-reload-csp-blob-img-fix-daily-quiz-7am-latest-result-lightsync-staffreq-chat-voice-syllabus'); // bump this string on every deploy to verify (in browser console) which version is actually running
 </script>
 </body>
 </html>
