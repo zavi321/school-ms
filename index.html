@@ -3586,6 +3586,7 @@ async function logOut() {
   await sb.auth.signOut();
   try { localStorage.removeItem(LAST_UID_KEY); } catch (e) {}
   CURRENT_USER = null; CURRENT_PROFILE = null;
+  try { dmcResetSession(); } catch (e) {}
   DATA = { students:[], feePayments:[], teachers:[], salaryPayments:[], transactions:[], admissionRegister:[], teacherAttendance:[], holidays:[], classLogins:[], studentAttendance:[] };
   document.getElementById('app').classList.add('hidden');
   renderLogIn();
@@ -13666,8 +13667,15 @@ let dmcDesign = {
   showPosition: true,      // "Position in class" summary block
   showStamp: true,         // dashed "SCHOOL STAMP" circle in footer
   teacherLabel: 'CLASS TEACHER SIGNATURE',
-  principalLabel: 'PRINCIPAL SIGNATURE'
+  principalLabel: 'PRINCIPAL SIGNATURE',
+  passPercent: 40,                 // overall pass mark (%)
+  failIfAnySubjectFails: false,    // true = FAIL if any single subject is below passPercent
+  gradeCuts: { 'A+': 80, 'A': 70, 'B': 60, 'C': 50, 'D': 40 },   // minimum % for each grade; below D = F
+  positionLimit: 15,               // positions beyond this are not printed (0 = print every position)
+  positionPassedOnly: false,       // true = only students who passed are ranked
+  showVerifyCode: true             // print Cert. No. + Verification Code at the bottom of each certificate
 };
+const DMC_DESIGN_DEFAULT = JSON.parse(JSON.stringify(dmcDesign));
 
 // Lighten a #rrggbb hex color by `pct` (0-1) toward white — used to derive the
 // soft highlight shade (e.g. table's TOTAL row) from just the one accent color
@@ -13682,105 +13690,161 @@ function lightenColor(hex, pct) {
 
 function tplDMC() {
   return `
-    <h2>📜 Detail Marks Certificate (DMC)</h2>
+    <h2>${dqt("📜 Detail Marks Certificate (DMC)", "📜 تفصیلی نمبر سرٹیفکیٹ (DMC)")}</h2>
 
     <div class="card">
-      <h3 style="margin-top:0;">School Configuration for DMC</h3>
-      <p style="font-size:11px;opacity:.6;">Set your school logo and name for certificates. The certificate's background and accent (trim) colors are generated automatically to match your logo.</p>
+      <h3 style="margin-top:0;">${dqt("School Configuration for DMC", "DMC کے لیے اسکول کی ترتیبات")}</h3>
+      <p style="font-size:11px;opacity:.6;">${dqt("Set your school logo and name for certificates. The certificate's background and accent (trim) colors are generated automatically to match your logo.", "سرٹیفکیٹ کے لیے اسکول کا لوگو اور نام سیٹ کریں۔ سرٹیفکیٹ کا پس منظر اور کنارے کے رنگ آپ کے لوگو سے خود بخود بنتے ہیں۔")}</p>
       
       <label>
-        <span>School Logo (Upload Image)</span>
+        <span>${dqt("School Logo (Upload Image)", "اسکول کا لوگو (تصویر اپ لوڈ کریں)")}</span>
         <input type="file" id="dmc-logo-input" accept="image/*" onchange="handleDMCLogoUpload(this.files[0])">
       </label>
       <div id="dmc-logo-preview">${dmcLogoPreviewHtml()}</div>
-      <p style="font-size:11px;opacity:.6;margin-top:-4px;">The certificate's background and trim colors are generated automatically from your logo's own colors.</p>
+      <p style="font-size:11px;opacity:.6;margin-top:-4px;">${dqt("The certificate's background and trim colors are generated automatically from your logo's own colors.", "سرٹیفکیٹ کے پس منظر اور کنارے کے رنگ آپ کے لوگو کے اپنے رنگوں سے خود بخود بنتے ہیں۔")}</p>
 
       <label>
-        <span>School Name (for DMC)</span>
+        <span>${dqt("School Name (for DMC)", "اسکول کا نام (DMC کے لیے)")}</span>
         <input type="text" id="dmc-school-name" autocomplete="off" value="${esc(dmcSchoolName)}" placeholder="e.g., ISLAMIA SCHOOL & COLLEGE MARTUNG" onchange="dmcSchoolName=this.value; saveDMCConfig();">
       </label>
       <label>
-        <span>Tagline (optional)</span>
+        <span>${dqt("Tagline (optional)", "ٹیگ لائن (اختیاری)")}</span>
         <input type="text" id="dmc-tagline" autocomplete="off" value="${esc(dmcTagline)}" placeholder="e.g., Nurturing Knowledge, Building Character" onchange="dmcTagline=this.value; saveDMCConfig();">
       </label>
       <label>
-        <span>Academic Session (optional)</span>
+        <span>${dqt("Academic Session (optional)", "تعلیمی سیشن (اختیاری)")}</span>
         <input type="text" id="dmc-session" autocomplete="off" value="${esc(dmcAcademicSession)}" placeholder="e.g., 2025-2026" onchange="dmcAcademicSession=this.value; saveDMCConfig();">
       </label>
       <label style="margin-bottom:0;">
-        <span>Footer Quote (optional)</span>
+        <span>${dqt("Footer Quote (optional — Character Certificate par dikhta hai)", "فُوٹر اقتباس (اختیاری — کریکٹر سرٹیفکیٹ پر نظر آتا ہے)")}</span>
         <input type="text" id="dmc-quote" autocomplete="off" value="${esc(dmcQuote)}" placeholder="e.g., Education is the key to a bright future." onchange="dmcQuote=this.value; saveDMCConfig();">
       </label>
     </div>
 
     <div class="card">
-      <h3 style="margin-top:0;">Class</h3>
-      <p style="font-size:12px;opacity:.7;">Select which class this batch of certificates is for. This is used for every certificate in this upload — unless the Excel file itself has its own "Class" column, in which case that overrides it per row.</p>
+      <h3 style="margin-top:0;">${dqt("Class", "کلاس")}</h3>
+      <p style="font-size:12px;opacity:.7;">${dqt("Select the class this batch is for. It applies to every certificate in this upload — unless the Excel file has its own \"Class\" column, which then overrides it per row.", "منتخب کریں کہ یہ بیچ کس کلاس کا ہے۔ یہ اس اپ لوڈ کے ہر سرٹیفکیٹ پر لاگو ہوتا ہے — سوائے اس کے کہ Excel میں اپنا \"Class\" کالم ہو، تب وہ ہر قطار کے لیے اس کی جگہ لے لیتا ہے۔")}</p>
       <div style="margin-bottom:0;">
-        <label for="dmc-class" style="display:block;font-size:12px;font-weight:500;opacity:.7;margin-bottom:4px;">Class</label>
-        <input type="text" id="dmc-class" autocomplete="off" value="${esc(dmcSelectedClass)}" placeholder="e.g., 5th" oninput="selectDMCClass(this.value)">
+        <label for="dmc-class" style="display:block;font-size:12px;font-weight:500;opacity:.7;margin-bottom:4px;">${dqt("Class", "کلاس")}</label>
+        <input type="text" id="dmc-class" autocomplete="off" value="${esc(dmcSelectedClass)}" placeholder="e.g., 5th" oninput="selectDMCClass(this.value)" list="dmc-class-list">
+        <datalist id="dmc-class-list">${CLASS_OPTIONS.map(c => `<option value="${esc(c)}">`).join('')}</datalist>
       </div>
     </div>
 
     <div class="card">
-      <h3 style="margin-top:0;">Upload Result List (Excel)</h3>
-      <p style="font-size:12px;opacity:.7;">Upload an Excel file with columns: Student Name, Father Name, Roll No, Section, Subject1 Marks, Subject2 Marks, etc. (A "Class" column is optional if you've selected a class above.)</p>
+      <h3 style="margin-top:0;">${dqt("Upload Result List (Excel)", "رزلٹ لسٹ اپ لوڈ کریں (Excel)")}</h3>
+      <p style="font-size:12px;opacity:.7;">${dqt("Upload an Excel file with the columns: Student Name, Father Name, Roll No, Section, and one column per subject (for example \"Urdu/75\"). The \"Class\" column is optional if you selected a class above. Write Abs for an absent student.", "ایسی Excel فائل اپ لوڈ کریں جس میں یہ کالم ہوں: Student Name، Father Name، Roll No، Section، اور ہر مضمون کا ایک کالم (مثلاً \"Urdu/75\")۔ اوپر کلاس منتخب ہو تو \"Class\" کالم ضروری نہیں۔ غیر حاضر طالب علم کے لیے Abs لکھیں۔")}</p>
       <label style="margin-bottom:0;">
-        <span>Select Excel File</span>
-        <input type="file" id="dmc-file-input" accept=".xlsx,.xls,.csv" onchange="handleDMCExcelUpload(this.files[0])">
+        <span>${dqt("Select Excel File", "Excel فائل منتخب کریں")}</span>
+        <input type="file" id="dmc-file-input" accept=".xlsx,.xls,.csv" onchange="handleDMCExcelUpload(this.files[0]); this.value='';">
       </label>
       <div id="dmc-upload-msg" style="margin-top:8px;font-size:12px;">${dmcLastUploadMsg}</div>
+      <p style="font-size:12px;opacity:.7;margin:12px 0 6px;">${dqt('No Excel? Start from the students already in this app, from the Marks Sheet tab, or reload a saved class from the archive.', 'Excel نہیں ہے؟ ایپ میں موجود طلبہ، مارکس شیٹ ٹیب یا آرکائیو میں محفوظ کلاس سے شروع کریں۔')}</p>
+      <div style="display:flex;flex-wrap:wrap;gap:6px;">
+        <button class="btn-ghost" onclick="openDMCImportStudents()">${dqt('📥 From Students list', '📥 طلبہ کی فہرست سے')}</button>
+        <button class="btn-ghost" onclick="openDMCImportMarksSheet()">${dqt('📋 From Marks Sheet', '📋 مارکس شیٹ سے')}</button>
+        <button class="btn-ghost" onclick="openDMCImportArchive()">${dqt('🗂 From Archive', '🗂 آرکائیو سے')}</button>
+      </div>
     </div>
 
     <div class="card">
-      <h3 style="margin-top:0;">Section & Date of Issue</h3>
-      <p style="font-size:12px;opacity:.7;">These apply to every certificate in this batch.</p>
+      <h3 style="margin-top:0;">${dqt("Section & Date of Issue", "سیکشن اور تاریخِ اجراء")}</h3>
+      <p style="font-size:12px;opacity:.7;">${dqt("These apply to every certificate in this batch.", "یہ اس بیچ کے ہر سرٹیفکیٹ پر لاگو ہوتے ہیں۔")}</p>
       <label>
-        <span>Section</span>
-        <input type="text" id="dmc-batch-section" autocomplete="off" value="${esc(dmcBatchSection)}" placeholder="e.g., A" onchange="dmcBatchSection=this.value;">
+        <span>${dqt("Section", "سیکشن")}</span>
+        <input type="text" id="dmc-batch-section" autocomplete="off" value="${esc(dmcBatchSection)}" placeholder="e.g., A" onchange="dmcBatchSection=this.value; saveDMCUpload();">
       </label>
       <label style="margin-bottom:0;">
-        <span>Date of Issue</span>
-        <input type="date" id="dmc-batch-date" value="${esc(dmcBatchDateOfIssue || todayISO())}" onchange="dmcBatchDateOfIssue=this.value;">
+        <span>${dqt("Date of Issue", "تاریخِ اجراء")}</span>
+        <input type="date" id="dmc-batch-date" value="${esc(dmcBatchDateOfIssue || todayISO())}" onchange="dmcBatchDateOfIssue=this.value; saveDMCUpload();">
       </label>
     </div>
 
     <div class="card">
-      <h3 style="margin-top:0;">Certificate Background <span style="font-size:12px;font-weight:400;opacity:.6;">(optional)</span></h3>
+      <h3 style="margin-top:0;">${dqt("Certificate Background", "سرٹیفکیٹ کا پس منظر")} <span style="font-size:12px;font-weight:400;opacity:.6;">${dqt("(optional)", "(اختیاری)")}</span></h3>
       <div id="dmc-bg-box">${dmcBgBoxHtml()}</div>
     </div>
 
     <div class="card">
-      <h3 style="margin-top:0;">Subjects & Total Marks</h3>
-      <p style="font-size:12px;opacity:.7;">Har subject ke saath uske total marks likhein. Naya subject yahin se add kar sakte hain, aur Excel se aaye subjects ke total marks bhi badal sakte hain.</p>
+      <h3 style="margin-top:0;">${dqt('Result & Grade Rules', 'نتیجہ اور گریڈ کے اصول')}</h3>
+      <p style="font-size:12px;opacity:.7;">${dqt('These rules apply to every certificate of this school. The Marks Sheet tab grades separately.', 'یہ اصول اس اسکول کے ہر سرٹیفکیٹ پر لاگو ہوتے ہیں۔ مارکس شیٹ ٹیب کی گریڈنگ الگ رہتی ہے۔')}</p>
+      <label>
+        <span>${dqt('Pass percentage (%)', 'پاس فیصد (%)')}</span>
+        <input type="number" id="dmc-pass-pct" inputmode="decimal" min="1" max="100" value="${esc(dmcPassPercent())}" onchange="dmcSetRule('passPercent', this.value)">
+      </label>
+      <label style="display:flex;align-items:center;gap:8px;">
+        <input type="checkbox" id="dmc-fail-any" style="width:auto;flex-shrink:0;" ${dmcDesign.failIfAnySubjectFails ? 'checked' : ''} onchange="dmcSetRule('failIfAnySubjectFails', this.checked)">
+        <span>${dqt('FAIL if any single subject is below the pass percentage', 'کسی ایک مضمون میں بھی پاس فیصد سے کم ہو تو نتیجہ FAIL')}</span>
+      </label>
+      <div style="font-size:12px;opacity:.7;margin:8px 0 4px;">${dqt('Minimum % for each grade (below D = F)', 'ہر گریڈ کے لیے کم از کم فیصد (D سے نیچے = F)')}</div>
+      <div style="display:flex;gap:6px;">${['A+', 'A', 'B', 'C', 'D'].map(g => `
+        <label style="flex:1;min-width:0;"><span>${g}</span>
+          <input type="number" id="dmc-cut-${g.replace('+', 'p')}" inputmode="decimal" min="1" max="100" value="${esc(dmcGradeCuts()[g])}" onchange="dmcSetCut('${g}', this.value)">
+        </label>`).join('')}</div>
+      <label>
+        <span>${dqt('Print positions only up to (0 = everyone)', 'پوزیشن صرف پہلے N تک چھاپیں (0 = سب)')}</span>
+        <input type="number" id="dmc-pos-limit" inputmode="numeric" min="0" value="${esc(Number(dmcDesign.positionLimit) || 0)}" onchange="dmcSetRule('positionLimit', this.value)">
+      </label>
+      <label style="display:flex;align-items:center;gap:8px;">
+        <input type="checkbox" id="dmc-pos-passed" style="width:auto;flex-shrink:0;" ${dmcDesign.positionPassedOnly ? 'checked' : ''} onchange="dmcSetRule('positionPassedOnly', this.checked)">
+        <span>${dqt('Give positions only to students who passed', 'پوزیشن صرف پاس طلبہ کو دیں')}</span>
+      </label>
+      <label style="display:flex;align-items:center;gap:8px;margin-bottom:0;">
+        <input type="checkbox" id="dmc-show-verify" style="width:auto;flex-shrink:0;" ${dmcDesign.showVerifyCode !== false ? 'checked' : ''} onchange="dmcSetRule('showVerifyCode', this.checked)">
+        <span>${dqt('Print Cert. No. and Verification Code on the certificate', 'سرٹیفکیٹ پر سیریل نمبر اور تصدیقی کوڈ چھاپیں')}</span>
+      </label>
+    </div>
+
+    <div class="card">
+      <h3 style="margin-top:0;">${dqt("Subjects & Total Marks", "مضامین اور کل نمبر")}</h3>
+      <p style="font-size:12px;opacity:.7;">${dqt("Enter the total marks next to each subject. You can add a new subject here, and change the totals of subjects that came from Excel.", "ہر مضمون کے ساتھ اس کے کل نمبر لکھیں۔ نیا مضمون یہیں سے شامل کر سکتے ہیں اور Excel سے آئے مضامین کے کل نمبر بھی بدل سکتے ہیں۔")}</p>
       <div id="dmc-subjects-box"></div>
     </div>
 
     <div class="card">
-      <h3 style="margin-top:0;">Review & Edit Students</h3>
-      <p style="font-size:12px;opacity:.7;">Print se pehle har student ka Name, Roll No. ya marks theek karein. Jo Excel mein nahi tha ya ghalat aaya, yahin sahi ho jayega.</p>
+      <h3 style="margin-top:0;">${dqt("Review & Edit Students", "طلبہ کی جانچ اور ترمیم")}</h3>
+      <p style="font-size:12px;opacity:.7;">${dqt("Before printing, check every student's name, roll no., class and marks. Anything missing or wrong from Excel can be fixed right here. Tick students to print only some of them, or use 🖨 on a row to print one certificate.", "پرنٹ سے پہلے ہر طالب علم کا نام، رول نمبر، کلاس اور نمبر چیک کریں۔ Excel میں جو نہ تھا یا غلط آیا، وہ یہیں درست ہو جائے گا۔ کچھ طلبہ کو پرنٹ کرنے کے لیے انہیں منتخب کریں، یا کسی ایک کے لیے اس کی قطار میں 🖨 دبائیں۔")}</p>
+      <input type="search" id="dmc-edit-search" autocomplete="off" style="margin-bottom:8px;" value="${esc(dmcEditFilter)}" placeholder="${dqt('Search name / roll no. / class', 'نام / رول نمبر / کلاس تلاش کریں')}" oninput="dmcSetEditFilter(this.value)">
       <div id="dmc-edit-table"></div>
     </div>
 
     <div class="card">
-      <h3 style="margin-top:0;">Preview & Generate DMC</h3>
-      <div id="dmc-preview"></div>
-      <div style="margin-top:12px;display:flex;gap:6px;">
-        <button class="btn-ghost" onclick="generateDMCPreview()">Preview Certificates</button>
-        <button class="btn-ghost" onclick="printAllDMC()">Print All</button>
+      <h3 style="margin-top:0;">${dqt('Verify a Certificate', 'سرٹیفکیٹ کی تصدیق')}</h3>
+      <p style="font-size:12px;opacity:.7;">${dqt("Type the Verification Code printed at the bottom of a certificate. It is matched against this school's archive, so an altered or never-issued certificate will not match.", 'سرٹیفکیٹ کے نیچے چھپا تصدیقی کوڈ لکھیں۔ یہ اس اسکول کے آرکائیو سے ملایا جاتا ہے، اس لیے تبدیل شدہ یا جاری نہ کیا گیا سرٹیفکیٹ میچ نہیں ہوگا۔')}</p>
+      <div style="display:flex;gap:6px;">
+        <input type="text" id="dmc-verify-code" autocomplete="off" maxlength="9" style="flex:1;min-width:0;text-transform:uppercase;" placeholder="7K2F-9Q4M">
+        <button class="btn-ghost" onclick="verifyDMCCode()">${dqt('Verify', 'تصدیق کریں')}</button>
       </div>
+      <div id="dmc-verify-result" style="margin-top:8px;"></div>
+    </div>
+
+    <div class="card">
+      <h3 style="margin-top:0;">${dqt("Preview & Generate DMC", "پری ویو اور DMC بنائیں")}</h3>
+      <div id="dmc-preview"></div>
+      <div style="margin-top:12px;display:flex;flex-wrap:wrap;gap:6px;">
+        <button class="btn-ghost" onclick="generateDMCPreview()">${dqt('Preview Certificates', 'سرٹیفکیٹ پری ویو')}</button>
+        <button class="btn-ghost" id="dmc-print-sel" onclick="printSelectedDMC()">${dqt('Print Selected', 'منتخب پرنٹ کریں')}</button>
+        <button class="btn-ghost" onclick="printAllDMC()">${dqt('Print All', 'سب پرنٹ کریں')}</button>
+      </div>
+      <div id="dmc-archive-status" style="margin-top:8px;font-size:12px;">${dmcArchiveStatus}</div>
     </div>
   `;
 }
 
 function selectDMCClass(cls) {
   dmcSelectedClass = cls;
+  setTimeout(saveDMCUpload, 0);
   // If results are already loaded and their rows have no per-row class of
   // their own (i.e. the Excel file didn't specify one), keep them in sync.
   dmcResults.forEach(r => { if (!r.classFromExcel) r.class = cls; });
 }
 
 let dmcSubjects = []; // {name: 'Urdu', total: 100}
+let dmcArchiveStatus = '';   // last archive-save result shown under the Print button
+let dmcUploadBackup = null;  // copy of the previous list, so a re-upload can be undone
+let dmcEditFilter = '';      // search text in the Review & Edit list
+let dmcEditLimit = 25;       // how many student rows the edit list draws at once
+let dmcPreviewRefs = null;   // students shown in the preview (null = first 3 / the selected ones)
 let dmcConfigLoaded = false;
 
 function dmcLogoPreviewHtml() {
@@ -13805,6 +13869,46 @@ function applyDMCConfigToFields() {
   setIfNotFocused('dmc-quote', dmcQuote);
   const logoBox = document.getElementById('dmc-logo-preview');
   if (logoBox) logoBox.innerHTML = dmcLogoPreviewHtml();
+  dmcSyncRuleFields();
+}
+
+// ---- Result & Grade Rules (saved with the school's DMC config) ----
+function dmcSyncRuleFields() {
+  const setV = (id, v) => { const el = document.getElementById(id); if (el && document.activeElement !== el) el.value = v; };
+  const setC = (id, v) => { const el = document.getElementById(id); if (el) el.checked = !!v; };
+  setV('dmc-pass-pct', dmcPassPercent());
+  setC('dmc-fail-any', dmcDesign.failIfAnySubjectFails);
+  const cuts = dmcGradeCuts();
+  ['A+', 'A', 'B', 'C', 'D'].forEach(g => setV('dmc-cut-' + g.replace('+', 'p'), cuts[g]));
+  setV('dmc-pos-limit', Number(dmcDesign.positionLimit) || 0);
+  setC('dmc-pos-passed', dmcDesign.positionPassedOnly);
+  setC('dmc-show-verify', dmcDesign.showVerifyCode !== false);
+}
+function dmcRulesChanged() {
+  saveDMCConfig();
+  dmcRefreshAutoPositions();
+  renderDMCPreviewIfOpen();
+}
+function dmcSetRule(key, val) {
+  if (key === 'passPercent') {
+    const n = Number(val);
+    if (!(n > 0 && n <= 100)) { alert('Pass percentage 1 se 100 ke darmiyan honi chahiye'); dmcSyncRuleFields(); return; }
+    dmcDesign.passPercent = n;
+  } else if (key === 'positionLimit') {
+    dmcDesign.positionLimit = Math.max(0, Math.floor(Number(val) || 0));
+  } else if (key === 'failIfAnySubjectFails' || key === 'positionPassedOnly' || key === 'showVerifyCode') {
+    dmcDesign[key] = !!val;
+  } else return;
+  dmcRulesChanged();
+}
+function dmcSetCut(g, val) {
+  const n = Number(val);
+  const cuts = { ...dmcGradeCuts(), [g]: n };
+  const order = ['A+', 'A', 'B', 'C', 'D'];
+  const ok = isFinite(n) && n > 0 && n <= 100 && order.every((k, i) => i === 0 || cuts[order[i - 1]] > cuts[k]);
+  if (!ok) { alert('Grade ke percentages A+ se D tak ghatte hue (A+ sab se zyada) aur 1 se 100 ke darmiyan hone chahiye'); dmcSyncRuleFields(); return; }
+  dmcDesign.gradeCuts = cuts;
+  dmcRulesChanged();
 }
 
 // Applies a loaded DMC config object (from Supabase or the offline cache)
@@ -13823,15 +13927,46 @@ function applyDMCConfig(data) {
   if (data.design) dmcDesign = { ...dmcDesign, ...data.design };
 }
 
+// Per-account cache key — the DMC caches used to share one fixed id ('main'), so a
+// second school logging in on the same phone could see the first school's logo,
+// name and uploaded results while offline.
+function dmcCacheId() { return 'main:' + (CURRENT_USER && CURRENT_USER.id); }
+async function dmcCachedConfig() {
+  if (!CURRENT_USER) return null;
+  const rows = await idbGetAll('dmc_config');
+  return rows.find(r => r.id === dmcCacheId())
+      || rows.find(r => r.id === 'main' && r.owner_id === CURRENT_USER.id)   // older cache, only if it is this account's
+      || null;
+}
+async function dmcHasPendingConfigSync() {
+  try { return (await idbGetAll('sync_queue')).some(x => x.table === 'dmc_config' && !x.failed); }
+  catch (e) { return false; }
+}
+// Resets every DMC value held in memory — called on logout so the next account
+// never sees (or archives) the previous school's data.
+function dmcResetSession() {
+  dmcResults = []; dmcSubjects = []; dmcLogo = null; dmcSchoolName = 'SCHOOL NAME';
+  dmcTagline = ''; dmcAcademicSession = ''; dmcQuote = ''; dmcBatchSection = '';
+  dmcBatchDateOfIssue = todayISO(); dmcSelectedClass = ''; dmcLastUploadMsg = '';
+  dmcArchiveStatus = ''; dmcUploadBackup = null; dmcConfigLoaded = false;
+  clearTimeout(_dmcUploadTimer); _dmcUploadTimer = null; dmcPreviewRefs = null; dmcEditFilter = ''; dmcEditLimit = 25;
+  dmcDesign = JSON.parse(JSON.stringify(DMC_DESIGN_DEFAULT));
+}
+
 async function loadDMCConfig() {
   if (dmcConfigLoaded) return;
   // No signal at all — skip straight to the local cache so the Certificates
   // tab still comes up with the school's logo/name/subjects, and certificates
   // can be generated and printed with zero internet.
   if (!navigator.onLine) {
-    const cached = await idbGetAll('dmc_config');
-    applyDMCConfig(cached[0]);
+    applyDMCConfig(await dmcCachedConfig());
     return; // not marked "loaded" — will fetch properly once back online
+  }
+  // Settings changed offline that haven't reached the server yet must win over
+  // the (older) server copy — otherwise fetching here would silently undo them.
+  if (await dmcHasPendingConfigSync()) {
+    applyDMCConfig(await dmcCachedConfig());
+    return; // not marked "loaded" — fetched properly once the queue has synced
   }
   const { data, error } = await withTimeout(
     sb.from('dmc_config').select('*').eq('owner_id', CURRENT_USER.id).maybeSingle()
@@ -13839,46 +13974,83 @@ async function loadDMCConfig() {
   if (error) {
     // Network hiccup — fall back to whatever was cached from the last
     // successful load instead of leaving the certificate blank.
-    const cached = await idbGetAll('dmc_config');
-    applyDMCConfig(cached[0]);
+    applyDMCConfig(await dmcCachedConfig());
     return;
   }
   dmcConfigLoaded = true;
   if (!data) return;
   applyDMCConfig(data);
-  await idbPutRow('dmc_config', { id: 'main', ...data });
+  await idbPutRow('dmc_config', { ...data, id: dmcCacheId() });
 }
 
 // Snapshots the currently-uploaded DMC batch (student rows + marks + which
 // class/section/date it's for) to IndexedDB, so it survives a page reload or
 // opening the app with no signal — mirrors the same on-demand cache pattern
 // as dmc_config, just for the upload itself instead of the school's settings.
-async function saveDMCUpload() {
+// Stored per account (id 'main:<user id>'), never shared between logins.
+async function _saveDMCUploadNow() {
+  if (!CURRENT_USER) return;
   await idbPutRow('dmc_upload', {
-    id: 'main', results: dmcResults, selectedClass: dmcSelectedClass,
+    id: dmcCacheId(), owner_id: CURRENT_USER.id, results: dmcResults, selectedClass: dmcSelectedClass,
     section: dmcBatchSection, dateOfIssue: dmcBatchDateOfIssue
   });
 }
+// Typing in the edit list calls this on every keystroke, and each save writes the WHOLE
+// list to IndexedDB — so saves are batched: one write ~0.4s after the last change, and an
+// immediate write when the page is hidden/closed so nothing typed is lost.
+let _dmcUploadTimer = null;
+function saveDMCUpload() {
+  clearTimeout(_dmcUploadTimer);
+  _dmcUploadTimer = setTimeout(() => { _dmcUploadTimer = null; _saveDMCUploadNow().catch(e => console.error('DMC upload save failed:', e)); }, 400);
+}
+function flushDMCUpload() {
+  if (!_dmcUploadTimer) return Promise.resolve();
+  clearTimeout(_dmcUploadTimer); _dmcUploadTimer = null;
+  return _saveDMCUploadNow().catch(() => {});
+}
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flushDMCUpload(); });
+window.addEventListener('pagehide', () => { flushDMCUpload(); });
+
 // Restores the last-cached DMC batch when the tab opens with nothing in
 // memory yet (fresh reload) — so offline (or a slow/flaky connection) still
 // shows the previously uploaded results instead of an empty upload screen.
 async function restoreDMCUploadIfEmpty() {
-  if (dmcResults.length) return;
+  if (dmcResults.length || !CURRENT_USER) return;
   const cached = await idbGetAll('dmc_upload');
-  const row = cached[0];
+  const row = cached.find(r => r.id === dmcCacheId());   // older un-owned 'main' rows are ignored on purpose
   if (!row || !row.results || !row.results.length) return;
   dmcResults = row.results;
   dmcSelectedClass = row.selectedClass || '';
   dmcBatchSection = row.section || '';
   dmcBatchDateOfIssue = row.dateOfIssue || '';
   renderDMCEditTable();
-  const clsSel = document.getElementById('dmc-class-select');
-  if (clsSel) clsSel.value = dmcSelectedClass;
+  const setV = (id, v) => { const el = document.getElementById(id); if (el && document.activeElement !== el) el.value = v; };
+  setV('dmc-class', dmcSelectedClass);
+  setV('dmc-batch-section', dmcBatchSection);
+  setV('dmc-batch-date', dmcBatchDateOfIssue || todayISO());
   const msgEl = document.getElementById('dmc-upload-msg');
   if (msgEl) msgEl.innerHTML = `✓ Loaded ${dmcResults.length} students (from last saved upload)`;
 }
 
-async function saveDMCConfig() {
+let _dmcCfgTimer = null, _dmcCfgWaiters = [];
+function saveDMCConfig() {
+  return new Promise(res => {
+    _dmcCfgWaiters.push(res);
+    clearTimeout(_dmcCfgTimer);
+    _dmcCfgTimer = setTimeout(async () => {
+      _dmcCfgTimer = null;
+      const w = _dmcCfgWaiters; _dmcCfgWaiters = [];
+      try { await _saveDMCConfigNow(); } catch (e) { console.error('DMC config save failed:', e); }
+      w.forEach(f => f());
+    }, 500);
+  });
+}
+function _flushDMCConfig() { if (_dmcCfgTimer) { clearTimeout(_dmcCfgTimer); _dmcCfgTimer = null; _saveDMCConfigNow(); } }
+window.addEventListener('pagehide', _flushDMCConfig);
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') _flushDMCConfig(); });
+
+async function _saveDMCConfigNow() {
+  if (!CURRENT_USER) return;
   const payload = {
     owner_id: CURRENT_USER.id, subjects: dmcSubjects, school_name: dmcSchoolName, logo: dmcLogo,
     tagline: dmcTagline, academic_session: dmcAcademicSession, quote: dmcQuote, design: dmcDesign,
@@ -13886,16 +14058,34 @@ async function saveDMCConfig() {
   };
   // Cache locally right away — so certificates use the latest settings even
   // if the device goes offline before this reaches the server.
-  await idbPutRow('dmc_config', { id: 'main', ...payload });
-  const { error } = await sb.from('dmc_config').upsert(payload);
-  if (error && !isNetworkError(error)) console.error('DMC config save failed:', error.message);
+  await idbPutRow('dmc_config', { ...payload, id: dmcCacheId() });
+  // Only the newest copy matters, so drop older not-yet-synced copies first
+  // (each one carries the whole logo image).
+  try {
+    const q = await idbGetAll('sync_queue');
+    for (const it of q) if (it.table === 'dmc_config' && !it.failed) await idbQueueRemove(it.qid);
+  } catch (e) {}
+  // Goes through the same queue as every other offline save: if the request
+  // can't reach the server it is kept and replayed when the signal returns.
+  const res = await offlineWrite({
+    table: 'dmc_config', action: 'upsert', payload,
+    run: () => sb.from('dmc_config').upsert(payload),
+    optimisticApply: () => {}
+  });
+  if (res && res.error) console.error('DMC config save failed:', res.error.message);
 }
 
 // Re-renders the (already-generated) certificate preview after a design
 // tweak, so a school editing colors/labels sees the result immediately
 // instead of having to click "Preview Certificates" again.
 function renderDMCPreviewIfOpen() {
-  if (dmcResults.length > 0 && document.getElementById('dmc-preview')) generateDMCPreview();
+  if (!dmcResults.length || !document.getElementById('dmc-preview')) return;
+  if (dmcPreviewRefs) {                       // a single-student preview stays on that student
+    const live = dmcPreviewRefs.filter(r => dmcResults.includes(r));
+    if (live.length) { dmcShowPreview(live, qt('Showing 1 certificate', '1 سرٹیفکیٹ دکھایا جا رہا ہے')); return; }
+    dmcPreviewRefs = null;
+  }
+  generateDMCPreview();
 }
 
 // ---- Certificate Background (optional picture + colour, all editable) ----
@@ -13999,7 +14189,7 @@ function renderDMCSubjects() {
 function dmcSubjectsChanged() {
   saveDMCConfig();
   saveDMCUpload();
-  renderDMCEditTable();
+  renderDMCEditTable(true);
   renderDMCPreviewIfOpen();
 }
 function addDMCSubject() {
@@ -14011,7 +14201,7 @@ function addDMCSubject() {
   if (!total || total <= 0) { alert('Is subject ke total marks likhein'); return; }
   if (dmcSubjects.some(x => x.name.toLowerCase() === name.toLowerCase())) { alert('Yeh subject pehle se maujood hai'); return; }
   dmcSubjects.push({ name, total });
-  dmcResults.forEach(r => { r.marks = r.marks || {}; if (r.marks[name] === undefined) r.marks[name] = 0; });
+  dmcResults.forEach(r => { r.marks = r.marks || {}; if (r.marks[name] === undefined) r.marks[name] = ''; });
   nameEl.value = ''; totalEl.value = '';
   renderDMCSubjects();
   dmcSubjectsChanged();
@@ -14020,6 +14210,7 @@ function updateDMCSubjectTotal(j, v) {
   const total = Number(v);
   if (!total || total <= 0) { alert('Total marks 0 se zyada hone chahiye'); renderDMCSubjects(); return; }
   dmcSubjects[j].total = total;
+  dmcResults.forEach(r => { if (r.marks && Number(r.marks[dmcSubjects[j].name]) > total) r.marks[dmcSubjects[j].name] = total; });
   dmcSubjectsChanged();
 }
 function renameDMCSubject(j, v) {
@@ -14039,87 +14230,429 @@ function removeDMCSubject(j) {
   renderDMCSubjects();
   dmcSubjectsChanged();
 }
-function setDMCMark(i, j, v) {
+function setDMCMark(i, j, v, el) {
   const r = dmcResults[i];
+  if (!r) return;
   r.marks = r.marks || {};
-  r.marks[dmcSubjects[j].name] = Number(v) || 0;
+  const name = dmcSubjects[j].name;
+  const t = String(v == null ? '' : v).trim();
+  if (el) el.style.borderColor = '';
+  if (t === '') {
+    r.marks[name] = '';                                   // not entered (is NOT the same as absent)
+  } else if (/^(a|abs|absent|-+|\u2014)/i.test(t)) {
+    r.marks[name] = 'A';                                  // absent
+  } else {
+    let n = Number(t.replace(',', '.'));
+    if (!isFinite(n)) { if (el) el.style.borderColor = 'var(--rust, #b24a32)'; return; }   // not a number — keep the last good value
+    const max = Number(dmcSubjects[j].total) || 0;
+    if (n < 0) n = 0;
+    if (max && n > max) { n = max; if (el) el.value = max; }
+    r.marks[name] = n;
+  }
   saveDMCUpload();
   dmcRefreshAutoPositions();
 }
 
-// One key per class, ignoring case and any extra / invisible spaces ("Nur", "Nur ", "nur"
-// and a non-breaking-space copy are all the same class). Positions are ranked per this
-// key — comparing the raw text split one class into several small groups, each with its own
-// 1st, 2nd, 3rd ... and pushed everybody else's position out of place.
+const DMC_CLASS_WORDS = {
+  one:1, two:2, three:3, four:4, five:5, six:6, seven:7, eight:8, nine:9, ten:10, eleven:11, twelve:12,
+  first:1, second:2, third:3, fourth:4, fifth:5, sixth:6, seventh:7, eighth:8, ninth:9, tenth:10, eleventh:11, twelfth:12,
+  i:1, ii:2, iii:3, iv:4, v:5, vi:6, vii:7, viii:8, ix:9, x:10, xi:11, xii:12,
+  'اول':1, 'دوم':2, 'سوم':3, 'چہارم':4, 'پنجم':5, 'ششم':6, 'ہفتم':7, 'ہشتم':8, 'نہم':9, 'دہم':10
+};
 function dmcClassKey(c) {
-  return String(c == null ? '' : c).replace(/[\s\u00A0\u200B-\u200F\u202A-\u202E\uFEFF]+/g, ' ').trim().toLowerCase();
+  let k = String(c == null ? '' : c).replace(/[\s\u00A0\u200B-\u200F\u202A-\u202E\uFEFF]+/g, ' ').trim().toLowerCase();
+  if (!k) return '';
+  k = k.replace(/[٠-٩]/g, d => '٠١٢٣٤٥٦٧٨٩'.indexOf(d)).replace(/[۰-۹]/g, d => '۰۱۲۳۴۵۶۷۸۹'.indexOf(d));
+  k = k.replace(/\b(class|grade|std|standard|jamaat|jamat)\b\.?/g, ' ').replace(/جماعت/g, ' ').replace(/\s+/g, ' ').trim();
+  if (!k) return '';
+  let m = k.match(/^(\d{1,2})\s*(?:st|nd|rd|th)?$/);
+  if (m) return String(Number(m[1]));
+  if (DMC_CLASS_WORDS[k] != null) return String(DMC_CLASS_WORDS[k]);
+  m = k.match(/^(\d{1,2})\s*(?:st|nd|rd|th)?\s*[-\s]\s*([a-z])$/);          // "5th A", "5-A"
+  if (m) return Number(m[1]) + ' ' + m[2];
+  if (/^(nur|nurs|nursery)$/.test(k)) return 'nursery';
+  if (/^(kg|k\.g\.?|k g|kinder|kindergarten)$/.test(k)) return 'kg';
+  if (/^(prep|preparatory)$/.test(k)) return 'prep';
+  return k;
 }
 
-// Automatic class position (dense ranking, same rule the certificate uses) — used to
-// pre-fill the editable Position box in the edit table.
-function dmcAutoPos(r) {
-  const tot = x => dmcSubjects.reduce((a, s) => a + (Number((x.marks || {})[s.name]) || 0), 0);
-  const mine = tot(r);
-  const totals = dmcResults.filter(x => dmcClassKey(x.class) === dmcClassKey(r.class)).map(tot);
-  return [...new Set(totals)].sort((a, b) => b - a).indexOf(mine) + 1;
+// Marks cells can hold: a number, 'A' (absent) or '' (not entered). Totals treat the last two as 0.
+function dmcMarkState(v) {
+  if (v === 'A') return 'abs';
+  if (v === undefined || v === null || v === '') return 'blank';
+  return 'num';
 }
+function dmcStudentTotal(r) {
+  return dmcSubjects.reduce((a, s) => a + (Number((r.marks || {})[s.name]) || 0), 0);
+}
+function dmcHasAnyMarks(r) {
+  return dmcSubjects.some(s => dmcMarkState((r.marks || {})[s.name]) === 'num');
+}
+function dmcPassPercent() {
+  const p = Number(dmcDesign.passPercent);
+  return p > 0 && p <= 100 ? p : 40;
+}
+function dmcGradeCuts() {
+  const c = dmcDesign.gradeCuts || {};
+  const d = DMC_DESIGN_DEFAULT.gradeCuts;
+  const out = {};
+  ['A+', 'A', 'B', 'C', 'D'].forEach(g => { const n = Number(c[g]); out[g] = isFinite(n) && n >= 0 ? n : d[g]; });
+  return out;
+}
+// Grade for the DMC certificate / archive. (dmcGradeFor below keeps the fixed scale the
+// Marks Sheet uses, so the two screens are not changed by this school's DMC settings.)
+function dmcCertGrade(pct) {
+  const c = dmcGradeCuts(); pct = Number(pct) || 0;
+  return pct >= c['A+'] ? 'A+' : pct >= c['A'] ? 'A' : pct >= c['B'] ? 'B' : pct >= c['C'] ? 'C' : pct >= c['D'] ? 'D' : 'F';
+}
+// Pass/fail for one student: overall % against the pass mark and, if the school turned it
+// on, every subject against the same pass mark (absent / not entered count as 0).
+function dmcEvaluate(r) {
+  const m = r.marks || {};
+  const obtained = dmcStudentTotal(r);
+  const possible = dmcSubjects.reduce((a, s) => a + (Number(s.total) || 0), 0);
+  const pct = possible ? obtained / possible * 100 : 0;
+  const pp = dmcPassPercent();
+  const failedSubjects = dmcSubjects.filter(s => { const t = Number(s.total) || 0; return t && (Number(m[s.name]) || 0) / t * 100 < pp; }).map(s => s.name);
+  const subjFail = !!dmcDesign.failIfAnySubjectFails && failedSubjects.length > 0;
+  return { obtained, possible, pct, pass: Number(pct.toFixed(1)) >= pp && !subjFail, failedSubjects, subjFail };
+}
+// Ranks a whole list at once (one pass per class) instead of re-scanning the list for every
+// student — used for the position boxes, for printing a class, and for the archive rows.
+function dmcRankMap(pool) {
+  const onlyPass = !!dmcDesign.positionPassedOnly;
+  const groups = new Map();
+  pool.forEach(r => {
+    if (!dmcHasAnyMarks(r)) return;
+    if (onlyPass && !dmcEvaluate(r).pass) return;
+    const k = dmcClassKey(r.class);
+    if (!groups.has(k)) groups.set(k, []);
+    groups.get(k).push(r);
+  });
+  const rank = new Map();
+  groups.forEach(list => {
+    const totals = list.map(dmcStudentTotal);
+    const sorted = [...new Set(totals)].sort((a, b) => b - a);
+    list.forEach((r, i) => rank.set(r, sorted.indexOf(totals[i]) + 1));
+  });
+  return rank;
+}
+let _dmcRankCache = null;   // {map, members} while a whole batch is being rendered
+// Class position (dense ranking: a 3-way tie at 1st is followed by 2nd, never 4th). Students
+// with no marks entered at all (everything absent / blank) are not ranked (returns 0), and
+// when the school chose "pass only", neither are students who failed.
+function dmcRankOf(result, pool) {
+  if (_dmcRankCache && pool === dmcResults && _dmcRankCache.members.has(result)) return _dmcRankCache.map.get(result) || 0;
+  if (!dmcHasAnyMarks(result)) return 0;
+  const onlyPass = !!dmcDesign.positionPassedOnly;
+  if (onlyPass && !dmcEvaluate(result).pass) return 0;
+  const key = dmcClassKey(result.class);
+  const totals = pool.filter(x => dmcClassKey(x.class) === key && dmcHasAnyMarks(x) && (!onlyPass || dmcEvaluate(x).pass)).map(dmcStudentTotal);
+  return [...new Set(totals)].sort((a, b) => b - a).indexOf(dmcStudentTotal(result)) + 1;
+}
+
+// Automatic class position, used to pre-fill the editable Position box in the edit table.
+function dmcAutoPos(r) { return dmcRankOf(r, dmcResults) || ''; }
 // After marks change, re-fill every Position box that the user has not edited by hand.
 function dmcRefreshAutoPositions() {
+  const rank = dmcRankMap(dmcResults);
   dmcResults.forEach((r, k) => {
-    const el = document.getElementById('dmc-pos-' + k);
+    const el = document.getElementById('dmc-pos-' + k);   // only the rows currently drawn exist
     if (!el || document.activeElement === el) return;
     const ov = (r.positionOverride == null ? '' : String(r.positionOverride)).trim();
-    if (!ov) el.value = dmcAutoPos(r);
+    if (!ov) el.value = rank.get(r) || '';
   });
 }
 
-function renderDMCEditTable() {
+function removeDMCStudent(i) {
+  const r = dmcResults[i];
+  if (!r) return;
+  if (!confirm(`"${r.studentName || ('#' + r.serialNo)}" ko list se hata dein?`)) return;
+  dmcResults.splice(i, 1);
+  dmcResults.forEach((x, k) => { x.serialNo = k + 1; });
+  saveDMCUpload();
+  renderDMCEditTable(true);
+  if (dmcResults.length) renderDMCPreviewIfOpen();
+  else { const p = document.getElementById('dmc-preview'); if (p) p.innerHTML = ''; }
+}
+
+function dqt(en, ur) { return esc(qt(en, ur)); }
+
+// Hand-edit one field of a student (name, father, roll no., class, section).
+function setDMCField(i, field, value) {
+  const r = dmcResults[i];
+  if (!r) return;
+  r[field] = value;
+  if (field === 'class') { r.classFromExcel = true; dmcRefreshAutoPositions(); }   // a typed class is kept even if the batch class is changed later
+  saveDMCUpload();
+}
+function dmcSetEditFilter(v) { dmcEditFilter = String(v || ''); dmcEditLimit = 25; renderDMCEditTable(true); }
+function dmcShowMoreStudents() { dmcEditLimit += 25; renderDMCEditTable(true); }
+function dmcFilteredIdx() {
+  const q = dmcEditFilter.trim().toLowerCase();
+  return dmcResults.map((r, i) => i).filter(i => {
+    if (!q) return true;
+    const r = dmcResults[i];
+    return [r.studentName, r.rollNo, r.class, r.fatherName].some(v => String(v == null ? '' : v).toLowerCase().includes(q));
+  });
+}
+function dmcUpdateSelBar() {
+  const n = dmcResults.filter(r => r.selected).length;
+  const el = document.getElementById('dmc-sel-count');
+  if (el) el.textContent = n + ' / ' + dmcResults.length + ' ' + qt('selected', 'منتخب');
+  const b = document.getElementById('dmc-print-sel');
+  if (b) { b.textContent = qt('Print Selected', 'منتخب پرنٹ کریں') + (n ? ' (' + n + ')' : ''); b.disabled = !n; }
+}
+function dmcToggleSel(i, on) { if (dmcResults[i]) dmcResults[i].selected = !!on; dmcUpdateSelBar(); saveDMCUpload(); }
+function dmcSelectAll(on) { dmcFilteredIdx().forEach(i => { dmcResults[i].selected = !!on; }); saveDMCUpload(); renderDMCEditTable(true); }
+
+// `force` = the user just pressed something that must redraw the list (search, select all, show
+// more, delete, import ...). Without it, a redraw triggered in the background is skipped while a
+// box inside the list is being typed in, so the keyboard never closes mid-keystroke.
+function renderDMCEditTable(force) {
   renderDMCSubjects();
   const container = document.getElementById('dmc-edit-table');
   if (!container) return;
-  // Same protection as applyDMCConfigToFields(): never blow away a row the
-  // user is actively typing into (Student Name / Roll No.) — this container
-  // gets rebuilt from a few different places (Excel upload, config load),
-  // and any of them landing mid-keystroke used to be able to reproduce the
-  // exact same "keyboard closes on tap" symptom for these two fields.
   const active = document.activeElement;
-  if (active && container.contains(active) && (active.tagName === 'INPUT' || active.tagName === 'SELECT' || active.tagName === 'TEXTAREA')) return;
-  if (dmcResults.length === 0) { container.innerHTML = `<p style="font-size:12px;opacity:.5;">Upload a result list above to edit roll numbers.</p>`; return; }
-  container.innerHTML = dmcResults.map((r, i) => `
-    <div style="display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--line);padding:8px 0;">
-      <div style="width:22px;font-size:13px;color:var(--ink);flex-shrink:0;">${r.serialNo}.</div>
-      <input type="text" autocomplete="off" style="flex:1;" value="${esc(r.studentName)}" placeholder="Student Name" oninput="dmcResults[${i}].studentName=this.value;saveDMCUpload();">
-      <input type="text" autocomplete="off" style="width:110px;flex-shrink:0;" value="${esc(r.rollNo)}" placeholder="Roll No." oninput="dmcResults[${i}].rollNo=this.value;saveDMCUpload();">
-      <input type="text" id="dmc-pos-${i}" autocomplete="off" style="width:70px;flex-shrink:0;" value="${esc((r.positionOverride != null && String(r.positionOverride).trim()) ? r.positionOverride : dmcAutoPos(r))}" placeholder="Position" title="Position is filled automatically from marks — you can change it." oninput="dmcResults[${i}].positionOverride=this.value;saveDMCUpload();" onblur="if(!this.value.trim()){dmcResults[${i}].positionOverride='';this.value=dmcAutoPos(dmcResults[${i}]);saveDMCUpload();}">
-    </div>
-    ${dmcSubjects.length ? `<div style="display:flex;flex-wrap:wrap;gap:8px;padding:6px 0 10px 32px;border-bottom:1px solid var(--line);">${dmcSubjects.map((sub, j) => `
-      <label style="display:flex;flex-direction:column;font-size:11px;opacity:.85;">
-        <span>${esc(sub.name)} /${esc(sub.total)}</span>
-        <input type="number" inputmode="decimal" min="0" max="${esc(sub.total)}" style="width:70px;" value="${esc((r.marks && r.marks[sub.name] !== undefined) ? r.marks[sub.name] : '')}" oninput="setDMCMark(${i},${j},this.value)">
-      </label>`).join('')}</div>` : ''}
-  `).join('');
+  if (!force && active && container.contains(active) && (active.tagName === 'INPUT' || active.tagName === 'SELECT' || active.tagName === 'TEXTAREA')) return;
+  if (force && active && container.contains(active) && active.blur) active.blur();
+  if (dmcResults.length === 0) { container.innerHTML = `<p style="font-size:12px;opacity:.5;">${dqt('Upload a result list above (or start from the Students list / Marks Sheet / Archive) to edit it here.', 'اوپر رزلٹ لسٹ اپ لوڈ کریں (یا طلبہ کی فہرست / مارکس شیٹ / آرکائیو سے شروع کریں) تاکہ یہاں ترمیم ہو سکے۔')}</p>`; return; }
+  const idxs = dmcFilteredIdx();
+  const shown = idxs.slice(0, dmcEditLimit);
+  const L = (en, ur) => dqt(en, ur);
+  const rowsHtml = shown.map(i => {
+    const r = dmcResults[i];
+    const posVal = (r.positionOverride != null && String(r.positionOverride).trim()) ? r.positionOverride : dmcAutoPos(r);
+    return `
+    <div style="border-bottom:1px solid var(--line);padding:8px 0;">
+      <div style="display:flex;align-items:center;gap:8px;">
+        <input type="checkbox" style="width:auto;flex-shrink:0;" ${r.selected ? 'checked' : ''} onchange="dmcToggleSel(${i},this.checked)" aria-label="${esc(qt('Select', 'منتخب'))}">
+        <div style="width:24px;font-size:13px;color:var(--ink);flex-shrink:0;">${esc(r.serialNo)}.</div>
+        <input type="text" autocomplete="off" style="flex:1;min-width:0;" value="${esc(r.studentName)}" placeholder="${esc(qt('Student Name', 'طالب علم کا نام'))}" oninput="setDMCField(${i},'studentName',this.value)">
+        <button class="btn-ghost" style="flex-shrink:0;" title="${esc(qt('Remove this student from the list', 'اس طالب علم کو فہرست سے ہٹائیں'))}" onclick="removeDMCStudent(${i})">✕</button>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;margin-top:6px;padding-left:32px;flex-wrap:wrap;">
+        <input type="text" autocomplete="off" style="width:96px;" value="${esc(r.rollNo)}" placeholder="${esc(qt('Roll No.', 'رول نمبر'))}" oninput="setDMCField(${i},'rollNo',this.value)">
+        <input type="text" id="dmc-pos-${i}" autocomplete="off" style="width:70px;" value="${esc(posVal)}" placeholder="${esc(qt('Position', 'پوزیشن'))}" title="${esc(qt('Position is filled automatically from marks — you can change it.', 'پوزیشن نمبروں سے خود بخود بھر جاتی ہے — آپ اسے بدل سکتے ہیں۔'))}" oninput="dmcResults[${i}].positionOverride=this.value;saveDMCUpload();" onblur="if(!this.value.trim()){dmcResults[${i}].positionOverride='';this.value=dmcAutoPos(dmcResults[${i}]);saveDMCUpload();}">
+        <button class="btn-ghost" style="flex-shrink:0;" title="${esc(qt('Preview this certificate', 'اس سرٹیفکیٹ کا پری ویو'))}" onclick="previewDMCOne(${i})">👁</button>
+        <button class="btn-ghost" style="flex-shrink:0;" title="${esc(qt('Print only this certificate', 'صرف یہ سرٹیفکیٹ پرنٹ کریں'))}" onclick="printOneDMC(${i})">🖨</button>
+      </div>
+      <details style="margin-top:6px;padding-left:32px;">
+        <summary style="font-size:11px;opacity:.7;cursor:pointer;">${L('Father · Class · Section', 'والد · کلاس · سیکشن')}${r.class ? ' — ' + esc(r.class) : ''}</summary>
+        <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:6px;">
+          <label style="display:flex;flex-direction:column;font-size:11px;opacity:.85;flex:1;min-width:140px;"><span>${L('Father Name', 'والد کا نام')}</span>
+            <input type="text" autocomplete="off" value="${esc(r.fatherName)}" oninput="setDMCField(${i},'fatherName',this.value)"></label>
+          <label style="display:flex;flex-direction:column;font-size:11px;opacity:.85;"><span>${L('Class', 'کلاس')}</span>
+            <input type="text" autocomplete="off" list="dmc-class-list" style="width:96px;" value="${esc(r.class)}" oninput="setDMCField(${i},'class',this.value)"></label>
+          <label style="display:flex;flex-direction:column;font-size:11px;opacity:.85;"><span>${L('Section', 'سیکشن')}</span>
+            <input type="text" autocomplete="off" style="width:70px;" value="${esc(r.section)}" oninput="setDMCField(${i},'section',this.value)"></label>
+        </div>
+      </details>
+      ${dmcSubjects.length ? `<div style="display:flex;flex-wrap:wrap;gap:8px;padding:8px 0 2px 32px;">${dmcSubjects.map((sub, j) => `
+        <label style="display:flex;flex-direction:column;font-size:11px;opacity:.85;">
+          <span>${esc(sub.name)} /${esc(sub.total)}</span>
+          <input type="text" inputmode="decimal" maxlength="7" placeholder="Abs" style="width:70px;" value="${esc((r.marks && r.marks[sub.name] !== undefined) ? r.marks[sub.name] : '')}" oninput="setDMCMark(${i},${j},this.value,this)">
+        </label>`).join('')}</div>` : ''}
+    </div>`;
+  }).join('');
+  const more = idxs.length > shown.length
+    ? `<div style="text-align:center;margin-top:10px;"><button class="btn-ghost" onclick="dmcShowMoreStudents()">${L('Show more', 'مزید دکھائیں')} (${idxs.length - shown.length} ${L('left', 'باقی')})</button></div>` : '';
+  const none = !idxs.length ? `<p style="font-size:12px;opacity:.6;">${L('No student matches your search.', 'تلاش سے کوئی طالب علم نہیں ملا۔')}</p>` : '';
+  container.innerHTML = `
+    <div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:6px;">
+      <button class="btn-ghost" onclick="dmcSelectAll(true)">${L('Select all', 'سب منتخب کریں')}</button>
+      <button class="btn-ghost" onclick="dmcSelectAll(false)">${L('Clear', 'صاف کریں')}</button>
+      <span id="dmc-sel-count" style="font-size:12px;opacity:.75;"></span>
+    </div>` + rowsHtml + none + more;
+  dmcUpdateSelBar();
+}
+
+// ---- Start a batch without Excel: Students list / Marks Sheet / Archive ----
+let _dmcImportList = [];
+function dmcPrepareImport() {
+  if (dmcResults.length && !confirm(`Pehle se ${dmcResults.length} students ki list maujood hai.\n\nNayi list se yeh replace ho jayegi (baad me "Pichli list wapas lain" se wapas aa sakti hai).\n\nJari rakhein?`)) return false;
+  dmcUploadBackup = dmcResults.length ? { results: JSON.parse(JSON.stringify(dmcResults)), subjects: JSON.parse(JSON.stringify(dmcSubjects)) } : null;
+  return true;
+}
+function dmcAfterImport(msg) {
+  dmcLastUploadMsg = msg;
+  if (dmcUploadBackup) dmcLastUploadMsg += `<br><button class="btn-ghost" style="font-size:11px;padding:2px 8px;margin-top:4px;" onclick="dmcRestoreUploadBackup()">↩ Pichli list wapas lain</button>`;
+  const m = document.getElementById('dmc-upload-msg'); if (m) m.innerHTML = dmcLastUploadMsg;
+  const setV = (id, v) => { const el = document.getElementById(id); if (el) el.value = v; };
+  setV('dmc-class', dmcSelectedClass); setV('dmc-batch-section', dmcBatchSection); setV('dmc-batch-date', dmcBatchDateOfIssue || todayISO()); setV('dmc-session', dmcAcademicSession);
+  dmcPreviewRefs = null; dmcEditFilter = ''; dmcEditLimit = 25;
+  const sIn = document.getElementById('dmc-edit-search'); if (sIn) sIn.value = '';
+  saveDMCConfig(); saveDMCUpload();
+  renderDMCEditTable(true); renderDMCPreviewIfOpen();
+}
+const dmcNaturalSort = (a, b) => String(a == null ? '' : a).localeCompare(String(b == null ? '' : b), undefined, { numeric: true, sensitivity: 'base' });
+function dmcBlankMarks() { const m = {}; dmcSubjects.forEach(s => { m[s.name] = ''; }); return m; }
+function dmcImportModal(title, rows, onclickFn, emptyMsg) {
+  const body = rows.length
+    ? `<div class="list-card" style="margin:10px 0;">${rows.map((r, k) => `<div class="list-row" style="cursor:pointer;" onclick="${onclickFn}(${k})"><div class="nm">${esc(r.label)}</div><div class="sub">${esc(r.sub || '')}</div></div>`).join('')}</div>`
+    : `<p style="font-size:13px;opacity:.7;">${esc(emptyMsg)}</p>`;
+  showModal(title, body);
+}
+
+// 1) Students tab — name, father name and class come from the students already in the app.
+function openDMCImportStudents() {
+  const active = (DATA.students || []).filter(s => s.status !== 'inactive' && String(s.class_name || '').trim());
+  const counts = {}; active.forEach(s => { counts[s.class_name] = (counts[s.class_name] || 0) + 1; });
+  const order = c => { const k = CLASS_OPTIONS.indexOf(c); return k < 0 ? 999 : k; };
+  _dmcImportList = Object.keys(counts).sort((a, b) => order(a) - order(b) || dmcNaturalSort(a, b)).map(c => ({ cls: c, label: c, sub: counts[c] + ' ' + qt('students', 'طلبہ') }));
+  dmcImportModal(qt('📥 Start from the Students list', '📥 طلبہ کی فہرست سے شروع کریں'), _dmcImportList, 'importDMCFromStudents', qt('No active students found. Add students first.', 'کوئی فعال طالب علم نہیں ملا۔ پہلے طلبہ شامل کریں۔'));
+}
+function importDMCFromStudents(k) {
+  const g = _dmcImportList[k]; if (!g) return;
+  closeModal();
+  if (!dmcPrepareImport()) return;
+  const list = (DATA.students || []).filter(s => s.status !== 'inactive' && s.class_name === g.cls).sort((a, b) => dmcNaturalSort(a.name, b.name));
+  dmcResults = list.map((s, n) => ({ serialNo: n + 1, studentName: s.name || '', fatherName: s.father_name || '', rollNo: '', class: g.cls, classFromExcel: true, section: '', marks: dmcBlankMarks() }));
+  dmcSelectedClass = g.cls;
+  dmcAfterImport(`✓ ${dmcResults.length} students "${esc(g.cls)}" se load hue — ab Roll No. aur marks bharein.`);
+}
+
+// 2) Marks Sheet tab — names, father names, subjects (with totals) and the marks already entered there.
+async function openDMCImportMarksSheet() {
+  try { await loadMarksSheetData(); } catch (e) {}
+  const classes = Object.keys(msStudents || {}).filter(c => (msStudents[c] || []).length);
+  _dmcImportList = classes.map(c => ({ cls: c, label: c, sub: msStudents[c].length + ' ' + qt('students', 'طلبہ') + (msAcademicYear ? ' · ' + msAcademicYear : '') }));
+  dmcImportModal(qt('📋 Start from the Marks Sheet', '📋 مارکس شیٹ سے شروع کریں'), _dmcImportList, 'importDMCFromMarksSheet', qt('The Marks Sheet has no students yet.', 'مارکس شیٹ میں ابھی کوئی طالب علم نہیں۔'));
+}
+function importDMCFromMarksSheet(k) {
+  const g = _dmcImportList[k]; if (!g) return;
+  closeModal();
+  if (!msSubjects.length) { alert(qt('The Marks Sheet has no subjects yet.', 'مارکس شیٹ میں ابھی کوئی مضمون نہیں۔')); return; }
+  if (!dmcPrepareImport()) return;
+  dmcSubjects = msSubjects.map(n => ({ name: n, total: msSubjectMax(n) }));
+  const marksOf = (cls, id) => (msMarksData[cls] && msMarksData[cls][id]) || {};
+  dmcResults = (msStudents[g.cls] || []).map((st, n) => {
+    const src = marksOf(g.cls, st.id), marks = {};
+    msSubjects.forEach(sn => { const v = src[sn]; marks[sn] = (v === undefined || v === null || v === '' || !isFinite(Number(v))) ? '' : Number(v); });
+    return { serialNo: n + 1, studentName: st.name || '', fatherName: st.fatherName || '', rollNo: '', class: g.cls, classFromExcel: true, section: '', marks };
+  });
+  dmcSelectedClass = g.cls;
+  renderDMCSubjects();
+  dmcAfterImport(`✓ ${dmcResults.length} students aur ${dmcSubjects.length} subjects Marks Sheet ("${esc(g.cls)}") se load hue — Roll No. bharein aur marks check karein.`);
+}
+
+// 3) Archive — reload a saved session + class (every class can be reopened, edited and reprinted).
+async function openDMCImportArchive() {
+  if (!navigator.onLine) { alert(qt('Loading from the archive needs an internet connection.', 'آرکائیو سے لوڈ کرنے کے لیے انٹرنیٹ ضروری ہے۔')); return; }
+  showModal(qt('🗂 Reload from the Archive', '🗂 آرکائیو سے دوبارہ لوڈ کریں'), '<p style="font-size:13px;opacity:.7;">…</p>');
+  const { data, error } = await fetchAll(() => sb.from('dmc_records').select('academic_year,class_name').eq('owner_id', CURRENT_USER.id));
+  if (error) { dmcImportModal(qt('🗂 Reload from the Archive', '🗂 آرکائیو سے دوبارہ لوڈ کریں'), [], '', String(error.message || error)); return; }
+  const groups = new Map();
+  (data || []).forEach(r => { const key = (r.academic_year || '') + '\u0001' + (r.class_name || ''); groups.set(key, (groups.get(key) || 0) + 1); });
+  _dmcImportList = [...groups.entries()].map(([key, n]) => { const [y, c] = key.split('\u0001'); return { year: y, cls: c, n, label: (c || '—') + ' · ' + (y || '—'), sub: n + ' ' + qt('records', 'ریکارڈ') }; })
+    .sort((a, b) => dmcNaturalSort(b.year, a.year) || dmcNaturalSort(a.cls, b.cls));
+  closeModal();
+  dmcImportModal(qt('🗂 Reload from the Archive', '🗂 آرکائیو سے دوبارہ لوڈ کریں'), _dmcImportList, 'importDMCFromArchive', qt('The archive has no saved certificates yet.', 'آرکائیو میں ابھی کوئی محفوظ سرٹیفکیٹ نہیں۔'));
+}
+async function importDMCFromArchive(k) {
+  const g = _dmcImportList[k]; if (!g) return;
+  closeModal();
+  const { data, error } = await fetchAll(() => sb.from('dmc_records').select('*').eq('owner_id', CURRENT_USER.id).eq('academic_year', g.year).eq('class_name', g.cls));
+  if (error || !data || !data.length) { alert(qt('Could not load these records.', 'یہ ریکارڈ لوڈ نہیں ہو سکے۔')); return; }
+  if (!dmcPrepareImport()) return;
+  const recs = data.slice().sort((a, b) => dmcNaturalSort(a.roll_no, b.roll_no) || dmcNaturalSort(a.student_name, b.student_name));
+  const withSubj = recs.find(r => r.subjects && r.subjects.length);
+  if (withSubj) dmcSubjects = JSON.parse(JSON.stringify(withSubj.subjects));
+  dmcResults = recs.map((r, n) => ({ serialNo: n + 1, studentName: r.student_name || '', fatherName: r.father_name || '', rollNo: r.roll_no || '', class: r.class_name || '', classFromExcel: true, section: r.section || '', marks: Object.assign(dmcBlankMarks(), r.marks || {}) }));
+  dmcSelectedClass = g.cls;
+  dmcBatchSection = recs[0].section || '';
+  dmcBatchDateOfIssue = recs[0].date_of_issue || todayISO();
+  dmcAcademicSession = /^Unspecified-/.test(g.year) ? '' : (g.year || '');
+  renderDMCSubjects();
+  dmcAfterImport(`✓ ${dmcResults.length} records archive ("${esc(g.cls)} · ${esc(g.year)}") se load hue.` + (dmcAcademicSession ? ` ⚠️ Academic Session "${esc(dmcAcademicSession)}" set ho gaya hai — naya batch banane se pehle session badal lein.` : ''));
+}
+
+function dmcRestoreUploadBackup() {
+  if (!dmcUploadBackup) return;
+  dmcResults = dmcUploadBackup.results; dmcSubjects = dmcUploadBackup.subjects;
+  dmcUploadBackup = null;
+  dmcLastUploadMsg = `✓ Pichli list wapas aa gayi (${dmcResults.length} students).`;
+  const m = document.getElementById('dmc-upload-msg'); if (m) m.innerHTML = dmcLastUploadMsg;
+  saveDMCConfig(); saveDMCUpload();
+  renderDMCEditTable(true); renderDMCPreviewIfOpen();
+}
+
+// ---- Excel header recognition ----
+// Headers are compared after lower-casing and stripping punctuation/extra spaces, so
+// "roll no", "Roll No.", " ROLL  NO " and "Roll #" are all the same column.
+const dmcNormHdr = h => String(h == null ? '' : h).toLowerCase().replace(/[^a-z0-9\u0600-\u06FF]+/g, ' ').trim();
+const DMC_COLS = {
+  name:    ['student name', 'name', 'student', 'students name', 'student s name', 'full name', 'naam', 'نام', 'طالب علم کا نام', 'طالب علم'],
+  father:  ['father name', 'father s name', 'fathers name', 'father', 's o', 'so', 'walid', 'guardian', 'parent name', 'والد کا نام', 'والد', 'ولدیت'],
+  roll:    ['roll no', 'roll number', 'roll', 'rollno', 'roll num', 'رول نمبر', 'رول نمبر'],
+  class:   ['class', 'class name', 'grade', 'جماعت'],
+  section: ['section', 'sec', 'سیکشن']
+};
+const DMC_OTHER_INFO_COLS = ['date of issue', 'issue date', 'sr no', 'sr', 's no', 'sno', 'serial no', 'serial', 'no', 'sr n', 'سیریل نمبر'];
+function dmcIsInfoCol(col) {
+  const n = dmcNormHdr(col);
+  return DMC_OTHER_INFO_COLS.includes(n) || Object.values(DMC_COLS).some(list => list.includes(n));
+}
+// Picks the sheet and header row to read: the first sheet that has a student-name column (not
+// blindly sheet 1), and skips any title rows above the header. Other sheets that also hold
+// data are reported so the user knows they were not read.
+function dmcPickSheetRows(wb) {
+  const nameKeys = DMC_COLS.name;
+  let chosen = null; const others = [];
+  wb.SheetNames.forEach(sn => {
+    const ws = wb.Sheets[sn];
+    // blank rows are kept so these indexes line up with the sheet's own rows (used as `range` below)
+    const aoa = XLSX.utils.sheet_to_json(ws, { header: 1, blankrows: true, defval: '' });
+    if (!aoa.length) return;
+    let hdr = aoa.slice(0, 15).findIndex(row => row.some(c => nameKeys.includes(dmcNormHdr(c))));
+    const hasName = hdr >= 0;
+    if (!hasName) hdr = 0;
+    const rowsCount = aoa.slice(hdr + 1).filter(row => row.some(c => String(c).trim() !== '')).length;
+    if (rowsCount < 1) return;
+    const cand = { sn, ws, hdr, hasName };
+    if (!chosen || (!chosen.hasName && hasName)) { if (chosen && chosen.hasName) others.push(chosen.sn); chosen = cand; }
+    else if (hasName) others.push(sn);        // only sheets that look like student lists are reported as not read
+  });
+  if (!chosen) return { rows: [], sheetName: wb.SheetNames[0], others: [] };
+  return { rows: XLSX.utils.sheet_to_json(chosen.ws, { range: chosen.hdr }), sheetName: chosen.sn, others };
 }
 
 function handleDMCExcelUpload(file) {
   if (!file) return;
+  // A new upload replaces the whole list, the subjects and every manual edit — ask first.
+  if (dmcResults.length && !confirm(`Pehle se ${dmcResults.length} students ki list maujood hai.\n\nNayi Excel upload karne se yeh list, subjects aur aap ke kiye hue saare edits (naam, marks, position) replace ho jayenge.\n\nJari rakhein?`)) return;
   const selectedClass = dmcSelectedClass;
   const reader = new FileReader();
   reader.onload = (e) => {
     try {
       const data = new Uint8Array(e.target.result);
       const wb = XLSX.read(data, {type: 'array'});
-      const ws = wb.Sheets[wb.SheetNames[0]];
-      const rows = XLSX.utils.sheet_to_json(ws);
+      const picked = dmcPickSheetRows(wb);
+      const rows = picked.rows;
+
+      // Keep the list being replaced so the upload can be undone from the message below.
+      dmcUploadBackup = dmcResults.length
+        ? { results: JSON.parse(JSON.stringify(dmcResults)), subjects: JSON.parse(JSON.stringify(dmcSubjects)) }
+        : null;
+
+      // Which Excel column holds which field — found once, by normalised header name
+      // (every row's keys are unioned, because blank cells are missing from a row's keys).
+      const allCols = [];
+      rows.forEach(r => Object.keys(r).forEach(c => { if (!allCols.includes(c)) allCols.push(c); }));
+      const colOf = key => allCols.find(c => DMC_COLS[key].includes(dmcNormHdr(c)));
+      const cName = colOf('name'), cFather = colOf('father'), cRoll = colOf('roll'), cClass = colOf('class'), cSection = colOf('section');
+      const cell = (r, c) => { if (!c) return ''; const v = r[c]; return v == null ? '' : (typeof v === 'string' ? v.trim() : v); };
 
       dmcResults = rows.map((r, idx) => {
-        const excelClass = String(r['Class'] || r['جماعت'] || '').replace(/[\s\u00A0]+/g, ' ').trim();
+        const excelClass = String(cell(r, cClass)).replace(/[\s\u00A0]+/g, ' ').trim();
         return {
           serialNo: idx + 1,
-          studentName: r['Student Name'] || r['Name'] || r['Student'] || '',
-          fatherName: r['Father Name'] || r["Father's Name"] || r['Father'] || r['S/O'] || r['Walid'] || '',
-          rollNo: r['Roll No'] || r['Roll No.'] || r['Roll Number'] || r['Roll'] || '',
+          studentName: cell(r, cName),
+          fatherName: cell(r, cFather),
+          rollNo: cell(r, cRoll),
           class: excelClass || selectedClass || '',
           classFromExcel: !!excelClass, // if true, onDMCClassChange() won't overwrite this row later
+          section: String(cell(r, cSection)).trim(),
           marks: {} // will be filled from other columns
         };
       });
@@ -14134,10 +14667,9 @@ function handleDMCExcelUpload(file) {
       // skipped — those aren't per-subject marks, and the certificate
       // computes its own total/percentage from the real subjects anyway, so
       // including them would double it up.
-      const nonMarkCols = ['Student Name','Name','Student','Class','جماعت','Father Name',"Father's Name",'Father','S/O','Walid','Roll No','Roll No.','Roll Number','Roll','Section','سیکشن','Date of Issue','Issue Date'];
       const skipWords = ['total','total marks','total obtained','grand total','overall total','percentage','percent','result','position','rank','grade','remarks','status','division','signature'];
       const isNonSubjectCol = (col) => {
-        if (nonMarkCols.includes(col)) return true;
+        if (dmcIsInfoCol(col)) return true;
         const c = String(col || '').trim();
         if (!c || /^__EMPTY/i.test(c)) return true; // blank header column
         const norm = c.toLowerCase().replace(/[^a-z0-9\u0600-\u06FF]+/g, ' ').trim();
@@ -14145,8 +14677,15 @@ function handleDMCExcelUpload(file) {
         return false;
       };
       const parseSubjectHeader = (raw) => {
-        const m = String(raw || '').match(/^(.+?)[\s\/]+(\d+)\s*$/);
-        return m ? { name: m[1].trim(), total: Number(m[2]) } : { name: String(raw || '').trim(), total: 100 };
+        const txt = String(raw || '').trim();
+        // "Urdu/75", "Urdu (75)", "Urdu [75]" — an explicit bracket or slash, any total is trusted.
+        let m = txt.match(/^(.+?)\s*[\/(\[]\s*(\d+(?:\.\d+)?)\s*[)\]]?\s*$/);
+        if (m && Number(m[2]) > 0) return { name: m[1].trim(), total: Number(m[2]) };
+        // "Urdu 75", "Urdu-75", "Urdu: 75", "Urdu out of 75" — only when the number looks like a total
+        // (10 or more), so a subject such as "Islamiat 2" keeps its "2" as part of the name.
+        m = txt.match(/^(.+?)\s*(?:-|:|out of|\s)\s*(\d+(?:\.\d+)?)\s*$/i);
+        if (m && Number(m[2]) >= 10) return { name: m[1].trim(), total: Number(m[2]) };
+        return { name: txt, total: 100, assumed: true };
       };
       const subjectMap = new Map(); // original column header -> {name, total}
       if (rows.length) {
@@ -14157,23 +14696,50 @@ function handleDMCExcelUpload(file) {
           subjectMap.set(col, parsed);
         });
       }
-      dmcSubjects = Array.from(subjectMap.values());
+      const assumedNames = Array.from(subjectMap.values()).filter(x => x.assumed).map(x => x.name);
+      dmcSubjects = Array.from(subjectMap.values()).map(x => ({ name: x.name, total: x.total }));
       saveDMCConfig();
 
+      let overCells = 0, badCells = 0, absCells = 0;
       dmcResults.forEach((r, idx) => {
         const row = rows[idx];
         subjectMap.forEach((subj, col) => {
-          if (row[col] === undefined) return;
-          r.marks[subj.name] = Number(row[col]) || 0;
+          const raw = row[col];
+          const txt = (raw === undefined || raw === null) ? '' : String(raw).trim();
+          // Blank = not entered (kept blank and flagged below — it is NOT silently turned into 0).
+          if (txt === '') { r.marks[subj.name] = ''; return; }
+          // "Abs" / "A" / "-" = absent: prints "Abs" on the certificate and counts as 0 marks.
+          if (/^(a|ab|abs|absent|-+|\u2014)$/i.test(txt)) { r.marks[subj.name] = 'A'; absCells++; return; }
+          let n = Number(txt.replace(',', '.'));
+          if (isNaN(n)) { badCells++; r.marks[subj.name] = ''; return; }   // a typo — left blank so it gets noticed
+          if (n < 0) n = 0;
+          if (n > subj.total) { overCells++; n = subj.total; }
+          r.marks[subj.name] = n;
         });
       });
+      // Drop completely empty rows (blank lines at the end of an Excel sheet)
+      const beforeCount = dmcResults.length;
+      dmcResults = dmcResults.filter(r => String(r.studentName).trim() || String(r.rollNo).trim() || Object.values(r.marks).some(v => v));
+      dmcResults.forEach((r, k) => { r.serialNo = k + 1; });
+      const skippedRows = beforeCount - dmcResults.length;
 
       const missingClass = !selectedClass && dmcResults.some(r => !r.class);
       dmcLastUploadMsg = missingClass
         ? `⚠️ Loaded ${dmcResults.length} students, but no class is set — select a class above (or add a "Class" column to your Excel) before printing.`
         : `✓ Loaded ${dmcResults.length} students`;
+      const upNotes = [];
+      if (skippedRows) upNotes.push(`${skippedRows} khali rows chhor di gayin.`);
+      if (assumedNames.length) upNotes.push(`⚠️ In subjects ke total marks header mein nahi mile, 100 maane gaye: ${assumedNames.join(', ')} — neeche "Subjects & Total Marks" mein theek karein (ya header "Urdu/75" ki tarah likhein).`);
+      if (overCells) upNotes.push(`⚠️ ${overCells} marks subject ke total se zyada the, total ke barabar kar diye gaye.`);
+      const blankCells = dmcResults.reduce((a, r) => a + Object.values(r.marks).filter(v => v === '').length, 0);
+      if (badCells) upNotes.push(`⚠️ ${badCells} cells mein marks ki jagah text tha — unhe khali chhoda gaya hai. Absent ke liye "Abs" likhein.`);
+      if (absCells) upNotes.push(`${absCells} cells Absent (Abs) mark hue — certificate par "Abs" chhapega.`);
+      if (blankCells) upNotes.push(`⚠️ ${blankCells} marks khali hain — print se pehle bharein, ya Absent ke liye "Abs" likhein.`);
+      if (picked.others && picked.others.length) upNotes.push(`ℹ️ File me ${picked.others.length} aur sheet(s) bhi hain (${picked.others.join(', ')}) — sirf "${picked.sheetName}" padhi gayi.`);
+      if (upNotes.length) dmcLastUploadMsg += '<br>' + upNotes.map(esc).join('<br>');
+      if (dmcUploadBackup) dmcLastUploadMsg += `<br><button class="btn-ghost" style="font-size:11px;padding:2px 8px;margin-top:4px;" onclick="dmcRestoreUploadBackup()">↩ Pichli list wapas lain</button>`;
       document.getElementById('dmc-upload-msg').innerHTML = dmcLastUploadMsg;
-      renderDMCEditTable();
+      renderDMCEditTable(true);
       saveDMCUpload();
     } catch (err) {
       dmcLastUploadMsg = `✗ Error: ${esc(err.message)}`;
@@ -14183,16 +14749,29 @@ function handleDMCExcelUpload(file) {
   reader.readAsArrayBuffer(file);
 }
 
-function generateDMCPreview() {
-  if (dmcResults.length === 0) { alert('Please upload Excel file first'); return; }
-  if (dmcSubjects.length === 0) { alert('Please configure subjects first'); return; }
-  
+function dmcShowPreview(list, note) {
   let html = '<div style="max-height:600px;overflow-y:auto;">';
-  dmcResults.slice(0, 3).forEach(r => {
-    html += renderDMCCertificate(r);
-  });
-  html += `</div><p style="font-size:12px;opacity:.5;margin-top:10px;">Showing first 3 of ${dmcResults.length} certificates</p>`;
-  document.getElementById('dmc-preview').innerHTML = html;
+  list.forEach(r => { html += renderDMCCertificate(r); });
+  html += `</div><p style="font-size:12px;opacity:.5;margin-top:10px;">${esc(note)}</p>`;
+  const box = document.getElementById('dmc-preview');
+  if (box) box.innerHTML = html;
+}
+function generateDMCPreview() {
+  if (dmcResults.length === 0) { alert(qt('Please upload the result list first', 'پہلے رزلٹ لسٹ اپ لوڈ کریں')); return; }
+  if (dmcSubjects.length === 0) { alert(qt('Please set up the subjects first', 'پہلے مضامین سیٹ کریں')); return; }
+  dmcPreviewRefs = null;
+  const sel = dmcResults.filter(r => r.selected);
+  if (sel.length) dmcShowPreview(sel.slice(0, 3), qt(`Showing ${Math.min(3, sel.length)} of ${sel.length} selected certificates`, `منتخب ${sel.length} میں سے ${Math.min(3, sel.length)} سرٹیفکیٹ دکھائے جا رہے ہیں`));
+  else dmcShowPreview(dmcResults.slice(0, 3), qt(`Showing first 3 of ${dmcResults.length} certificates — use 👁 on a student's row to preview anyone`, `${dmcResults.length} میں سے پہلے 3 سرٹیفکیٹ — کسی بھی طالب علم کے لیے اس کی قطار میں 👁 دبائیں`));
+}
+function previewDMCOne(i) {
+  const r = dmcResults[i];
+  if (!r) return;
+  if (dmcSubjects.length === 0) { alert(qt('Please set up the subjects first', 'پہلے مضامین سیٹ کریں')); return; }
+  dmcPreviewRefs = [r];
+  dmcShowPreview([r], qt('Showing 1 certificate', '1 سرٹیفکیٹ دکھایا جا رہا ہے'));
+  const box = document.getElementById('dmc-preview');
+  if (box && box.scrollIntoView) box.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 function dmcSubjectIcon(name) {
@@ -14224,6 +14803,51 @@ function dmcGradeColor(grade) {
   return map[grade] || '#1C2530';
 }
 
+// ---- Certificate verification ----
+// Every certificate prints a Cert. No. and an 8-character Verification Code worked out from the
+// student's name, class, roll no., session and every mark. The same code can be recomputed from the
+// archive, so a certificate whose marks were changed after printing (or one that was never issued
+// from this school) will not match any archived record.
+function dmcVerifyCodeFor(o) {
+  const mk = v => v === 'A' ? 'A' : (v === undefined || v === null || v === '' ? '' : String(Number(v)));
+  const parts = [
+    String(o.year || '').trim().toLowerCase(), dmcClassKey(o.cls),
+    String(o.roll == null ? '' : o.roll).trim().toLowerCase(),
+    String(o.name || '').trim().toLowerCase().replace(/\s+/g, ' ')
+  ];
+  (o.subjects || []).forEach(sub => parts.push(String(sub.name).trim().toLowerCase() + ':' + (Number(sub.total) || 0) + '=' + mk((o.marks || {})[sub.name])));
+  const str = parts.join('|');
+  const fnv = seed => { let x = seed >>> 0; for (let i = 0; i < str.length; i++) { x ^= str.charCodeAt(i); x = Math.imul(x, 16777619) >>> 0; } return x >>> 0; };
+  const ALPH = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';     // no 0/O/1/I — easy to read aloud and retype
+  let a = fnv(2166136261), b = fnv(0x9E3779B1), out = '';
+  for (let i = 0; i < 4; i++) { out += ALPH[a % 32]; a = Math.floor(a / 32); }
+  for (let i = 0; i < 4; i++) { out += ALPH[b % 32]; b = Math.floor(b / 32); }
+  return out.slice(0, 4) + '-' + out.slice(4);
+}
+function dmcVerifyCode(r) {
+  return dmcVerifyCodeFor({ year: dmcArchiveYear(), cls: r.class, roll: r.rollNo, name: r.studentName, subjects: dmcSubjects, marks: r.marks });
+}
+function dmcCertNo(r) {
+  const roll = String(r.rollNo == null ? '' : r.rollNo).trim();
+  return dmcArchiveYear() + '-' + (dmcClassKey(r.class) || 'x') + '-' + (roll || 'x');
+}
+async function verifyDMCCode() {
+  const input = document.getElementById('dmc-verify-code'), out = document.getElementById('dmc-verify-result');
+  if (!input || !out) return;
+  const code = String(input.value || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+  if (code.length !== 8) { out.innerHTML = `<span class="err">${dqt('Enter the 8-character code printed on the certificate (like 7K2F-9Q4M).', 'سرٹیفکیٹ پر چھپا 8 حرفی کوڈ لکھیں (مثلاً 7K2F-9Q4M)۔')}</span>`; return; }
+  if (!navigator.onLine) { out.innerHTML = `<span class="err">${dqt('Verification needs an internet connection.', 'تصدیق کے لیے انٹرنیٹ ضروری ہے۔')}</span>`; return; }
+  out.textContent = '…';
+  const { data, error } = await fetchAll(() => sb.from('dmc_records')
+    .select('student_name,father_name,class_name,roll_no,academic_year,marks,subjects,percentage,grade,date_of_issue')
+    .eq('owner_id', CURRENT_USER.id));
+  if (error) { out.innerHTML = `<span class="err">${esc(error.message || String(error))}</span>`; return; }
+  const hit = (data || []).find(rec => dmcVerifyCodeFor({ year: rec.academic_year, cls: rec.class_name, roll: rec.roll_no, name: rec.student_name, subjects: rec.subjects, marks: rec.marks }).replace('-', '') === code);
+  out.innerHTML = hit
+    ? `<div style="border:1px solid #2F7D4F;border-radius:8px;padding:10px;color:#2F7D4F;font-size:13px;"><b>✓ ${dqt('Genuine — matches an archived record', 'درست — آرکائیو کے ریکارڈ سے میل کھاتا ہے')}</b><br>${esc(hit.student_name)}${hit.father_name ? ' s/o ' + esc(hit.father_name) : ''} · ${esc(hit.class_name)} · ${esc(hit.academic_year)}${hit.roll_no ? ' · Roll ' + esc(hit.roll_no) : ''}<br>${esc(hit.percentage)}% · Grade ${esc(hit.grade)}${hit.date_of_issue ? ' · ' + esc(hit.date_of_issue) : ''}</div>`
+    : `<div style="border:1px solid #B24A32;border-radius:8px;padding:10px;color:#B24A32;font-size:13px;"><b>✗ ${dqt('No archived record matches this code', 'اس کوڈ سے کوئی آرکائیو ریکارڈ میل نہیں کھاتا')}</b><br>${dqt('The certificate may have been altered, or it was never issued/archived by this school.', 'ہو سکتا ہے سرٹیفکیٹ میں تبدیلی کی گئی ہو، یا یہ اس اسکول نے جاری/آرکائیو ہی نہیں کیا۔')}</div>`;
+}
+
 // Width (in em) of the school name in the certificate font, measured with the real font so the
 // name can always be fitted inside the arch. Falls back to a character-count estimate.
 function dmcNameWidthEm(text) {
@@ -14248,18 +14872,19 @@ function dmcEnsureNameFont() {
 }
 
 function renderDMCCertificate(result) {
-  const totalObtained = dmcSubjects.reduce((a, s) => a + (Number(result.marks[s.name]) || 0), 0);
-  const totalPossible = dmcSubjects.reduce((a,b) => a+b.total, 0);
-  const percentage = totalPossible ? ((totalObtained / totalPossible) * 100).toFixed(1) : 0;
-  const grade = dmcGradeFor(percentage);
-  const resultStatus = percentage >= 40 ? 'PASS' : 'FAIL';
+  const ev = dmcEvaluate(result);
+  const totalObtained = ev.obtained, totalPossible = ev.possible;
+  const percentage = totalPossible ? ev.pct.toFixed(1) : 0;
+  const grade = dmcCertGrade(percentage);
+  const resultStatus = ev.pass ? 'PASS' : 'FAIL';
+  // A student who fails (overall, or in a subject when that rule is on) gets the failing remark/colour.
+  const remarkGrade = ev.pass ? grade : 'F';
+  const remarkText = dmcRemarkFor(remarkGrade) + (ev.subjFail ? ' \u2014 Fail: ' + ev.failedSubjects.join(', ') : '');
+  const verifyLine = dmcDesign.showVerifyCode === false ? '' : `<div style="text-align:center;margin-top:8px;font-size:9px;letter-spacing:.05em;color:#000;opacity:.75;">Cert. No: ${esc(dmcCertNo(result))} &nbsp;&middot;&nbsp; Verification Code: <b>${esc(dmcVerifyCode(result))}</b></div>`;
 
   // Position in class — dense ranking: a 3-way tie at 1st is followed by
   // 2nd next (not 4th), so ties never skip position numbers.
-  const classResults = dmcResults.filter(r => dmcClassKey(r.class) === dmcClassKey(result.class));
-  const classTotals = classResults.map(r => dmcSubjects.reduce((a, s) => a + (Number(r.marks[s.name]) || 0), 0));
-  const sortedTotals = [...new Set(classTotals)].sort((a, b) => b - a);
-  const position = sortedTotals.indexOf(totalObtained) + 1;
+  const position = dmcRankOf(result, dmcResults);   // 0 = not ranked (no marks entered / failed with "pass only")
   const ordinal = n => {
     const s = ['th','st','nd','rd'], v = n % 100;
     return n + (s[(v - 20) % 10] || s[v] || s[0]);
@@ -14268,12 +14893,13 @@ function renderDMCCertificate(result) {
   // Position can be edited per student; empty = automatic rank. A number gets its
   // ordinal (3 -> 3rd), any other text is shown exactly as typed.
   const posOv = (result.positionOverride == null ? '' : String(result.positionOverride)).trim();
-  const positionText = posOv ? (/^\d+$/.test(posOv) ? ordinal(Number(posOv)) : posOv) : ordinal(position);
+  const positionText = posOv ? (/^\d+$/.test(posOv) ? ordinal(Number(posOv)) : posOv) : (position > 0 ? ordinal(position) : '\u2014');
 
-  // Only the first 15 positions are printed. Beyond that the certificate shows just
+  // Only the first N positions (school setting, default 15) are printed. Beyond that the certificate shows just
   // %age and Grade (the Position column is removed). A non-numeric typed position is always shown.
   const posNumeric = posOv ? (/^\d+$/.test(posOv) ? Number(posOv) : null) : position;
-  const hidePosition = posNumeric != null && posNumeric > 15;
+  const posLimit = Math.max(0, Math.floor(Number(dmcDesign.positionLimit) || 0));
+  const hidePosition = posNumeric != null && posLimit > 0 && posNumeric > posLimit;
 
   // Design values are per-school (dmcDesign), so the same rendering logic
   // below produces a differently-styled certificate for every school.
@@ -14308,15 +14934,19 @@ function renderDMCCertificate(result) {
   const lightPanel = 'background:rgba(255,255,255,.62);-webkit-print-color-adjust:exact;print-color-adjust:exact;';
 
   const subjectsHtml = dmcSubjects.map((s, i) => {
-    const marks = Number(result.marks[s.name]) || 0;
+    const rawMark = (result.marks || {})[s.name];
+    const mState = dmcMarkState(rawMark);
+    const marks = Number(rawMark) || 0;
     const subjPct = s.total ? (marks / s.total) * 100 : 0;
-    const subjGrade = dmcGradeFor(subjPct);
+    // Absent prints "Abs", not-entered prints a dash — neither is passed off as a real 0.
+    const markCell = mState === 'abs' ? 'Abs' : mState === 'blank' ? '\u2014' : marks;
+    const subjGrade = mState === 'num' ? dmcCertGrade(subjPct) : '\u2014';
     return `
       <tr style="border-bottom:1px solid #C9C2A6;${lightPanel}">
         <td style="padding:6px 12px;text-align:center;font-size:15px;font-weight:900;color:#000;text-shadow:${glow};">${i+1}</td>
         <td style="padding:6px 12px;text-align:left;font-size:16px;font-weight:900;color:#000;text-shadow:${glow};">${esc(s.name)}</td>
         <td style="padding:6px 12px;text-align:center;font-size:16px;font-weight:900;color:#000;text-shadow:${glow};">${s.total}</td>
-        <td style="padding:6px 12px;text-align:center;font-size:17px;font-weight:900;color:#000;text-shadow:${glow};">${marks}</td>
+        <td style="padding:6px 12px;text-align:center;font-size:17px;font-weight:900;color:#000;text-shadow:${glow};">${markCell}</td>
         <td style="padding:6px 12px;text-align:center;font-size:16px;font-weight:900;color:#000;text-shadow:${glow};">${subjGrade}</td>
       </tr>`;
   }).join('');
@@ -14420,7 +15050,7 @@ function renderDMCCertificate(result) {
               </div>
               <div>
                 ${infoField('&#127891;','Class', result.class)}
-                ${infoField('&#128101;','Section', dmcBatchSection)}
+                ${infoField('&#128101;','Section', result.section || dmcBatchSection)}
                 ${infoField('&#128197;','Date of Issue', fmtDate(dmcBatchDateOfIssue || todayISO()))}
               </div>
             </div>
@@ -14449,7 +15079,7 @@ function renderDMCCertificate(result) {
                    row above it — Percentage sits under TOTAL MARKS, Position sits
                    under OBTAINED MARKS, Grade sits under GRADE (same last column). -->
               <tr style="border-top:2px solid ${pc};font-weight:900;">
-                <td colspan="2" style="padding:8px 12px;text-align:left;vertical-align:top;"><span style="display:inline-block;background:rgba(255,255,255,.92);color:#000;padding:2px 9px;border-radius:5px;font-size:12px;letter-spacing:.04em;-webkit-print-color-adjust:exact;print-color-adjust:exact;">RESULT</span></td>
+                <td colspan="2" style="padding:8px 12px;text-align:left;vertical-align:top;"><span style="display:inline-block;background:rgba(255,255,255,.92);color:#000;padding:2px 9px;border-radius:5px;font-size:12px;letter-spacing:.04em;-webkit-print-color-adjust:exact;print-color-adjust:exact;">RESULT</span><div style="margin-top:6px;font-size:15px;font-weight:900;letter-spacing:.06em;color:${ev.pass ? '#2F7D4F' : '#B24A32'};text-shadow:${glow};">${resultStatus}</div></td>
                 <td colspan="${hidePosition ? 2 : 1}" style="padding:8px 12px;text-align:center;color:${pc};">
                   <div style="font-size:11px;letter-spacing:.04em;font-weight:900;text-shadow:${glow};">%AGE</div>
                   <div style="font-size:16px;line-height:1;margin-top:2px;">&#128200;</div>
@@ -14472,7 +15102,7 @@ function renderDMCCertificate(result) {
           <!-- Remarks -->
           <div style="display:flex;margin-top:10px;border:1px solid ${pc};border-radius:8px;overflow:hidden;">
             <div style="background:${pc};color:#fff;font-weight:900;font-size:13px;letter-spacing:.05em;padding:8px 22px;">REMARKS</div>
-            <div style="flex:1;${lightPanel}display:flex;align-items:center;justify-content:center;gap:8px;font-weight:900;font-size:16px;letter-spacing:.05em;text-shadow:${glow};color:${dmcGradeColor(grade)};">${dmcRemarkFor(grade)}</div>
+            <div style="flex:1;${lightPanel}display:flex;align-items:center;justify-content:center;gap:8px;font-weight:900;font-size:16px;letter-spacing:.05em;text-shadow:${glow};color:${dmcGradeColor(remarkGrade)};text-align:center;">${esc(remarkText)}</div>
           </div>
 
           <!-- Footer: signatures -->
@@ -14487,6 +15117,7 @@ function renderDMCCertificate(result) {
               <div style="border-top:1px solid #000;padding-top:4px;font-size:10px;font-weight:900;color:#000;letter-spacing:.03em;">${esc((dmcDesign.principalLabel || 'PRINCIPAL SIGNATURE').toUpperCase())}</div>
             </div>
           </div>
+          ${verifyLine}
 
         </div>
       </div>
@@ -14544,11 +15175,27 @@ function extractLogoColor(dataUrl, callback) {
   img.src = dataUrl;
 }
 
+function dmcShrinkLogo(dataUrl, cb) {
+  const img = new Image();
+  img.onload = () => {
+    try {
+      const max = 500, k = Math.min(1, max / Math.max(img.width, img.height));
+      if (k >= 1 && dataUrl.length < 300000) { cb(dataUrl); return; }
+      const c = document.createElement('canvas');
+      c.width = Math.max(1, Math.round(img.width * k)); c.height = Math.max(1, Math.round(img.height * k));
+      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+      cb(/^data:image\/jpe?g/i.test(dataUrl) ? c.toDataURL('image/jpeg', 0.9) : c.toDataURL('image/png'));
+    } catch (e) { cb(dataUrl); }
+  };
+  img.onerror = () => cb(dataUrl);
+  img.src = dataUrl;
+}
 function handleDMCLogoUpload(file) {
   if (!file) return;
   const reader = new FileReader();
   reader.onload = (e) => {
-    dmcLogo = e.target.result;
+    dmcShrinkLogo(e.target.result, (small) => {
+    dmcLogo = small;
     extractLogoColor(dmcLogo, (color) => {
       // Banner/header background: a deeper shade of the logo's color, dark
       // enough for the white header text to stay readable on top of it.
@@ -14562,38 +15209,105 @@ function handleDMCLogoUpload(file) {
       renderTab();
       renderDMCPreviewIfOpen();
     });
+    });
   };
   reader.readAsDataURL(file);
 }
 
-// Permanently archives this batch of DMC results (full marks included) to the
-// dmc_records table, so a student's certificate can be found and reprinted
-// years later by name — unlike dmcResults, which only lives in memory for the
-// current session/upload and is lost as soon as the tab closes.
-async function saveDMCRecords(results) {
-  if (!results.length) return;
-  const year = dmcAcademicSession || 'Unspecified';
+// Archive "year" for a batch. A blank Academic Session used to be filed under a
+// single shared 'Unspecified' label, so the next year's blank-session batch
+// overwrote this year's records. Now the issue-date year is part of the label.
+function dmcArchiveYear() {
+  return dmcAcademicSession || ('Unspecified-' + String(dmcBatchDateOfIssue || todayISO()).slice(0, 4));
+}
+function dmcBuildRecordRows(results) {
+  const year = dmcArchiveYear();
+  const rank = dmcRankMap(dmcResults);
   const rows = results.map(r => {
     const totalObtained = dmcSubjects.reduce((a, s) => a + (Number(r.marks[s.name]) || 0), 0);
     const totalPossible = dmcSubjects.reduce((a, s) => a + s.total, 0);
     const percentage = totalPossible ? +(totalObtained / totalPossible * 100).toFixed(1) : 0;
-    const classTotals = results.filter(x => dmcClassKey(x.class) === dmcClassKey(r.class))
-      .map(x => dmcSubjects.reduce((a, s) => a + (Number(x.marks[s.name]) || 0), 0));
-    const autoPos = [...new Set(classTotals)].sort((a, b) => b - a).indexOf(totalObtained) + 1;
+    const autoPos = rank.get(r) || 0;
     const ovTxt = (r.positionOverride == null ? '' : String(r.positionOverride)).trim();
     const position = /^\d+$/.test(ovTxt) ? Number(ovTxt) : autoPos;
     return {
       owner_id: CURRENT_USER.id, academic_year: year, class_name: r.class || '',
       roll_no: r.rollNo || '', student_name: r.studentName || '', father_name: r.fatherName || '',
-      section: dmcBatchSection || '', date_of_issue: dmcBatchDateOfIssue || todayISO(),
+      section: r.section || dmcBatchSection || '', date_of_issue: dmcBatchDateOfIssue || todayISO(),
       marks: r.marks || {}, subjects: dmcSubjects,
       total_obtained: totalObtained, total_possible: totalPossible, percentage,
-      grade: dmcGradeFor(percentage), position, updated_at: new Date().toISOString()
+      grade: dmcCertGrade(percentage), position, updated_at: new Date().toISOString()
     };
   });
-  const { error } = await sb.from('dmc_records')
-    .upsert(rows, { onConflict: 'owner_id,academic_year,class_name,roll_no,student_name' });
-  if (error) console.error('DMC record archive failed:', error.message);
+  // Two students with the same class + roll no. + name would be sent as the same archive row, and
+  // the database rejects a batch that touches one row twice — so only the last of each is kept.
+  const byKey = new Map();
+  rows.forEach(row => byKey.set([row.class_name, row.roll_no, row.student_name].join('\u0001'), row));
+  const out = [...byKey.values()];
+  out._dropped = rows.length - out.length;
+  return out;
+}
+const DMC_ARCHIVE_CONFLICT = 'owner_id,academic_year,class_name,roll_no,student_name';
+const dmcRecKey = r => [r.class_name, r.roll_no, r.student_name].map(v => String(v || '').trim().toLowerCase()).join('|');
+
+// Looks for archived records this print would REPLACE with different marks, so the
+// user can stop before an old certificate record is silently overwritten.
+// Returns the number of such records (0 when offline / nothing to compare).
+async function dmcCountArchiveOverwrites(results) {
+  if (!navigator.onLine || !results.length) return 0;
+  try {
+    const rows = dmcBuildRecordRows(results);
+    const classes = [...new Set(rows.map(r => r.class_name))];
+    const { data, error } = await withTimeout(
+      sb.from('dmc_records').select('class_name,roll_no,student_name,marks,subjects')
+        .eq('owner_id', CURRENT_USER.id).eq('academic_year', dmcArchiveYear()).in('class_name', classes).limit(5000)
+    );
+    if (error || !data) return 0;
+    const old = new Map(data.map(d => [dmcRecKey(d), d]));
+    const same = (a, b) => JSON.stringify(a || {}, Object.keys(a || {}).sort()) === JSON.stringify(b || {}, Object.keys(b || {}).sort());
+    return rows.filter(r => { const o = old.get(dmcRecKey(r)); return o && !same(o.marks, r.marks); }).length;
+  } catch (e) { return 0; }
+}
+
+function dmcSetArchiveStatus(html) {
+  dmcArchiveStatus = html;
+  const el = document.getElementById('dmc-archive-status'); if (el) el.innerHTML = html;
+}
+
+// Permanently archives this batch of DMC results (full marks included) to the
+// dmc_records table, so a student's certificate can be found and reprinted
+// years later by name. Goes through the offline sync queue: with no signal the
+// batch waits on the device and uploads itself when the connection returns, and
+// a server-side rejection is shown instead of only landing in the console.
+async function saveDMCRecords(results) {
+  if (!results.length) return;
+  const rows = dmcBuildRecordRows(results);
+  dmcSetArchiveStatus('⏳ Archive me save ho raha hai…');
+  let res;
+  try {
+    res = await offlineWrite({
+      table: 'dmc_records', action: 'upsert', payload: rows, onConflict: DMC_ARCHIVE_CONFLICT,
+      run: () => sb.from('dmc_records').upsert(rows, { onConflict: DMC_ARCHIVE_CONFLICT }),
+      optimisticApply: () => {}
+    });
+  } catch (e) { res = { error: e }; }
+  if (res && res.error) {
+    console.error('DMC record archive failed:', res.error.message || res.error);
+    dmcSetArchiveStatus('✗ Archive me save nahi hua: ' + esc(String(res.error.message || res.error)) + '. Print ho chuka hai, lekin purana record dhoondne ke liye dobara Print All karein.');
+    alert('Archive me save nahi hua: ' + (res.error.message || res.error));
+  } else if (res && res.queued) {
+    dmcSetArchiveStatus('📴 Internet nahi hai — ' + rows.length + ' records is device par mehfooz hain aur net aate hi archive me chale jayenge.');
+  } else {
+    dmcSetArchiveStatus('✓ ' + rows.length + ' records archive me save ho gaye.' + (rows._dropped ? ' (' + rows._dropped + ' duplicate — same class/roll/naam — ek mein merge hue)' : ''));
+  }
+}
+
+// One combined "certificates issued" log entry batch (same queue, so it isn't lost offline).
+async function dmcLogIssuedBatch(results) {
+  try {
+    const rows = results.map(r => ({ owner_id: CURRENT_USER.id, cert_type: 'DMC', student_name: r.studentName || null, class_name: r.class || null, ref_id: null }));
+    await offlineWrite({ table: 'certificate_log', action: 'insert', payload: rows, run: () => sb.from('certificate_log').insert(rows), optimisticApply: () => {} });
+  } catch (e) { /* non-critical */ }
 }
 
 // Fetches one archived DMC record and its class cohort (for position ranking),
@@ -14613,7 +15327,7 @@ async function viewSavedDMCRecord(id) {
   dmcBatchDateOfIssue = rec.date_of_issue || todayISO();
   dmcResults = (cohort || []).map(c => ({ studentName: c.student_name, class: c.class_name, marks: c.marks }));
 
-  const pseudo = { studentName: rec.student_name, fatherName: rec.father_name, rollNo: rec.roll_no, class: rec.class_name, marks: rec.marks, positionOverride: rec.position == null ? '' : String(rec.position) };
+  const pseudo = { studentName: rec.student_name, fatherName: rec.father_name, rollNo: rec.roll_no, class: rec.class_name, marks: rec.marks, positionOverride: rec.position ? String(rec.position) : '' };
   const certHtml = renderDMCCertificate(pseudo);
 
   dmcSubjects = backup.subjects; dmcAcademicSession = backup.session; dmcBatchSection = backup.section;
@@ -14641,21 +15355,29 @@ const DMC_PRINT_CSS = '@page{size:A4;margin:4mm;}*{-webkit-print-color-adjust:ex
 // taller than the sheet, it is scaled down just enough to fit instead of being cut off.
 function dmcFitPrintWindow(w) {
   try {
+    // CSS `zoom` is used when the browser has it; older browsers get the same result from a scaled box.
+    const zoomOk = !!(w.CSS && w.CSS.supports && w.CSS.supports('zoom', '0.5'));
     w.document.querySelectorAll('.dmc-cert').forEach(c => {
       const card = c.querySelector('.dmc-card');
       if (!card) return;
       const avail = c.clientHeight - 16;           // frame has 8px padding top + bottom
-      card.style.zoom = ''; card.style.height = 'auto';
+      card.style.zoom = ''; card.style.transform = ''; card.style.width = ''; card.style.height = 'auto';
       const nat = card.scrollHeight;
-      if (nat > avail) { const z = avail / nat; card.style.zoom = z; card.style.height = (avail / z) + 'px'; }
-      else card.style.height = avail + 'px';
+      if (nat > avail) {
+        const z = avail / nat;
+        card.style.height = (avail / z) + 'px';
+        if (zoomOk) card.style.zoom = z;
+        else { card.style.width = (100 / z) + '%'; card.style.transformOrigin = 'top left'; card.style.transform = 'scale(' + z + ')'; }
+      } else card.style.height = avail + 'px';
     });
   } catch (e) {}
 }
 
 async function printSavedDMCRecord(id) {
+  // opened first, while the tap still counts as a user action — phones block a window opened after the fetch below
+  const preW = window.open('', '', 'height=900,width=800');
   const { data: rec, error } = await sb.from('dmc_records').select('*').eq('id', id).eq('owner_id', CURRENT_USER.id).maybeSingle();
-  if (error || !rec) { alert('Record not found'); return; }
+  if (error || !rec) { try { if (preW) preW.close(); } catch (e) {} alert('Record not found'); return; }
   const { data: cohort } = await fetchAll(() => sb.from('dmc_records').select('student_name,marks,class_name')
     .eq('owner_id', CURRENT_USER.id).eq('academic_year', rec.academic_year).eq('class_name', rec.class_name));
 
@@ -14666,33 +15388,148 @@ async function printSavedDMCRecord(id) {
   dmcBatchDateOfIssue = rec.date_of_issue || todayISO();
   dmcResults = (cohort || []).map(c => ({ studentName: c.student_name, class: c.class_name, marks: c.marks }));
 
-  const pseudo = { studentName: rec.student_name, fatherName: rec.father_name, rollNo: rec.roll_no, class: rec.class_name, marks: rec.marks, positionOverride: rec.position == null ? '' : String(rec.position) };
+  const pseudo = { studentName: rec.student_name, fatherName: rec.father_name, rollNo: rec.roll_no, class: rec.class_name, marks: rec.marks, positionOverride: rec.position ? String(rec.position) : '' };
   const certHtml = renderDMCCertificate(pseudo);
 
   dmcSubjects = backup.subjects; dmcAcademicSession = backup.session; dmcBatchSection = backup.section;
   dmcBatchDateOfIssue = backup.date; dmcResults = backup.results;
 
-  const html = '<html><head><meta charset="utf-8"><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700&family=Berkshire+Swash&family=Aref+Ruqaa:wght@400;700&family=Inter:wght@400;500;600;700&display=swap"><style>' + DMC_PRINT_CSS + 'body{font-family:Inter,sans-serif;margin:0;padding:10px;}</style></head><body>' + certHtml + '</body></html>';
-  const w = window.open('', '', 'height=900,width=800');
-  w.document.write(html);
-  w.document.close();
-  setTimeout(() => { dmcFitPrintWindow(w); w.print(); }, 900);
+  const html = dmcBuildPrintHtml(certHtml);
+  const w = dmcOpenPrintWindow(html, preW);
+  if (!w) return;
 }
 
-function printAllDMC() {
-  if (dmcResults.length === 0) { alert('No results to print'); return; }
-  let html = '<html><head><meta charset="utf-8"><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700&family=Berkshire+Swash&family=Aref+Ruqaa:wght@400;700&family=Inter:wght@400;500;600;700&display=swap"><style>' + DMC_PRINT_CSS + 'html,body{height:100%;}body{font-family:Inter,sans-serif;margin:0;padding:10px;background:#f5f5f5;}@media print{body{background:#fff;padding:0;}.dmc-cert{page-break-inside:avoid;break-inside:avoid;page-break-after:auto;}}</style></head><body>';
-  dmcResults.forEach(r => {
-    html += renderDMCCertificate(r);
+// The page shell for every DMC print window (fonts + A4 layout CSS).
+const DMC_PRINT_HEAD = '<html><head><meta charset="utf-8"><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700&family=Berkshire+Swash&family=Aref+Ruqaa:wght@400;700&family=Inter:wght@400;500;600;700&display=swap"><style>' + DMC_PRINT_CSS + 'html,body{height:100%;}body{font-family:Inter,sans-serif;margin:0;padding:10px;background:#f5f5f5;}@media print{body{background:#fff;padding:0;}.dmc-cert{page-break-inside:avoid;break-inside:avoid;page-break-after:auto;}}</style></head><body>';
+
+// A school logo / background picture is embedded as a huge base64 string, and every certificate
+// repeats it (header logo, watermark, background). For 100+ students that made the print page
+// hundreds of MB and hung phones. Each distinct picture is written ONCE (CSS variable for
+// backgrounds, one script line for <img>) and the certificates just point at it.
+function dmcDedupeAssets(html) {
+  const re = /data:[a-z0-9.+\/-]+;base64,[A-Za-z0-9+\/=]{1500,}/gi;
+  const ids = new Map(); const list = [];
+  html = html.replace(re, m => {
+    if (!ids.has(m)) { ids.set(m, list.length); list.push(m); }
+    return '@@DMCASSET' + ids.get(m) + '@@';
   });
-  html += '</body></html>';
-  const w = window.open('', '', 'height=900,width=800');
+  const usedCss = new Set(), usedImg = new Set();
+  html = html.replace(/\bsrc=(["'])@@DMCASSET(\d+)@@\1/g, (all, q, id) => { usedImg.add(id); return 'src="data:," data-dmc-asset="' + id + '"'; });
+  html = html.replace(/url\(\s*(["']?)@@DMCASSET(\d+)@@\1\s*\)/g, (all, q, id) => { usedCss.add(id); return 'var(--dmc-a' + id + ')'; });
+  html = html.replace(/@@DMCASSET(\d+)@@/g, (all, id) => list[Number(id)]);      // any other use: put the picture back as it was
+  const css = [...usedCss].map(id => '--dmc-a' + id + ':url("' + list[Number(id)] + '");').join('');
+  if (css) html = html.replace('</head>', '<style>:root{' + css + '}</style></head>');
+  if (usedImg.size) {
+    const map = {}; usedImg.forEach(id => { map[id] = list[Number(id)]; });
+    html = html.replace('</body>', '<script>(function(){var A=' + JSON.stringify(map) + ';var n=document.querySelectorAll("img[data-dmc-asset]");for(var i=0;i<n.length;i++){n[i].src=A[n[i].getAttribute("data-dmc-asset")];}})();<\/script></body>');
+  }
+  return html;
+}
+function dmcBuildPrintHtml(bodyHtml) {
+  return dmcDedupeAssets(DMC_PRINT_HEAD + bodyHtml + '</body></html>');
+}
+
+// Resolves once the print window has finished loading (fonts, images), or after 6 seconds at
+// the latest — printing used to start after a fixed 0.9s, which could print before the font or
+// logo had arrived, and offline the Google Fonts request can never finish so we must not wait on it.
+function dmcWhenPrintReady(w) {
+  return new Promise(resolve => {
+    let done = false;
+    const finish = () => { if (!done) { done = true; resolve(); } };
+    setTimeout(finish, 6000);
+    const afterLoad = () => {
+      let fonts = null; try { fonts = w.document.fonts && w.document.fonts.ready; } catch (e) {}
+      Promise.resolve(fonts).then(() => setTimeout(finish, 150), () => setTimeout(finish, 150));
+    };
+    try {
+      if (w.document.readyState === 'complete') afterLoad();
+      else w.addEventListener('load', afterLoad);
+    } catch (e) { setTimeout(finish, 900); }
+  });
+}
+
+function dmcOpenPrintWindow(html, preOpened) {
+  const w = preOpened || window.open('', '', 'height=900,width=800');
+  if (!w) { alert('Print window block ho gayi. Browser mein is site ke liye pop-ups allow karein, phir dobara try karein.'); return null; }
   w.document.write(html);
   w.document.close();
-  setTimeout(() => { dmcFitPrintWindow(w); w.print(); }, 900);
-  dmcResults.forEach(r => logCertificateIssued('DMC', r.studentName, r.class));
-  saveDMCRecords(dmcResults);
+  dmcWhenPrintReady(w).then(() => {
+    if (w.closed) return;
+    dmcFitPrintWindow(w);
+    try { w.focus(); } catch (e) {}
+    w.print();
+  });
+  return w;
 }
+
+// Things worth a second look before a whole class is printed.
+function dmcPrecheck(res) {
+  res = res || dmcResults;
+  const w = [];
+  const nm = (dmcSchoolName || '').trim();
+  if (!nm || nm.toUpperCase() === 'SCHOOL NAME') w.push('School ka naam set nahi hai (certificate par "SCHOOL NAME" print hoga).');
+  if (!dmcLogo) w.push('School logo upload nahi hua.');
+  if (!String(dmcAcademicSession || '').trim()) w.push('Academic Session khali hai — archive me record "' + dmcArchiveYear() + '" ke naam se save hoga. Agle saal ka data alag rakhne ke liye upar Academic Session likhein.');
+  const noCls = res.filter(r => !String(r.class || '').trim()).length;
+  if (noCls) w.push(noCls + ' students ki class khali hai.');
+  const noName = res.filter(r => !String(r.studentName || '').trim()).length;
+  if (noName) w.push(noName + ' students ka naam khali hai.');
+  const seen = {}, dups = [];
+  res.forEach(r => {
+    const rn = String(r.rollNo || '').trim(); if (!rn) return;
+    const k = dmcClassKey(r.class) + '|' + rn;
+    if (seen[k]) dups.push(rn); seen[k] = 1;
+  });
+  if (dups.length) w.push('Roll No. dobara aaya hai: ' + [...new Set(dups)].join(', '));
+  let blanks = 0;
+  res.forEach(r => dmcSubjects.forEach(s => { if (dmcMarkState((r.marks || {})[s.name]) === 'blank') blanks++; }));
+  if (blanks) w.push(blanks + ' marks khali hain (certificate par "—" chhapega). Absent ho to "Abs" likhein.');
+  const spellings = {};
+  res.forEach(r => { const raw = String(r.class || '').trim(); if (!raw) return; (spellings[dmcClassKey(raw)] = spellings[dmcClassKey(raw)] || new Set()).add(raw); });
+  const mixed = Object.values(spellings).filter(set => set.size > 1).map(set => [...set].join(' / '));
+  if (mixed.length) w.push('Ek hi class alag alag naam se likhi hai (ek hi class maani gayi hai): ' + mixed.join('; '));
+  const over = [];
+  res.forEach(r => dmcSubjects.forEach(s => {
+    if ((Number((r.marks || {})[s.name]) || 0) > s.total) over.push((r.studentName || r.rollNo || '?') + ' — ' + s.name);
+  }));
+  if (over.length) w.push('Total se zyada marks: ' + over.slice(0, 5).join(', ') + (over.length > 5 ? ' ...' : ''));
+  return w;
+}
+
+// ---- Print: a whole class, only the selected students, or one student ----
+let _dmcPrinting = false;
+async function printDMCResults(results) {
+  if (_dmcPrinting) return;
+  if (!results.length) { alert(qt('There are no students to print.', 'پرنٹ کرنے کے لیے کوئی طالب علم نہیں۔')); return; }
+  if (dmcSubjects.length === 0) { alert('Pehle subjects set karein (Excel upload karein ya Subjects section se add karein)'); return; }
+  flushDMCUpload();
+  const warns = dmcPrecheck(results);
+  if (warns.length && !confirm('Print se pehle yeh baatein dekh lein:\n\n\u2022 ' + warns.join('\n\u2022 ') + '\n\nPhir bhi print karein?')) return;
+  // Open the print window NOW, while the tap still counts as a user action —
+  // phones block window.open() once an await (the archive check below) has passed.
+  const preW = window.open('', '', 'height=900,width=800');
+  if (!preW) { alert('Print window block ho gayi. Browser mein is site ke liye pop-ups allow karein, phir dobara try karein.'); return; }
+  _dmcPrinting = true;
+  try {
+    const overwrites = await dmcCountArchiveOverwrites(results);
+    if (overwrites && !confirm(`Archive me ${overwrites} students ka record pehle se hai (session "${dmcArchiveYear()}") aur marks alag hain.\n\nPrint karne se purana archive record replace ho jayega.\n\nJari rakhein?`)) { try { preW.close(); } catch (e) {} return; }
+    let body = '';
+    _dmcRankCache = { map: dmcRankMap(dmcResults), members: new Set(dmcResults) };
+    try { results.forEach(r => { body += renderDMCCertificate(r); }); } finally { _dmcRankCache = null; }
+    const w = dmcOpenPrintWindow(dmcBuildPrintHtml(body), preW);
+    if (!w) return;
+    dmcLogIssuedBatch(results);
+    await saveDMCRecords(results);
+  } finally { _dmcPrinting = false; }
+}
+function printAllDMC() { return printDMCResults(dmcResults.slice()); }
+function printSelectedDMC() {
+  const sel = dmcResults.filter(r => r.selected);
+  if (!sel.length) { alert(qt('Tick the students you want to print first.', 'پہلے وہ طلبہ منتخب کریں جنہیں پرنٹ کرنا ہے۔')); return; }
+  return printDMCResults(sel);
+}
+function printOneDMC(i) { const r = dmcResults[i]; if (r) return printDMCResults([r]); }
+
 
 // --------- MARKS SHEET (Independent - separate from Students database) ---------
 let msClasses = ['Nursery', 'KG', '1st', '2nd', '3rd']; // independent class list

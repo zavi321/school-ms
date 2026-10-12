@@ -1,6 +1,65 @@
-const CACHE_NAME = 'school-ms-cache-v4';
-const APP_SHELL = ['./', './index.html', './manifest.json', './icon-192.png', './icon-512.png'];
+const CACHE_NAME = 'school-ms-cache-v5';
+const APP_SHELL = [
+  './', './index.html', './manifest.json', './icon-192.png', './icon-512.png',
+  // split app files (css + js)
+  './css/style.css',
+  './css/paper.css',
+  './js/core.js',
+  './js/auth.js',
+  './js/data.js',
+  './js/search-alerts.js',
+  './js/settings.js',
+  './js/dashboard.js',
+  './js/students.js',
+  './js/teachers.js',
+  './js/timetable.js',
+  './js/class-logins-view.js',
+  './js/finance.js',
+  './js/reports.js',
+  './js/admission-register.js',
+  './js/datesheet.js',
+  './js/dmc.js',
+  './js/marks-sheet.js',
+  './js/papers.js',
+  './js/class-portal.js',
+  './js/notices.js',
+  './js/diary-portal.js',
+  './js/parent-portal.js',
+  './js/chat.js',
+  './js/main.js'
+];
 const SHELL_TIMEOUT_MS = 4000;
+
+// The DMC print window loads its fonts from this exact stylesheet URL (it differs from the one
+// index.html uses for the app itself). Fonts are only cached after a first online use of a URL, so
+// the first certificate printed with no signal would fall back to a plain font. Caching this
+// stylesheet and its latin/arabic font files at install time fixes that. Keep it identical to the
+// font <link> inside DMC_PRINT_HEAD in index.html.
+const DMC_FONT_CSS = 'https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700&family=Berkshire+Swash&family=Aref+Ruqaa:wght@400;700&family=Inter:wght@400;500;600;700&display=swap';
+const DMC_FONT_SUBSETS = ['latin', 'arabic'];   // skip the other language subsets to keep the download small
+
+// Returns the font file URLs (only the wanted subsets) listed in a Google Fonts stylesheet.
+function fontFileUrls(css) {
+  const out = [];
+  const re = /\/\*\s*([a-z-]+)\s*\*\/\s*@font-face\s*\{[^}]*?url\((https:\/\/fonts\.gstatic\.com\/[^)]+)\)/g;
+  let m;
+  while ((m = re.exec(css))) if (DMC_FONT_SUBSETS.includes(m[1]) && !out.includes(m[2])) out.push(m[2]);
+  return out;
+}
+
+function precacheDmcFonts(cache) {
+  return cache.match(DMC_FONT_CSS).then((hit) => hit || fetch(DMC_FONT_CSS).then((res) => {
+    if (!res || !res.ok) return null;
+    return cache.put(DMC_FONT_CSS, res.clone()).then(() => res);
+  })).then((res) => res ? res.text() : '').then((css) =>
+    Promise.all(fontFileUrls(css).map((url) =>
+      cache.match(url).then((hit) => {
+        if (hit) return;
+        return fetch(url).then((r) => { if (r && (r.ok || r.type === 'opaque')) return cache.put(url, r); });
+      }).catch(() => {})
+    ))
+  ).catch(() => {});
+}
 const PRECACHE_LIBS = [
   'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.4/dist/umd/supabase.js',
   'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js',
@@ -25,7 +84,8 @@ self.addEventListener('install', (e) => {
               if (response && response.ok) return cache.put(url, response);
             });
           }).catch(() => {})
-        )
+        ),
+        precacheDmcFonts(cache)
       ])
     )
   );
@@ -49,7 +109,7 @@ self.addEventListener('fetch', (e) => {
       (url.startsWith('https://fonts.googleapis.com/') || url.startsWith('https://fonts.gstatic.com/'))) {
     e.respondWith(
       caches.open(CACHE_NAME).then((cache) =>
-        cache.match(e.request).then((cached) => {
+        cache.match(e.request, { ignoreVary: true }).then((cached) => {
           const net = fetch(e.request).then((response) => {
             if (response && (response.ok || response.type === 'opaque')) {
               cache.put(e.request, response.clone());
