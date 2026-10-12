@@ -13736,8 +13736,8 @@ function tplDMC() {
       <h3 style="margin-top:0;">${dqt("Upload Result List (Excel)", "رزلٹ لسٹ اپ لوڈ کریں (Excel)")}</h3>
       <p style="font-size:12px;opacity:.7;">${dqt("Upload an Excel file with the columns: Student Name, Father Name, Roll No, Section, and one column per subject (for example \"Urdu/75\"). The \"Class\" column is optional if you selected a class above. Write Abs for an absent student.", "ایسی Excel فائل اپ لوڈ کریں جس میں یہ کالم ہوں: Student Name، Father Name، Roll No، Section، اور ہر مضمون کا ایک کالم (مثلاً \"Urdu/75\")۔ اوپر کلاس منتخب ہو تو \"Class\" کالم ضروری نہیں۔ غیر حاضر طالب علم کے لیے Abs لکھیں۔")}</p>
       <label style="margin-bottom:0;">
-        <span>${dqt("Select Excel File", "Excel فائل منتخب کریں")}</span>
-        <input type="file" id="dmc-file-input" accept=".xlsx,.xls,.csv" onchange="handleDMCExcelUpload(this.files[0]); this.value='';">
+        <span>${dqt("Select Excel or PDF File", "Excel یا PDF فائل منتخب کریں")}</span>
+        <input type="file" id="dmc-file-input" accept=".xlsx,.xls,.csv,.pdf,application/pdf" onchange="handleDMCExcelUpload(this.files[0]); this.value='';">
       </label>
       <div id="dmc-upload-msg" style="margin-top:8px;font-size:12px;">${dmcLastUploadMsg}</div>
       <p style="font-size:12px;opacity:.7;margin:12px 0 6px;">${dqt('No Excel? Start from the students already in this app, from the Marks Sheet tab, or reload a saved class from the archive.', 'Excel نہیں ہے؟ ایپ میں موجود طلبہ، مارکس شیٹ ٹیب یا آرکائیو میں محفوظ کلاس سے شروع کریں۔')}</p>
@@ -13949,7 +13949,7 @@ function dmcResetSession() {
   dmcResults = []; dmcSubjects = []; dmcLogo = null; dmcSchoolName = 'SCHOOL NAME';
   dmcTagline = ''; dmcAcademicSession = ''; dmcQuote = ''; dmcBatchSection = '';
   dmcBatchDateOfIssue = todayISO(); dmcSelectedClass = ''; dmcLastUploadMsg = '';
-  dmcArchiveStatus = ''; dmcUploadBackup = null; dmcConfigLoaded = false; dmcSubjectsTouched = false; dmcNewSubjDraft = { name: '', total: '' };
+  dmcArchiveStatus = ''; dmcUploadBackup = null; dmcConfigLoaded = false; dmcSubjectsTouched = false; dmcRemovedTotals = {}; dmcNewSubjDraft = { name: '', total: '' };
   clearTimeout(_dmcUploadTimer); _dmcUploadTimer = null; dmcPreviewRefs = null; dmcEditFilter = ''; dmcEditLimit = 25;
   dmcDesign = JSON.parse(JSON.stringify(DMC_DESIGN_DEFAULT));
 }
@@ -14184,6 +14184,7 @@ function removeDMCBg() {
 }
 
 // ---- Subjects & Total Marks (manual add / edit / remove) ----
+let dmcRemovedTotals = {};                      // totals of deleted subjects, to reuse if the subject is added again
 let dmcNewSubjDraft = { name: '', total: '' }; // what is typed in the "new subject" boxes (survives any redraw)
 let dmcSubjectsTouched = false;                // true once subjects were added/edited in this session
 function renderDMCSubjects() {
@@ -14219,12 +14220,25 @@ function addDMCSubject() {
   const nameEl = document.getElementById('dmc-new-subj-name');
   const totalEl = document.getElementById('dmc-new-subj-total');
   const name = (nameEl.value || '').trim();
-  const total = Number(totalEl.value);
+  let total = Number(totalEl.value);
+  const lowName = name.toLowerCase();
+  if (!total && dmcRemovedTotals[lowName]) total = dmcRemovedTotals[lowName];   // re-adding a deleted subject: its old total is reused
   if (!name) { alert('Subject ka naam likhein'); return; }
   if (!total || total <= 0) { alert('Is subject ke total marks likhein'); return; }
   if (dmcSubjects.some(x => x.name.toLowerCase() === name.toLowerCase())) { alert('Yeh subject pehle se maujood hai'); return; }
   dmcSubjects.push({ name, total });
-  dmcResults.forEach(r => { r.marks = r.marks || {}; if (r.marks[name] === undefined) r.marks[name] = ''; });
+  // A subject deleted earlier and added again gets its old marks back (they were set aside, not lost).
+  dmcResults.forEach(r => {
+    r.marks = r.marks || {};
+    if (r.removedMarks && Object.prototype.hasOwnProperty.call(r.removedMarks, lowName)) {
+      let v = r.removedMarks[lowName];
+      const n = Number(v);
+      if (v !== 'A' && v !== '' && isFinite(n) && n > total) v = total;     // never above the new total
+      r.marks[name] = v;
+      delete r.removedMarks[lowName];
+    } else if (r.marks[name] === undefined) r.marks[name] = '';
+  });
+  delete dmcRemovedTotals[lowName];
   nameEl.value = ''; totalEl.value = '';
   dmcNewSubjDraft = { name: '', total: '' };
   renderDMCSubjects();
@@ -14249,7 +14263,16 @@ function renameDMCSubject(j, v) {
 function removeDMCSubject(j) {
   const sub = dmcSubjects[j];
   if (!confirm(`"${sub.name}" ko hata dein? Is subject ke saare marks bhi hat jayenge.`)) return;
-  dmcResults.forEach(r => { if (r.marks) delete r.marks[sub.name]; });
+  // Set the marks aside (per student) so adding the same subject again brings them back.
+  const lowSub = String(sub.name).trim().toLowerCase();
+  dmcRemovedTotals[lowSub] = sub.total;
+  dmcResults.forEach(r => {
+    if (r.marks && Object.prototype.hasOwnProperty.call(r.marks, sub.name)) {
+      r.removedMarks = r.removedMarks || {};
+      r.removedMarks[lowSub] = r.marks[sub.name];
+    }
+    if (r.marks) delete r.marks[sub.name];
+  });
   dmcSubjects.splice(j, 1);
   renderDMCSubjects();
   dmcSubjectsChanged();
@@ -14641,16 +14664,78 @@ function dmcPickSheetRows(wb) {
   return { rows: XLSX.utils.sheet_to_json(chosen.ws, { range: chosen.hdr }), sheetName: chosen.sn, others };
 }
 
+// Reads a PDF result list (a text PDF, e.g. exported from Excel/Word) and turns its table into the same
+// kind of sheet an Excel file gives, so the rest of the upload works unchanged. Columns are found from the
+// header row ("Student Name", "Roll No", "Urdu/75" ...); every cell below is placed under the nearest header.
+async function dmcPdfToWorkbook(buf) {
+  await pqLoadScript(PQ_PDFJS);
+  pdfjsLib.GlobalWorkerOptions.workerSrc = PQ_PDFJS_W;
+  const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
+  const rows = [];                                   // each row = list of cells {t, c (centre x)}
+  let anyText = false;
+  for (let p = 1; p <= pdf.numPages; p++) {
+    const page = await pdf.getPage(p);
+    const tc = await page.getTextContent();
+    const items = tc.items.filter(it => String(it.str).trim() !== '')
+      .map(it => ({ t: String(it.str).trim(), x: it.transform[4], y: it.transform[5], w: it.width || 0, h: Math.abs(it.transform[3]) || 8 }));
+    if (items.length) anyText = true;
+    const lines = [];
+    items.forEach(it => {
+      const ln = lines.find(l => Math.abs(l.y - it.y) <= Math.max(2.5, it.h * 0.4));
+      if (ln) ln.items.push(it); else lines.push({ y: it.y, items: [it] });
+    });
+    lines.sort((a, b) => b.y - a.y);
+    lines.forEach(ln => {
+      ln.items.sort((a, b) => a.x - b.x);
+      const cells = [];
+      ln.items.forEach(it => {
+        const last = cells[cells.length - 1];
+        const gap = last ? it.x - last.end : 0;
+        if (last && gap < Math.max(4, it.h * 0.6)) { last.t += (gap > 1.2 ? ' ' : '') + it.t; last.end = it.x + it.w; }
+        else cells.push({ t: it.t, x: it.x, end: it.x + it.w });
+      });
+      rows.push(cells.map(c => ({ t: c.t, c: (c.x + c.end) / 2 })));
+    });
+  }
+  if (!anyText) throw new Error('Is PDF mein text nahi mila (shayad scan ya photo hai). Text wali PDF dein, ya Excel use karein.');
+  const hdrIdx = rows.findIndex(r => r.some(c => DMC_COLS.name.includes(dmcNormHdr(c.t))));
+  if (hdrIdx < 0) throw new Error('PDF mein "Student Name" wala header nahi mila. Table ke upar column ke naam (Student Name, Roll No, subjects) hone chahiye.');
+  const hdr = rows[hdrIdx];
+  const anchors = hdr.map(c => c.c);
+  const hdrKey = hdr.map(c => c.t).join('|');
+  const aoa = [hdr.map(c => c.t)];
+  rows.slice(hdrIdx + 1).forEach(r => {
+    if (r.map(c => c.t).join('|') === hdrKey) return;          // header repeated on the next page
+    const out = anchors.map(() => '');
+    r.forEach(c => {
+      let best = 0;
+      anchors.forEach((a, i) => { if (Math.abs(a - c.c) < Math.abs(anchors[best] - c.c)) best = i; });
+      out[best] = out[best] ? out[best] + ' ' + c.t : c.t;
+    });
+    if (out.filter(v => v !== '').length >= 2) aoa.push(out);  // lone lines (page numbers, footers) are skipped
+  });
+  if (aoa.length < 2) throw new Error('PDF mein table ki qatarain nahi mili.');
+  return { SheetNames: ['PDF'], Sheets: { PDF: XLSX.utils.aoa_to_sheet(aoa) } };
+}
+
 function handleDMCExcelUpload(file) {
   if (!file) return;
   // A new upload replaces the whole list, the subjects and every manual edit — ask first.
   if (dmcResults.length && !confirm(`Pehle se ${dmcResults.length} students ki list maujood hai.\n\nNayi Excel upload karne se yeh list, subjects aur aap ke kiye hue saare edits (naam, marks, position) replace ho jayenge.\n\nJari rakhein?`)) return;
   const selectedClass = dmcSelectedClass;
   const reader = new FileReader();
-  reader.onload = (e) => {
+  const isPdf = file.type === 'application/pdf' || /\.pdf$/i.test(file.name || '');
+  reader.onload = async (e) => {
     try {
-      const data = new Uint8Array(e.target.result);
-      const wb = XLSX.read(data, {type: 'array'});
+      let wb;
+      if (isPdf) {
+        const msgBox = document.getElementById('dmc-upload-msg');
+        if (msgBox) msgBox.textContent = 'PDF padh raha hoon…';
+        wb = await dmcPdfToWorkbook(e.target.result.slice(0));
+      } else {
+        const data = new Uint8Array(e.target.result);
+        wb = XLSX.read(data, {type: 'array'});
+      }
       const picked = dmcPickSheetRows(wb);
       const rows = picked.rows;
 
