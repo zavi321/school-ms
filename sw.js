@@ -1,4 +1,4 @@
-const CACHE_NAME = 'school-ms-cache-v5';
+const CACHE_NAME = 'school-ms-cache-v6';
 const APP_SHELL = [
   './', './index.html', './manifest.json', './icon-192.png', './icon-512.png',
   // split app files (css + js)

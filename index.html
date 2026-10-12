@@ -350,6 +350,8 @@ html, body{overscroll-behavior:none;}
   table.regbook-screen td.due{color:var(--rust);font-weight:600;}
   table.regbook-screen .rb-spine{border-left:2.5px solid var(--rust);box-shadow:-3px 0 6px rgba(15,39,64,.06);}
   table.regbook-screen tbody tr{cursor:pointer;}
+  table.regbook-screen tbody tr.rb-out td{color:#7B7F86;background:rgba(15,39,64,.035);}
+  table.regbook-screen tbody tr.rb-out td.mo{color:#5D6672;}
   table.regbook-screen tbody tr:hover{background:#FBF1DA;}
   table.regbook-screen td.act{cursor:default;}
   table.regbook-screen input.cell-input, table.regbook-screen select.cell-input{border:none;padding:5px 2px;font-size:12px;background:transparent;min-width:100px;width:100%;text-align:center;}
@@ -381,7 +383,12 @@ html, body{overscroll-behavior:none;}
        whole sheet, <1 tightens a long one so it still fits on one page. */
     /* Urdu (Arabic-script) letters in question papers use Jameel Noori Nastaleeq when it is
        installed on the device; if not, Noto Nastaliq Urdu is used. English text stays Inter. */
-    @font-face{font-family:'PaperUrdu';src:local('Jameel Noori Nastaleeq'),local('JameelNooriNastaleeq'),local('Jameel Noori Nastaliq'),local('Jameel Noori Nastaleeq Kasheeda');unicode-range:U+0600-06FF,U+0750-077F,U+08A0-08FF,U+FB50-FDFF,U+FE70-FEFF;}
+    @font-face{font-family:'PaperUrdu';src:local('Jameel Noori Nastaleeq'),local('JameelNooriNastaleeq'),local('Jameel Noori Nastaliq'),local('Jameel Noori Nastaleeq Kasheeda'),local('Jameel Noori Nastaleeq Regular'),local('JameelNooriNastaleeq-Regular'),local('Jameel Noori Nastaliq Regular'),local('Jameel Noori Nastaleeq Normal');unicode-range:U+0600-06FF,U+0750-077F,U+08A0-08FF,U+FB50-FDFF,U+FE70-FEFF;}
+    /* Logo watermark: fixed to the page, so it sits at the exact centre of the A4 sheet (behind all text, 10% opacity) */
+    @media print{
+    #print-area .pq-wm-fixed{position:fixed;top:0;left:0;width:100%;height:100%;display:flex;align-items:center;justify-content:center;z-index:-1;pointer-events:none;overflow:hidden;}
+    #print-area .pq-wm-fixed img{width:190mm;height:auto;max-width:100%;max-height:100%;object-fit:contain;opacity:.1;}
+    }
     .qpaper-print{font-family:'PaperUrdu','Noto Nastaliq Urdu','Times New Roman','Liberation Serif',Times,serif;color:#111;--pq-space:1;-webkit-text-size-adjust:100%;text-size-adjust:100%;}
     .qpaper-print, .qpaper-print *{line-height:calc(1.2 * var(--pq-space,1));}
     /* Noto Nastaliq Urdu needs noticeably more vertical room than Latin text —
@@ -406,7 +413,11 @@ html, body{overscroll-behavior:none;}
     .pq-section-title{font-weight:700;font-size:14px;padding-bottom:1px;margin-bottom:3px;page-break-after:avoid;break-after:avoid;text-align:center;}
     .pq-sub{margin-bottom:calc(16px * var(--pq-space,1));}
     .pq-sub-title{font-weight:600;font-size:13px;text-decoration:underline;margin-bottom:2px;}
-    .pq-instruction{font-size:13px;font-style:italic;font-weight:800;opacity:1;margin:-1px 0 3px;}
+    .pq-instruction{font-size:13px;font-style:italic;font-weight:900;opacity:1;margin:-1px 0 3px;}
+    /* The paper font only has Regular/Bold, so a thin stroke makes the instruction lines truly extra-bold */
+    .qpaper-print .pq-instruction{-webkit-text-stroke:.3px currentColor;}
+    /* Urdu (Nastaliq has no italic): keep upright, still extra-bold */
+    .qpaper-print .pq-instruction.pq-ur{font-style:normal !important;}
     .pq-marks{font-weight:400;font-size:12px;opacity:.75;}
     .pq-q{font-size:14px;margin-bottom:calc(4px * var(--pq-space,1));page-break-inside:avoid;break-inside:avoid;display:flex;flex-wrap:wrap;align-items:baseline;column-gap:14px;row-gap:0;}
     /* flex-basis:100% forces this onto its own row below the question text
@@ -425,7 +436,7 @@ html, body{overscroll-behavior:none;}
        user actually typed something in that group's box. */
     .pq-break{grid-column:1/-1;text-align:center;font-weight:600;font-size:13px;margin:calc(3px * var(--pq-space,1)) 0;}
     .qpaper-print sup{font-size:.7em;line-height:0;vertical-align:super;}
-    .qp-logo{height:44px;width:44px;object-fit:contain;display:block;margin:0 auto 4px;}
+    .qp-logo{height:64px;width:64px;object-fit:contain;display:block;margin:0 auto 4px;}
     .pq-img-wrap{margin:3px 0 3px 18px;}
     .pq-img{max-width:55mm;max-height:40mm;object-fit:contain;border:1px solid #999;display:block;}
     .pq-end-img-wrap{margin-top:18px;text-align:center;}
@@ -921,7 +932,7 @@ html, body{overscroll-behavior:none;}
 .qpaper-print .kg-mo{font-size:24px;font-weight:800;-webkit-text-stroke:.5px #000;gap:8px 34px;}
 .qpaper-print .kg-dot{width:16px;height:16px;}
 .qpaper-print .qp-head, .qpaper-print .qp-head *{font-family:'PaperUrdu','Noto Nastaliq Urdu',Inter,serif;}
-body:not(.ur) .qpaper-print .pq-instruction{font-style:normal;font-weight:700;font-size:15px;margin:6px 0 4px;}
+body:not(.ur) .qpaper-print .pq-instruction{font-style:italic;font-weight:900;font-size:15px;margin:6px 0 4px;}
 body:not(.ur) .qpaper-print .pq-instruction::before{counter-increment:pqq;content:"Q" counter(pqq) ". ";}
 .qpaper-print .pq-q{font-size:15px;}
 .qpaper-print .pq-options{font-size:14px;padding-inline-start:20px;}
@@ -8411,6 +8422,10 @@ async function submitNewAdmission() {
     concession_type = cType; concession_value = val; concession_reason = g('na-conc-reason').value;
   }
 
+  const serialNew = g('na-serial').value ? Number(g('na-serial').value) : null;
+  if (serialNew != null && (DATA.admissionRegister || []).some(x => Number(x.serial_no) === serialNew)
+      && !confirm(qt(`Serial No. ${serialNew} already belongs to another entry. Save anyway?`, `سیریل نمبر ${serialNew} کسی اور اندراج کا ہے۔ پھر بھی محفوظ کریں؟`))) return;
+
   // Same name + father + class already a student? Ask before creating a duplicate.
   const dup = DATA.students.find(x => (x.name || '').trim().toLowerCase() === name.toLowerCase()
     && (x.father_name || '').trim().toLowerCase() === father.toLowerCase() && x.class_name === cls);
@@ -12960,6 +12975,13 @@ function toggleRegisterSelect(id) {
   renderTab();
 }
 function clearRegisterSelection() { REGISTER_SELECTED.clear(); renderTab(); }
+// Tick / untick every row of the page currently on screen.
+function registerSelectRows(on) {
+  const full = filteredRegisterList();
+  const start = (registerPage - 1) * REGISTER_PAGE_SIZE;
+  full.slice(start, start + REGISTER_PAGE_SIZE).forEach(r => { if (on) REGISTER_SELECTED.add(r.id); else REGISTER_SELECTED.delete(r.id); });
+  renderTab();
+}
 function setRegisterSearch(v) { registerSearch = v; registerPage = 1; reFocusAfterRender('register-search-input'); }
 function setRegisterPage(p) { registerPage = p; renderTab(); }
 function setRegisterSubTab(k) { registerSubTab = k; registerSearch = ''; registerPage = 1; renderTab(); }
@@ -12969,12 +12991,23 @@ function filteredRegisterList() {
   const q = registerSearch.trim().toLowerCase();
   return DATA.admissionRegister
     .filter(r => registerSubTab==='admitted' ? !r.withdrawal_date : registerSubTab==='slc' ? !!r.withdrawal_date : true)
-    .filter(r => !q
-      || (r.student_name||'').toLowerCase().includes(q)
-      || (r.father_name||'').toLowerCase().includes(q)
-      || String(r.serial_no||'').includes(registerSearch.trim()))
+    .filter(r => {
+      if (!q) return true;
+      // Digits only = a serial number (exact), so "5" does not also show 15, 25, 50 ...
+      if (/^\d+$/.test(q)) return String(r.serial_no||'') === q || (r.student_name||'').toLowerCase().includes(q);
+      const stu = r.student_id ? DATA.students.find(x => x.id === r.student_id) : null;
+      return [r.student_name, r.father_name, r.student_name_ur, r.father_name_ur, r.class_admitted, r.class_withdrawn,
+              r.caste_tribe, r.caste_tribe_ur, r.residence, r.residence_ur, r.occupation, r.remarks, r.high_middle_slc_no, r.bise_enrolment_no,
+              r.dob_words, r.dob_figures, fmtDate(r.dob_figures), r.admission_date, fmtDate(r.admission_date),
+              r.withdrawal_date, fmtDate(r.withdrawal_date), r.conduct,
+              stu && stu.admission_number, stu && stu.contact]
+        .some(v => String(v||'').toLowerCase().includes(q));
+    })
     .slice()
-    .sort((a,b) => Number(a.serial_no||0) - Number(b.serial_no||0));
+    .sort((a,b) => ((a.serial_no==null||a.serial_no==='') - (b.serial_no==null||b.serial_no===''))
+      || (Number(a.serial_no||0) - Number(b.serial_no||0))
+      || String(a.admission_date||'').localeCompare(String(b.admission_date||''))
+      || String(a.student_name||'').localeCompare(String(b.student_name||'')));
 }
 
 // =========================================================================
@@ -15701,6 +15734,7 @@ async function loadMarksSheetData() {
   let row = db.years[yearKey];
   applyMarksSheetData(row);
   loadMarksSheetYearsList();
+  msCloudSync().catch(() => {});
   if (!row) {
     // Nothing in localStorage for this year: look for an older IndexedDB copy once.
     try {
@@ -15734,7 +15768,7 @@ function applyMarksSheetData(row) {
 // Switches the working year (e.g. moving to a new session, or looking back at
 // an old one) and reloads that year's own data from the database.
 function changeMarksSheetYear(year) {
-  msAcademicYear = year || '';
+  msAcademicYear = String(year || '').trim();
   msLoadedYear = null; // force loadMarksSheetData() to actually refetch
   loadMarksSheetData().then(() => {
     if (TAB !== 'marksSheet') return;
@@ -15785,7 +15819,7 @@ function msRestoreFromFile(input) {
       if (!confirm(names.length + ' saal ka data wapis lagana hai?\n(' + names.join(', ') + ')\nIsi naam ke saal ka maujooda data is file se badal jayega.')) return;
       saveMarksSheetData(); // keep whatever is on screen right now before merging
       const db = msLocalRead();
-      names.forEach(y => { db.years[y] = o.years[y]; });
+      names.forEach(y => { db.years[y] = o.years[y]; db.years[y].updated_at = new Date().toISOString(); });
       const show = (o.lastYear && names.includes(o.lastYear)) ? o.lastYear : names[0];
       db.lastYear = show;
       localStorage.setItem(msLocalKey(), JSON.stringify(db));
@@ -15810,10 +15844,85 @@ function saveMarksSheetData() {
   // Second copy in IndexedDB (best effort, device only).
   try { idbPutRow('marks_sheet_data', { id: yearKey, academic_year: yearKey, ...row }); } catch (e) {}
   if (msAcademicYear && !msYearsList.includes(msAcademicYear)) msYearsList = [msAcademicYear, ...msYearsList];
+  if (!_msSkipCloud) msCloudSaveSoon();
 }
+// ---- Server backup (Supabase marks_sheet_data, one row per school + academic year) ----
+// The sheet is still written to the phone first (instant, works offline). With internet it is also copied to the
+// server a moment later, and when the app opens with no local copy (storage cleared, other browser, new phone)
+// or an older one, the server copy is brought back.
+let _msCloudTimer = null, _msSkipCloud = false, _msCloudErrShown = false, msCloudStatus = '';
+function msSetCloudStatus(txt) {
+  msCloudStatus = txt;
+  const el = document.getElementById('ms-cloud-status');
+  if (el) el.textContent = txt;
+}
+function msCloudSaveSoon() {
+  clearTimeout(_msCloudTimer);
+  _msCloudTimer = setTimeout(() => { msCloudSaveNow().catch(() => {}); }, 2500);
+}
+async function msCloudSaveNow() {
+  _msCloudTimer = null;
+  if (!CURRENT_USER || !msLoaded || msLoadedYear !== msAcademicYear) return;
+  if (!navigator.onLine) { msSetCloudStatus('📴 Internet nahi hai — net aate hi server par bhi save ho jayega.'); return; }
+  const yearKey = msAcademicYear || 'Unspecified';
+  const row = { owner_id: CURRENT_USER.id, academic_year: yearKey, classes: msClasses, subjects: msSubjects, totals: msSubjectTotals, students: msStudents, marks: msMarksData, updated_at: new Date().toISOString() };
+  const opts = { onConflict: 'owner_id,academic_year' };
+  let r = await sb.from('marks_sheet_data').upsert(row, opts);
+  if (r.error && /totals/i.test(String(r.error.message || ''))) {      // older table without the totals column
+    const { totals, ...rest } = row;
+    r = await sb.from('marks_sheet_data').upsert(rest, opts);
+  }
+  if (r.error) {
+    console.error('Marks sheet server backup failed:', r.error.message);
+    msSetCloudStatus('⚠️ Server par backup nahi hua: ' + r.error.message);
+    if (!_msCloudErrShown) {
+      _msCloudErrShown = true;
+      alert('Marks Sheet server par backup nahi ho saki (sirf is phone mein save hai).\n\nWajah: ' + r.error.message);
+    }
+  } else {
+    msSetCloudStatus('☁ Server par bhi save hai (' + new Date().toLocaleTimeString() + ')');
+  }
+}
+async function msCloudSync() {
+  if (!CURRENT_USER || !navigator.onLine) return;
+  const startYear = msLoadedYear;
+  const yearKey = startYear || 'Unspecified';
+  let server;
+  try {
+    const r = await sb.from('marks_sheet_data').select('*').eq('owner_id', CURRENT_USER.id).order('updated_at', { ascending: false }).limit(12);
+    if (r.error) throw r.error;
+    server = r.data || [];
+  } catch (e) { console.error('Marks sheet server check failed:', e && e.message || e); return; }
+  if (msLoadedYear !== startYear) return;                 // the user switched year meanwhile
+  server.forEach(x => { if (x.academic_year && !msYearsList.includes(x.academic_year)) msYearsList.push(x.academic_year); });
+  const db = msLocalRead();
+  const ts = v => { const t = Date.parse(v || ''); return isNaN(t) ? 0 : t; };
+  const cur = server.find(x => x.academic_year === yearKey);
+  const local = db.years[yearKey];
+  const adopt = (row, year) => {
+    if (year !== undefined) { msAcademicYear = year === 'Unspecified' ? '' : year; msLoadedYear = msAcademicYear; }
+    applyMarksSheetData(row);
+    _msSkipCloud = true;
+    try { saveMarksSheetData(); } finally { _msSkipCloud = false; }
+    // keep the server's own timestamp locally so both sides agree it is the same version
+    try { const d2 = msLocalRead(); const k = msAcademicYear || 'Unspecified'; if (d2.years[k]) { d2.years[k].updated_at = row.updated_at || d2.years[k].updated_at; localStorage.setItem(msLocalKey(), JSON.stringify(d2)); } } catch (e) {}
+    msSetCloudStatus('☁ Server se data wapas mil gaya.');
+    if (TAB === 'marksSheet') {
+      const main = document.getElementById('main'), a = document.activeElement;
+      if (!(a && main && main.contains(a) && (a.tagName === 'INPUT' || a.tagName === 'SELECT' || a.tagName === 'TEXTAREA'))) renderTab();
+    }
+  };
+  if (cur && (!local || ts(cur.updated_at) > ts(local.updated_at))) { adopt(cur); return; }
+  if (!local && !cur && !Object.keys(db.years).length && server.length) {      // phone has nothing at all: open the newest saved year
+    adopt(server[0], server[0].academic_year); return;
+  }
+  if (local && (!cur || ts(local.updated_at) > ts(cur.updated_at))) { msCloudSaveSoon(); return; }
+  msSetCloudStatus('☁ Server par bhi save hai.');
+}
+
 // Save once more whenever the app is hidden or closed (harmless: it writes the same state).
-document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') { try { saveMarksSheetData(); } catch (e) {} } });
-window.addEventListener('pagehide', () => { try { saveMarksSheetData(); } catch (e) {} });
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') { try { saveMarksSheetData(); } catch (e) {} try { if (_msCloudTimer) { clearTimeout(_msCloudTimer); msCloudSaveNow().catch(() => {}); } } catch (e) {} } });
+window.addEventListener('pagehide', () => { try { saveMarksSheetData(); } catch (e) {} try { if (_msCloudTimer) { clearTimeout(_msCloudTimer); msCloudSaveNow().catch(() => {}); } } catch (e) {} });
 
 // ---- Total / Grade / Position helpers (Marks Sheet + Teacher Portal) ----
 // Position: highest total = 1. Equal totals share a position and the next
@@ -15909,16 +16018,17 @@ function tplMarksSheet() {
       if (!msMarksData[msSelectedClass][student.id]) msMarksData[msSelectedClass][student.id] = {};
       
       tableHtml += `<tr style="border-bottom:1px solid #ddd;">
-        <td style="padding:10px;text-align:left;font-weight:600;position:sticky;left:0;z-index:2;background:#fff;box-shadow:2px 0 0 #ddd;">${esc(student.name)}</td>
-        <td style="padding:4px;"><input type="text" autocomplete="off" value="${esc(student.fatherName||'')}" placeholder="Father Name" style="width:100%;padding:9px;font-size:19px;border:1px solid #ccc;" oninput="msStudents['${msSelectedClass}'][${idx}].fatherName=this.value;saveMarksSheetData();" onchange="msStudents['${msSelectedClass}'][${idx}].fatherName=this.value;saveMarksSheetData();"></td>
-        ${msSubjects.map(subj => {
-          const val = msMarksData[msSelectedClass][student.id][subj] || '';
-          return `<td style="padding:4px;"><input type="number" inputmode="decimal" min="0" max="${msSubjectMax(subj)}" autocomplete="off" value="${val}" placeholder="—" style="width:100%;text-align:center;padding:9px;font-size:19px;border:1px solid #ccc;" oninput="msMarksData['${msSelectedClass}']['${student.id}']['${subj}']=this.value;saveMarksSheetData();msRefreshSummary();" onchange="msMarksData['${msSelectedClass}']['${student.id}']['${subj}']=this.value;saveMarksSheetData();msRefreshSummary();"></td>`;
+        <td style="padding:4px;text-align:left;position:sticky;left:0;z-index:2;background:#fff;box-shadow:2px 0 0 #ddd;"><input type="text" autocomplete="off" value="${esc(student.name)}" placeholder="Student Name" style="width:100%;padding:9px;font-size:19px;font-weight:600;border:1px solid #ccc;" oninput="msEditStudent(${idx},'name',this,event)" onchange="msEditStudent(${idx},'name',this,event)"></td>
+        <td style="padding:4px;"><input type="text" autocomplete="off" value="${esc(student.fatherName||'')}" placeholder="Father Name" style="width:100%;padding:9px;font-size:19px;border:1px solid #ccc;" oninput="msEditStudent(${idx},'fatherName',this,event)" onchange="msEditStudent(${idx},'fatherName',this,event)"></td>
+        ${msSubjects.map((subj, j) => {
+          const rawMark = msMarksData[msSelectedClass][student.id][subj];
+          const val = (rawMark === undefined || rawMark === null) ? '' : rawMark;
+          return `<td style="padding:4px;"><input type="number" inputmode="decimal" min="0" max="${msSubjectMax(subj)}" autocomplete="off" value="${esc(val)}" placeholder="—" style="width:100%;text-align:center;padding:9px;font-size:19px;border:1px solid #ccc;" oninput="msSetMark(${idx},${j},this)" onchange="msSetMark(${idx},${j},this)"></td>`;
         }).join('')}
         <td style="padding:8px;text-align:center;font-weight:600;" data-ms="tot" data-ms-sid="${esc(student.id)}">${msSum[idx].total === null ? '—' : msSum[idx].total + '/' + msSum[idx].max}</td>
         <td style="padding:8px;text-align:center;font-weight:600;" data-ms="grade" data-ms-sid="${esc(student.id)}">${msSum[idx].grade || '—'}</td>
         <td style="padding:8px;text-align:center;font-weight:600;" data-ms="pos" data-ms-sid="${esc(student.id)}">${msSum[idx].pos === null ? '—' : msSum[idx].pos}</td>
-        <td style="padding:4px;text-align:center;"><button class="btn-ghost" style="padding:0;font-size:11px;" onclick="removeMarksSheetStudent('${msSelectedClass}', ${idx})">✕</button></td>
+        <td style="padding:4px;text-align:center;"><button class="btn-ghost" style="padding:0;font-size:11px;" onclick="removeMarksSheetStudent(${idx})">✕</button></td>
       </tr>`;
     });
     
@@ -15940,25 +16050,26 @@ function tplMarksSheet() {
 
     <div class="card">
       <h3 style="margin-top:0;">Backup</h3>
-      <p style="font-size:11px;opacity:.6;">Ye sheet sirf is phone mein save hoti hai. Kabhi kabhi (khaas kar naya phone lene ya browser saaf karne se pehle) Backup dabakar file save kar lein. Restore se wohi file wapis laga sakte hain.</p>
+      <p style="font-size:11px;opacity:.6;">Ye sheet is phone mein save hoti hai, aur internet ho to server par bhi (isliye app band karne ya phone badalne par wapas mil jati hai). Kabhi kabhi (khaas kar naya phone lene ya browser saaf karne se pehle) Backup dabakar file save kar lein. Restore se wohi file wapis laga sakte hain.</p>
       <div style="display:flex;gap:6px;flex-wrap:wrap;">
         <button class="btn-ghost" onclick="msBackupDownload()">⬇ Backup</button>
         <button class="btn-ghost" onclick="document.getElementById('ms-restore-file').click()">⬆ Restore</button>
         <input type="file" id="ms-restore-file" accept=".json,application/json" style="display:none" onchange="msRestoreFromFile(this)">
       </div>
+      <p id="ms-cloud-status" style="font-size:11px;opacity:.7;margin:8px 0 0;">${esc(msCloudStatus)}</p>
     </div>
 
     <div class="card">
       <h3 style="margin-top:0;">Classes</h3>
       <p style="font-size:11px;opacity:.6;">Add or remove classes</p>
       <div style="display:flex;gap:6px;margin-bottom:8px;">
-        <input type="text" id="ms-new-class" autocomplete="off" placeholder="Class Name (e.g., 1st, 2nd)" style="flex:1;">
+        <input type="text" id="ms-new-class" autocomplete="off" placeholder="Class Name (e.g., 1st, 2nd)" style="flex:1;" onkeydown="if(event.key==='Enter'){event.preventDefault();addMarksSheetClass();}">
         <button class="btn-ghost" onclick="addMarksSheetClass()">+ Add</button>
       </div>
       <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px;">
         ${msClasses.map((c, i) => `
           <div style="background:#F0EBDA;padding:6px 10px;border-radius:6px;font-size:12px;display:flex;align-items:center;gap:6px;">
-            <button style="background:none;border:none;padding:0;cursor:pointer;font-weight:${c===msSelectedClass?'bold':'normal'};color:${c===msSelectedClass?'#0F2740':'inherit'};" onclick="msSelectedClass='${c}';renderTab();">${esc(c)}</button>
+            <button style="background:none;border:none;padding:0;cursor:pointer;font-weight:${c===msSelectedClass?'bold':'normal'};color:${c===msSelectedClass?'#0F2740':'inherit'};" onclick="msPickClass(${i})">${esc(c)}</button>
             <button class="btn-ghost" style="padding:0;font-size:10px;opacity:.6;" onclick="removeMarksSheetClass(${i})">✕</button>
           </div>
         `).join('')}
@@ -15969,7 +16080,7 @@ function tplMarksSheet() {
       <h3 style="margin-top:0;">Subjects</h3>
       <p style="font-size:11px;opacity:.6;">Add or remove subjects for this marks sheet</p>
       <div style="display:flex;gap:6px;margin-bottom:8px;">
-        <input type="text" id="ms-new-subject" autocomplete="off" placeholder="Subject Name (e.g., Urdu, Math)" style="flex:1;min-width:0;">
+        <input type="text" id="ms-new-subject" autocomplete="off" placeholder="Subject Name (e.g., Urdu, Math)" style="flex:1;min-width:0;" onkeydown="if(event.key==='Enter'){event.preventDefault();addMarksSheetSubject();}">
         <input type="number" id="ms-new-subject-total" autocomplete="off" inputmode="numeric" min="1" value="100" placeholder="Total" title="Total marks" style="width:86px;">
         <button class="btn-ghost" onclick="addMarksSheetSubject()">+ Add</button>
       </div>
@@ -15977,8 +16088,8 @@ function tplMarksSheet() {
         ${msSubjects.map((s, i) => `
           <div style="background:#F0EBDA;padding:6px 10px;border-radius:6px;font-size:12px;display:flex;align-items:center;gap:6px;">
             ${esc(s)}
-            <span style="opacity:.7;">/</span><input type="number" inputmode="numeric" min="1" value="${msSubjectMax(s)}" title="Total marks" style="width:62px;padding:3px 4px;font-size:13px;" onchange="msSubjectTotals[msSubjects[${i}]]=(Number(this.value)>0?Number(this.value):100);saveMarksSheetData();renderTab();">
-            <button class="btn-ghost" style="padding:0;font-size:10px;opacity:.6;" onclick="msSubjects.splice(${i},1);saveMarksSheetData();renderTab();">✕</button>
+            <span style="opacity:.7;">/</span><input type="number" inputmode="numeric" min="1" value="${msSubjectMax(s)}" title="Total marks" style="width:62px;padding:3px 4px;font-size:13px;" onchange="msSetSubjectTotal(${i},this)">
+            <button class="btn-ghost" style="padding:0;font-size:10px;opacity:.6;" onclick="removeMarksSheetSubject(${i})">✕</button>
           </div>
         `).join('')}
       </div>
@@ -15990,27 +16101,43 @@ function tplMarksSheet() {
       <p style="font-size:11px;opacity:.6;">Add students and enter marks</p>
       
       <div style="display:flex;gap:6px;margin-bottom:12px;">
-        <input type="text" id="ms-student-input" autocomplete="off" placeholder="Student Name" style="flex:1;">
-        <input type="text" id="ms-father-input" autocomplete="off" placeholder="Father Name (optional)" style="flex:1;">
+        <input type="text" id="ms-student-input" autocomplete="off" placeholder="Student Name" style="flex:1;" onkeydown="if(event.key==='Enter'){event.preventDefault();addMarksSheetStudent();}">
+        <input type="text" id="ms-father-input" autocomplete="off" placeholder="Father Name (optional)" style="flex:1;" onkeydown="if(event.key==='Enter'){event.preventDefault();addMarksSheetStudent();}">
         <button class="btn-ghost" onclick="addMarksSheetStudent()">+ Add Student</button>
       </div>
       
+      <details style="margin-bottom:12px;">
+        <summary style="cursor:pointer;font-size:13px;font-weight:600;">📥 Kai students ek saath add karein</summary>
+        <p style="font-size:11px;opacity:.6;margin:6px 0;">Har line mein ek student likhein (ya list paste karein). Father ka naam bhi ho to comma laga kar likhein: <b>Ali Khan, Ahmad Khan</b></p>
+        <textarea id="ms-bulk" rows="6" style="width:100%;font-size:16px;" placeholder="Ali Khan&#10;Bilal Ahmad, Ahmad Khan&#10;Sara Bibi"></textarea>
+        <button class="btn-ghost" style="margin-top:6px;" onclick="msBulkAddStudents()">+ Sab add karein</button>
+      </details>
+
       ${classStudents.length ? tableHtml : '<p style="opacity:.5;text-align:center;padding:20px;">No students yet. Add a student above.</p>'}
       
       ${classStudents.length && msSubjects.length ? `
-        <button class="btn-ghost" onclick="printMarksSheet('${msSelectedClass}')">🖨️ Print</button>
-        <button class="btn-ghost" onclick="exportMarksSheetExcel('${msSelectedClass}')">📊 Export to Excel</button>
+        <button class="btn-ghost" onclick="printMarksSheet(msSelectedClass)">🖨️ Print</button>
+        <button class="btn-ghost" onclick="exportMarksSheetExcel(msSelectedClass)">📊 Export to Excel</button>
       ` : ''}
     </div>
     ` : ''}
   `;
 }
 
+function msPickClass(i) {
+  if (msClasses[i] === undefined) return;
+  msSelectedClass = msClasses[i];
+  renderTab();
+}
+
 function addMarksSheetClass() {
   const input = document.getElementById('ms-new-class');
   const cls = input.value.trim();
   if (!cls) return;
-  if (!msClasses.includes(cls)) {
+  const existing = msClasses.find(c => String(c).trim().toLowerCase() === cls.toLowerCase());
+  if (existing !== undefined) {
+    msSelectedClass = existing;                       // already there: just open it (no duplicate class)
+  } else {
     msClasses.push(cls);
     msStudents[cls] = [];
     msMarksData[cls] = {};
@@ -16023,6 +16150,9 @@ function addMarksSheetClass() {
 
 function removeMarksSheetClass(idx) {
   const cls = msClasses[idx];
+  if (cls === undefined) return;
+  const n = (msStudents[cls] || []).length;
+  if (!confirm(`Class "${cls}" hata dein?` + (n ? `\n\nIs ke ${n} students aur un ke saare marks bhi hat jayenge.` : ''))) return;
   msClasses.splice(idx, 1);
   delete msStudents[cls];
   delete msMarksData[cls];
@@ -16037,13 +16167,84 @@ function addMarksSheetSubject() {
   const subj = input.value.trim();
   if (!subj) return;
   const tot = Number(totalInput && totalInput.value);
-  if (!msSubjects.includes(subj)) {
+  const existing = msSubjects.find(x => String(x).trim().toLowerCase() === subj.toLowerCase());
+  if (existing !== undefined) {
+    msSubjectTotals[existing] = tot > 0 ? tot : msSubjectMax(existing);
+    alert(`"${existing}" pehle se maujood hai — sirf is ka total update kar diya.`);
+  } else {
     msSubjects.push(subj);
+    msSubjectTotals[subj] = tot > 0 ? tot : 100;
   }
-  msSubjectTotals[subj] = tot > 0 ? tot : 100;
   input.value = '';
   saveMarksSheetData();
   renderTab();
+}
+
+// Deleting a subject only hides it: its marks stay saved, so adding the same subject again brings them back.
+function removeMarksSheetSubject(i) {
+  const name = msSubjects[i];
+  if (name === undefined) return;
+  if (!confirm(`"${name}" ko hata dein?\n\nIs ke marks mehfooz rahenge — yehi naam dobara add karne par wapas aa jayenge.`)) return;
+  msSubjects.splice(i, 1);
+  saveMarksSheetData();
+  renderTab();
+}
+
+function msSetSubjectTotal(i, el) {
+  const name = msSubjects[i];
+  if (name === undefined) return;
+  const n = Number(el.value);
+  if (!(n > 0)) { renderTab(); return; }
+  let over = 0;
+  Object.keys(msMarksData).forEach(c => Object.keys(msMarksData[c] || {}).forEach(id => {
+    const v = (msMarksData[c][id] || {})[name];
+    if (v !== undefined && v !== null && v !== '' && Number(v) > n) over++;
+  }));
+  if (over && !confirm(`${over} marks "${name}" ke naye total (${n}) se zyada hain.\n\nUnhe ${n} ke barabar kar dein?`)) { renderTab(); return; }
+  if (over) Object.keys(msMarksData).forEach(c => Object.keys(msMarksData[c] || {}).forEach(id => {
+    const v = (msMarksData[c][id] || {})[name];
+    if (v !== undefined && v !== null && v !== '' && Number(v) > n) msMarksData[c][id][name] = String(n);
+  }));
+  msSubjectTotals[name] = n;
+  saveMarksSheetData();
+  renderTab();
+}
+
+// One mark typed in the table: never above the subject total, never negative; summary updates in place.
+function msSetMark(idx, j, el) {
+  const st = (msStudents[msSelectedClass] || [])[idx], subj = msSubjects[j];
+  if (!st || subj === undefined) return;
+  const max = msSubjectMax(subj);
+  let t = String(el.value == null ? '' : el.value).trim();
+  el.style.borderColor = '#ccc';
+  if (t !== '') {
+    let n = Number(t);
+    if (!isFinite(n)) return;
+    if (n < 0) { n = 0; t = '0'; el.value = t; el.style.borderColor = '#B24A32'; }
+    if (n > max) { n = max; t = String(max); el.value = t; el.style.borderColor = '#B24A32'; }
+  }
+  if (!msMarksData[msSelectedClass]) msMarksData[msSelectedClass] = {};
+  if (!msMarksData[msSelectedClass][st.id]) msMarksData[msSelectedClass][st.id] = {};
+  msMarksData[msSelectedClass][st.id][subj] = t;
+  saveMarksSheetData();
+  msRefreshSummary();
+}
+
+// Student / father name edited in the table (a name can never be left empty).
+function msEditStudent(idx, key, el, ev) {
+  const st = (msStudents[msSelectedClass] || [])[idx];
+  if (!st) return;
+  const v = String(el.value == null ? '' : el.value);
+  if (key === 'name') {
+    if (v.trim()) st.name = v.trim();
+    else if (ev && ev.type === 'change') el.value = st.name;
+  } else st.fatherName = v.trim();
+  saveMarksSheetData();
+}
+
+function msFocusStudentInput() {
+  const e = document.getElementById('ms-student-input');
+  if (e) { try { e.focus(); } catch (x) {} }
 }
 
 function addMarksSheetStudent() {
@@ -16052,24 +16253,56 @@ function addMarksSheetStudent() {
   const name = input.value.trim();
   const fatherName = fatherInput ? fatherInput.value.trim() : '';
   if (!name || !msSelectedClass) return;
-  
+
   if (!msStudents[msSelectedClass]) msStudents[msSelectedClass] = [];
   if (!msMarksData[msSelectedClass]) msMarksData[msSelectedClass] = {};
-  
+  const dup = msStudents[msSelectedClass].some(x => String(x.name).trim().toLowerCase() === name.toLowerCase() && String(x.fatherName || '').trim().toLowerCase() === fatherName.toLowerCase());
+  if (dup && !confirm(`"${name}" is class mein pehle se hai. Phir bhi dobara add karein?`)) return;
+
   const id = Math.random().toString(36).substr(2, 9);
   msStudents[msSelectedClass].push({id, name, fatherName});
   msMarksData[msSelectedClass][id] = {};
-  
+
   input.value = '';
   if (fatherInput) fatherInput.value = '';
   saveMarksSheetData();
   renderTab();
+  msFocusStudentInput();                              // ready for the next student
 }
 
-function removeMarksSheetStudent(cls, idx) {
-  const student = msStudents[cls][idx];
+// Many students at once: one per line, optional "Name, Father Name".
+function msBulkAddStudents() {
+  const box = document.getElementById('ms-bulk');
+  if (!box || !msSelectedClass) return;
+  const lines = String(box.value || '').split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+  if (!lines.length) { alert('Pehle students ke naam likhein (har line mein ek).'); return; }
+  if (!msStudents[msSelectedClass]) msStudents[msSelectedClass] = [];
+  if (!msMarksData[msSelectedClass]) msMarksData[msSelectedClass] = {};
+  const list = msStudents[msSelectedClass];
+  let added = 0, skipped = 0;
+  lines.forEach(l => {
+    const parts = l.split(/[,\u060C\t]/).map(x => x.trim());
+    const name = parts[0], fatherName = parts[1] || '';
+    if (!name) return;
+    if (list.some(x => String(x.name).trim().toLowerCase() === name.toLowerCase() && String(x.fatherName || '').trim().toLowerCase() === fatherName.toLowerCase())) { skipped++; return; }
+    const id = Math.random().toString(36).substr(2, 9);
+    list.push({ id, name, fatherName });
+    msMarksData[msSelectedClass][id] = {};
+    added++;
+  });
+  box.value = '';
+  saveMarksSheetData();
+  renderTab();
+  alert(`${added} students add ho gaye.` + (skipped ? `\n${skipped} pehle se maujood the, chhor diye.` : ''));
+}
+
+function removeMarksSheetStudent(idx) {
+  const cls = msSelectedClass;
+  const student = (msStudents[cls] || [])[idx];
+  if (!student) return;
+  if (!confirm(`"${student.name}" ko hata dein?\n\nIs ke saare marks bhi hat jayenge.`)) return;
   msStudents[cls].splice(idx, 1);
-  delete msMarksData[cls][student.id];
+  if (msMarksData[cls]) delete msMarksData[cls][student.id];
   saveMarksSheetData();
   renderTab();
 }
@@ -16165,7 +16398,7 @@ function printMarksSheet(className) {
   const headerHtml = `
       <div class="header">
         <div class="school-name">${esc(CURRENT_PROFILE?.school_name || 'School Name')}</div>
-        <div class="class-name">Marks Sheet - ${esc(className)}</div>
+        <div class="class-name">Marks Sheet - ${esc(className)}${msAcademicYear ? ' &middot; Session ' + esc(msAcademicYear) : ''}</div>
       </div>`;
   const pagesHtml = chunks.map((rows, i) => `
       <div class="pg" style="${i < chunks.length - 1 ? 'page-break-after:always;break-after:page;' : ''}">
@@ -16202,6 +16435,7 @@ function printMarksSheet(className) {
   `;
   
   const printWindow = window.open('', '', 'height=900,width=1000');
+  if (!printWindow) { alert('Print window block ho gayi. Browser mein is site ke liye pop-ups allow karein, phir dobara try karein.'); return; }
   printWindow.document.write(html);
   printWindow.document.close();
   printWindow.focus();
@@ -16239,20 +16473,8 @@ function tplRegisterDashboard() {
       <div class="stat-card"><div class="lbl">${esc(t.arrearsDue)}</div><div class="val" style="color:var(--rust);font-size:18px;">₨${fmt(totalArrears)}</div></div>
       <div class="stat-card"><div class="lbl">${esc(t.serialNo)} (${esc(t.all)})</div><div class="val">${all.length}</div></div>
     </div>
-    <div style="display:flex;align-items:center;justify-content:space-between;margin:20px 0 8px;">
-      <div class="section-title" style="margin:0;">${esc(t.admissionRegister)}</div>
-      <button class="icon-btn" style="width:34px;height:34px;" onclick="openNewAdmission()">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#E4C765" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg>
-      </button>
-    </div>
-    ${registerLedgerTableHtml(allSorted)}
-    ${REGISTER_SELECTED.size > 0 ? `
-    <div class="flexgap" style="margin-top:10px;">
-      <button class="btn-primary" style="flex:1;background:var(--sage);" onclick="printSelectedAdmissionEntries()">
-        🖨️ ${esc(t.printSelected||'Print Selected')} (${REGISTER_SELECTED.size})
-      </button>
-      <button class="btn-ghost" onclick="clearRegisterSelection()">✕ ${esc(t.clear||'Clear')}</button>
-    </div>` : ''}`;
+    <div class="section-title" style="margin:20px 0 8px;">${esc(t.admissionRegister)}</div>
+    ${tplRegisterList()}`;
 }
 
 // Shared ledger-book table renderer: same column order as the physical bound
@@ -16261,7 +16483,7 @@ function tplRegisterDashboard() {
 // Admitted/SLC list view) instead of one-at-a-time cards.
 function registerLedgerTableHtml(rows) {
   const dobText = r => {
-    const parts = [r.dob_words, fmtDate(r.dob_figures)].filter(Boolean);
+    const parts = [fmtDate(r.dob_figures), r.dob_words].filter(Boolean);
     return parts.length ? esc(parts.join(' — ')) : '—';
   };
   const headCols = [
@@ -16269,17 +16491,17 @@ function registerLedgerTableHtml(rows) {
     t.casteTribe, t.occupation, t.residence, t.classAdmitted, t.arrearsDue,
     t.classWithdrawn, t.withdrawalDate, t.remarks, ''
   ];
-  const SPINE_AFTER = 5; // after Father's Name column, matching the book's fold
+  const SPINE_AFTER = 6; // checkbox col is index 0, so index 6 = Caste = right after Father's Name (book fold, same as the print)
 
   const dataRow = r => `
-    <tr onclick="openEditAdmissionEntry('${r.id}')">
+    <tr class="${r.withdrawal_date ? 'rb-out' : ''}" onclick="openEditAdmissionEntry('${r.id}')">
       <td class="act" onclick="event.stopPropagation();"><input type="checkbox" ${REGISTER_SELECTED.has(r.id)?'checked':''} onchange="toggleRegisterSelect('${r.id}')"></td>
       <td>${esc(fmtDate(r.admission_date)||'—')}</td>
       <td>${esc(r.serial_no||'—')}</td>
       <td class="mo">${esc(r.student_name||'—')}</td>
       <td>${dobText(r)}</td>
-      <td class="rb-spine">${esc(r.father_name||'—')}</td>
-      <td>${esc(r.caste_tribe||'—')}</td>
+      <td>${esc(r.father_name||'—')}</td>
+      <td class="rb-spine">${esc(r.caste_tribe||'—')}</td>
       <td>${esc(r.occupation||'—')}</td>
       <td>${esc(r.residence||'—')}</td>
       <td>${esc(r.class_admitted||'—')}</td>
@@ -16297,7 +16519,9 @@ function registerLedgerTableHtml(rows) {
     </div>
     <div class="regbook-screen-wrap">
       <table class="regbook-screen">
-        <thead><tr>${headCols.map((c,i) => `<th${i===SPINE_AFTER?' class="rb-spine"':''}>${esc(c)}</th>`).join('')}</tr></thead>
+        <thead><tr>${headCols.map((c,i) => i===0
+          ? `<th class="act"><input type="checkbox" title="Select all on this page" ${rows.length && rows.every(r => REGISTER_SELECTED.has(r.id)) ? 'checked' : ''} onchange="registerSelectRows(this.checked)"></th>`
+          : `<th${i===SPINE_AFTER?' class="rb-spine"':''}>${esc(c)}</th>`).join('')}</tr></thead>
         <tbody>${rows.map(dataRow).join('')}</tbody>
       </table>
     </div>`;
@@ -16539,7 +16763,63 @@ function tplRegisterList() {
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#E4C765" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg>
       </button>
     </div>
-    ${registerLedgerTableHtml(list)}${list.length ? pager : ''}`;
+    <div style="font-size:12px;opacity:.7;margin:-4px 0 8px;">${esc(qt('Total', 'کل'))}: <b>${full.length}</b>${registerSearch.trim() ? ' ' + esc(qt('(matching search)', '(تلاش کے مطابق)')) : ''}</div>
+    ${registerLedgerTableHtml(list)}${list.length ? pager : ''}
+    ${full.length ? `<button class="btn-ghost" style="width:100%;margin-top:10px;" onclick="exportAdmissionRegisterExcel()">📥 ${esc(qt('Export (Excel/CSV)', 'ایکسپورٹ (ایکسل/CSV)'))} (${full.length})</button>` : ''}`;
+}
+
+// Exports every row of the current list (current sub-tab + search) to an .xlsx file.
+function exportAdmissionRegisterExcel() {
+  const rows = filteredRegisterList();
+  if (!rows.length) return;
+  const data = rows.map(r => {
+    const stu = r.student_id ? DATA.students.find(x => x.id === r.student_id) : null;
+    return {
+      'Serial No': r.serial_no == null ? '' : r.serial_no,
+      'Admission No': stu ? (stu.admission_number || '') : '',
+      'Admission Date': fmtDate(r.admission_date) || '',
+      'Student Name': r.student_name || '',
+      'Student Name (Urdu)': r.student_name_ur || '',
+      'DOB (Figures)': fmtDate(r.dob_figures) || '',
+      'DOB (Words)': r.dob_words || '',
+      "Father's Name": r.father_name || '',
+      "Father's Name (Urdu)": r.father_name_ur || '',
+      'Caste / Tribe': r.caste_tribe || '',
+      'Occupation': r.occupation || '',
+      'Residence': r.residence || '',
+      'Class Admitted': r.class_admitted || '',
+      'Arrears Due': Number(r.arrears_due || 0),
+      'Class Withdrawn': r.class_withdrawn || '',
+      'Withdrawal Date': fmtDate(r.withdrawal_date) || '',
+      'SLC No': r.high_middle_slc_no || '',
+      'SLC Issue Date': fmtDate(r.slc_issue_date) || '',
+      'BISE Enrolment No': r.bise_enrolment_no || '',
+      'Conduct': r.conduct || '',
+      'Status': r.withdrawal_date ? 'Withdrawn (SLC)' : 'Admitted',
+      'Remarks': r.remarks || ''
+    };
+  });
+  const school = String((CURRENT_PROFILE && CURRENT_PROFILE.school_name) || 'School').replace(/[^\w\-]+/g, '_');
+  const base = `${school}_admission_register_${fmtDate(todayISO())}`;
+  if (window.XLSX) {
+    // Excel library already loaded (cached) -> real .xlsx
+    const ws = XLSX.utils.json_to_sheet(data);
+    ws['!cols'] = Object.keys(data[0]).map(k => ({ wch: Math.max(12, Math.min(28, k.length + 4)) }));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Admission Register');
+    XLSX.writeFile(wb, base + '.xlsx');
+    return;
+  }
+  // Offline / library not loaded: plain CSV (opens in Excel; BOM keeps Urdu text correct). No internet needed.
+  try { if (window.loadXLSXLib) window.loadXLSXLib(); } catch (e) {}
+  const cols = Object.keys(data[0]);
+  const cell = v => { v = v == null ? '' : String(v); return /[",\n\r]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
+  const csv = '\ufeff' + [cols.map(cell).join(',')].concat(data.map(d => cols.map(c => cell(d[c])).join(','))).join('\r\n');
+  const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+  const a = document.createElement('a');
+  a.href = url; a.download = base + '.csv';
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
 }
 
 // Prints one page (up to 30 rows) of the register as a single ledger-style table,
@@ -16666,11 +16946,12 @@ let paperTables = [];
 // a closed browser never loses a half-written paper. It is purely additive:
 // it only reads/writes the paper* variables above and touches nothing else.
 const PQ_DRAFT_KEY = 'pqDraft_v1';
+let pqDraftUid = null;   // account the saved draft belongs to
 let pqSaveTimer = null, pqReady = false;
 function pqSnapshot(withImages) {
   const meta = Object.assign({}, paperMeta);
   if (!withImages || (typeof dmcLogo !== 'undefined' && meta.logo === dmcLogo)) meta.logo = null; // default logo is refilled automatically
-  return { v:1, t:Date.now(), paperMeta:meta, paperMcqMarksEach, paperMcqs, paperBlanks, paperTF,
+  return { v:1, t:Date.now(), uid:((typeof CURRENT_USER !== 'undefined' && CURRENT_USER) ? CURRENT_USER.id : null), paperMeta:meta, paperMcqMarksEach, paperMcqs, paperBlanks, paperTF,
            paperMatchA, paperMatchB, paperShort, paperLong, paperInstructions, paperSectionTitles, paperBreaks,
            paperEndImage: withImages ? paperEndImage : null, paperMode, kgBlocks: [], paperTables };
 }
@@ -16689,6 +16970,7 @@ function loadPaperDraft() {
   try {
     const d = JSON.parse(raw);
     const arr = (v, def) => (Array.isArray(v) && v.length ? v : def);
+    pqDraftUid = d.uid || null;
     if (d.paperMeta) paperMeta = Object.assign(paperMeta, d.paperMeta);
     if (d.paperMcqMarksEach != null) paperMcqMarksEach = d.paperMcqMarksEach;
     paperMcqs = arr(d.paperMcqs, paperMcqs);
@@ -16720,7 +17002,7 @@ function pqHasContent() {
   const m = paperMeta;
   return !!(m.exam_name || m.class_name || m.subject || m.total_marks || m.time_allowed || paperEndImage ||
     paperMcqs.some(x => x.q || (x.options||[]).some(Boolean)) || paperBlanks.some(x => x.q) || paperTF.some(x => x.q) ||
-    paperMatchA.some(Boolean) || paperMatchB.some(Boolean) || paperShort.some(x => x.q) || paperLong.some(x => x.q) ||
+    paperMatchA.some(Boolean) || paperMatchB.some(Boolean) || paperShort.some(x => x.q) || paperLong.some(x => x.q) || (paperTables || []).length ||
     Object.values(paperInstructions).some(Boolean) || Object.values(paperSectionTitles).some(Boolean) ||
     Object.values(paperBreaks).some(arr => (arr||[]).some(Boolean)));
 }
@@ -16776,6 +17058,7 @@ function restorePreviousPaper() {
   if (d.paperSectionTitles) paperSectionTitles = Object.assign(paperSectionTitles, d.paperSectionTitles);
   if (d.paperBreaks) paperBreaks = Object.assign(paperBreaks, d.paperBreaks);
   paperEndImage = d.paperEndImage || null;
+  paperTables = Array.isArray(d.paperTables) ? d.paperTables : [];
   try { if (current) localStorage.setItem(PQ_BACKUP_KEY, current); else localStorage.removeItem(PQ_BACKUP_KEY); } catch (e) {}
   pqFlush();
   renderTab();
@@ -16787,7 +17070,22 @@ document.addEventListener('visibilitychange', () => { if (document.visibilitySta
 window.addEventListener('pagehide', pqFlush);
 window.addEventListener('beforeunload', pqFlush);
 
+// A different account logged in on the same phone/PC: the previous account's paper (questions, images,
+// Nursery/KG blocks, "Previous Paper" backups) must never show up for the new school, so it is cleared.
+let pqWiped = false;
+function pqWipeForNewAccount() {
+  pqWiped = true;
+  pqResetPaper();
+  paperMeta.school_name = ''; paperMeta.logo = null;
+  paperMode = 'std'; kgBlocks = []; kgLibOpen = -1; kgLibT = null; kgCmpT = null; kgHasBackup = false;
+  try { localStorage.removeItem(PQ_BACKUP_KEY); localStorage.removeItem(PQ_DRAFT_KEY + '_corrupt'); } catch (e) {}
+  try { kgKvDel('draft'); kgKvDel('backup'); } catch (e) {}
+}
 function ensurePaperMetaDefaults() {
+  try {
+    const uid = (typeof CURRENT_USER !== 'undefined' && CURRENT_USER) ? CURRENT_USER.id : null;
+    if (uid) { if (pqDraftUid && pqDraftUid !== uid) pqWipeForNewAccount(); pqDraftUid = uid; }
+  } catch (e) {}
   if (!paperMeta.school_name) paperMeta.school_name = dmcSchoolName || (CURRENT_PROFILE && CURRENT_PROFILE.school_name) || '';
   if (!paperMeta.logo) paperMeta.logo = dmcLogo || null;
   if (!paperMeta.exam_date) paperMeta.exam_date = todayISO();
@@ -16795,23 +17093,45 @@ function ensurePaperMetaDefaults() {
 function handlePaperLogoUpload(file) {
   if (!file) return;
   const reader = new FileReader();
-  reader.onload = e => { paperMeta.logo = e.target.result; renderTab(); };
+  reader.onload = e => {
+    const raw = e.target.result;
+    const im = new Image();
+    im.onload = () => {
+      try {
+        const k = Math.min(1, 400 / Math.max(im.width, im.height));
+        const c = document.createElement('canvas');
+        c.width = Math.max(1, Math.round(im.width * k)); c.height = Math.max(1, Math.round(im.height * k));
+        c.getContext('2d').drawImage(im, 0, 0, c.width, c.height);
+        paperMeta.logo = c.toDataURL('image/png');
+      } catch (err) { paperMeta.logo = raw; }
+      renderTab();
+    };
+    im.onerror = () => { paperMeta.logo = raw; renderTab(); };
+    im.src = raw;
+  };
   reader.readAsDataURL(file);
 }
-function addPaperMcq() { paperMcqs.push({ no:paperMcqs.length+1, q:'', options:['','','',''] }); renderTab(); }
-function removePaperMcq(i) { paperMcqs.splice(i,1); if (!paperMcqs.length) paperMcqs.push({no:1,q:'',options:['','','','']}); renderTab(); }
-function addPaperBlank() { paperBlanks.push({ no:paperBlanks.length+1, q:'' }); renderTab(); }
-function removePaperBlank(i) { paperBlanks.splice(i,1); if (!paperBlanks.length) paperBlanks.push({no:1,q:''}); renderTab(); }
-function addPaperTF() { paperTF.push({ no:paperTF.length+1, q:'' }); renderTab(); }
-function removePaperTF(i) { paperTF.splice(i,1); if (!paperTF.length) paperTF.push({no:1,q:''}); renderTab(); }
+function pqNextNo(list) { return Math.max(list.length, ...list.map(x => Number(x.no) || 0)) + 1; }
+function pqDropAt(list, i, blank) {
+  const gone = Number(list[i] && list[i].no);
+  list.splice(i, 1);
+  if (isFinite(gone) && gone > 0) for (let j = i; j < list.length; j++) { const n = Number(list[j].no); if (isFinite(n) && n > gone) list[j].no = String(n - 1); }
+  if (!list.length) list.push(blank);
+}
+function addPaperMcq() { paperMcqs.push({ no:pqNextNo(paperMcqs), q:'', options:['','','',''] }); renderTab(); }
+function removePaperMcq(i) { pqDropAt(paperMcqs, i, {no:1,q:'',options:['','','','']}); renderTab(); }
+function addPaperBlank() { paperBlanks.push({ no:pqNextNo(paperBlanks), q:'' }); renderTab(); }
+function removePaperBlank(i) { pqDropAt(paperBlanks, i, {no:1,q:''}); renderTab(); }
+function addPaperTF() { paperTF.push({ no:pqNextNo(paperTF), q:'' }); renderTab(); }
+function removePaperTF(i) { pqDropAt(paperTF, i, {no:1,q:''}); renderTab(); }
 function addMatchA() { paperMatchA.push(''); renderTab(); }
 function removeMatchA(i) { paperMatchA.splice(i,1); renderTab(); }
 function addMatchB() { paperMatchB.push(''); renderTab(); }
 function removeMatchB(i) { paperMatchB.splice(i,1); renderTab(); }
-function addPaperShort() { paperShort.push({ no:paperShort.length+1, q:'', marks:'' }); renderTab(); }
-function removePaperShort(i) { paperShort.splice(i,1); if (!paperShort.length) paperShort.push({no:1,q:'',marks:''}); renderTab(); }
-function addPaperLong() { paperLong.push({ no:paperLong.length+1, q:'', marks:'' }); renderTab(); }
-function removePaperLong(i) { paperLong.splice(i,1); if (!paperLong.length) paperLong.push({no:1,q:'',marks:''}); renderTab(); }
+function addPaperShort() { paperShort.push({ no:pqNextNo(paperShort), q:'', marks:'' }); renderTab(); }
+function removePaperShort(i) { pqDropAt(paperShort, i, {no:1,q:'',marks:''}); renderTab(); }
+function addPaperLong() { paperLong.push({ no:pqNextNo(paperLong), q:'', marks:'' }); renderTab(); }
+function removePaperLong(i) { pqDropAt(paperLong, i, {no:1,q:'',marks:''}); renderTab(); }
 // Shared handler for the single end-of-paper image — reads the file as a
 // data URL, strips its background (see removeImageBackground below), then
 // embeds it directly in the printed paper with no server/storage round trip.
@@ -16838,9 +17158,10 @@ function removeImageBackground(dataUrl, callback) {
   img.onload = () => {
     try {
       const canvas = document.createElement('canvas');
-      canvas.width = img.naturalWidth; canvas.height = img.naturalHeight;
+      const k = Math.min(1, 1400 / Math.max(img.naturalWidth, img.naturalHeight, 1));   // big photos filled the phone's storage
+      canvas.width = Math.max(1, Math.round(img.naturalWidth * k)); canvas.height = Math.max(1, Math.round(img.naturalHeight * k));
       const ctx = canvas.getContext('2d');
-      ctx.drawImage(img, 0, 0);
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
       const { width: w, height: h } = canvas;
       const imgData = ctx.getImageData(0, 0, w, h);
       const d = imgData.data;
@@ -16849,6 +17170,9 @@ function removeImageBackground(dataUrl, callback) {
       let br=0, bg=0, bb=0;
       corners.forEach(c => { br += d[c]; bg += d[c+1]; bb += d[c+2]; });
       br/=4; bg/=4; bb/=4;
+      // corners of different colours = no plain background: keep the picture as it is instead of damaging it
+      const spread = ch => Math.max(...corners.map(c => d[c + ch])) - Math.min(...corners.map(c => d[c + ch]));
+      if (Math.max(spread(0), spread(1), spread(2)) > 40) { callback(canvas.toDataURL('image/png')); return; }
       const threshold = 32; // max per-channel distance from the sampled background to treat as background
       for (let p = 0; p < d.length; p += 4) {
         const dr = d[p]-br, dg = d[p+1]-bg, db = d[p+2]-bb;
@@ -17038,8 +17362,8 @@ let kgReady = false, kgHasBackup = false;
 const kgSnap = () => ({ t: Date.now(), paperMeta: Object.assign({}, paperMeta), kgBlocks: kgBlocks });
 function kgIdbSave() { if (!kgReady || paperMode !== 'kg') return; return kgKvSet('draft', kgSnap()); }
 Promise.all([kgKvGet('draft'), kgKvGet('backup')]).then(([d, b]) => {
-  if (d && Array.isArray(d.kgBlocks) && d.kgBlocks.length) kgBlocks = d.kgBlocks;
-  kgHasBackup = !!b; kgReady = true;
+  if (!pqWiped && d && Array.isArray(d.kgBlocks) && d.kgBlocks.length) kgBlocks = d.kgBlocks;
+  kgHasBackup = !pqWiped && !!b; kgReady = true;
   try { if (TAB === 'papers' && paperMode === 'kg') renderTab(); } catch (e) {} });
 window.addEventListener('pagehide', () => { try { pqFlush(); } catch (e) {} });
 const kgItemHas = x => !!((x.txt || '').trim() || (x.txt2 || '').trim() || x.img || x.img2 || x.em || x.em2 || (x.qp || []).length || (x.op || []).some(a => a && a.length) || (x.o || []).some(Boolean));
@@ -17118,6 +17442,7 @@ function pqParseKg(lines) {
       : (L.length ? L : ['', '', '']).map(x => ({ img: null, txt: T === 'count' ? (x.match(/\d+/) || [''])[0] : x }));
     return { type: T, title: c.title, items }; }); }
 function pqApplyStd(lines) { const o = pqParseStd(lines), arr = (a, d) => a.length ? a : d;
+  pqResetPaper();
   paperMcqs = arr(o.mcq.map((x, i) => ({ no: i + 1, q: x.q, options: x.o })), [{ no: 1, q: '', options: ['', '', '', ''] }]);
   paperBlanks = arr(o.blank.map((x, i) => ({ no: i + 1, q: x.q })), [{ no: 1, q: '' }]);
   paperTF = arr(o.tf.map((x, i) => ({ no: i + 1, q: x.q })), [{ no: 1, q: '' }]);
@@ -17388,9 +17713,11 @@ function tplPqTables() {
 }
 function pqTablesHtml(pos) {
   return paperTables.filter(tb => (tb.pos || 'end') === pos).map(tb => {
-    const rows = tb.rows.filter(r => r.some(c => (c || '').trim()));
+    const hasHead = tb.cols.some(c => (c || '').trim());
+    let rows = tb.rows.filter(r => r.some(c => (c || '').trim()));
+    if (!rows.length && hasHead) rows = tb.rows;   // headings only = blank grid for students to fill in
     if (!rows.length) return '';
-    const ns = pqTblStyle(tb), nums = ns !== 'none', hasHead = tb.cols.some(c => (c || '').trim());
+    const ns = pqTblStyle(tb), nums = ns !== 'none';
     return `<div class="pq-section">${(tb.title||'').trim() ? `<div class="pq-instruction" dir="auto">${esc(tb.title)}</div>` : ''}
       <table class="pq-table">${hasHead ? `<thead><tr>${nums ? '<th class="pq-no">#</th>' : ''}${tb.cols.map(c => `<th dir="auto">${esc(c||'')}</th>`).join('')}</tr></thead>` : ''}
       <tbody>${rows.map((r,i) => `<tr>${nums ? `<td class="pq-no">${pqSerialText(ns, i+1)}</td>` : ''}${r.map(c => `<td dir="auto">${pqEsc(c||'')}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
@@ -17429,7 +17756,7 @@ function pqColSumHtml(expr) {
   const op = ops[0] === '-' ? '\u2212' : (ops[0] === '*' ? '\u00d7' : ops[0]);
   const clean = v => String(v).replace(/[<>&]/g, '');
   // place-value chart (only when the teacher asked for it and every number is a whole number)
-  if ((flag === 'pv' || flag === 'pvf') && nums.every(n => /^\d+$/.test(n)) && /^\d*$/.test(ans)) {
+  if ((flag === 'pv' || flag === 'pvf') && nums.every(n => /^\d+$/.test(n)) && /^\d*$/.test(ans) && Math.max(...nums.map(n => n.length), ans.length) <= 8) {
     const lens = nums.map(n => n.length), mx = Math.max(...lens, ans.length);
     let L = op === '+' ? mx + 1 : (op === '\u00d7' ? Math.max(mx, lens[0] + lens[1]) : mx);
     L = Math.min(8, Math.max(2, L));
@@ -17566,7 +17893,7 @@ function tplPapersStd() {
     <div class="card" style="margin-bottom:14px;">
       <div class="flexgap" style="justify-content:space-between;align-items:center;margin-bottom:8px;">
         <b style="font-size:13px;">${esc(t.mcqType)}</b>
-        <label style="margin:0;display:flex;align-items:center;gap:6px;font-size:12px;"><span>${esc(t.marksEach)}</span><input type="number" style="width:60px;" value="${paperMcqMarksEach}" oninput="paperMcqMarksEach=this.value"></label>
+        <label style="margin:0;display:flex;align-items:center;gap:6px;font-size:12px;"><span>${esc(t.marksEach)}</span><input type="number" style="width:60px;" value="${esc(paperMcqMarksEach)}" oninput="paperMcqMarksEach=this.value"></label>
       </div>
       <input dir="auto" style="width:100%;font-size:12px;font-style:italic;margin-bottom:8px;" placeholder="${esc(t.instructionPh)}" value="${esc(paperInstructions.mcq)}" oninput="paperInstructions.mcq=this.value">
       ${mcqRows}
@@ -17671,6 +17998,14 @@ function printQuestionPaper() {
   const validShort = paperShort.filter(s => s.q.trim());
   const validLong = paperLong.filter(l => l.q.trim());
   const letters = ['a','b','c','d'];
+  const pqHasQs = validMcqs.length || validBlanks.length || validTF.length || (validMatchA.length && validMatchB.length)
+    || validShort.length || validLong.length || (paperTables || []).length || paperEndImage;
+  if (paperMode === 'kg' ? !(typeof kgHasContent === 'function' && kgHasContent()) : !pqHasQs) {
+    alert(qt('The paper is empty. Please add at least one question first.', 'پرچہ خالی ہے۔ پہلے کم از کم ایک سوال لکھیں۔'));
+    return;
+  }
+  // Untouched auto-numbers close up when an empty row is skipped (1,2,4 -> 1,2,3); numbers typed by hand are kept as typed.
+  const printNo = (src, it, i) => (String(it.no) === String(src.indexOf(it) + 1)) ? (i + 1) : (it.no || i + 1);
 
   // Same optional divider box the builder offers after every question from
   // the 5th one onward (see pqBreakBox / paperBreaks) — printed only when
@@ -17684,24 +18019,24 @@ function printQuestionPaper() {
 
   const mcqHtml = validMcqs.length ? `
     <div class="pq-sub">
-      <div class="pq-marks" style="margin-bottom:6px;">(${paperMcqMarksEach} ${LANG==='ur'?'نمبر فی سوال':'mark(s) each'})</div>
+      ${String(paperMcqMarksEach == null ? '' : paperMcqMarksEach).trim() ? `<div class="pq-marks" style="margin-bottom:6px;">(${esc(paperMcqMarksEach)} ${LANG==='ur'?'نمبر فی سوال':'mark(s) each'})</div>` : ''}
       ${paperInstructions.mcq.trim() ? `<div class="pq-instruction" dir="auto">${esc(paperInstructions.mcq)}</div>` : ''}
-      ${validMcqs.map((m,i) => { const d = qDir(m.q); const opts = m.options.map((o,oi)=> o.trim() ? `<span>(${letters[oi]}) ${pqEsc(o)}</span>` : '').join(''); return `
+      ${validMcqs.map((m,i) => { const d = qDir(m.q); const opts = m.options.map((o,oi)=> o.trim() ? `<span>(${letters[oi] || String.fromCharCode(97 + oi)}) ${pqEsc(o)}</span>` : '').join(''); return `
         <div class="pq-q" dir="${d}">
-          <div class="pq-q-text"><b>${esc(m.no||i+1)}.</b> ${pqEsc(m.q)}</div>${opts ? `<div class="pq-options">${opts}</div>` : ''}
-        </div>${pqBreakLine('a', i)}`; }).join('')}
+          <div class="pq-q-text"><b>${esc(printNo(paperMcqs,m,i))}.</b> ${pqEsc(m.q)}</div>${opts ? `<div class="pq-options">${opts}</div>` : ''}
+        </div>${pqBreakLine('a', paperMcqs.indexOf(m))}`; }).join('')}
     </div>` : '';
 
   const blanksHtml = validBlanks.length ? `
     <div class="pq-sub">
       ${paperInstructions.blanks.trim() ? `<div class="pq-instruction" dir="auto">${esc(paperInstructions.blanks)}</div>` : ''}
-      <div class="pq-2col">${validBlanks.map((b,i) => `<div class="pq-q"><div class="pq-q-text" dir="auto"><b>${esc(b.no||i+1)}.</b> ${pqEsc(b.q)}</div></div>${pqBreakLine('a', validMcqs.length + i)}`).join('')}</div>
+      <div class="pq-2col">${validBlanks.map((b,i) => `<div class="pq-q"><div class="pq-q-text" dir="auto"><b>${esc(printNo(paperBlanks,b,i))}.</b> ${pqEsc(b.q)}</div></div>${pqBreakLine('a', paperMcqs.length + paperBlanks.indexOf(b))}`).join('')}</div>
     </div>` : '';
 
   const tfHtml = validTF.length ? `
     <div class="pq-sub">
       ${paperInstructions.tf.trim() ? `<div class="pq-instruction" dir="auto">${esc(paperInstructions.tf)}</div>` : ''}
-      ${validTF.map((x,i) => `<div class="pq-q"><div class="pq-q-text" dir="auto"><b>${esc(x.no||i+1)}.</b> ${pqEsc(x.q)} <span class="pq-tf">( &nbsp;True&nbsp; / &nbsp;False&nbsp; )</span></div></div>${pqBreakLine('a', validMcqs.length + validBlanks.length + i)}`).join('')}
+      ${validTF.map((x,i) => `<div class="pq-q"><div class="pq-q-text" dir="auto"><b>${esc(printNo(paperTF,x,i))}.</b> ${pqEsc(x.q)} <span class="pq-tf">${RTL_CHAR_RE.test(x.q) ? '( &nbsp;صحیح&nbsp; / &nbsp;غلط&nbsp; )' : '( &nbsp;True&nbsp; / &nbsp;False&nbsp; )'}</span></div></div>${pqBreakLine('a', paperMcqs.length + paperBlanks.length + paperTF.indexOf(x))}`).join('')}
     </div>` : '';
 
   const matchHtml = (validMatchA.length && validMatchB.length) ? `
@@ -17719,8 +18054,8 @@ function printQuestionPaper() {
       ${instruction && instruction.trim() ? `<div class="pq-instruction" dir="auto">${esc(instruction)}</div>` : ''}
       <div class="pq-2col">${list.map((it,i) => `
         <div class="pq-q">
-          <div class="pq-q-text" dir="auto"><b>${esc(it.no||i+1)}.</b> ${pqEsc(it.q)} ${it.marks ? `<span class="pq-marks">[${esc(it.marks)}]</span>` : ''}</div>
-        </div>${key ? pqBreakLine(key, i) : ''}`).join('')}</div>
+          <div class="pq-q-text" dir="auto"><b>${esc(printNo(key==='b' ? paperShort : paperLong, it, i))}.</b> ${pqEsc(it.q)} ${it.marks ? `<span class="pq-marks">[${esc(it.marks)}]</span>` : ''}</div>
+        </div>${key ? pqBreakLine(key, (key === 'b' ? paperShort : paperLong).indexOf(it)) : ''}`).join('')}</div>
     </div>` : '';
 
   const sectionAHtml = (mcqHtml || blanksHtml || tfHtml || matchHtml) ? `
@@ -17730,6 +18065,7 @@ function printQuestionPaper() {
     </div>` : '';
 
   document.getElementById('print-area').innerHTML = `
+    ${paperMeta.logo ? `<div class="pq-wm-fixed"><img src="${paperMeta.logo}" alt=""></div>` : ''}
     <div class="qpaper-print" id="qpaper-print-el">
       <div class="qp-head">
         <div class="qp-head-row">
@@ -17757,8 +18093,9 @@ function printQuestionPaper() {
   // only falls back to shrinking with CSS `zoom` (not `transform` — see that
   // function's comment for why transform doesn't work here) if it's still
   // too tall even at minimum spacing.
+  document.querySelectorAll('#print-area .pq-instruction').forEach(el => { if (RTL_CHAR_RE.test(el.textContent || '')) el.classList.add('pq-ur'); });
   const printEl = document.getElementById('qpaper-print-el');
-  const imgs = printEl ? Array.from(printEl.querySelectorAll('img')) : [];
+  const imgs = Array.from(document.querySelectorAll('#print-area img'));   // header logo, watermark, end image
   const imgsReady = Promise.all(imgs.map(img => img.complete ? Promise.resolve() : new Promise(res => { img.onload = res; img.onerror = res; })));
   // Web fonts (Noto Nastaliq Urdu / Inter) only start downloading once the text
   // is actually laid out, and #print-area is display:none until print. So show
@@ -17790,6 +18127,8 @@ function printQuestionPaper() {
     // 2nd page.
     fitAndSpacePaper('qpaper-print-el', 8, 0.85);
     fitAndSpacePaper('qpaper-print-el', 8, 0.85); // second pass = refine once fonts/layout have settled
+    const pqZoom = Number((printEl && printEl.style.zoom) || 1);
+    if (pqZoom < 0.7 && !confirm(qt(`This paper is long, so it will print with small text (about ${Math.round(pqZoom * 100)}% size) to fit one page. Print anyway? (Press Cancel to remove a few questions first.)`, `پرچہ لمبا ہے، ایک صفحے میں لانے کے لیے لکھائی چھوٹی (تقریباً ${Math.round(pqZoom * 100)}٪) چھپے گی۔ پھر بھی پرنٹ کریں؟ (کچھ سوال کم کرنے کے لیے Cancel دبائیں)`))) return;
     printAsA4(8);
   });
 }
@@ -17966,11 +18305,18 @@ async function calcAdmissionAttendance() {
   if (msgEl) msgEl.textContent = '✓';
 }
 
+// Class <option>s that always include the entry's own class, even if it is not in CLASS_OPTIONS any more —
+// otherwise the dropdown silently jumps to the first class and saving would overwrite the real one.
+function arClassOpts(cur) {
+  const list = CLASS_OPTIONS.slice();
+  if (cur && !list.includes(cur)) list.unshift(cur);
+  return list.map(c => `<option ${cur===c?'selected':''}>${esc(c)}</option>`).join('');
+}
 function admissionEntryForm(r) {
   r = r || {};
   const cols = [
     [t.serialNo, `<input class="cell-input" id="ar-serial" type="number" value="${esc(r.serial_no||'')}">`],
-    [t.admissionDate, `<input class="cell-input" id="ar-admission-date" type="date" value="${esc(r.admission_date||todayISO())}">`],
+    [t.admissionDate, `<input class="cell-input" id="ar-admission-date" type="date" value="${esc(r.id ? (r.admission_date||'') : todayISO())}">`],
     [t.studentName, `<input class="cell-input" id="ar-name" value="${esc(r.student_name||'')}">`],
     [t.studentNameUr, `<input class="cell-input" id="ar-name-ur" dir="rtl" value="${esc(r.student_name_ur||'')}">`],
     [t.dobFigures, `<input class="cell-input" id="ar-dob-figures" type="date" value="${esc(r.dob_figures||'')}">`],
@@ -17982,10 +18328,10 @@ function admissionEntryForm(r) {
     [t.occupation, `<input class="cell-input" id="ar-occupation" value="${esc(r.occupation||'')}">`],
     [t.residence, `<input class="cell-input" id="ar-residence" value="${esc(r.residence||'')}">`],
     [t.residenceUr, `<input class="cell-input" id="ar-residence-ur" dir="rtl" value="${esc(r.residence_ur||'')}">`],
-    [t.classAdmitted, `<select class="cell-input" id="ar-class-admitted">${CLASS_OPTIONS.map(c=>`<option ${r.class_admitted===c?'selected':''}>${c}</option>`).join('')}</select>`],
-    [t.linkStudent, `<select class="cell-input" id="ar-student-link"><option value="">${esc(t.linkStudentNone)}</option>${DATA.students.map(s=>`<option value="${s.id}" ${r.student_id===s.id?'selected':''}>${esc(s.name)}${s.roll_no?' (#'+esc(s.roll_no)+')':''}</option>`).join('')}</select>`],
+    [t.classAdmitted, `<select class="cell-input" id="ar-class-admitted">${arClassOpts(r.class_admitted)}</select>`],
+    [t.linkStudent, `<select class="cell-input" id="ar-student-link"><option value="">${esc(t.linkStudentNone)}</option>${DATA.students.slice().sort((a,b)=>String(a.name||'').localeCompare(String(b.name||''))).map(s=>`<option value="${s.id}" ${r.student_id===s.id?'selected':''}>${esc(s.name)}${s.class_name?' - '+esc(s.class_name):''}${s.father_name?' / '+esc(s.father_name):''}${s.status==='inactive'?' [struck off]':''}</option>`).join('')}</select>`],
     [t.arrearsDue, `<input class="cell-input" id="ar-arrears" type="number" value="${esc(r.arrears_due||0)}">`],
-    [t.classWithdrawn, `<select class="cell-input" id="ar-class-withdrawn"><option value="">—</option>${CLASS_OPTIONS.map(c=>`<option ${r.class_withdrawn===c?'selected':''}>${c}</option>`).join('')}</select>`],
+    [t.classWithdrawn, `<select class="cell-input" id="ar-class-withdrawn"><option value="">—</option>${arClassOpts(r.class_withdrawn)}</select>`],
     [t.withdrawalDate, `<input class="cell-input" id="ar-withdrawal-date" type="date" value="${esc(r.withdrawal_date||'')}">`],
     [t.highMiddleSlcNo, `<input class="cell-input" id="ar-hm-slc-no" value="${esc(r.high_middle_slc_no||'')}">`],
     [t.bise, `<input class="cell-input" id="ar-bise" value="${esc(r.bise_enrolment_no||'')}">`],
@@ -18016,10 +18362,34 @@ function openAddAdmissionEntry() {
   `);
 }
 
+// Checks an entry before it is saved. Returns false (after telling the user) when it must not be saved.
+function arValidate(entry, id) {
+  if (!entry.student_name) { alert(qt('Student name is required.', 'طالب علم کا نام ضروری ہے۔')); return false; }
+  if (!moneyOk(entry.arrears_due || 0)) { alert(MONEY_NEG_MSG()); return false; }
+  const today = todayISO();
+  if (entry.dob_figures && entry.dob_figures > today) { alert(qt('Date of birth cannot be in the future.', 'تاریخ پیدائش آنے والی نہیں ہو سکتی۔')); return false; }
+  if (entry.admission_date && entry.admission_date > today) { alert(qt('Admission date cannot be in the future.', 'داخلے کی تاریخ آنے والی نہیں ہو سکتی۔')); return false; }
+  if (entry.withdrawal_date && entry.admission_date && entry.withdrawal_date < entry.admission_date) { alert(qt('Withdrawal date cannot be before the admission date.', 'اخراج کی تاریخ داخلے کی تاریخ سے پہلے نہیں ہو سکتی۔')); return false; }
+  if (entry.student_id) {
+    const other = DATA.admissionRegister.find(x => x.id !== id && x.student_id === entry.student_id);
+    if (other && !confirm(qt(`This student is already linked to register entry Serial No. ${other.serial_no || '—'} (${other.student_name || ''}). Link again anyway?`, `یہ طالب علم پہلے ہی سیریل نمبر ${other.serial_no || '—'} (${other.student_name || ''}) سے لنک ہے۔ پھر بھی لنک کریں؟`))) return false;
+  }
+  if (entry.withdrawal_date && !entry.class_withdrawn
+      && !confirm(qt('Withdrawal date is set but "Class Withdrawn" is empty — the SLC will print without it. Save anyway?', 'اخراج کی تاریخ درج ہے مگر "اخراج کے وقت جماعت" خالی ہے — SLC میں یہ خالی چھپے گی۔ پھر بھی محفوظ کریں؟'))) return false;
+  if (!entry.withdrawal_date && (entry.class_withdrawn || entry.slc_issue_date || entry.high_middle_slc_no)
+      && !confirm(qt('Class Withdrawn / SLC details are filled but there is no Withdrawal Date, so the student will still show as Admitted. Save anyway?', 'اخراج کی تفصیل درج ہے مگر اخراج کی تاریخ نہیں، اس لیے طالب علم "داخل" ہی شمار ہوگا۔ پھر بھی محفوظ کریں؟'))) return false;
+  if (entry.slc_issue_date && entry.withdrawal_date && entry.slc_issue_date < entry.withdrawal_date
+      && !confirm(qt('SLC issue date is before the withdrawal date. Save anyway?', 'SLC جاری کرنے کی تاریخ اخراج کی تاریخ سے پہلے ہے۔ پھر بھی محفوظ کریں؟'))) return false;
+  if (entry.serial_no != null && DATA.admissionRegister.some(x => x.id !== id && Number(x.serial_no) === Number(entry.serial_no))) {
+    if (!confirm(qt(`Serial No. ${entry.serial_no} already belongs to another entry. Save anyway?`, `سیریل نمبر ${entry.serial_no} کسی اور اندراج کا ہے۔ پھر بھی محفوظ کریں؟`))) return false;
+  }
+  return true;
+}
+
 function readAdmissionForm() {
   return {
     serial_no: document.getElementById('ar-serial').value ? Number(document.getElementById('ar-serial').value) : null,
-    admission_date: dateVal('ar-admission-date'),
+    admission_date: dateVal('ar-admission-date', null),
     student_name: document.getElementById('ar-name').value.trim(),
     student_name_ur: document.getElementById('ar-name-ur').value.trim() || null,
     dob_figures: dateVal('ar-dob-figures', ''),
@@ -18049,7 +18419,7 @@ function readAdmissionForm() {
 
 async function submitAddAdmissionEntry() {
   const entry = readAdmissionForm();
-  if (!entry.student_name) return;
+  if (!arValidate(entry, null)) return;
   entry.parent_pin = String(Math.floor(100000 + Math.random() * 900000));
   const payload = { id: crypto.randomUUID ? crypto.randomUUID() : `local-${Date.now()}`, owner_id: CURRENT_USER.id, ...entry };
   // Offline-aware: a brand-new register entry, so there's nothing on the
@@ -18332,7 +18702,7 @@ async function printCharacterCertificate(id) {
 
 async function submitEditAdmissionEntry(id) {
   const entry = readAdmissionForm();
-  if (!entry.student_name) return;
+  if (!arValidate(entry, id)) return;
   const baseRow = DATA.admissionRegister.find(x => x.id === id) || null;
   // Offline-aware: applied to the local cache immediately and queued —
   // syncs automatically once back online (with a conflict prompt if another
@@ -18355,6 +18725,7 @@ async function submitEditAdmissionEntry(id) {
       const changed = Object.keys(sp).some(k => (sp[k] || null) !== (stu[k] || null));
       if (changed) await offlineUpdateStudent(entry.student_id, sp);
     }
+    // Strike-off (Students tab) and Withdrawal (this register) are independent: no automatic status change here.
   }
   closeModal(); if (!queued) await loadAllData(); renderTab();
 }
