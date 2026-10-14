@@ -10257,6 +10257,7 @@ let ttClasses = null;         // null = use the default class list (CLASS_OPTION
 let ttBreakAfter = 0;         // 0 = no break column; otherwise the period number the break is shown right after
 let ttBreakStart = '';
 let ttBreakEnd = '';
+let ttNameMap = {};           // teacher id -> display name (so 'n:' ids never print lowercase)
 let ttAssign = [];            // teachers & subjects per class: {id, class_name, subject, teacher_id, per_week}
 let ttStatus = 'idle';        // 'idle' | 'loading' | 'ready' | 'missing_table'
 
@@ -10290,7 +10291,7 @@ function ttLocalWrite() {
     localStorage.setItem(ttLocalKey(), JSON.stringify({
       rows: ttRows, times: ttPeriodTimes,
       settings: { classes: ttClasses, periods_count: ttPeriods, break_after: ttBreakAfter, break_start: ttBreakStart, break_end: ttBreakEnd },
-      week: { assign: ttAssign, teachers: ttTeachers }
+      week: { assign: ttAssign, teachers: ttTeachers, names: ttNameMap }
     }));
   } catch (e) { alert((LANG === 'ur' ? 'محفوظ نہیں ہوا: ' : 'Could not save: ') + e.message); }
 }
@@ -10313,6 +10314,8 @@ async function loadTimetableGrid() {
   const wk = d.week || {};
   ttAssign = Array.isArray(wk.assign) ? wk.assign : [];
   ttTeachers = Array.isArray(wk.teachers) ? wk.teachers : [];
+  ttNameMap = (wk.names && typeof wk.names === 'object') ? wk.names : {};
+  try { ttMigrateIds(); ttRebuildAssign(); } catch (e) {}
   ttStatus = 'ready';
   await loadDMCConfig(); // pulls the editable school logo/name shown at the top of the timetable
   if (TAB === 'timetable') renderTab();
@@ -10323,6 +10326,8 @@ async function saveTimetableSettings() { ttLocalWrite(); }
 function ttAddPeriod() { ttPeriods += 1; saveTimetableSettings(); renderTab(); }
 function ttRemovePeriod() {
   if (ttPeriods <= 1) return;
+  const hasData = ttRows.some(r => r.period === ttPeriods && (r.subject || r.teacher_id));
+  if (hasData && !confirm(qt('The last period has subjects/teachers filled in. Remove it? (Its data will be hidden.)', 'آخری پیریڈ میں مضامین/اساتذہ لکھے ہیں۔ ہٹا دیں؟ (ان کا ڈیٹا چھپ جائے گا۔)'))) return;
   if (ttBreakAfter >= ttPeriods) ttBreakAfter = 0; // don't leave the break dangling past the last period
   ttPeriods -= 1;
   saveTimetableSettings();
@@ -10333,8 +10338,27 @@ function ttSetBreakAfter(value) {
   saveTimetableSettings();
   renderTab();
 }
+function ttMin(x) { const m = /^(\d{1,2}):(\d{2})/.exec(x || ''); return m ? (+m[1]) * 60 + (+m[2]) : null; }
+function tt12(x) { const m = /^(\d{1,2}):(\d{2})/.exec(x || ''); if (!m) return x || ''; let h = +m[1]; const ap = h >= 12 ? 'PM' : 'AM'; h = h % 12 || 12; return h + ':' + m[2] + ' ' + ap; }
+function ttTimeProblem() {
+  const spans = [];
+  for (let p = 1; p <= ttPeriods; p++) {
+    const tm = ttPeriodTimes[p] || {}, a = ttMin(tm.start_time), b = ttMin(tm.end_time);
+    if (a != null && b != null) { if (b <= a) return ttPeriodLabel(p) + ': ' + qt('end time must be after start time', 'ختم کا وقت شروع کے بعد ہونا چاہیے'); spans.push([a, b, ttPeriodLabel(p)]); }
+  }
+  if (ttBreakAfter) {
+    const a = ttMin(ttBreakStart), b = ttMin(ttBreakEnd);
+    if (a != null && b != null) { if (b <= a) return qt('Break', 'وقفہ') + ': ' + qt('end time must be after start time', 'ختم کا وقت شروع کے بعد ہونا چاہیے'); spans.push([a, b, qt('Break', 'وقفہ')]); }
+  }
+  spans.sort((x, y) => x[0] - y[0]);
+  for (let i = 1; i < spans.length; i++) if (spans[i][0] < spans[i - 1][1]) return spans[i - 1][2] + ' / ' + spans[i][2] + ': ' + qt('times overlap', 'اوقات آپس میں ٹکرا رہے ہیں');
+  return '';
+}
 function ttSaveBreakTime(field, value) {
+  const old = field === 'start' ? ttBreakStart : ttBreakEnd;
   if (field === 'start') ttBreakStart = value; else ttBreakEnd = value;
+  const bad = ttTimeProblem();
+  if (bad) { if (field === 'start') ttBreakStart = old; else ttBreakEnd = old; alert(bad); renderTab(); return; }
   saveTimetableSettings();
 }
 
@@ -10388,10 +10412,17 @@ async function saveTimetableCell(className, period, field, value) {
   if (idx >= 0) ttRows[idx] = row; else ttRows.push(row);
   ttLocalWrite();
   ttRefreshFree();
+  if (field === 'teacher_id' && value) {
+    const others = ttVisibleRows().filter(r => r.teacher_id === value && r.period === period && r.class_name !== className).map(r => r.class_name);
+    if (others.length) alert('⚠ ' + qt(ttTeacherName(value) + ' is already teaching ' + others.join(', ') + ' in ' + ttPeriodLabel(period) + '.', ttTeacherName(value) + ' اس وقت (' + ttPeriodLabel(period) + ') ' + others.join('، ') + ' میں پہلے سے مصروف ہیں۔'));
+  }
 }
 
 async function savePeriodTime(period, field, value) {
-  ttPeriodTimes[period] = { ...(ttPeriodTimes[period] || {}), [field]: value };
+  const prev = ttPeriodTimes[period];
+  ttPeriodTimes[period] = { ...(prev || {}), [field]: value };
+  const bad = ttTimeProblem();
+  if (bad) { if (prev) ttPeriodTimes[period] = prev; else delete ttPeriodTimes[period]; alert(bad); renderTab(); return; }
   ttLocalWrite();
 }
 
@@ -10455,16 +10486,20 @@ function tplTimetable() {
           <input type="time" value="${esc(ttBreakEnd)}" onchange="ttSaveBreakTime('end',this.value)">
         </div>
       </th>`;
+    const optList = ttTeacherOptions().map(tc => ({ id: tc.id, html: `<option value="${esc(tc.id)}">${esc(tc.name)}</option>`, sel: `<option value="${esc(tc.id)}" selected>${esc(tc.name)}</option>` }));
+    const clashBad = ttClashSet();
+    const rowIdx = {}; ttRows.forEach(r => { rowIdx[r.class_name + '|' + r.period] = r; });
     const cell = (className, period) => {
-      const row = ttRows.find(r => r.class_name === className && r.period === period);
-      const teacherOptions = ttTeacherOptions().map(tc =>
-        `<option value="${esc(tc.id)}" ${row && row.teacher_id === tc.id ? 'selected' : ''}>${esc(tc.name)}</option>`).join('');
+      const row = rowIdx[className + '|' + period];
+      const teacherOptions = optList.map(o => (row && row.teacher_id === o.id) ? o.sel : o.html).join('');
+      const bad = row && row.teacher_id && clashBad.has(row.teacher_id + '|' + period);
+      const cq = esc(className).replace(/'/g, "\\'");
       return `
-        <td class="tt-cell" data-cls="${esc(className)}" data-p="${period}">
+        <td class="tt-cell" data-cls="${esc(className)}" data-p="${period}" style="${bad ? 'outline:2px solid #c0392b;outline-offset:-2px;' : ''}">
           <input type="text" class="tt-subject" placeholder="${LANG === 'ur' ? 'مضمون' : 'Subject'}"
             value="${esc(row && row.subject ? row.subject : '')}"
-            onchange="saveTimetableCell('${esc(className).replace(/'/g,"\\'")}',${period},'subject',this.value)">
-          <select class="tt-teacher" onchange="saveTimetableCell('${esc(className).replace(/'/g,"\\'")}',${period},'teacher_id',this.value)">
+            onchange="saveTimetableCell('${cq}',${period},'subject',this.value)">
+          <select class="tt-teacher" onchange="saveTimetableCell('${cq}',${period},'teacher_id',this.value)">
             <option value="">${LANG === 'ur' ? '— استاد —' : '— Teacher —'}</option>
             ${teacherOptions}
           </select>
@@ -10485,6 +10520,13 @@ function tplTimetable() {
         <button class="btn-ghost" onclick="ttAddPeriod()">+ ${LANG === 'ur' ? 'پیریڈ شامل کریں' : 'Add Period'}</button>
         <button class="btn-ghost" onclick="ttRemovePeriod()">− ${LANG === 'ur' ? 'پیریڈ ہٹائیں' : 'Remove Period'}</button>
         <button class="btn-ghost" onclick="openManageTtClasses()">${LANG === 'ur' ? 'جماعتیں منتخب کریں' : 'Manage Classes'}</button>
+      </div>
+      <div class="flexgap" style="margin-top:8px;flex-wrap:wrap;">
+        <button class="btn-ghost" onclick="ttOpenTeacherView()">👤 ${esc(qt('Teacher-wise', 'استاد وار'))}</button>
+        <button class="btn-ghost" onclick="ttExportExcel()">📊 Excel</button>
+        <button class="btn-ghost" onclick="ttExportJSON()">💾 ${esc(qt('Backup', 'بیک اپ'))}</button>
+        <button class="btn-ghost" onclick="document.getElementById('tt-import').click()">📂 ${esc(qt('Restore', 'بحال کریں'))}</button>
+        <input type="file" id="tt-import" accept=".json,application/json" style="display:none" onchange="ttImportJSON(this.files[0]); this.value='';">
       </div>
       <label style="margin-top:10px;max-width:260px;">
         <span>${LANG === 'ur' ? 'وقفہ کس پیریڈ کے بعد؟' : 'Break after which period?'}</span>
@@ -10521,31 +10563,60 @@ function tplTimetable() {
 // First item = teacher's name, then "Subject Class" items separated by commas. Optional "x6" / "(6)" after an item = periods per week.
 // What is written is turned into ttAssign (used by Auto-fill). Anything that could not be understood is shown, never dropped silently.
 let ttTeachers = [];          // [{id, text}] one entry per teacher box
-function ttNormName(n) { return String(n || '').toLowerCase().replace(/\b(sir|madam|miss|mam|sb|sahib|ustad)\b|سر|استاد|میڈم/g, '').replace(/[^a-z0-9\u0600-\u06FF]+/g, ''); }
+const TT_HONOR = new Set(['sir','madam','miss','mam','sb','sahib','ustad','سر','استاد','میڈم','مس']);
+const TT_DAYS = 6;   // school days per week (used to read "x6")
+function ttNameTokens(n) {
+  return String(n || '').toLowerCase().split(/[\s.\-_]+/).filter(w => w && !TT_HONOR.has(w))
+    .map(w => w.replace(/[^a-z0-9\u0600-\u06FF]+/g, '')).filter(Boolean);
+}
+function ttNormName(n) { return ttNameTokens(n).join(''); }
+function ttAllClassNames() { return Array.from(new Set([...CLASS_OPTIONS, ...ttDefaultClassOptions(), ...(ttClasses || [])])); }
+// "Azhar sir" and "Muhammad Azhar" are the same teacher when every word of the shorter name is in the longer one (and only one teacher fits)
 function ttTeacherIdFor(name) {
-  const k = ttNormName(name);
-  const hit = k && DATA.teachers.find(t => ttNormName(t.name) === k);
-  return hit ? hit.id : 'n:' + (k || name);
+  const tk = ttNameTokens(name), k = tk.join('');
+  if (!k) return 'n:' + String(name || '').trim().toLowerCase();
+  let hit = DATA.teachers.filter(t => ttNormName(t.name) === k);
+  if (!hit.length) {
+    hit = DATA.teachers.filter(t => { const a = ttNameTokens(t.name); const [sm, lg] = a.length <= tk.length ? [a, tk] : [tk, a]; return sm.length && sm.every(w => lg.includes(w)); });
+    if (hit.length > 1) { const act = hit.filter(t => !teacherIsLeft(t)); hit = act.length === 1 ? act : []; }
+  } else if (hit.length > 1) { const act = hit.filter(t => !teacherIsLeft(t)); if (act.length) hit = act; }
+  return hit.length ? hit[0].id : 'n:' + k;
 }
 function ttTeacherName(id) {
   if (!id) return '';
-  for (const t of ttTeachers) { const p = ttParseTeacher(t.text); if (p.name && ttTeacherIdFor(p.name) === id) return p.name; }
   const d = DATA.teachers.find(x => x.id === id);
-  return d ? d.name : (String(id).startsWith('n:') ? String(id).slice(2) : '');
+  if (d) return d.name;
+  if (ttNameMap[id]) return ttNameMap[id];
+  return String(id).startsWith('n:') ? String(id).slice(2) : '';
 }
-// teachers offered in the weekly grid's drop-down: the ones written in the boxes first, then the Teachers tab
+// teachers offered in the drop-down: the ones written in the boxes, active ones from the Teachers tab, and anyone already placed in the grid
 function ttTeacherOptions() {
   const out = [], seen = new Set();
-  ttTeachers.forEach(t => { const p = ttParseTeacher(t.text); if (!p.name) return; const id = ttTeacherIdFor(p.name); if (!seen.has(id)) { seen.add(id); out.push({ id, name: p.name }); } });
-  DATA.teachers.forEach(t => { if (!seen.has(t.id)) { seen.add(t.id); out.push({ id: t.id, name: t.name }); } });
+  const add = (id) => { if (id && !seen.has(id)) { seen.add(id); out.push({ id, name: ttTeacherName(id) || '?' }); } };
+  ttTeachers.forEach(t => { const p = ttParseTeacher(t.text); if (p.name) add(ttTeacherIdFor(p.name)); });
+  activeTeachers().forEach(t => add(t.id));
+  ttRows.forEach(r => add(r.teacher_id));
   return out;
 }
+const ttParseCache = new Map(); let ttParseSig = '';
 function ttParseTeacher(text) {
+  const sig = ttAllClassNames().join('~');
+  if (sig !== ttParseSig) { ttParseCache.clear(); ttParseSig = sig; }
+  text = String(text || '');
+  let r = ttParseCache.get(text);
+  if (!r) { r = ttParseTeacherRaw(text); ttParseCache.set(text, r); }
+  return r;
+}
+function ttParseTeacherRaw(text) {
   const parts = String(text || '').split(/[,،;\n]+/).map(x => x.replace(/\s+/g, ' ').trim()).filter(Boolean);
-  const res = { name: parts[0] || '', entries: [], bad: [], dup: [] };
-  const classes = ttClassOptions().slice().sort((a, b) => b.length - a.length);
+  const res = { name: parts[0] || '', entries: [], bad: [], dup: [], off: [], max: null };
+  const classes = ttAllClassNames().slice().sort((a, b) => b.length - a.length);
   const seen = new Set();
   parts.slice(1).forEach(tok => {
+    const mo = tok.match(/^(?:off|unavailable|absent|na)\s*[:\-]?\s*([\d\s&]+)$/i);
+    if (mo) { (mo[1].match(/\d+/g) || []).forEach(n => res.off.push(Number(n))); return; }
+    const mm = tok.match(/^(?:max|maxload)\s*[:\-]?\s*(\d{1,2})$/i);
+    if (mm) { res.max = Number(mm[1]); return; }
     let t = tok, pw = null;
     const m = t.match(/\s*(?:[x×*]\s*(\d{1,2})|\((\d{1,2})\))\s*$/i);
     if (m) { pw = Number(m[1] || m[2]); t = t.slice(0, m.index).trim(); }
@@ -10556,7 +10627,7 @@ function ttParseTeacher(text) {
       if (low.endsWith(cl) && (low.length === cl.length || /[\s\-]/.test(low[low.length - cl.length - 1]))) { cls = c; subj = t.slice(0, t.length - c.length); break; }
       if (low.startsWith(cl) && (low.length === cl.length || /[\s\-]/.test(low[cl.length]))) { cls = c; subj = t.slice(c.length); break; }
     }
-    if (!cls) {   // "Urdu 3" / "3 Urdu" -> the class whose number is 3
+    if (!cls) {
       const n = t.match(/^(.*?)[\s\-]*(\d{1,2})\s*(?:st|nd|rd|th)?$/i) || t.match(/^(\d{1,2})\s*(?:st|nd|rd|th)?[\s\-]*(.*)$/i);
       if (n) {
         const isFirst = /^\d/.test(t) && !/\d\s*(?:st|nd|rd|th)?$/i.test(t.replace(/^\d{1,2}\s*(?:st|nd|rd|th)?/i, ''));
@@ -10578,9 +10649,32 @@ function ttRebuildAssign() {
   ttTeachers.forEach(t => {
     const p = ttParseTeacher(t.text); if (!p.name) return;
     const tid = ttTeacherIdFor(p.name);
-    p.entries.forEach(e => out.push({ id: t.id + '_' + out.length, class_name: e.class_name, subject: e.subject, teacher_id: tid, per_week: 1 }));
+    ttNameMap[tid] = p.name;
+    p.entries.forEach(e => out.push({ id: t.id + '_' + out.length, class_name: e.class_name, subject: e.subject, teacher_id: tid, per_week: e.per_week || null }));
   });
   ttAssign = out; ttLocalWrite();
+}
+// off-periods and max load per teacher, merged from every box that maps to the same teacher
+function ttTeacherLimits() {
+  const lim = {};
+  ttTeachers.forEach(t => {
+    const p = ttParseTeacher(t.text); if (!p.name) return;
+    const id = ttTeacherIdFor(p.name);
+    const L = lim[id] = lim[id] || { off: new Set(), max: null };
+    p.off.forEach(n => L.off.add(n));
+    if (p.max != null) L.max = L.max == null ? p.max : Math.min(L.max, p.max);
+  });
+  return lim;
+}
+// older saves used lowercase 'n:azhar' ids that no longer match — move them to the current id
+function ttMigrateIds() {
+  let ch = false;
+  ttTeachers.forEach(t => {
+    const p = ttParseTeacher(t.text); if (!p.name) return;
+    const old = 'n:' + ttNameTokens(p.name).join(''), nid = ttTeacherIdFor(p.name);
+    if (old !== nid) ttRows.forEach(r => { if (r.teacher_id === old) { r.teacher_id = nid; ch = true; } });
+  });
+  if (ch) ttLocalWrite();
 }
 function ttOpenAssign() {
   const boxes = ttTeachers.map(t => {
@@ -10600,7 +10694,7 @@ function ttOpenAssign() {
   const load = {}; ttAssign.forEach(a => { load[a.class_name] = (load[a.class_name] || 0) + 1; });
   const over = Object.keys(load).filter(c => load[c] > ttPeriods).map(c => `${c}: ${load[c]}/${ttPeriods}`);
   showModal(qt('Teachers & subjects', 'اساتذہ اور مضامین'), `
-    <p style="font-size:12px;opacity:.75;margin:0 0 8px;">${esc(qt('One box per teacher: the name first, then subject and class, separated by commas. Each subject gets one period every day.', 'ہر استاد کے لیے ایک خانہ: پہلے نام، پھر مضمون اور کلاس، کوما سے الگ۔ ہر مضمون کو روزانہ ایک پیریڈ ملتا ہے۔'))}<br><b>Azhar sir, Islamiat 2nd, Urdu 3rd, Islamiat 4th, Islamiat 5th</b></p>
+    <p style="font-size:12px;opacity:.75;margin:0 0 8px;">${esc(qt('One box per teacher: the name first, then subject and class, separated by commas. Each subject gets one period every day (x6 = once a day; x12 = twice a day). Optional: off 1 7 (not available), max 5 (max periods a day).', 'ہر استاد کے لیے ایک خانہ: پہلے نام، پھر مضمون اور کلاس، کوما سے الگ۔ ہر مضمون کو روزانہ ایک پیریڈ ملتا ہے (x6 = روزانہ ایک، x12 = روزانہ دو)۔ اختیاری: off 1 7 (غیر دستیاب)، max 5 (روزانہ زیادہ سے زیادہ پیریڈ)۔'))}<br><b>Azhar sir, Islamiat 2nd, Urdu 3rd, Islamiat 4th, Islamiat 5th</b></p>
     ${boxes || `<p style="font-size:12px;opacity:.6;">${esc(qt('No teacher yet.', 'ابھی کوئی استاد نہیں۔'))}</p>`}
     ${over.length ? `<p style="font-size:12px;color:#c0392b;font-weight:600;">${esc(qt('More subjects than periods (add a period or remove a subject): ', 'مضامین پیریڈ سے زیادہ ہیں (پیریڈ بڑھائیں یا مضمون ہٹائیں): ') + over.join('  '))}</p>` : ''}
     <button class="btn-ghost" style="width:100%;margin-bottom:8px;" onclick="ttTchAdd()">+ ${esc(qt('Add teacher', 'استاد شامل کریں'))}</button>
@@ -10608,25 +10702,39 @@ function ttOpenAssign() {
 }
 function ttTchAdd() { ttTeachers.push({ id: 'tc_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6), text: '' }); ttLocalWrite(); ttOpenAssign(); }
 function ttTchDel(id) { ttTeachers = ttTeachers.filter(t => t.id !== id); ttRebuildAssign(); ttOpenAssign(); }
-function ttTchSet(id, v) { const t = ttTeachers.find(x => x.id === id); if (t) t.text = v; ttRebuildAssign(); ttOpenAssign(); }
+function ttTchSet(id, v) {
+  const t = ttTeachers.find(x => x.id === id); if (!t) return;
+  const oldP = ttParseTeacher(t.text), oldId = oldP.name ? ttTeacherIdFor(oldP.name) : null;
+  t.text = v; ttRebuildAssign();
+  const newP = ttParseTeacher(v), newId = newP.name ? ttTeacherIdFor(newP.name) : null;
+  if (oldId && newId && oldId !== newId) {   // the name was changed: move the teacher's cells to the new id so the grid does not lose them
+    const still = ttTeachers.some(x => { const p = ttParseTeacher(x.text); return p.name && ttTeacherIdFor(p.name) === oldId; });
+    if (!still) { ttRows.forEach(r => { if (r.teacher_id === oldId) r.teacher_id = newId; }); ttLocalWrite(); }
+  }
+  ttOpenAssign();
+}
 
 // ---- Free teachers: who has no class in a given period (shown in the last row of the timetable and of the print) ----
+function ttVisibleRows() {
+  const cl = new Set(ttClassOptions());
+  return ttRows.filter(r => r.period <= ttPeriods && cl.has(r.class_name));
+}
 function ttTeacherUniverse() {
   const out = [], seen = new Set();
-  const add = (id, name) => { if (id && !seen.has(id) && name) { seen.add(id); out.push({ id, name }); } };
-  ttTeachers.forEach(t => { const p = ttParseTeacher(t.text); if (p.name) add(ttTeacherIdFor(p.name), p.name); });
-  ttRows.forEach(r => { if (r.teacher_id) add(r.teacher_id, ttTeacherName(r.teacher_id)); });
-  if (!out.length) DATA.teachers.forEach(t => add(t.id, t.name));
+  const add = (id) => { const name = ttTeacherName(id); if (id && !seen.has(id) && name) { seen.add(id); out.push({ id, name }); } };
+  ttTeachers.forEach(t => { const p = ttParseTeacher(t.text); if (p.name) add(ttTeacherIdFor(p.name)); });
+  ttRows.forEach(r => { if (r.teacher_id) add(r.teacher_id); });
+  if (!out.length) activeTeachers().forEach(t => add(t.id));
   return out;
 }
 function ttFreeNames(period) {
-  const busy = new Set(ttRows.filter(r => r.period === period && r.teacher_id).map(r => r.teacher_id));
+  const busy = new Set(ttVisibleRows().filter(r => r.period === period && r.teacher_id).map(r => r.teacher_id));
   return ttTeacherUniverse().filter(t => !busy.has(t.id)).map(t => t.name);
 }
-// teacher in two classes at the same period
+// teacher in two classes at the same period (only visible classes/periods count)
 function ttClashSet() {
   const seen = {}, bad = new Set();
-  ttRows.forEach(r => {
+  ttVisibleRows().forEach(r => {
     if (!r.teacher_id) return;
     const k = r.teacher_id + '|' + r.period;
     if (seen[k] && seen[k] !== r.class_name) bad.add(k); else seen[k] = r.class_name;
@@ -10657,34 +10765,129 @@ function ttAutoFill() {
   if (!classes.length) return alert(qt('First write the teachers and their subjects ("Teachers & subjects").', 'پہلے اساتذہ اور ان کے مضامین لکھیں ("اساتذہ اور مضامین")۔'));
   if (ttRows.some(r => classes.includes(r.class_name) && r.subject) && !confirm(qt('This replaces the existing timetable of these classes. Continue?', 'یہ ان کلاسوں کا موجودہ ٹائم ٹیبل بدل دے گا۔ جاری رکھیں؟'))) return;
   const keep = ttRows.filter(r => !classes.includes(r.class_name));
+  const keepVis = ttVisibleRows().filter(r => !classes.includes(r.class_name));
+  const lim = ttTeacherLimits();
   const shuffle = a => { a = a.slice(); for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
+  // one unit per period a day: "x6" = once a day, "x12" = twice a day
+  const unitsFor = cls => {
+    const u = [];
+    ttAssign.filter(a => a.class_name === cls && a.subject).forEach(a => {
+      const n = a.per_week ? Math.max(1, Math.round(a.per_week / TT_DAYS)) : 1;
+      for (let k = 0; k < n; k++) u.push(a);
+    });
+    return u;
+  };
   let best = null;
-  for (let attempt = 0; attempt < 200; attempt++) {
+  for (let attempt = 0; attempt < 300; attempt++) {
     const order = attempt === 0 ? classes.slice() : shuffle(classes);
-    const busy = {}, out = [], unplaced = [];
-    keep.forEach(r => { if (r.teacher_id) busy[r.teacher_id + '|' + r.period] = 1; });
+    const busy = {}, load = {}, out = [], unplaced = [];
+    keepVis.forEach(r => { if (r.teacher_id) { busy[r.teacher_id + '|' + r.period] = 1; load[r.teacher_id] = (load[r.teacher_id] || 0) + 1; } });
     order.forEach((cls, ci) => {
-      let items = ttAssign.filter(a => a.class_name === cls && a.subject);
+      let items = unitsFor(cls);
       if (attempt > 0) items = shuffle(items);
-      const used = {};
+      const used = {}, subjP = {};
       items.forEach((it, i) => {
-        let ok = false;
-        for (let q = 0; q < P && !ok; q++) {
-          const p = ((ci + i + q) % P) + 1;
-          if (used[p]) continue;
-          if (it.teacher_id && busy[it.teacher_id + '|' + p]) continue;
-          used[p] = 1; if (it.teacher_id) busy[it.teacher_id + '|' + p] = 1;
-          out.push({ class_name: cls, period: p, subject: it.subject, teacher_id: it.teacher_id || null }); ok = true;
+        const L = it.teacher_id ? lim[it.teacher_id] : null, sk = it.subject.toLowerCase();
+        let why = '';
+        for (const strict of [true, false]) {
+          for (let q = 0; q < P; q++) {
+            const p = ((ci + i + q) % P) + 1;
+            if (used[p]) continue;
+            if (it.teacher_id) {
+              if (busy[it.teacher_id + '|' + p]) { why = why || qt('busy in every free period', 'ہر خالی پیریڈ میں مصروف'); continue; }
+              if (L && L.off.has(p)) { why = why || qt('not available', 'غیر دستیاب'); continue; }
+              if (L && L.max != null && (load[it.teacher_id] || 0) >= L.max) { why = qt('max load reached', 'زیادہ سے زیادہ لوڈ پورا'); continue; }
+            }
+            if (strict && (subjP[sk] || []).some(x => Math.abs(x - p) === 1)) continue;   // same subject back-to-back only as a last resort
+            used[p] = 1; (subjP[sk] = subjP[sk] || []).push(p);
+            if (it.teacher_id) { busy[it.teacher_id + '|' + p] = 1; load[it.teacher_id] = (load[it.teacher_id] || 0) + 1; }
+            out.push({ class_name: cls, period: p, subject: it.subject, teacher_id: it.teacher_id || null });
+            return;
+          }
         }
-        if (!ok) unplaced.push(cls + ' - ' + it.subject);
+        unplaced.push(cls + ' - ' + it.subject + (why ? ' (' + why + ')' : ''));
       });
     });
-    if (!best || unplaced.length < best.unplaced.length) best = { out, unplaced };
+    const score = unplaced.length;
+    if (!best || score < best.unplaced.length) best = { out, unplaced };
     if (!unplaced.length) break;
   }
   ttRows = keep.concat(best.out.map(r => ({ id: 'local_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7), day_of_week: 'ALL', ...r })));
   ttLocalWrite(); renderTab();
-  if (best.unplaced.length) alert(qt('These could not be placed (a class has more subjects than periods, or the teacher is already busy in every free period):\n', 'یہ نہیں لگ سکے (کلاس کے مضامین پیریڈ سے زیادہ ہیں، یا استاد ہر خالی پیریڈ میں مصروف ہے):\n') + best.unplaced.slice(0, 15).join('\n') + (best.unplaced.length > 15 ? '\n…' : ''));
+  if (best.unplaced.length) alert(qt('These could not be placed:\n', 'یہ نہیں لگ سکے:\n') + best.unplaced.slice(0, 15).join('\n') + (best.unplaced.length > 15 ? '\n…' : ''));
+}
+
+// ---- Teacher-wise view (each teacher's own timetable + total periods a day) ----
+function ttTeacherTable() {
+  const vis = ttVisibleRows(), by = {};
+  vis.forEach(r => { if (r.teacher_id) ((by[r.teacher_id] = by[r.teacher_id] || {})[r.period] = (by[r.teacher_id][r.period] || [])).push(r.class_name + (r.subject ? ' ' + r.subject : '')); });
+  const lim = ttTeacherLimits();
+  const list = ttTeacherUniverse().map(t => {
+    const cells = []; let total = 0;
+    for (let p = 1; p <= ttPeriods; p++) { const v = (by[t.id] || {})[p] || []; total += v.length; cells.push(v.join(' / ')); }
+    return { id: t.id, name: t.name, cells, total, max: lim[t.id] ? lim[t.id].max : null };
+  }).sort((a, b) => a.name.localeCompare(b.name));
+  return list;
+}
+function ttOpenTeacherView() {
+  const list = ttTeacherTable();
+  const th = Array.from({ length: ttPeriods }, (_, i) => `<th style="padding:4px 6px;white-space:nowrap;">${i + 1}</th>`).join('');
+  const body = list.map(t => `<tr><td style="padding:4px 6px;white-space:nowrap;font-weight:600;">${esc(t.name)}</td>${t.cells.map(c => `<td style="padding:4px 6px;font-size:11px;white-space:nowrap;border-left:1px solid var(--line);">${esc(c) || '<span style="opacity:.3">—</span>'}</td>`).join('')}<td style="padding:4px 6px;font-weight:700;text-align:center;${t.max != null && t.total > t.max ? 'color:#c0392b;' : ''}">${t.total}${t.max != null ? '/' + t.max : ''}</td></tr>`).join('');
+  showModal(qt('Teacher-wise timetable', 'استاد وار ٹائم ٹیبل'), `
+    <div style="overflow-x:auto;max-height:60vh;overflow-y:auto;margin-bottom:10px;">
+      <table style="border-collapse:collapse;font-size:12px;width:100%;"><tr><th style="text-align:left;padding:4px 6px;">${esc(qt('Teacher', 'استاد'))}</th>${th}<th style="padding:4px 6px;">${esc(qt('Total', 'کل'))}</th></tr>${body || ''}</table>
+    </div>
+    ${list.length ? '' : `<p style="font-size:12px;opacity:.6;">${esc(qt('No teachers yet.', 'ابھی کوئی استاد نہیں۔'))}</p>`}
+    <button class="btn-primary" style="width:100%;" onclick="closeModal()">${esc(qt('Done', 'مکمل'))}</button>`);
+}
+
+// ---- Excel export (class timetable + teacher timetable) ----
+async function ttExportExcel() {
+  if (!window.XLSX) {
+    try { window.loadXLSXLib && window.loadXLSXLib(); } catch (e) {}
+    await new Promise(res => { let n = 0; const iv = setInterval(() => { if (window.XLSX || ++n > 40) { clearInterval(iv); res(); } }, 250); });
+  }
+  if (!window.XLSX) return alert(qt('Excel library could not load. Check the internet and try again.', 'ایکسل لائبریری لوڈ نہیں ہوئی۔ انٹرنیٹ چیک کر کے دوبارہ کوشش کریں۔'));
+  const cols = ttColumns(), classes = ttClassOptions();
+  const lab = c => c.type === 'break' ? qt('Break', 'وقفہ') : (ttPeriodLabel(c.period) + ((ttPeriodTimes[c.period] || {}).start_time && (ttPeriodTimes[c.period] || {}).end_time ? ' (' + tt12(ttPeriodTimes[c.period].start_time) + '-' + tt12(ttPeriodTimes[c.period].end_time) + ')' : ''));
+  const aoa = [[qt('Class', 'جماعت'), ...cols.map(lab)]];
+  classes.forEach(c => aoa.push([c, ...cols.map(col => {
+    if (col.type === 'break') return qt('Break', 'وقفہ');
+    const r = ttRows.find(x => x.class_name === c && x.period === col.period);
+    return r ? ((r.subject || '') + (r.teacher_id ? '\n' + ttTeacherName(r.teacher_id) : '')) : '';
+  })]));
+  const aoa2 = [[qt('Teacher', 'استاد'), ...Array.from({ length: ttPeriods }, (_, i) => ttPeriodLabel(i + 1)), qt('Total', 'کل')]];
+  ttTeacherTable().forEach(t => aoa2.push([t.name, ...t.cells, t.total]));
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), 'Classes');
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa2), 'Teachers');
+  const nm = ((dmcSchoolName && dmcSchoolName !== 'SCHOOL NAME') ? dmcSchoolName : 'School').replace(/[^a-z0-9]+/gi, '_');
+  XLSX.writeFile(wb, nm + '_Timetable.xlsx');
+}
+
+// ---- Backup / restore (JSON file) ----
+function ttExportJSON() {
+  ttLocalWrite();
+  const raw = localStorage.getItem(ttLocalKey()) || '{}';
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([raw], { type: 'application/json' }));
+  a.download = 'timetable_backup_' + todayISO() + '.json';
+  document.body.appendChild(a); a.click();
+  setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1500);
+}
+function ttImportJSON(file) {
+  if (!file) return;
+  const rd = new FileReader();
+  rd.onload = () => {
+    try {
+      const d = JSON.parse(rd.result);
+      if (!d || typeof d !== 'object' || !Array.isArray(d.rows)) throw new Error('bad');
+      if (!confirm(qt('Replace the current timetable with this backup?', 'موجودہ ٹائم ٹیبل اس بیک اپ سے بدل دیں؟'))) return;
+      localStorage.setItem(ttLocalKey(), rd.result);
+      ttStatus = 'idle'; loadTimetableGrid();
+    } catch (e) { alert(qt('This is not a valid timetable backup file.', 'یہ ٹائم ٹیبل کی درست بیک اپ فائل نہیں ہے۔')); }
+  };
+  rd.readAsText(file);
 }
 function ttRemoveLogo() { if (!confirm(qt('Remove the logo?', 'لوگو ہٹا دیں؟'))) return; dmcLogo = ''; saveDMCConfig(); renderTab(); }
 
@@ -10696,9 +10899,9 @@ async function printTimetable() {
   const cols = ttColumns();
   const periodTimeStr = (p) => {
     const times = ttPeriodTimes[p] || {};
-    return (times.start_time && times.end_time) ? `<span class="tt-print-time">${esc(times.start_time)} ${LANG === 'ur' ? 'تا' : 'to'} ${esc(times.end_time)}</span>` : '';
+    return (times.start_time && times.end_time) ? `<span class="tt-print-time">${esc(tt12(times.start_time))} ${LANG === 'ur' ? 'تا' : 'to'} ${esc(tt12(times.end_time))}</span>` : '';
   };
-  const breakTimeStr = () => (ttBreakStart && ttBreakEnd) ? `<span class="tt-print-time">${esc(ttBreakStart)} ${LANG === 'ur' ? 'تا' : 'to'} ${esc(ttBreakEnd)}</span>` : '';
+  const breakTimeStr = () => (ttBreakStart && ttBreakEnd) ? `<span class="tt-print-time">${esc(tt12(ttBreakStart))} ${LANG === 'ur' ? 'تا' : 'to'} ${esc(tt12(ttBreakEnd))}</span>` : '';
   // Back to the original shape (classes as rows, periods as columns —
   // matches the on-screen editable grid). The whole thing is rotated 90°
   // in CSS instead (see .tt-print-rotate) so a wide grid still prints on a
@@ -10706,13 +10909,15 @@ async function printTimetable() {
   const headerRow = `<tr><th>${LANG === 'ur' ? 'جماعت' : 'Class'}</th>${cols.map(c => c.type === 'break'
     ? `<th class="tt-print-break-th">${LANG === 'ur' ? 'وقفہ' : 'Break'}${breakTimeStr()}</th>`
     : `<th>${esc(ttPeriodLabel(c.period))}${periodTimeStr(c.period)}</th>`).join('')}</tr>`;
+  const printBad = ttClashSet();
   const rows = classes.map(c => {
     const cells = cols.map(col => {
       if (col.type === 'break') return `<td class="tt-print-break-td">${LANG === 'ur' ? 'وقفہ' : 'Break'}</td>`;
       const row = ttRows.find(r => r.class_name === c && r.period === col.period);
       const tcName = row && row.teacher_id ? ttTeacherName(row.teacher_id) : '';
       const subj = row && row.subject ? `<span class="tt-print-subject">${esc(row.subject)}</span>` : `<span class="tt-print-empty">—</span>`;
-      return `<td>${subj}${tcName ? `<span class="tt-print-teacher">${esc(tcName)}</span>` : ''}</td>`;
+      const isBad = row && row.teacher_id && printBad.has(row.teacher_id + '|' + col.period);
+      return `<td>${subj}${tcName ? `<span class="tt-print-teacher"${isBad ? ' style="color:#c0392b"' : ''}>${isBad ? '⚠ ' : ''}${esc(tcName)}</span>` : ''}</td>`;
     }).join('');
     return `<tr><td class="tt-print-classname">${esc(c)}</td>${cells}</tr>`;
   }).join('') + `<tr><td class="tt-print-classname" style="font-size:9px;">${esc(qt('Free teachers', 'فارغ اساتذہ'))}</td>${cols.map(col => col.type === 'break' ? '<td class="tt-print-break-td"></td>' : `<td class="tt-print-free">${ttFreeNames(col.period).map(esc).join(', ') || '—'}</td>`).join('')}</tr>`;
@@ -13092,10 +13297,10 @@ function filteredRegisterList() {
 // =========================================================================
 // The date sheet lives only on this phone/browser (localStorage), the same
 // way the Timetable does — nothing new is needed in Supabase.
-// Roll number printed on a slip = the student's Admission Register Serial No
-// (linked by the register's "Link student" field, else matched by name +
-// father's name).
+// Roll number printed on a slip = running number across the school (class order, then A-Z by name),
+// counting only classes that have subjects in the date sheet.
 let dsData = null;        // { examName, instructions, cols:[{id,date,start,end}], cells:{ [className]: { [colId]: subject } } }
+let dsLoadedKey = null;   // which user's sheet is in dsData
 let dsSlipClass = 'all';  // 'all' or one class — which students get slips
 
 function dsKey() { return 'ds_local_v2_' + (CURRENT_USER ? CURRENT_USER.id : 'guest'); }
@@ -13103,6 +13308,7 @@ function dsLoad() {
   let d = null;
   try { d = JSON.parse(localStorage.getItem(dsKey())); } catch (e) { d = null; }
   if (!d || typeof d !== 'object') d = {};
+  dsLoadedKey = dsKey();
   dsData = {
     examName: d.examName || '',
     instructions: d.instructions || '',
@@ -13119,13 +13325,14 @@ function dsLoad() {
     : DS_DEFAULT_GROUPS.map(c => ({ classes: c.join(', '), subjects: '' }));
   // Rows of the date sheet = an editable class list (never taken from the students list).
   let cl = Array.isArray(d.classes) ? d.classes.map(x => String(x || '').trim()).filter(Boolean) : [];
-  if (!cl.length) {
+  if (!Array.isArray(d.classes)) {
     const base = [].concat(...DS_DEFAULT_GROUPS);
     const extra = Object.keys(dsData.cells).filter(c => !base.includes(c) && Object.values(dsData.cells[c] || {}).some(v => (v || '').trim()));
     cl = base.concat(extra);
   }
   dsData.classes = [...new Set(cl)];
 }
+function dsEnsure() { if (!dsData || dsLoadedKey !== dsKey()) dsLoad(); }
 function dsSave() {
   try { localStorage.setItem(dsKey(), JSON.stringify(dsData)); }
   catch (e) { alert(qt('Could not save: ', 'محفوظ نہیں ہوا: ') + e.message); }
@@ -13158,14 +13365,20 @@ function dsSortedCols() {
   return ((dsData && dsData.cols) || []).slice().sort((a, b) => (a.date || '9999').localeCompare(b.date || '9999'));
 }
 // The subjects one class sits, in date order — used for that class's roll number slips.
+function dsCellsOf(cls) {
+  const all = (dsData && dsData.cells) || {};
+  if (all[cls]) return all[cls];
+  const k = normName(cls), m = Object.keys(all).find(x => normName(x) === k);
+  return m ? all[m] : {};
+}
 function dsSortedRows(cls) {
-  const cells = (dsData && dsData.cells[cls]) || {};
+  const cells = dsCellsOf(cls);
   return dsSortedCols()
-    .filter(c => (cells[c.id] || '').trim())
+    .filter(c => c.date && (cells[c.id] || '').trim())
     .map(c => ({ date: c.date, subject: cells[c.id].trim(), start: c.start, end: c.end }));
 }
 // Rows of the date sheet: the editable class list (NOT taken from the students list).
-function dsClassList() { if (!dsData) dsLoad(); return dsData.classes.slice(); }
+function dsClassList() { dsEnsure(); return dsData.classes.slice(); }
 // Classes that have students - used only by the Roll Number Slips (slips are printed per student).
 function dsSlipClassList() {
   const withStudents = DATA.students.filter(s => s.status !== 'inactive').map(s => s.class_name).filter(Boolean);
@@ -13177,12 +13390,13 @@ function dsSlipClassList() {
 }
 
 // ---------- editor actions ----------
-function dsSetMeta(field, value) { dsData[field] = value; dsSave(); }
+function dsSetMeta(field, value) { dsData[field] = value; dsSave(); dsRefreshIssues(); }
 function dsSetCol(id, field, value) {
   const c = dsData.cols.find(x => x.id === id);
   if (!c) return;
   c[field] = value;
   dsSave();
+  dsRefreshIssues();
   if (field === 'date') {
     const el = document.getElementById('ds-day-' + id);
     if (el) el.textContent = dsDayName(value);
@@ -13192,6 +13406,7 @@ function dsSetCell(cls, colId, value) {
   if (!dsData.cells[cls]) dsData.cells[cls] = {};
   dsData.cells[cls][colId] = value;
   dsSave();
+  dsRefreshIssues();
 }
 function dsAddCol() {
   let date = '';
@@ -13199,7 +13414,7 @@ function dsAddCol() {
   if (last) {
     const d = new Date(last + 'T00:00:00');
     d.setDate(d.getDate() + 1);
-    if (d.getDay() === 0) d.setDate(d.getDate() + 1); // skip Sunday
+    while ((dsData.gen.skipSun !== false && d.getDay() === 0) || (dsData.gen.skipFri && d.getDay() === 5)) d.setDate(d.getDate() + 1);
     date = localISO(d);
   }
   const prev = dsData.cols[dsData.cols.length - 1];
@@ -13222,7 +13437,7 @@ function dsDeleteCol(id) {
 function dsRenameClass(oldName, value, el) {
   const nv = String(value || '').trim();
   if (!nv || nv === oldName) { if (el) el.value = oldName; return; }
-  if (dsData.classes.includes(nv)) {
+  if (dsData.classes.some(c => c !== oldName && normName(c) === normName(nv))) {
     alert(qt('This class is already in the list.', 'یہ جماعت فہرست میں پہلے سے موجود ہے۔'));
     if (el) el.value = oldName;
     return;
@@ -13238,7 +13453,7 @@ function dsAddClass() {
   const n = prompt(qt('Class name (e.g. 11th)', 'جماعت کا نام (مثلاً 11th)'));
   const nm = String(n || '').trim();
   if (!nm) return;
-  if (dsData.classes.includes(nm)) { alert(qt('This class is already in the list.', 'یہ جماعت فہرست میں پہلے سے موجود ہے۔')); return; }
+  if (dsData.classes.some(c => normName(c) === normName(nm))) { alert(qt('This class is already in the list.', 'یہ جماعت فہرست میں پہلے سے موجود ہے۔')); return; }
   dsData.classes.push(nm);
   dsSave();
   renderTab();
@@ -13251,6 +13466,45 @@ function dsDeleteClass(cl) {
   dsSave();
   renderTab();
 }
+// ---------- checker: finds mistakes / gaps in the date sheet ----------
+function dsIssues() {
+  dsEnsure();
+  const out = [], cols = dsData.cols, classes = dsData.classes;
+  const cellOf = (cl, c) => (((dsData.cells[cl] || {})[c.id]) || '').trim();
+  const label = (c, i) => c.date ? fmtDate(c.date) : qt('Column ' + (i + 1), 'کالم ' + (i + 1));
+  if (!dsData.examName.trim()) out.push(qt('Exam name is empty (the printed sheet and slips will have no exam title).', 'امتحان کا نام خالی ہے (پرنٹ اور سلپ پر امتحان کا عنوان نہیں آئے گا)۔'));
+  if (!cols.length) return out;
+  const seenDt = {};
+  cols.forEach((c, i) => {
+    const L = label(c, i);
+    if (!c.date) { out.push(L + ': ' + qt('date is missing - this column is NOT printed and not shown on slips.', 'تاریخ درج نہیں - یہ کالم پرنٹ اور سلپ میں نہیں آئے گا۔')); return; }
+    if (new Date(c.date + 'T00:00:00').getDay() === 0) out.push(L + ': ' + qt('falls on a Sunday.', 'اتوار کے دن آ رہا ہے۔'));
+    const k = c.date + '|' + (c.start || '') + '|' + (c.end || '');
+    if (seenDt[k]) out.push(L + ': ' + qt('two columns have the same date and time.', 'دو کالموں کی تاریخ اور وقت ایک جیسا ہے۔')); seenDt[k] = 1;
+    if (!c.start || !c.end) out.push(L + ': ' + qt('paper time is not set.', 'پیپر کا وقت درج نہیں۔'));
+    else if (c.end <= c.start) out.push(L + ': ' + qt('end time is not after the start time.', 'ختم ہونے کا وقت شروع کے بعد نہیں ہے۔'));
+    if (!classes.some(cl => cellOf(cl, c))) out.push(L + ': ' + qt('no class has a paper on this date (empty column).', 'اس تاریخ پر کسی جماعت کا پیپر نہیں (خالی کالم)۔'));
+  });
+  const stuCls = new Set(DATA.students.filter(s => s.status !== 'inactive').map(s => normName(s.class_name)));
+  classes.forEach(cl => {
+    const subs = cols.filter(c => c.date).map(c => cellOf(cl, c)).filter(Boolean);
+    if (!subs.length) return;
+    const cnt = {};
+    subs.forEach(s => { const k = normName(s); cnt[k] = (cnt[k] || 0) + 1; });
+    const dup = Object.keys(cnt).filter(k => cnt[k] > 1);
+    if (dup.length) out.push(cl + ': ' + qt('same subject on more than one date - ', 'ایک مضمون ایک سے زیادہ تاریخوں پر - ') + dup.join(', '));
+    if (stuCls.size && !stuCls.has(normName(cl))) out.push(cl + ': ' + qt('no student has this class name, so no roll number slips will be made for it.', 'اس نام کی جماعت میں کوئی طالب علم نہیں، اس لیے اس کی رول نمبر سلپس نہیں بنیں گی۔'));
+  });
+  const emptyCls = classes.filter(cl => !cols.some(c => cellOf(cl, c)));
+  if (emptyCls.length && emptyCls.length < classes.length) out.push(qt('No subjects for: ', 'ان جماعتوں کے مضامین نہیں: ') + emptyCls.join(', ') + qt(' (left out of the printed sheet and slips).', ' (پرنٹ اور سلپ میں شامل نہیں ہوں گی)۔'));
+  return out.slice(0, 14);
+}
+function tplDsIssues() {
+  const list = dsIssues();
+  if (!list.length) return dsData.cols.length ? `<div class="ds-warn" style="background:#EAF6EC;border-color:#9CCFA6;">✓ ${esc(qt('Date sheet check: no problems found.', 'ڈیٹ شیٹ کی جانچ: کوئی مسئلہ نہیں ملا۔'))}</div>` : '';
+  return `<div class="ds-warn"><b>⚠ ${esc(qt('Please check the date sheet:', 'براہ کرم ڈیٹ شیٹ دیکھ لیں:'))}</b><br>${list.map(x => '• ' + esc(x)).join('<br>')}</div>`;
+}
+function dsRefreshIssues() { const el = document.getElementById('ds-issues'); if (el) el.innerHTML = tplDsIssues(); }
 // Re-draws only the slips card (warnings/counts) so typing in the grid is never interrupted.
 function dsRefreshSlips() {
   const el = document.getElementById('ds-slips');
@@ -13264,7 +13518,7 @@ function dsRefreshSlips() {
 // inside a class. The number is for the slip only — it is not saved on the student.
 function dsSlipStudents(scope) {
   const order = c => { const i = CLASS_OPTIONS.indexOf(c); return i < 0 ? 999 : i; };
-  if (!dsData) dsLoad();
+  dsEnsure();
   // Only classes that actually sit an exam (have subjects in the date sheet) get slips.
   const sitsExam = c => dsSortedRows(c).length > 0;
   return DATA.students
@@ -13528,7 +13782,7 @@ function dsGenerate() {
 }
 
 function tplDateSheet() {
-  if (!dsData) dsLoad();
+  dsEnsure();
   const classes = dsClassList();
   const cols = dsData.cols;
   const ur = LANG === 'ur';
@@ -13583,6 +13837,7 @@ function tplDateSheet() {
           <textarea rows="2" placeholder="${esc(qt('e.g. Reach 15 minutes early. Bring your own pen.', 'مثال: 15 منٹ پہلے پہنچیں۔ اپنا قلم ساتھ لائیں۔'))}" oninput="dsSetMeta('instructions',this.value)">${esc(dsData.instructions)}</textarea></label>
       </div>
       ${dsGenPanelHtml()}
+      <div id="ds-issues">${tplDsIssues()}</div>
       ${cols.length ? `<p style="font-size:12px;opacity:.7;margin:0 0 8px;">${esc(qt('Tap any box to correct a subject, a class name or a date. Changes are saved automatically.', 'کسی بھی خانے پر ٹیپ کر کے مضمون، جماعت کا نام یا تاریخ ٹھیک کریں۔ تبدیلی خود محفوظ ہو جاتی ہے۔'))}</p>` : ''}
       ${gridHtml}
       <div class="ds-btns"><button class="btn-ghost" onclick="dsAddCol()">+ ${esc(qt('Add Date', 'پیپر کی تاریخ شامل کریں'))}</button><button class="btn-ghost" onclick="dsAddClass()">+ ${esc(qt('Add Class', 'جماعت شامل کریں'))}</button></div>
@@ -13604,8 +13859,8 @@ const DS_WM_SIZE = 80;            // watermark size, % of the sheet
 const DS_SLIP_BG_STRENGTH = 0.20;  // roll slips only: logo colour strength on the slip background
 const DS_SLIP_WM_OPACITY = 0.20;  // roll slips only: logo watermark opacity
 async function dsPrintDateSheet() {
-  if (!dsData) dsLoad();
-  const cols = dsSortedCols().filter(c => c.date);
+  dsEnsure();
+  let cols = dsSortedCols().filter(c => c.date);
   if (!cols.length) {
     alert(qt('Add at least one exam date first.', 'پہلے کم از کم ایک پیپر کی تاریخ شامل کریں۔'));
     return;
@@ -13617,7 +13872,12 @@ async function dsPrintDateSheet() {
   const bgPage = tint ? sylpMix(tint, 1 - DS_BG_STRENGTH) : '#FAF6EC';
   const lineCol = tint ? sylpMix(tint, 0.35) : '#C9B98A';
   const dark = tint ? 'rgb(' + tint.map(v => Math.round(v * 0.32)).join(',') + ')' : '#0F2740';
-  const classes = dsClassList();
+  const allClasses = dsClassList();
+  const hasSub = (cl, c) => (((dsData.cells[cl] || {})[c.id]) || '').trim();
+  const dataCols = cols.filter(c => allClasses.some(cl => hasSub(cl, c)));
+  if (dataCols.length) cols = dataCols;
+  const dataClasses = allClasses.filter(cl => cols.some(c => hasSub(cl, c)));
+  const classes = dataClasses.length ? dataClasses : allClasses;
   const nCols = cols.length;
   const colgroup = `<col style="width:9%">` + cols.map(() => `<col>`).join('');
   const headerRow = `<tr><th>${esc(qt('Class', 'جماعت'))}</th>${cols.map(c => `<th>${esc(fmtDate(c.date))}<span class="dsp-time">${esc(dsDayName(c.date))}</span>${dsTimeRange(c) ? `<span class="dsp-time">${esc(dsTimeRange(c))}</span>` : ''}</th>`).join('')}</tr>`;
@@ -13724,7 +13984,7 @@ async function dsPrintSlips() {
   const tint = await sylpLogoColor(dmcLogo || null);
   const theme = tint ? (() => {
     const dark = 'rgb(' + tint.map(v => Math.round(v * 0.32)).join(',') + ')';
-    return `--rs-bg:#fff;--rs-dark:${dark};--rs-edge:${dark};--rs-line:${sylpMix(tint, 0.35)};--rs-even:rgba(255,255,255,.5);`;
+    return `--rs-bg:${sylpMix(tint, 1 - DS_SLIP_BG_STRENGTH)};--rs-dark:${dark};--rs-edge:${dark};--rs-line:${sylpMix(tint, 0.35)};--rs-even:rgba(255,255,255,.5);`;
   })() : '';
   document.getElementById('print-area').innerHTML = dsSlipPages(list)
     .map(p => `<div class="rs-page" style="${theme}">${p.items.map(x => dsSlipHtml(x, x.s.class_name)).join('')}</div>`).join('');
@@ -23257,14 +23517,8 @@ async function chPlay(id) {
   } catch (e) { b.disabled = false; b.textContent = '▶'; }
 }
 
-// ---------- Syllabus (owner only) ----------
-let SYL = [], SYL_FILTER = '', SYL_EDIT = null;
-function sylKey() { return 'syllabus_owner_' + (CURRENT_USER ? CURRENT_USER.id : ''); }
-function sylSaveCache() { try { localStorage.setItem(sylKey(), JSON.stringify(SYL)); } catch (e) {} }
-
+// ---------- Syllabus ----------
 function tplSyllabus() {
-  const opts = ['<option value="">' + esc(qt('All classes', 'تمام کلاسیں')) + '</option>']
-    .concat(CLASS_OPTIONS.map(c => `<option value="${esc(c)}" ${SYL_FILTER === c ? 'selected' : ''}>${esc(c)}</option>`)).join('');
   return `
     <style>
       .sylp-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;overscroll-behavior-x:contain;touch-action:pan-x pan-y;direction:ltr;max-width:100%;border:1px solid var(--line);border-radius:12px;background:#fff;margin-bottom:12px;}
@@ -23288,115 +23542,11 @@ function tplSyllabus() {
     <div id="sylp-box"></div>`;
 }
 
-async function sylLoad() {
-  let list = null, err = null;
-  if (navigator.onLine) {
-    try {
-      const { data, error } = await sb.from('syllabus').select('*').eq('owner_id', CURRENT_USER.id).order('class_name').order('subject');
-      if (error) err = error; else list = data || [];
-    } catch (e) { err = e; }
-  }
-  if (list === null) {
-    try { list = JSON.parse(localStorage.getItem(sylKey()) || 'null'); } catch (e) {}
-    if (!list && err && !isNetworkError(err)) {
-      const box = document.getElementById('syl-list');
-      const missing = /does not exist|schema cache|relation/i.test(err.message || '');
-      if (box) box.innerHTML = `<div class="err">${esc(missing ? qt('Syllabus is not set up yet (run the syllabus SQL in Supabase).', 'نصاب ابھی سیٹ اپ نہیں ہوا (Supabase میں syllabus SQL چلائیں)۔') : (err.message || ''))}</div>`;
-      return;
-    }
-    list = list || [];
-  }
-  SYL = list; sylSaveCache(); sylRender();
-  const lg = document.getElementById('syl-legacy'); if (lg) lg.style.display = list.length ? '' : 'none';
-}
-
-function sylRender() {
-  const box = document.getElementById('syl-list'); if (!box) return;
-  const rows = SYL.filter(r => !SYL_FILTER || r.class_name === SYL_FILTER);
-  if (!rows.length) { box.innerHTML = `<div class="empty">${esc(qt('No syllabus added yet.', 'ابھی کوئی نصاب شامل نہیں۔'))}</div>`; return; }
-  const ord = c => { const i = CLASS_OPTIONS.indexOf(c); return i < 0 ? 99 : i; };
-  rows.sort((a, b) => ord(a.class_name) - ord(b.class_name) || String(a.subject).localeCompare(String(b.subject)));
-  box.innerHTML = rows.map(r => `
-    <div class="card" style="margin-bottom:10px;">
-      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:6px;">
-        <span style="font-size:11px;font-weight:700;color:#fff;background:var(--navy);padding:3px 10px;border-radius:999px;">${esc(r.class_name)}</span>
-        <span style="font-size:11px;opacity:.6;">${esc(r.term || '')}</span>
-      </div>
-      <div style="font-weight:700;font-size:15px;margin-bottom:6px;">${esc(r.subject)}</div>
-      <div dir="auto" style="font-size:13px;line-height:1.6;white-space:pre-wrap;">${esc(r.content)}</div>
-      <div style="display:flex;gap:8px;margin-top:12px;">
-        <button class="btn-ghost" style="padding:8px 6px;font-size:12px;" onclick="sylOpen('${r.id}')">✏️ ${esc(qt('Edit', 'ایڈیٹ'))}</button>
-        <button class="btn-ghost danger" style="padding:8px 6px;font-size:12px;" onclick="sylDelete('${r.id}')">🗑 ${esc(qt('Delete', 'حذف'))}</button>
-      </div>
-    </div>`).join('');
-}
-
-function sylOpen(id) {
-  SYL_EDIT = id || null;
-  const r = id ? SYL.find(x => x.id === id) : null;
-  const terms = ['', 'Full Year', '1st Term', '2nd Term', 'Final Term'];
-  const clsSel = c => (r ? r.class_name === c : SYL_FILTER === c) ? 'selected' : '';
-  showModal(r ? qt('Edit syllabus', 'نصاب ایڈیٹ کریں') : qt('Add syllabus', 'نصاب شامل کریں'), `
-    <label><span>${esc(qt('Class', 'کلاس'))}</span><select id="syl-class">${CLASS_OPTIONS.map(c => `<option value="${esc(c)}" ${clsSel(c)}>${esc(c)}</option>`).join('')}</select></label>
-    <label><span>${esc(qt('Subject', 'مضمون'))}</span><input id="syl-subject" maxlength="60" value="${esc(r ? r.subject : '')}" placeholder="${esc(qt('e.g. Mathematics', 'مثلاً ریاضی'))}"></label>
-    <label><span>${esc(qt('Term (optional)', 'ٹرم (اختیاری)'))}</span><select id="syl-term">${terms.map(x => `<option value="${esc(x)}" ${r && (r.term || '') === x ? 'selected' : ''}>${esc(x || '—')}</option>`).join('')}</select></label>
-    <label><span>${esc(qt('Syllabus', 'نصاب'))}</span><textarea id="syl-content" dir="auto" rows="10" maxlength="5000" style="width:100%;padding:9px 12px;border:1px solid var(--line);border-radius:8px;font-family:inherit;font-size:14px;resize:vertical;">${esc(r ? r.content : '')}</textarea></label>
-    <div id="syl-msg"></div>
-    <button class="btn-primary" id="syl-save-btn" onclick="sylSave()">${esc(qt('Save', 'محفوظ کریں'))}</button>`);
-}
-
-async function sylSave() {
-  const msg = document.getElementById('syl-msg'), btn = document.getElementById('syl-save-btn');
-  const class_name = document.getElementById('syl-class').value;
-  const subject = document.getElementById('syl-subject').value.trim();
-  const term = document.getElementById('syl-term').value || null;
-  const content = document.getElementById('syl-content').value.trim();
-  if (!subject) { msg.innerHTML = `<div class="err">${esc(qt('Please write the subject.', 'براہ کرم مضمون لکھیں۔'))}</div>`; return; }
-  if (!content) { msg.innerHTML = `<div class="err">${esc(qt('Please write the syllabus.', 'براہ کرم نصاب لکھیں۔'))}</div>`; return; }
-  btn.disabled = true;
-  const id = SYL_EDIT, now = new Date().toISOString();
-  let res;
-  try {
-    if (id) {
-      const payload = { class_name, subject, term, content, updated_at: now };
-      res = await offlineWrite({
-        table: 'syllabus', action: 'update', payload, id, baseRow: null,
-        run: () => sb.from('syllabus').update(payload).eq('id', id),
-        optimisticApply: () => { SYL = SYL.map(r => r.id === id ? Object.assign({}, r, payload) : r); sylSaveCache(); }
-      });
-    } else {
-      const payload = { id: noticeUuid(), owner_id: CURRENT_USER.id, class_name, subject, term, content, created_at: now, updated_at: now };
-      res = await offlineWrite({
-        table: 'syllabus', action: 'insert', payload, id: payload.id, baseRow: null,
-        run: () => sb.from('syllabus').insert(payload),
-        optimisticApply: () => { SYL.push(Object.assign({}, payload)); sylSaveCache(); }
-      });
-    }
-  } catch (e) { res = { error: e }; }
-  btn.disabled = false;
-  if (res && res.error) { msg.innerHTML = `<div class="err">${esc(res.error.message || String(res.error))}</div>`; sylLoad(); return; }
-  closeModal(); sylRender();
-}
-
-async function sylDelete(id) {
-  if (!confirm(qt('Delete this syllabus?', 'کیا یہ نصاب حذف کریں؟'))) return;
-  let res;
-  try {
-    res = await offlineWrite({
-      table: 'syllabus', action: 'delete', payload: null, id, baseRow: null,
-      run: () => sb.from('syllabus').delete().eq('id', id),
-      optimisticApply: () => { SYL = SYL.filter(r => r.id !== id); sylSaveCache(); }
-    });
-  } catch (e) { res = { error: e }; }
-  if (res && res.error) { alert(res.error.message || String(res.error)); sylLoad(); return; }
-  sylRender();
-}
-
 // ---------- Syllabus: month-wise plan (one grid per class — same layout as the printed syllabus chart) ----------
 // One row per class in `syllabus_plan` (see the SQL block near the top of this file). Subjects are the
 // grid rows, the period columns are fixed (Feb–Jan school year); RESULT+EXAM and VACATION columns are
 // display-only, exactly like the printed chart.
-const SYLP_COLS = [
+const SYLP_COLS0 = [
   { k: 'p1', en: '10 Feb – 15 Mar', ur: '10 فروری – 15 مارچ' },
   { k: 'p2', en: '16 Mar – 15 Apr', ur: '16 مارچ – 15 اپریل' },
   { k: 'p3', en: '16 Apr – 15 May', ur: '16 اپریل – 15 مئی' },
@@ -23411,7 +23561,11 @@ const SYLP_COLS = [
   { k: 'v2', type: 'vac', vac: 'winter', en: 'January', ur: 'جنوری' }
 ];
 const SYLP_SUGGEST = ['Maths', 'Science', 'English', 'English Grammar', 'G. Knowledge', 'Social Studies', 'Computer', 'Urdu', 'Islamiyat', 'Nazra', 'اردو', 'اردو گرامر', 'اسلامیات', 'ناظرہ', 'معاشرتی علوم', 'ریاضی', 'سائنس', 'انگلش', 'عام معلومات'];
-let SYLP_ALL = {}, SYLP_CLASS = '', SYLP_READY = false, SYLP_ERR = '';
+function sylpCols() {
+  const ty = sylpMetaGet('types') || {};
+  return SYLP_COLS0.map(c => { const o = ty[c.k]; if (!o) return c; if (o === 'teach') return Object.assign({}, c, { type: undefined }); return Object.assign({}, c, { type: o, vac: c.vac || (c.k === 'v2' ? 'winter' : 'summer') }); });
+}
+let SYLP_ALL = {}, SYLP_CLASS = '', SYLP_READY = false, SYLP_ERR = '', SYLP_DIRTY = {};
 // Sideways scroll position of the month grid. Every redraw (background sync, 'online' event, 30s refresh) rebuilds the
 // table from scratch and a fresh table always starts at scrollLeft 0 — that was the "scrolls, then snaps back" bug.
 // We remember the position and put it back after each redraw, and we never redraw while a finger is on the grid.
@@ -23441,19 +23595,29 @@ function sylpMetaGet(key) {
   for (const k in SYLP_ALL) { const m = SYLP_ALL[k].cells && SYLP_ALL[k].cells._meta; if (m && m[key] !== undefined) return m[key]; }
   return undefined;
 }
-function sylpMetaSet(key, val) {
-  const ks = Object.keys(SYLP_ALL).filter(k => SYLP_ALL[k].subjects.length); if (ks.indexOf(SYLP_CLASS) < 0) ks.push(SYLP_CLASS);
+async function sylpMetaSet(key, val) {
+  const empty = val === undefined || val === null || val === '' || (typeof val === 'object' && !Object.keys(val).length);
+  let ks;
+  if (key === 'logo') {   // the logo is big: keep it in ONE class row only (not copied into every class)
+    ks = Object.keys(SYLP_ALL).filter(k => k !== SYLP_CLASS && SYLP_ALL[k].cells && SYLP_ALL[k].cells._meta && SYLP_ALL[k].cells._meta.logo !== undefined);
+    ks.forEach(k => delete SYLP_ALL[k].cells._meta.logo);
+    ks.push(SYLP_CLASS);
+  } else {
+    ks = Object.keys(SYLP_ALL).filter(k => SYLP_ALL[k].subjects.length); if (ks.indexOf(SYLP_CLASS) < 0) ks.push(SYLP_CLASS);
+  }
   ks.forEach(k => {
+    if (key === 'logo' && k !== SYLP_CLASS) return;
     const d = sylpData(k);
     if (!d.cells._meta || typeof d.cells._meta !== 'object') d.cells._meta = {};
-    if (val === undefined || val === null || val === '' || (typeof val === 'object' && !Object.keys(val).length)) delete d.cells._meta[key]; else d.cells._meta[key] = val;
+    if (empty) delete d.cells._meta[key]; else d.cells._meta[key] = val;
   });
-  ks.forEach(k => sylpPersist(k));
+  const errs = (await Promise.all(ks.map(k => sylpPersist(k, true)))).filter(Boolean);
+  if (errs.length) alert(errs[0]);
 }
 function sylpSchool() { return sylpMetaGet('school') || ((typeof dsSchoolName === 'function') ? dsSchoolName() : ((CURRENT_PROFILE && CURRENT_PROFILE.school_name) || 'School')); }
 function sylpLogo() { const l = sylpMetaGet('logo'); return l || dmcLogo || ''; }
 function sylpEditFixed(k) {
-  const col = SYLP_COLS.find(x => x.k === k); if (!col) return;
+  const col = sylpCols().find(x => x.k === k); if (!col) return;
   showModal(qt('Edit text', 'متن ایڈیٹ کریں'), `
     <label><span>${esc(qt('Text shown in this block (all classes)', 'اس بلاک میں لکھا متن (تمام کلاسوں کے لیے)'))}</span><input id="sylp-fx-txt" dir="auto" maxlength="40" value="${esc(sylpFixedText(col))}"></label>
     <div class="flexgap" style="margin-top:10px;">
@@ -23468,20 +23632,25 @@ function sylpSaveFixed(k, reset) {
   closeModal(); sylpMetaSet('fixed', fx); sylpRender();
 }
 function sylpEditCol(k) {
-  const col = SYLP_COLS.find(x => x.k === k); if (!col) return;
+  const col = sylpCols().find(x => x.k === k); if (!col) return;
   const d = sylpData(SYLP_CLASS);
   showModal(qt('Edit date / month', 'تاریخ / مہینہ ایڈیٹ کریں'), `
     <label><span>${esc(qt('Heading shown on this column (all classes)', 'اس کالم کا عنوان (تمام کلاسوں کے لیے)'))}</span><input id="sylp-col-txt" dir="auto" maxlength="40" value="${esc(sylpColLabel(col, d.session))}"></label>
+    <label><span>${esc(qt('Column type (all classes)', 'کالم کی قسم (تمام کلاسوں کے لیے)'))}</span><select id="sylp-col-ty">${[['teach', qt('Teaching (syllabus boxes)', 'پڑھائی (نصاب کے خانے)')], ['exam', qt('Result + Exam block', 'رزلٹ + امتحان بلاک')], ['vac', qt('Vacation block', 'چھٹیوں کا بلاک')]].map(o => `<option value="${o[0]}" ${(col.type || 'teach') === o[0] ? 'selected' : ''}>${esc(o[1])}</option>`).join('')}</select></label>
+    <p style="font-size:11px;opacity:.6;margin:4px 0 0;">${esc(qt('Text already written in a column stays saved if you change its type.', 'کالم کی قسم بدلنے پر اس میں لکھا متن محفوظ رہتا ہے۔'))}</p>
     <div class="flexgap" style="margin-top:10px;">
       <button class="btn-ghost" onclick="sylpSaveCol('${k}',true)">${esc(qt('Reset', 'اصل حالت'))}</button>
       <button class="btn-primary" style="flex:1" onclick="sylpSaveCol('${k}',false)">${esc(qt('Save', 'محفوظ کریں'))}</button>
     </div>`);
 }
-function sylpSaveCol(k, reset) {
+async function sylpSaveCol(k, reset) {
   const labels = Object.assign({}, sylpMetaGet('labels') || {});
   const v = reset ? '' : document.getElementById('sylp-col-txt').value.trim();
   if (v) labels[k] = v; else delete labels[k];
-  closeModal(); sylpMetaSet('labels', labels); sylpRender();
+  const ty = Object.assign({}, sylpMetaGet('types') || {});
+  const baseT = SYLP_COLS0.find(x => x.k === k).type || 'teach', sel = reset ? '' : document.getElementById('sylp-col-ty').value;
+  if (!sel || sel === baseT) delete ty[k]; else ty[k] = sel;
+  closeModal(); await sylpMetaSet('labels', labels); await sylpMetaSet('types', ty); sylpRender();
 }
 let SYLP_LOGO_TMP;
 function sylpSettings() {
@@ -23542,15 +23711,16 @@ function sylpSaveCache() {
   try {
     const rows = Object.keys(SYLP_ALL).map(k => SYLP_ALL[k]).filter(r => r.subjects.length || r.footer || (r.cells && r.cells._meta));
     localStorage.setItem(sylpKey(), JSON.stringify(rows));
-  } catch (e) {}
+  } catch (e) { sylpStatus(qt('Phone storage is full — changes are saved online only.', 'فون کی اسٹوریج بھر گئی ہے — تبدیلیاں صرف آن لائن محفوظ ہو رہی ہیں۔')); }
 }
 function sylpNormalize(r) {
   return {
     class_name: r.class_name,
     session: r.session || '',
-    subjects: Array.isArray(r.subjects) ? r.subjects : [],
+    subjects: Array.isArray(r.subjects) ? r.subjects.filter(s => s && typeof s.id === 'string' && /^[\w-]+$/.test(s.id) && typeof s.name === 'string') : [],
     cells: (r.cells && typeof r.cells === 'object') ? r.cells : {},
-    footer: r.footer || ''
+    footer: r.footer || '',
+    ua: r.updated_at || r.ua || ''
   };
 }
 
@@ -23573,8 +23743,11 @@ async function sylpLoad() {
     rows = rows || [];
   }
   SYLP_ERR = '';
+  const _keep = {};
+  Object.keys(SYLP_DIRTY).forEach(k => { if (Date.now() - SYLP_DIRTY[k] < 600000 && SYLP_ALL[k]) _keep[k] = SYLP_ALL[k]; else delete SYLP_DIRTY[k]; });
   SYLP_ALL = {};
   rows.forEach(r => { SYLP_ALL[r.class_name] = sylpNormalize(r); });
+  Object.keys(_keep).forEach(k => { SYLP_ALL[k] = _keep[k]; });
   if (!SYLP_CLASS) SYLP_CLASS = CLASS_OPTIONS.find(c => SYLP_ALL[c] && SYLP_ALL[c].subjects.length) || '1st';
   SYLP_READY = true;
   sylpSaveCache();
@@ -23596,18 +23769,18 @@ function sylpRender() {
   if (!SYLP_READY) { box.innerHTML = `<div class="empty">${esc(qt('Loading…', 'لوڈ ہو رہا ہے…'))}</div>`; return; }
   const c = SYLP_CLASS, d = sylpData(c), subs = d.subjects;
   const clsOpts = CLASS_OPTIONS.map(x => `<option value="${esc(x)}" ${x === c ? 'selected' : ''}>${esc(x)}${SYLP_ALL[x] && SYLP_ALL[x].subjects.length ? ' ✓' : ''}</option>`).join('');
-  const colgroup = `<col style="width:112px">` + SYLP_COLS.map(col => `<col style="width:${col.type ? 46 : 132}px">`).join('');
-  const head = `<th>${esc(qt('Subjects', 'مضامین'))}</th>` + SYLP_COLS.map(col => `<th style="cursor:pointer;" onclick="sylpEditCol('${col.k}')">${esc(sylpColLabel(col, d.session))}<small style="display:block;font-size:9px;opacity:.55;">✏️</small></th>`).join('');
+  const colgroup = `<col style="width:112px">` + sylpCols().map(col => `<col style="width:${col.type ? 46 : 132}px">`).join('');
+  const head = `<th>${esc(qt('Subjects', 'مضامین'))}</th>` + sylpCols().map(col => `<th style="cursor:pointer;" onclick="sylpEditCol('${col.k}')">${esc(sylpColLabel(col, d.session))}<small style="display:block;font-size:9px;opacity:.55;">✏️</small></th>`).join('');
   const body = subs.map((s, i) => {
-    const cells = SYLP_COLS.map(col => {
+    const cells = sylpCols().map(col => {
       if (col.type) {
         if (i > 0) return '';
         return `<td class="sylp-fixed sylp-${col.type}" rowspan="${subs.length}" style="cursor:pointer;" onclick="sylpEditFixed('${col.k}')"><span>${esc(sylpFixedText(col))}</span></td>`;
       }
       const v = (d.cells[s.id] || {})[col.k] || '';
-      return `<td class="sylp-cell" onclick="sylpEditCell('${s.id}','${col.k}')">${v ? `<div dir="auto">${esc(v)}</div>` : '<span class="sylp-plus">＋</span>'}</td>`;
+      return `<td class="sylp-cell" onclick="sylpEditCell('${s.id}','${col.k}')">${v ? `<div dir="auto">${((d.cells[s.id] || {})._done || {})[col.k] ? '✅ ' : ''}${esc(v)}</div>` : '<span class="sylp-plus">＋</span>'}</td>`;
     }).join('');
-    return `<tr><th class="sylp-subj" dir="auto" onclick="sylpEditSubject('${s.id}')">${esc(s.name)}<small>✏️</small></th>${cells}</tr>`;
+    return `<tr><th class="sylp-subj" dir="auto" onclick="sylpEditSubject('${s.id}')">${esc(s.name)}<small>✏️${sylpProg(d, s)}</small></th>${cells}</tr>`;
   }).join('');
   box.innerHTML = `
     <div class="field-box"><label><span>${esc(qt('Class', 'کلاس'))}</span><select onchange="sylpPick(this.value)">${clsOpts}</select></label></div>
@@ -23615,9 +23788,10 @@ function sylpRender() {
     <div style="display:flex;gap:8px;margin-bottom:10px;">
       <button class="btn-primary" style="flex:1;" onclick="sylpEditSubject('')">＋ ${esc(qt('Add subject', 'مضمون شامل کریں'))}</button>
       <button class="btn-ghost" style="flex:1;" onclick="sylpSettings()">⚙ ${esc(qt('School / Logo', 'اسکول / لوگو'))}</button>
-      <button class="btn-ghost" style="flex:1;" onclick="sylpPrint()">🖨 ${esc(qt('Print', 'پرنٹ'))}</button>
+      <button class="btn-ghost" style="flex:1;" onclick="sylpPrint()">🖨 ${esc(qt('Print / Save PDF', 'پرنٹ / PDF'))}</button>
     </div>
     <button class="btn-ghost" style="width:100%;margin-bottom:10px;" onclick="sylaOpen()">🤖 ${esc(qt('Auto syllabus from book (PDF / photos)', 'کتاب (PDF / تصاویر) سے خودکار نصاب'))}</button>
+    <button class="btn-ghost" style="width:100%;margin-bottom:10px;" onclick="sylpCopyOpen()">📋 ${esc(qt('Copy subjects to other classes', 'مضامین دوسری کلاسوں میں کاپی کریں'))}</button>
     <div id="sylp-status" style="font-size:11px;opacity:.65;min-height:14px;margin-bottom:6px;"></div>
     ${subs.length ? `
       <div style="font-size:11px;opacity:.6;margin-bottom:6px;">${esc(qt('Tap a box to write the syllabus. Tap a heading to edit its date/month, or tap RESULT + EXAM / VACATION to change that text. Scroll sideways to see all months.', 'نصاب لکھنے کے لیے خانے پر ٹیپ کریں۔ تمام مہینے دیکھنے کے لیے سائیڈ میں سکرول کریں۔'))}</div>
@@ -23632,12 +23806,52 @@ function sylpRender() {
   }
 }
 
+function sylpCopyOpen() {
+  const d = sylpData(SYLP_CLASS);
+  if (!d.subjects.length) { alert(qt('This class has no subjects to copy.', 'اس کلاس میں کاپی کرنے کے لیے مضامین نہیں۔')); return; }
+  const row = 'display:flex !important;flex-direction:row !important;justify-content:flex-start !important;align-items:center;gap:10px;font-size:13px;margin:0;';
+  showModal(qt('Copy to other classes', 'دوسری کلاسوں میں کاپی کریں'), `
+    <p style="font-size:12px;opacity:.7;margin:0 0 8px;">${esc(qt('Copies the subject list of ' + SYLP_CLASS + '. A subject the class already has is skipped (nothing is replaced).', SYLP_CLASS + ' کے مضامین کی فہرست کاپی ہوگی۔ جو مضمون کلاس میں پہلے سے ہے وہ چھوڑ دیا جائے گا (کچھ بدلا نہیں جائے گا)۔'))}</p>
+    <div style="display:flex;flex-direction:column;gap:3px;margin-bottom:8px;">${CLASS_OPTIONS.filter(x => x !== SYLP_CLASS).map(x => `<label style="${row}"><input type="checkbox" class="sylp-cp" value="${esc(x)}">${esc(x)}</label>`).join('')}</div>
+    <label style="${row}"><input type="checkbox" id="sylp-cp-txt">${esc(qt('Also copy the syllabus text', 'نصاب کا متن بھی کاپی کریں'))}</label>
+    <button class="btn-primary" style="width:100%;margin-top:10px;" onclick="sylpCopyDo()">${esc(qt('Copy', 'کاپی کریں'))}</button>`);
+}
+function sylpCopyDo() {
+  const src = sylpData(SYLP_CLASS), withTxt = document.getElementById('sylp-cp-txt').checked;
+  const targets = Array.from(document.querySelectorAll('.sylp-cp:checked')).map(x => x.value);
+  if (!targets.length) return;
+  targets.forEach(tc => {
+    const td = sylpData(tc);
+    src.subjects.forEach(s => {
+      if (td.subjects.some(x => x.name.toLowerCase() === s.name.toLowerCase())) return;
+      const ns = { id: sylpNewId(), name: s.name }; td.subjects.push(ns);
+      if (withTxt && src.cells[s.id]) { td.cells[ns.id] = Object.assign({}, src.cells[s.id]); delete td.cells[ns.id]._done; }
+    });
+  });
+  closeModal(); sylpRender();
+  Promise.all(targets.map(tc => sylpPersist(tc, true))).then(e => { e = e.filter(Boolean); sylpStatus(e.length ? e[0] : qt('Copied ✓', 'کاپی ہو گیا ✓')); });
+}
+function sylpProg(d, s) {
+  const cs = d.cells[s.id] || {}, dn = cs._done || {}; let f = 0, n = 0;
+  sylpCols().forEach(c => { if (c.type) return; if (cs[c.k]) { f++; if (dn[c.k]) n++; } });
+  return f ? ' · ' + Math.round(n * 100 / f) + '%' : '';
+}
 function sylpStatus(txt) { const el = document.getElementById('sylp-status'); if (el) el.textContent = txt || ''; }
 
-async function sylpPersist(cn) {
-  if (!CURRENT_USER) return;
+async function sylpPersist(cn, quiet) {
+  if (!CURRENT_USER) return '';
   const c = (typeof cn === 'string' && cn) ? cn : SYLP_CLASS, d = sylpData(c), now = new Date().toISOString();
+  SYLP_DIRTY[c] = Date.now();
   sylpSaveCache();
+  // Someone else (another phone) saved this class after we opened it? Ask before replacing their work.
+  if (!quiet && navigator.onLine && d.ua) {
+    try {
+      const { data } = await sb.from('syllabus_plan').select('updated_at').eq('owner_id', CURRENT_USER.id).eq('class_name', c).maybeSingle();
+      if (data && data.updated_at && new Date(data.updated_at).getTime() > new Date(d.ua).getTime() + 1000) {
+        if (!confirm(qt('This class was changed on another phone/device after you opened it. OK = save anyway (replaces those changes). Cancel = load the newer version.', 'اس کلاس میں آپ کے کھولنے کے بعد کسی اور فون/ڈیوائس سے تبدیلی ہوئی ہے۔ OK = پھر بھی محفوظ کریں (وہ تبدیلی ختم ہو جائے گی)۔ Cancel = نیا ورژن لوڈ کریں۔'))) { delete SYLP_DIRTY[c]; sylpLoad(); return ''; }
+      }
+    } catch (e) {}
+  }
   const payload = { owner_id: CURRENT_USER.id, class_name: c, session: d.session, subjects: d.subjects, cells: d.cells, footer: d.footer || null, updated_at: now };
   sylpStatus(qt('Saving…', 'محفوظ ہو رہا ہے…'));
   let res;
@@ -23648,13 +23862,25 @@ async function sylpPersist(cn) {
       optimisticApply: () => {}
     });
   } catch (e) { res = { error: e }; }
-  if (res && res.error) { sylpStatus(''); alert(res.error.message || String(res.error)); return; }
+  if (res && res.error) { sylpStatus(''); const m = res.error.message || String(res.error); if (!quiet) alert(m); return m; }
+  d.ua = now;
+  if (!(res && res.queued)) delete SYLP_DIRTY[c];
   sylpStatus(res && res.queued ? qt('Saved on this phone — will sync when online.', 'فون میں محفوظ ہو گیا — انٹرنیٹ آنے پر سنک ہو جائے گا۔') : qt('Saved ✓', 'محفوظ ہو گیا ✓'));
+  return '';
 }
 
+function sylpNormSession(v) {
+  v = String(v || '').trim(); if (!v) return sylpDefaultSession();
+  let m = /^(\d{2,4})\s*[-–\/]\s*(\d{2,4})$/.exec(v);
+  if (m) { let a = Number(m[1]); if (a < 100) a += 2000; return a + '-' + String(Number(m[2]) % 100).padStart(2, '0'); }
+  m = /^(\d{4})$/.exec(v); if (m) return m[1] + '-' + String((Number(m[1]) + 1) % 100).padStart(2, '0');
+  return null;
+}
 function sylpSetSession(v) {
   const d = sylpData(SYLP_CLASS);
-  d.session = (v || '').trim() || sylpDefaultSession();
+  const ns = sylpNormSession(v);
+  if (!ns) { alert(qt('Session format: 2026-27', 'سیشن کا فارمیٹ: 2026-27')); const b = document.getElementById('sylp-box'); if (b) delete b.dataset.sig; sylpRender(); return; }
+  d.session = ns;
   // Same session for every class that already has a chart (it's one school year) — keep them in step.
   Object.keys(SYLP_ALL).forEach(k => { if (SYLP_ALL[k] !== d && SYLP_ALL[k].subjects.length) { SYLP_ALL[k].session = d.session; } });
   sylpRender(); sylpPersist();
@@ -23665,11 +23891,12 @@ function sylpNewId() { return 's' + Date.now().toString(36) + Math.random().toSt
 
 function sylpEditCell(sid, k) {
   const d = sylpData(SYLP_CLASS), s = d.subjects.find(x => x.id === sid); if (!s) return;
-  const col = SYLP_COLS.find(x => x.k === k);
+  const col = sylpCols().find(x => x.k === k);
   const v = (d.cells[sid] || {})[k] || '';
   showModal(s.name + ' — ' + sylpColLabel(col, d.session), `
     <label><span>${esc(qt('Syllabus for this period', 'اس مدت کا نصاب'))}</span>
-      <textarea id="sylp-cell-txt" dir="auto" rows="8" maxlength="600" style="width:100%;padding:9px 12px;border:1px solid var(--line);border-radius:8px;font-family:inherit;font-size:14px;resize:vertical;">${esc(v)}</textarea></label>
+      <textarea id="sylp-cell-txt" dir="auto" rows="8" maxlength="3000" style="width:100%;padding:9px 12px;border:1px solid var(--line);border-radius:8px;font-family:inherit;font-size:14px;resize:vertical;">${esc(v)}</textarea></label>
+    <label style="display:flex !important;flex-direction:row !important;justify-content:flex-start !important;align-items:center;gap:10px;font-size:13px;margin:8px 0;"><input type="checkbox" id="sylp-cell-done" ${((((d.cells[sid] || {})._done) || {})[k]) ? 'checked' : ''}>✅ ${esc(qt('Completed (already taught)', 'مکمل (پڑھایا جا چکا)'))}</label>
     <div class="flexgap">
       <button class="btn-ghost" onclick="closeModal()">${esc(qt('Cancel', 'منسوخ'))}</button>
       <button class="btn-primary" style="flex:1" onclick="sylpSaveCell('${sid}','${k}')">${esc(qt('Save', 'محفوظ کریں'))}</button>
@@ -23680,6 +23907,9 @@ function sylpSaveCell(sid, k) {
   const v = document.getElementById('sylp-cell-txt').value.trim();
   if (!d.cells[sid]) d.cells[sid] = {};
   if (v) d.cells[sid][k] = v; else delete d.cells[sid][k];
+  const dd = Object.assign({}, d.cells[sid]._done || {});
+  if (document.getElementById('sylp-cell-done').checked && v) dd[k] = true; else delete dd[k];
+  if (Object.keys(dd).length) d.cells[sid]._done = dd; else delete d.cells[sid]._done;
   closeModal(); sylpRender(); sylpPersist();
 }
 
@@ -23758,7 +23988,7 @@ function sylaOpen() {
 }
 function sylaForm() {
   const d = sylpData(SYLP_CLASS);
-  const teach = SYLP_COLS.filter(c => !c.type);
+  const teach = sylpCols().filter(c => !c.type);
   const names = [...new Set(d.subjects.map(s => s.name).concat(SYLP_SUGGEST))];
   const st = sylaStoreLoad();
   showModal(qt('Auto syllabus from book', 'کتاب سے خودکار نصاب'), `
@@ -23832,7 +24062,7 @@ async function sylaReadFile(inp) {
       }
       // 2) contents page(s) text, 3) OCR when the PDF has no text
       if (!found.length) {
-        const scan = Math.min(pdf.numPages, 30); let texty = 0, tl = [];
+        const scan = Math.min(pdf.numPages, 60); let texty = 0, tl = [];
         for (let n = 1; n <= scan; n++) {
           pqImpMsg('📄 ' + n + '/' + scan);
           const pg = await pdf.getPage(n); const pl = pqLines((await pg.getTextContent()).items).map(pqNorm).filter(Boolean);
@@ -23840,7 +24070,7 @@ async function sylaReadFile(inp) {
           tl.push(pl);
         }
         if (!texty) {
-          const ocrN = Math.min(pdf.numPages, 8); tl = [];
+          const ocrN = Math.min(pdf.numPages, 15); tl = [];
           for (let n = 1; n <= ocrN; n++) {
             const pg = await pdf.getPage(n), vp = pg.getViewport({ scale: 2 }), c = document.createElement('canvas'); c.width = vp.width; c.height = vp.height;
             await pg.render({ canvasContext: c.getContext('2d'), viewport: vp }).promise;
@@ -23852,11 +24082,11 @@ async function sylaReadFile(inp) {
         let idx = tl.findIndex(isC); const use = [];
         if (idx >= 0) for (let i = idx; i < Math.min(tl.length, idx + 3); i++) use.push(...tl[i]);
         let en = sylaParseContents(use);
-        if (en.length < 3) en = sylaParseContents([].concat(...tl.slice(0, 8)));
+        if (en.length < 3) en = sylaParseContents([].concat(...tl.slice(0, 20)));
         if (en.length >= 3) { found = sylaLinesFromEntries(en, 0); note = qt('from the contents page', 'فہرست کے صفحے سے'); }
       }
     } else {
-      const im = files.filter(x => /^image\//.test(x.type)).slice(0, 8);
+      const im = files.filter(x => /^image\//.test(x.type)).slice(0, 15);
       for (let i = 0; i < im.length; i++) lines = lines.concat((await pqOcr(await pqImgCanvas(im[i]), i + 1, im.length)).map(pqNorm).filter(Boolean));
       const en = sylaParseContents(lines);
       if (en.length >= 3) { found = sylaLinesFromEntries(en, 0); note = qt('from the photo (please check the spelling)', 'تصویر سے (براہ کرم املا چیک کریں)'); }
@@ -23898,7 +24128,7 @@ function sylaPlan(lines, periods) {
     if (p.before_exam) arr.push(rev);
     out[p.k] = arr.join('\n');
     if (!buckets[k].length) warnings.push(qt(`${p.label}: no lesson fell in this period (there are only ${lines.length} lessons).`, `${p.label}: اس مدت میں کوئی سبق نہیں آیا (کل ${lines.length} سبق ہیں)۔`));
-    if (out[p.k].length > 600) warnings.push(qt(`${p.label}: longer than 600 characters - shorten it before saving to the chart.`, `${p.label}: 600 حروف سے لمبا ہے - چارٹ میں محفوظ کرنے سے پہلے مختصر کریں۔`));
+    if (out[p.k].length > 3000) warnings.push(qt(`${p.label}: longer than 3000 characters - shorten it before saving to the chart.`, `${p.label}: 3000 حروف سے لمبا ہے - چارٹ میں محفوظ کرنے سے پہلے مختصر کریں۔`));
   });
   return { periods: out, warnings };
 }
@@ -23911,9 +24141,9 @@ function sylaMake() {
   if (!picked.length) return sylaMsg(`<div class="err">${esc(qt('Select at least one period.', 'کم از کم ایک مدت منتخب کریں۔'))}</div>`);
   const d = sylpData(SYLP_CLASS);
   const periods = picked.map(k => {
-    const idx = SYLP_COLS.findIndex(c => c.k === k);
-    const next = SYLP_COLS.slice(idx + 1).find(c => !c.type || c.type === 'exam');
-    return { k, label: sylpColLabel(SYLP_COLS[idx], d.session), before_exam: !!(next && next.type === 'exam') };
+    const idx = sylpCols().findIndex(c => c.k === k);
+    const next = sylpCols().slice(idx + 1).find(c => !c.type || c.type === 'exam');
+    return { k, label: sylpColLabel(sylpCols()[idx], d.session), before_exam: !!(next && next.type === 'exam') };
   });
   const plan = sylaPlan(lines, periods);
   const st = sylaStoreLoad();
@@ -23964,8 +24194,8 @@ function sylaSave() {
   if (cur.cls && cur.cls !== SYLP_CLASS && !confirm(qt(`This result was made for ${cur.cls}, but the chart now showing is ${SYLP_CLASS}. Put it in ${SYLP_CLASS}?`, `یہ نتیجہ ${cur.cls} کے لیے بنا تھا مگر اب چارٹ ${SYLP_CLASS} کا کھلا ہے۔ ${SYLP_CLASS} میں ڈالیں؟`))) return;
   const d = sylpData(SYLP_CLASS);
   const outs = Array.from(document.querySelectorAll('.syla-out')).map(t => ({ k: t.dataset.k, v: t.value.trim() }));
-  const long = outs.filter(o => o.v.length > 600);
-  if (long.length) return sylaMsg(`<div class="err">${esc(qt('Some boxes are longer than 600 characters (the chart box limit). Please shorten them.', 'کچھ خانے 600 حروف سے لمبے ہیں (چارٹ خانے کی حد)۔ براہ کرم مختصر کریں۔'))}</div>`);
+  const long = outs.filter(o => o.v.length > 3000);
+  if (long.length) return sylaMsg(`<div class="err">${esc(qt('Some boxes are longer than 3000 characters (the chart box limit). Please shorten them.', 'کچھ خانے 3000 حروف سے لمبے ہیں (چارٹ خانے کی حد)۔ براہ کرم مختصر کریں۔'))}</div>`);
   let s = d.subjects.find(x => x.name.toLowerCase() === sub.toLowerCase());
   const overwrite = s && outs.some(o => o.v && ((d.cells[s.id] || {})[o.k] || '').trim());
   if (overwrite && !confirm(qt('This subject already has syllabus in some of these periods. Replace it?', 'اس مضمون میں ان میں سے کچھ مدتوں میں نصاب پہلے سے ہے۔ بدل دیں؟'))) return;
@@ -24012,10 +24242,10 @@ async function sylpPrint() {
   const footer = d.footer || sylpSharedFooter();
   const tint = await sylpLogoColor(logoSrc);
   const bgPage = tint ? sylpMix(tint, 0.9) : '#DCEEFA', bgTable = tint ? 'rgba(255,255,255,.4)' : 'rgba(255,255,255,.45)', lineCol = tint ? sylpMix(tint, 0.45) : '#7FA6C9';
-  const colgroup = `<col style="width:9%">` + SYLP_COLS.map(col => `<col style="width:${col.type ? '4.4%' : '9.2%'}">`).join('');
-  const head = `<th>${esc(qt('Subjects', 'مضامین'))}</th>` + SYLP_COLS.map(col => `<th>${esc(sylpColLabel(col, d.session))}</th>`).join('');
+  const colgroup = `<col style="width:9%">` + sylpCols().map(col => `<col style="width:${col.type ? '4.4%' : '9.2%'}">`).join('');
+  const head = `<th>${esc(qt('Subjects', 'مضامین'))}</th>` + sylpCols().map(col => `<th>${esc(sylpColLabel(col, d.session))}</th>`).join('');
   const rows = subs.map((s, i) => {
-    const cells = SYLP_COLS.map(col => {
+    const cells = sylpCols().map(col => {
       if (col.type) return i > 0 ? '' : `<td class="fx ${col.type}" rowspan="${subs.length}"><span>${esc(sylpFixedText(col))}</span></td>`;
       const v = (d.cells[s.id] || {})[col.k] || '';
       return `<td dir="auto">${esc(v)}</td>`;
@@ -24046,7 +24276,7 @@ async function sylpPrint() {
           ${logoSrc ? `<img class="sylp-pr-logo" src="${logoSrc}">` : ''}
           <div>
             <div class="sylp-pr-school">${esc(school)}</div>
-            <div class="sylp-pr-title">SYLLABUS GRADE ${esc(c)} Session ${esc(d.session)}</div>
+            <div class="sylp-pr-title" dir="auto">${esc(LANG === 'ur' ? 'نصاب — کلاس ' + c + ' — سیشن ' + d.session : 'SYLLABUS ' + (/^(Nursery|KG)$/i.test(c) ? c.toUpperCase() : 'GRADE ' + c) + ' Session ' + d.session)}</div>
           </div>
         </div>
         <table class="sylp-pr-table"><colgroup>${colgroup}</colgroup><thead><tr>${head}</tr></thead><tbody>${rows}</tbody></table>
@@ -24084,7 +24314,7 @@ function sylpPrintFull() {
   setTimeout(cleanup, 3000);
 }
 
-console.log('SchoolMS build: 2026-10-13c-dmc-21-formats-qpaper-fixes-dashboard-icons-fast-open-idcard-offline-lesson-plan-staff-leave-advance-xlsx-lazy-load-fit-any-paper-print-logo-tint-watermark-fixed-text-editable-footer-single-syllabus-no-flicker-editable-headings-school-logo-no-legacy-syllabus-monthwise-grid-money-round-single-table-reload-csp-blob-img-fix-daily-quiz-7am-latest-result-lightsync-staffreq-chat-voice-syllabus'); // bump this string on every deploy to verify (in browser console) which version is actually running
+console.log('SchoolMS build: 2026-10-13c-dmc-21-formats-qpaper-fixes-dashboard-icons-fast-open-idcard-offline-lesson-plan-staff-leave-advance-xlsx-lazy-load-fit-any-paper-print-logo-tint-watermark-fixed-text-editable-footer-single-syllabus-no-flicker-editable-headings-school-logo-no-legacy-syllabus-monthwise-grid-money-round-single-table-reload-csp-blob-img-fix-daily-quiz-7am-latest-result-lightsync-staffreq-chat-voice-syllabus-fixes2'); // bump this string on every deploy to verify (in browser console) which version is actually running
 </script>
 </body>
 </html>
