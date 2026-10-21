@@ -3446,8 +3446,8 @@ async function renderStaffRequests() {
         <div style="font-size:11px;opacity:.6;">${esc(qt('Requested', 'درخواست'))}: ${esc(fmtT(r.requested_at))}${late ? ` · ${esc(qt('received', 'موصول'))} ${esc(fmtT(r.received_at))}` : ''}</div>
       </div>
       <div style="display:flex;gap:8px;">
-        <button class="btn-primary" style="flex:1;padding:8px;" onclick="decideStaffReq('${r.id}','approved')">${esc(qt('Approve', 'منظور'))}</button>
-        <button class="btn-ghost" style="flex:1;padding:8px;" onclick="decideStaffReq('${r.id}','denied')">${esc(qt('Deny', 'مسترد'))}</button>
+        <button class="btn-primary" style="flex:1;padding:8px;" onclick="decideStaffReq('${escJs(r.id)}','approved')">${esc(qt('Approve', 'منظور'))}</button>
+        <button class="btn-ghost" style="flex:1;padding:8px;" onclick="decideStaffReq('${escJs(r.id)}','denied')">${esc(qt('Deny', 'مسترد'))}</button>
       </div>
     </div>`;
   }).join('');
@@ -4034,7 +4034,7 @@ function openFeeRequestReminders() {
           <div class="nm">${esc(s.name)}${esc(leftTag(s))}</div>
           <div class="sub">${esc(t.fatherName)}: ${esc(s.father_name||'')} · ₨${fmt(studentBalance(s.id))} ${esc(t.due)}</div>
         </div>
-        <button class="btn-primary" style="padding:6px 14px;" onclick="sendFeeRequestWhatsapp('${s.id}')">${esc(t.send)}</button>
+        <button class="btn-primary" style="padding:6px 14px;" onclick="sendFeeRequestWhatsapp('${escJs(s.id)}')">${esc(t.send)}</button>
       </div>`).join('');
   showModal(t.feeRequestTitle, `
     <div style="font-size:13px;opacity:.75;margin-bottom:14px;">${esc(t.feeRequestDesc)}</div>
@@ -4456,7 +4456,7 @@ function renderNav() {
   const _nb = document.getElementById('navbar');
   if (_nb && _nb.children.length) NAV_SCROLL = _nb.scrollLeft;   // remember where the bar was scrolled to
   _nb.innerHTML = tabs.map(k => `
-    <button class="${TAB===k?'active':''}" onclick="setTab('${k}')">
+    <button class="${TAB===k?'active':''}" onclick="setTab('${escJs(k)}')">
       ${NAV_ICONS[k]}<span>${k==='timetable' ? (LANG==='ur'?'ٹائم ٹیبل':'Timetable') : k==='datesheet' ? esc(qt('Date Sheet','ڈیٹ شیٹ')) : k==='notices' ? esc(qt('Notices','نوٹس')) : k==='syllabus' ? esc(qt('Syllabus','نصاب')) : esc(t[k] || t.admin)}</span>
     </button>`).join('');
   // Putting the buttons back used to snap the bar to the start — restore the old position.
@@ -4542,21 +4542,26 @@ function openGlobalSearch() {
   loadMarksSheetData().then(() => { if (document.getElementById('gs-input')) renderGlobalSearchResults(); });
 }
 
+let gsLimits = { people: 25, ms: 15, dmc: 15 };
+let gsLastQ = null;
+function gsShowMore() { gsLimits.people += 25; gsLimits.ms += 15; gsLimits.dmc += 15; renderGlobalSearchResults(); }
 function renderGlobalSearchResults() {
   const el = document.getElementById('gs-results');
   if (!el) return;
   const q = normName(globalSearchQuery);
   if (!q) { el.innerHTML = ''; return; }
 
-  const peopleMatches = buildGlobalPeopleIndex()
-    .filter(p => (normName(p.name) + ' ' + normName(p.father_name)).includes(q))
-    .slice(0, 25);
-  const msMatches = buildMarksheetSearchIndex()
-    .filter(p => normName(p.name).includes(q))
-    .slice(0, 15);
-  const dmcMatches = buildDMCSearchIndex()
-    .filter(p => normName(p.name).includes(q))
-    .slice(0, 15);
+  if (gsLastQ !== q) { gsLastQ = q; gsLimits = { people: 25, ms: 15, dmc: 15 }; }
+  const _peopleAll = buildGlobalPeopleIndex()
+    .filter(p => (normName(p.name) + ' ' + normName(p.father_name)).includes(q));
+  const _msAll = buildMarksheetSearchIndex()
+    .filter(p => normName(p.name).includes(q));
+  const _dmcAll = buildDMCSearchIndex()
+    .filter(p => normName(p.name).includes(q));
+  const peopleMatches = _peopleAll.slice(0, gsLimits.people);
+  const msMatches = _msAll.slice(0, gsLimits.ms);
+  const dmcMatches = _dmcAll.slice(0, gsLimits.dmc);
+  const gsHasMore = _peopleAll.length > peopleMatches.length || _msAll.length > msMatches.length || _dmcAll.length > dmcMatches.length;
 
   if (!peopleMatches.length && !msMatches.length && !dmcMatches.length) {
     el.innerHTML = `<div class="empty">${esc(t.noSearchResults)}</div>`;
@@ -4564,7 +4569,7 @@ function renderGlobalSearchResults() {
   }
 
   const peopleRows = peopleMatches.map(p => `
-    <div class="list-row" style="cursor:pointer;" onclick="openFullRecord('${p.studentId || ''}','${p.registerId || ''}')">
+    <div class="list-row" style="cursor:pointer;" onclick="openFullRecord('${escJs(p.studentId || '')}','${escJs(p.registerId || '')}')">
       <div>
         <div class="nm">${esc(p.name)}</div>
         <div class="sub">${esc(t.fatherName)}: ${esc(p.father_name || '')}${p.class_name ? ' · ' + esc(p.class_name) : ''}</div>
@@ -4597,7 +4602,8 @@ function renderGlobalSearchResults() {
       </div>
     </div>`).join('');
 
-  el.innerHTML = `<div class="list-card">${peopleRows}${msRows}${dmcRows}</div><div id="gs-archive-results" style="margin-top:10px;"></div>`;
+  const gsMoreBtn = gsHasMore ? `<button class="btn-ghost" style="width:100%;margin-top:8px;" onclick="gsShowMore()">${esc(qt('Show more', 'مزید دکھائیں'))}</button>` : '';
+  el.innerHTML = `<div class="list-card">${peopleRows}${msRows}${dmcRows}</div>${gsMoreBtn}<div id="gs-archive-results" style="margin-top:10px;"></div>`;
 
   // Live in-memory matches above only cover people still loaded/uploaded this
   // session. Also query the permanent dmc_records archive so a certificate
@@ -4623,7 +4629,7 @@ async function searchDMCArchive(q) {
   if (!data.length) { box.innerHTML = ''; return; }
   box.innerHTML = `<div class="section-title" style="margin-top:0;">${esc(t.dmc || 'DMC')} — Purana Record (Archive)</div><div class="list-card">` +
     data.map(r => `
-      <div class="list-row" style="cursor:pointer;" onclick="viewSavedDMCRecord('${r.id}')">
+      <div class="list-row" style="cursor:pointer;" onclick="viewSavedDMCRecord('${escJs(r.id)}')">
         <div>
           <div class="nm">${esc(r.student_name)}</div>
           <div class="sub">${esc(r.class_name || '')} · ${esc(r.academic_year || '')}${r.roll_no ? ' · Roll: ' + esc(r.roll_no) : ''}</div>
@@ -4675,7 +4681,7 @@ function openFullRecord(studentId, registerId) {
           <div class="val" style="color:${currentBalance > 0 ? 'var(--rust)' : 'var(--sage)'};">${fmtBal(currentBalance)}</div>
         </div>
       </div>
-      <button class="btn-ghost" style="width:100%;margin-bottom:6px;" onclick="closeModal(); openStudentDetail('${s.id}')">${esc(t.viewFeeLedger)} →</button>
+      <button class="btn-ghost" style="width:100%;margin-bottom:6px;" onclick="closeModal(); openStudentDetail('${escJs(s.id)}')">${esc(t.viewFeeLedger)} →</button>
     `;
   } else {
     feeSection = `<h4 class="section-title" style="margin-top:0;">${esc(t.feeLedger)}</h4><div class="empty" style="padding:20px;">${esc(t.notActiveStudent)}</div>`;
@@ -4694,9 +4700,9 @@ function openFullRecord(studentId, registerId) {
         ${r.arrears_due ? `<div>${esc(t.arrearsDue)}: <b>₨${fmt(r.arrears_due)}</b></div>` : ''}
       </div>
       <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap;">
-        <button class="btn-ghost" style="flex:1;" onclick="closeModal(); openEditAdmissionEntry('${r.id}')">${esc(t.viewRegisterEntry)}</button>
-        <button class="btn-ghost" style="flex:1;" onclick="printAdmissionEntry('${r.id}')">🖨️ ${esc(t.printSlc)}</button>
-        <button class="btn-ghost" style="flex:1;" onclick="printCharacterCertificate('${r.id}')">🖨️ ${esc(t.printCc)}</button>
+        <button class="btn-ghost" style="flex:1;" onclick="closeModal(); openEditAdmissionEntry('${escJs(r.id)}')">${esc(t.viewRegisterEntry)}</button>
+        <button class="btn-ghost" style="flex:1;" onclick="printAdmissionEntry('${escJs(r.id)}')">🖨️ ${esc(t.printSlc)}</button>
+        <button class="btn-ghost" style="flex:1;" onclick="printCharacterCertificate('${escJs(r.id)}')">🖨️ ${esc(t.printCc)}</button>
       </div>
     `;
   } else {
@@ -5150,7 +5156,7 @@ async function loadSubscriptionsAdmin() {
           </label>
           <label><span>${esc(t.monthlyPrice)}</span><input id="price-${p.id}" type="number" value="${s.monthly_price || 0}"></label>
           <label><span>${esc(t.paidUntil)}</span><input id="paiduntil-${p.id}" type="date" value="${s.paid_until || ''}"></label>
-          <button class="btn-primary" style="width:100%;" onclick="guardedSubmit(this, () => saveSubscription('${p.id}'))">${esc(t.save)}</button>
+          <button class="btn-primary" style="width:100%;" onclick="guardedSubmit(this, () => saveSubscription('${escJs(p.id)}'))">${esc(t.save)}</button>
         </div>`;
       }).join('');
     }
@@ -5164,7 +5170,7 @@ async function loadSubscriptionsAdmin() {
         pending.map(row => `
         <div class="list-row">
           <div><div class="nm">${esc(nameOf(row.school_id))}</div><div class="sub">${esc(t.trxIdLabel)}: ${esc(row.trx_id)} · ${esc(t.submittedOn)} ${esc(fmtDate(row.submitted_at))}</div></div>
-          <button class="btn-primary" style="width:auto;padding:6px 10px;white-space:nowrap;" onclick="guardedSubmit(this, () => approvePending('${row.id}','${row.school_id}'))">${esc(t.approve)}</button>
+          <button class="btn-primary" style="width:auto;padding:6px 10px;white-space:nowrap;" onclick="guardedSubmit(this, () => approvePending('${escJs(row.id)}','${escJs(row.school_id)}'))">${esc(t.approve)}</button>
         </div>`).join('');
     }
   }
@@ -5537,7 +5543,7 @@ function copyDiagnostics() {
 
 function generateSchoolCode() {
   const base = (CURRENT_PROFILE.school_name || 'SCH').replace(/[^a-zA-Z]/g, '').toUpperCase().slice(0, 4) || 'SCH';
-  const rand = Math.floor(10 + Math.random() * 90);
+  const rand = 10 + (crypto.getRandomValues(new Uint32Array(1))[0] % 90);
   document.getElementById('set-school-code').value = base + rand;
 }
 
@@ -5581,8 +5587,9 @@ function logCustomActivity(description, action, tableName) {
 
 async function openActivityLog() {
   showModal(LANG === 'ur' ? 'سرگرمی لاگ' : 'Activity Log', `<div id="activity-log-body" style="font-size:13px;opacity:.7;">${LANG === 'ur' ? 'لوڈ ہو رہا ہے…' : 'Loading…'}</div>`);
+  ACTLOG = { rows: [], done: false };
   const { data, error } = await sb.from('activity_log').select('*')
-    .eq('owner_id', CURRENT_USER.id).order('created_at', { ascending: false }).limit(200);
+    .eq('owner_id', CURRENT_USER.id).order('created_at', { ascending: false }).range(0, ACTLOG_PAGE - 1);
   const body = document.getElementById('activity-log-body');
   if (!body) return; // modal was closed before this resolved
   if (error) {
@@ -5595,11 +5602,29 @@ async function openActivityLog() {
     body.innerHTML = `<p style="font-size:13px;opacity:.6;">${LANG === 'ur' ? 'ابھی تک کوئی سرگرمی ریکارڈ نہیں ہوئی۔' : 'No activity recorded yet.'}</p>`;
     return;
   }
-  body.innerHTML = `<div style="max-height:60vh;overflow-y:auto;">${data.map(r => `
+  ACTLOG.rows = data; ACTLOG.done = data.length < ACTLOG_PAGE;
+  renderActivityLog();
+}
+const ACTLOG_PAGE = 200;
+let ACTLOG = { rows: [], done: false };
+function renderActivityLog() {
+  const body = document.getElementById('activity-log-body');
+  if (!body) return;
+  body.innerHTML = `<div style="max-height:60vh;overflow-y:auto;">${ACTLOG.rows.map(r => `
     <div style="padding:9px 0;border-bottom:1px solid var(--line);">
       <div style="font-size:13px;">${esc(r.description)}</div>
       <div style="font-size:11px;opacity:.55;margin-top:2px;">${esc(r.actor_email || '')}${r.actor_email ? ' · ' : ''}${new Date(r.created_at).toLocaleString(LANG === 'ur' ? 'ur-PK' : 'en-US')}</div>
-    </div>`).join('')}</div>`;
+    </div>`).join('')}${ACTLOG.done ? '' : `<button class="btn-ghost" style="width:100%;margin:10px 0;" onclick="activityLogMore(this)">${esc(qt('Show more', 'مزید دکھائیں'))}</button>`}</div>`;
+}
+async function activityLogMore(btn) {
+  if (btn) btn.disabled = true;
+  const from = ACTLOG.rows.length;
+  const { data, error } = await sb.from('activity_log').select('*')
+    .eq('owner_id', CURRENT_USER.id).order('created_at', { ascending: false }).range(from, from + ACTLOG_PAGE - 1);
+  if (error) { if (btn) btn.disabled = false; return; }
+  ACTLOG.rows = ACTLOG.rows.concat(data || []);
+  if (!data || data.length < ACTLOG_PAGE) ACTLOG.done = true;
+  renderActivityLog();
 }
 
 // ---------------- Full Backup (JSON) & Restore ----------------
@@ -5948,7 +5973,7 @@ function openLegal(tab) {
   const L = LEGAL[LANG === 'ur' ? 'ur' : 'en'], ur = LANG === 'ur';
   let root = document.getElementById('legal-root');
   if (!root) { root = document.createElement('div'); root.id = 'legal-root'; document.body.appendChild(root); }
-  const tabBtn = (k) => `<button type="button" onclick="openLegal('${k}')" style="flex:1;padding:10px 6px;border-radius:12px;border:1.5px solid ${k===tab?'#1B3A57':'#DDD5C0'};background:${k===tab?'#1B3A57':'#fff'};color:${k===tab?'#fff':'inherit'};font:inherit;font-size:13px;">${esc(L.titles[k])}</button>`;
+  const tabBtn = (k) => `<button type="button" onclick="openLegal('${escJs(k)}')" style="flex:1;padding:10px 6px;border-radius:12px;border:1.5px solid ${k===tab?'#1B3A57':'#DDD5C0'};background:${k===tab?'#1B3A57':'#fff'};color:${k===tab?'#fff':'inherit'};font:inherit;font-size:13px;">${esc(L.titles[k])}</button>`;
   root.innerHTML = `
     <div class="modal-bg" style="z-index:100000;" onclick="if(event.target===this)closeLegal()">
       <div class="modal" dir="${ur?'rtl':'ltr'}" style="max-height:88vh;overflow:auto;">
@@ -6019,7 +6044,7 @@ function renderSetupWizard() {
     body = `<p style="font-size:13px;opacity:.7;margin:0 0 10px;">${tt('Step 3 of 4 — Tap the classes your school has','مرحلہ 3 / 4 — اپنے اسکول کی کلاسیں چنیں')}</p>
       <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;">${setupAllClasses().map(c => {
         const on = SETUP.classes.includes(c);
-        return `<button type="button" onclick="setupToggleClass('${c}')" style="padding:12px 0;border-radius:14px;border:1.5px solid ${on?'#1B3A57':'#DDD5C0'};background:${on?'#1B3A57':'#fff'};color:${on?'#fff':'inherit'};font:inherit;font-size:14px;">${c}</button>`;
+        return `<button type="button" onclick="setupToggleClass('${escJs(c)}')" style="padding:12px 0;border-radius:14px;border:1.5px solid ${on?'#1B3A57':'#DDD5C0'};background:${on?'#1B3A57':'#fff'};color:${on?'#fff':'inherit'};font:inherit;font-size:14px;">${c}</button>`;
       }).join('')}</div>`;
   } else {
     body = `<p style="font-size:13px;opacity:.7;margin:0 0 10px;">${tt('Step 4 of 4 — Monthly fee per class (new students get this fee automatically; you can still change it per student)','مرحلہ 4 / 4 — ہر کلاس کی ماہانہ فیس')}</p>
@@ -6416,7 +6441,7 @@ function dashPanelHtml(k) {
       ${i.v!==undefined ? `<div class="d-pv" style="${i.col?'color:'+i.col+';':''}">${esc(String(i.v))}</div>` : ''}
     </div>
     ${i.open ? `<button class="d-pgo" onclick="${i.open}">${esc(LANG==='ur'?'تفصیل':'Details')} ›</button>` : ''}
-    <button class="d-px" aria-label="Close" onclick="toggleDashStat('${k}')">✕</button>
+    <button class="d-px" aria-label="Close" onclick="toggleDashStat('${escJs(k)}')">✕</button>
     ${i.x ? `<div class="d-pextra">${i.x()}</div>` : ''}`;
 }
 
@@ -6535,7 +6560,7 @@ function tplDashOverview(s) {
     <div class="d-box">
     <div class="d-sec"><span class="d-sec-ic">${diSvg(icon || 'ovw')}</span><span class="d-sec-txt"><span class="d-sec-t">${esc(title)}</span>${desc ? `<span class="d-sec-d">${esc(desc)}</span>` : ''}</span>${sub ? `<small>${esc(sub)}</small>` : ''}</div>
     <div class="d-quick">${keys.map(k => { const i = dashStatInfo(k);
-      return `<button class="d-q d-ob ${DASH_OPEN_STAT===k?'open':''}" data-k="${k}" onclick="toggleDashStat('${k}')"><span class="d-tile d-lg ${i.c}">${diSvg(i.ic)}</span>${esc(i.n)}</button>`; }).join('')}</div>
+      return `<button class="d-q d-ob ${DASH_OPEN_STAT===k?'open':''}" data-k="${k}" onclick="toggleDashStat('${escJs(k)}')"><span class="d-tile d-lg ${i.c}">${diSvg(i.ic)}</span>${esc(i.n)}</button>`; }).join('')}</div>
     <div class="d-panel ${DASH_OPEN_STAT && dashStatInfo(DASH_OPEN_STAT).g===g ? 'show' : ''}" id="dash-panel-${g}">${DASH_OPEN_STAT && dashStatInfo(DASH_OPEN_STAT).g===g ? dashPanelHtml(DASH_OPEN_STAT) : ''}</div>
     </div>`;
   const qa = [
@@ -6691,7 +6716,7 @@ function tplDashActivity() {
         ${backRow(t.recentActivity, 'menu')}
         ${rows.length===0 ? `<div style="padding:16px;text-align:center;opacity:.5;font-size:13px;">${esc(t.noRecords)}</div>` :
           rows.map(r=>`
-            <div class="list-row" style="cursor:pointer;" onclick="openActivityHistory('salary','${r.id}')">
+            <div class="list-row" style="cursor:pointer;" onclick="openActivityHistory('salary','${escJs(r.id)}')">
               <div><div class="nm">${esc(r.name)}</div><div class="sub">${esc(fmtDate(r.date)||'')}</div></div>
               <div class="amt-neg">−₨${fmt(r.amount)}</div>
             </div>`).join('')}
@@ -6705,7 +6730,7 @@ function tplDashActivity() {
         ${backRow(t.recentActivity, 'menu')}
         ${rows.length===0 ? `<div style="padding:16px;text-align:center;opacity:.5;font-size:13px;">${esc(t.noRecords)}</div>` :
           rows.map(x=>`
-            <div class="list-row" style="cursor:pointer;" onclick="openActivityHistory('expense','${x.id}')">
+            <div class="list-row" style="cursor:pointer;" onclick="openActivityHistory('expense','${escJs(x.id)}')">
               <div><div class="nm">${esc(x.description||'')}</div><div class="sub">${esc(x.category||'')} · ${esc(fmtDate(x.txn_date)||'')}</div></div>
               <div class="amt-neg">−₨${fmt(x.amount)}</div>
             </div>`).join('')}
@@ -6742,7 +6767,7 @@ function tplDashActivity() {
             const collected = studentPayments(s.id).reduce((a,p)=>a+Number(p.amount),0);
             const due = Math.max(0, studentBalance(s.id));
             return `
-            <div class="list-row" style="cursor:pointer;" onclick="openStudentDetail('${s.id}')">
+            <div class="list-row" style="cursor:pointer;" onclick="openStudentDetail('${escJs(s.id)}')">
               <div><div class="nm">${esc(s.name)}</div><div class="sub">${esc(t.fatherName)}: ${esc(s.father_name||'')}${due>0?` · ${esc(t.due)}: ₨${fmt(due)}`:''}</div></div>
               <div class="amt-pos">+₨${fmt(collected)}</div>
             </div>`;
@@ -7228,20 +7253,20 @@ function scanHandle(raw) {
     ${action}
     <div class="flexgap" style="margin-top:8px;">
       <button class="btn-ghost" style="flex:1;" onclick="openFeeScan()">${esc(scanL('next'))}</button>
-      ${single ? `<button class="btn-ghost" style="flex:1;" onclick="closeModal(); openStudentDetail('${rows[0].s.id}')">${esc(scanL('ledger'))}</button>` : ''}
+      ${single ? `<button class="btn-ghost" style="flex:1;" onclick="closeModal(); openStudentDetail('${escJs(rows[0].s.id)}')">${esc(scanL('ledger'))}</button>` : ''}
     </div>`);
 }
 
 function scanFail(text) {
   showModal(SCAN.mode === 'gate' ? scanL('idTitle') : scanL('title'), `<div class="empty" style="padding:16px 0;">${esc(text)}</div>
-    <button class="btn-primary" onclick="openFeeScan('${SCAN.mode || 'fee'}')">${esc(scanL('next'))}</button>`);
+    <button class="btn-primary" onclick="openFeeScan('${escJs(SCAN.mode || 'fee')}')">${esc(scanL('next'))}</button>`);
 }
 
 // gate-pass mode: a scan only picks the child; the gate-pass form opens with that child already selected
 function scanGateResult(r) {
   if (r.students.length === 1) { gpNew(); gpPick(r.students[0].id, r.warn); return; }
   showModal(scanL('idTitle'), `<div style="font-size:13px;margin-bottom:8px;">${esc(scanL('multi'))}</div>
-    ${r.students.map(s => `<button class="btn-ghost" style="display:block;width:100%;text-align:start;margin-bottom:6px;" onclick="gpNew(); gpPick('${s.id}')">${esc(s.name)} · ${esc(s.class_name || '')}</button>`).join('')}`);
+    ${r.students.map(s => `<button class="btn-ghost" style="display:block;width:100%;text-align:start;margin-bottom:6px;" onclick="gpNew(); gpPick('${escJs(s.id)}')">${esc(s.name)} · ${esc(s.class_name || '')}</button>`).join('')}`);
 }
 
 async function scanCollect() {
@@ -7305,8 +7330,8 @@ function scanDone(saved, queued) {
     ${saved.map(x => `<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid rgba(0,0,0,.08);">
       <span>${esc(x.s.name)}</span>
       <span style="display:flex;gap:6px;align-items:center;">₨${fmt(x.amount)}
-        <button class="btn-ghost" style="padding:4px 8px;font-size:12px;" onclick="printReceipt('${x.s.id}','${x.id}')">🖨</button>
-        <button class="btn-ghost" style="padding:4px 8px;font-size:12px;" onclick="scanSms('${x.s.id}','${SCAN.cur.month}')">💬</button></span></div>`).join('')}
+        <button class="btn-ghost" style="padding:4px 8px;font-size:12px;" onclick="printReceipt('${escJs(x.s.id)}','${escJs(x.id)}')">🖨</button>
+        <button class="btn-ghost" style="padding:4px 8px;font-size:12px;" onclick="scanSms('${escJs(x.s.id)}','${escJs(SCAN.cur.month)}')">💬</button></span></div>`).join('')}
     ${queued ? `<div style="font-size:12px;opacity:.75;margin-top:8px;">${esc(scanL('queuedNote'))}</div>` : ''}
     <button class="btn-primary" style="margin-top:14px;" onclick="openFeeScan()">📷 ${esc(scanL('next'))}</button>`);
 }
@@ -7516,7 +7541,7 @@ async function gmSave() {
   if (failed) { gmRefresh(); if (btn) btn.textContent = gmL('gen'); return; }
   showModal(gmL('done'), `<div class="greenbox" style="text-align:center;margin-bottom:12px;"><div class="lbl">✓ ${esc(gmL('done'))}</div><div class="val" style="font-size:26px;">${saved} ${esc(gmL('created'))}</div></div>
     ${skipped ? `<div style="font-size:13px;margin-bottom:8px;">${skipped} ${esc(gmL('skipped'))}</div>` : ''}
-    ${saved ? `<button class="btn-primary" style="width:100%;margin-bottom:8px;" onclick="openFeeNotice('${GM.mk}')">📩 ${esc(gnL('btn'))} (${gnList(GM.mk).filter(r => r.ok).length})</button>` : ''}
+    ${saved ? `<button class="btn-primary" style="width:100%;margin-bottom:8px;" onclick="openFeeNotice('${escJs(GM.mk)}')">📩 ${esc(gnL('btn'))} (${gnList(GM.mk).filter(r => r.ok).length})</button>` : ''}
     ${anyQueued ? `<div style="font-size:12px;opacity:.75;margin-bottom:8px;">${esc(gmL('queued'))}</div>` : ''}
     <button class="btn-primary" onclick="closeModal(); renderTab();">${esc(gmL('close'))}</button>`);
 }
@@ -7566,7 +7591,7 @@ function openFeeNotice(mk) {
     ${rows.map(r => `<div class="card-btn" style="cursor:default;">
         <div><div class="nm">${esc(r.s.name)}</div>
         <div class="sub">${esc(t.fatherName)}: ${esc(r.s.father_name || '')} · ₨${fmt(r.owed)} ${esc(gnL('due'))}${r.ok ? '' : ' · ' + esc(gnL('noNum'))}</div></div>
-        <button id="gn-b-${r.s.id}" class="${sent.has(r.s.id) ? 'btn-ghost' : 'btn-primary'}" style="padding:6px 14px;" ${r.ok ? '' : 'disabled'} onclick="gnSend('${r.s.id}')">${esc(sent.has(r.s.id) ? gnL('sent') : gnL('send'))}</button>
+        <button id="gn-b-${r.s.id}" class="${sent.has(r.s.id) ? 'btn-ghost' : 'btn-primary'}" style="padding:6px 14px;" ${r.ok ? '' : 'disabled'} onclick="gnSend('${escJs(r.s.id)}')">${esc(sent.has(r.s.id) ? gnL('sent') : gnL('send'))}</button>
       </div>`).join('')}
     ${rows.length ? `<button class="btn-ghost" style="width:100%;margin-top:10px;" onclick="gnReset()">${esc(gnL('reset'))}</button>` : ''}`);
 }
@@ -7655,7 +7680,7 @@ function gpSms(id) {
 async function openGatePass() {
   showModal(gpL('title'), `<div class="empty" style="padding:16px 0;">…</div>`);
   const since = new Date(Date.now() - 7 * 86400000).toISOString();
-  const { data, error } = await sb.from('gate_passes').select('*').gte('left_at', since).order('left_at', { ascending: false }).limit(200);
+  const { data, error } = await fetchAll(() => sb.from('gate_passes').select('*').gte('left_at', since).order('left_at', { ascending: false }));
   if (error) {
     const missing = error.code === '42P01' || /gate_passes/i.test(error.message || '') && /does not exist|schema cache|relation/i.test(error.message || '');
     showModal(gpL('title'), `<div class="empty" style="padding:16px 0;">${esc(missing ? gpL('setup') : gpL('loadFail') + (error.message || ''))}</div><button class="btn-ghost" onclick="closeModal()">${esc(gpL('close'))}</button>`);
@@ -7670,7 +7695,7 @@ async function openGatePass() {
         ${r.pickup_name ? `<div style="font-size:12px;">${esc(r.pickup_name)}${r.pickup_relation ? ' (' + esc(r.pickup_relation) + ')' : ''}</div>` : ''}
         ${r.reason ? `<div style="font-size:12px;opacity:.75;">${esc(r.reason)}</div>` : ''}
       </div>
-      <button class="btn-ghost" style="padding:4px 10px;font-size:12px;align-self:center;" onclick="gpSms('${r.id}')">💬 ${esc(gpL('sms'))}</button>
+      <button class="btn-ghost" style="padding:4px 10px;font-size:12px;align-self:center;" onclick="gpSms('${escJs(r.id)}')">💬 ${esc(gpL('sms'))}</button>
     </div>`).join('');
   showModal(gpL('title'), `
     <button class="btn-primary" onclick="gpNew()">＋ ${esc(gpL('newPass'))}</button>
@@ -7703,7 +7728,7 @@ function gpSearch(q) {
   const el = document.getElementById('gp-matches'); if (!el) return;
   const n = normName(q); if (!n) { el.innerHTML = ''; return; }
   const m = DATA.students.filter(s => s.status !== 'inactive' && (normName(s.name).includes(n) || normName(s.father_name).includes(n) || normName(s.name_ur).includes(n))).slice(0, 8);
-  el.innerHTML = m.map(s => `<button class="btn-ghost" style="display:block;width:100%;text-align:start;margin-bottom:4px;" onclick="gpPick('${s.id}')">${esc(s.name)} · ${esc(s.class_name || '')}${s.father_name ? ' · ' + esc(s.father_name) : ''}</button>`).join('');
+  el.innerHTML = m.map(s => `<button class="btn-ghost" style="display:block;width:100%;text-align:start;margin-bottom:4px;" onclick="gpPick('${escJs(s.id)}')">${esc(s.name)} · ${esc(s.class_name || '')}${s.father_name ? ' · ' + esc(s.father_name) : ''}</button>`).join('');
 }
 function gpPick(id, warn) {
   GP.sel = DATA.students.find(s => String(s.id) === String(id)) || null; if (!GP.sel) return;
@@ -7727,7 +7752,7 @@ async function gpSave() {
   GP.rows.unshift(data);
   showModal(gpL('saved'), `
     <div class="greenbox" style="text-align:center;margin-bottom:12px;"><div class="lbl">✓ ${esc(gpL('saved'))}</div><div class="val" style="font-size:20px;">${esc(data.student_name)} · ${esc(gpTime(data.left_at))}</div></div>
-    <button class="btn-primary" onclick="gpSms('${data.id}')">${esc(gpL('smsNow'))}</button>
+    <button class="btn-primary" onclick="gpSms('${escJs(data.id)}')">${esc(gpL('smsNow'))}</button>
     <button class="btn-ghost" style="margin-top:8px;" onclick="openGatePass()">${esc(gpL('close'))}</button>`);
 }
 
@@ -7772,14 +7797,14 @@ function pcActionsHtml(c, role) {
   if (role === 'parent') {
     if (c.status === 'resolved') return `<div class="sub" style="margin-top:8px;">✓ ${esc(qt('This ticket is resolved.', 'یہ ٹکٹ حل ہو چکا ہے۔'))}</div>`;
     return `<textarea id="pc-txt-${id}" maxlength="1000" rows="2" style="width:100%;box-sizing:border-box;margin-top:8px;" placeholder="${esc(qt('Write more…', 'مزید لکھیں…'))}"></textarea>
-      <button class="btn-primary" style="width:100%;margin-top:6px;" onclick="pcAct('${id}','parent',null)">${esc(qt('Send follow-up', 'مزید بھیجیں'))}</button>
+      <button class="btn-primary" style="width:100%;margin-top:6px;" onclick="pcAct('${escJs(id)}','parent',null)">${esc(qt('Send follow-up', 'مزید بھیجیں'))}</button>
       <div id="pc-st-${id}" style="font-size:12px;margin-top:6px;"></div>`;
   }
   return `<textarea id="pc-txt-${id}" maxlength="1000" rows="2" style="width:100%;box-sizing:border-box;margin-top:8px;" placeholder="${esc(qt('Write your reply or note…', 'اپنا جواب یا نوٹ لکھیں…'))}"></textarea>
     <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap;">
-      <button class="btn-primary" style="flex:1;padding:8px 6px;font-size:13px;" onclick="pcAct('${id}','${role}',null)">${esc(qt('Send reply', 'جواب بھیجیں'))}</button>
-      ${c.status !== 'in_progress' ? `<button class="btn-ghost" style="flex:1;padding:8px 6px;font-size:13px;" onclick="pcAct('${id}','${role}','in_progress')">${esc(qt('In progress', 'کام جاری'))}</button>` : ''}
-      ${c.status !== 'resolved' ? `<button class="btn-ghost" style="flex:1;padding:8px 6px;font-size:13px;" onclick="pcAct('${id}','${role}','resolved')">✓ ${esc(qt('Resolved', 'حل ہو گیا'))}</button>` : ''}
+      <button class="btn-primary" style="flex:1;padding:8px 6px;font-size:13px;" onclick="pcAct('${escJs(id)}','${escJs(role)}',null)">${esc(qt('Send reply', 'جواب بھیجیں'))}</button>
+      ${c.status !== 'in_progress' ? `<button class="btn-ghost" style="flex:1;padding:8px 6px;font-size:13px;" onclick="pcAct('${escJs(id)}','${escJs(role)}','in_progress')">${esc(qt('In progress', 'کام جاری'))}</button>` : ''}
+      ${c.status !== 'resolved' ? `<button class="btn-ghost" style="flex:1;padding:8px 6px;font-size:13px;" onclick="pcAct('${escJs(id)}','${escJs(role)}','resolved')">✓ ${esc(qt('Resolved', 'حل ہو گیا'))}</button>` : ''}
     </div>
     <div class="sub" style="margin-top:4px;">${esc(qt('Text typed above is sent with the status change as a note.', 'اوپر لکھا ہوا متن اسٹیٹس کے ساتھ نوٹ کے طور پر جائے گا۔'))}</div>
     <div id="pc-st-${id}" style="font-size:12px;margin-top:6px;"></div>`;
@@ -7790,7 +7815,7 @@ function pcRowHtml(c, role) {
   const who = role === 'parent' ? pcT(PC_ROLE, c.to_role === 'owner' ? 'owner' : 'teacher') : (c.student_name || '') + (c.class_name ? ' · ' + c.class_name : '');
   const title = c.subject || String(c.body || '').slice(0, 60);
   return `<div class="list-row" id="pc-row-${c.id}" style="flex-direction:column;align-items:stretch;">
-    <div onclick="pcToggle('${c.id}','${role}')" style="cursor:pointer;display:flex;justify-content:space-between;gap:8px;align-items:flex-start;">
+    <div onclick="pcToggle('${escJs(c.id)}','${escJs(role)}')" style="cursor:pointer;display:flex;justify-content:space-between;gap:8px;align-items:flex-start;">
       <div style="min-width:0;"><div class="nm">#${c.ticket_no} ${kd[2]} ${esc(who)}<span id="pc-new-${c.id}">${unread ? pmNewTag() : ''}</span></div>
         <div class="sub">${esc(qt(kd[0], kd[1]))} · ${esc(title)}</div></div>
       <span id="pc-chip-${c.id}" style="flex:none;font-size:11px;padding:2px 8px;border-radius:999px;background:${st[2]};color:#fff;">${esc(qt(st[0], st[1]))}</span>
@@ -8063,7 +8088,7 @@ function tplStudents() {
         <button class="${studentTypeFilter==='paying'?'on':''}" onclick="setStudentTypeFilter('paying')">${esc(t.feePaying)}</button>
         <button class="${studentTypeFilter==='free'?'on':''}" onclick="setStudentTypeFilter('free')">${esc(t.free)}</button>
         <button class="${duesFilter!=='all'?'on':''}" onclick="setDuesFilter('due')">${esc(t.due)}</button>
-        ${duesFilter!=='all' ? studentDuesBuckets().map(b => `<button class="${duesFilter===String(b)?'on':''}" onclick="setDuesFilter('${b}')">₨${fmt(b)}+</button>`).join('') : ''}
+        ${duesFilter!=='all' ? studentDuesBuckets().map(b => `<button class="${duesFilter===String(b)?'on':''}" onclick="setDuesFilter('${escJs(b)}')">₨${fmt(b)}+</button>`).join('') : ''}
       </div>
       <div class="searchbar">
         <input id="student-search-input" placeholder="${esc(t.search)}" value="${esc(studentSearch)}" oninput="studentSearch=this.value; classPage={}; updateStudentsResults();">
@@ -8161,10 +8186,10 @@ function tplStudentsResults() {
       : `<span class="pill ${due>0?'bad':'good'}">${due>0 ? '₨'+fmt(due)+' '+esc(t.due) : esc(t.paid)}</span>`;
     const overdue = monthsOverdue(s);
     const smsBtn = isFeePaying(s) && studentBalance(s.id) > 0
-      ? `<button class="print-btn" title="${esc(t.sendSmsToFather)}" onclick="event.stopPropagation(); sendOverdueReminderWhatsapp('${s.id}')">💬</button>`
+      ? `<button class="print-btn" title="${esc(t.sendSmsToFather)}" onclick="event.stopPropagation(); sendOverdueReminderWhatsapp('${escJs(s.id)}')">💬</button>`
       : '';
     return `
-      <button class="card-btn" style="${s.status === 'inactive' ? 'opacity:.6;' : ''}" onclick="openStudentDetail('${s.id}')">
+      <button class="card-btn" style="${s.status === 'inactive' ? 'opacity:.6;' : ''}" onclick="openStudentDetail('${escJs(s.id)}')">
         <div><div class="nm">${esc(s.name)}${esc(leftTag(s))}</div><div class="sub">${esc(t.fatherName)}: ${esc(s.father_name||'')}${concessionAmount(s) > 0 ? ' · 🏷 −₨' + fmt(concessionAmount(s)) : ''}</div></div>
         <div style="display:flex;align-items:center;gap:6px;">${smsBtn}${pill}</div>
       </button>`;
@@ -8349,7 +8374,7 @@ function openOverdueReminders() {
           <div class="nm">${esc(s.name)}${esc(leftTag(s))}</div>
           <div class="sub">${esc(t.fatherName)}: ${esc(s.father_name||'')} · ₨${fmt(studentBalance(s.id))} (${monthsOverdue(s)}+ ${esc(t.due)})</div>
         </div>
-        <button class="btn-primary" style="padding:6px 14px;" onclick="sendOverdueReminderWhatsapp('${s.id}')">${esc(t.send)}</button>
+        <button class="btn-primary" style="padding:6px 14px;" onclick="sendOverdueReminderWhatsapp('${escJs(s.id)}')">${esc(t.send)}</button>
       </div>`).join('');
   showModal(t.overdueRemindersTitle, `
     <div style="font-size:13px;opacity:.75;margin-bottom:14px;">${esc(t.overdueRemindersDesc)}</div>
@@ -8684,17 +8709,17 @@ function openStudentDetail(id, viewYear) {
       <label style="margin-bottom:0;"><span>${esc(t.contact)}</span><input id="d-contact" type="tel" value="${esc(s.contact||'')}" placeholder="03XXXXXXXXX"></label>
       <label style="margin-bottom:0;"><span>${esc(t.dateOfBirth)}</span><input id="d-dob" type="date" max="${todayISO()}" value="${esc(String(s.dob||'').slice(0,10))}"></label>
     </div>
-    <button class="btn-ghost" style="margin:8px 0 16px;" onclick="guardedSubmit(this, ()=>updateStudentIdentity('${id}'))">${esc(t.save)}</button>
+    <button class="btn-ghost" style="margin:8px 0 16px;" onclick="guardedSubmit(this, ()=>updateStudentIdentity('${escJs(id)}'))">${esc(t.save)}</button>
     <div class="row2" style="align-items:end;margin-bottom:16px;">
       <label style="margin-bottom:0;"><span>${esc(t.studentType)}</span>
         <select id="d-type">${STUDENT_TYPES.map(v=>`<option value="${v}" ${((s.student_type||'paying')===v)?'selected':''}>${esc(typeLabel(v))}</option>`).join('')}</select>
       </label>
-      <button class="btn-ghost" onclick="updateStudentType('${id}')">${esc(t.updateType)}</button>
+      <button class="btn-ghost" onclick="updateStudentType('${escJs(id)}')">${esc(t.updateType)}</button>
     </div>
     ${isFeePaying(s) ? `
     <div class="row2" style="align-items:end;margin-bottom:4px;">
       <label style="margin-bottom:0;"><span>${esc(t.monthlyFee)}</span><input id="d-fee" type="number" min="0" inputmode="numeric" value="${Number(s.monthly_fee) || ''}" placeholder="${Number(setupDefaultFee(s.class_name)) || '0'}"></label>
-      <button class="btn-ghost" onclick="updateStudentMonthlyFee('${id}')">${esc(t.save)}</button>
+      <button class="btn-ghost" onclick="updateStudentMonthlyFee('${escJs(id)}')">${esc(t.save)}</button>
     </div>
     <div style="font-size:12px;opacity:.7;margin:0 0 16px;">${esc(t.feeNote)}</div>
     ` : ''}
@@ -8713,7 +8738,7 @@ function openStudentDetail(id, viewYear) {
     <label style="margin-top:8px;margin-bottom:8px;"><span>${esc(t.concReason)}</span>
       <select id="c-reason">${CONCESSION_REASONS.map(r => `<option value="${r}" ${(s.concession_reason || 'sibling') === r ? 'selected' : ''}>${esc(concessionReasonLabel(r))}</option>`).join('')}</select>
     </label>
-    <button class="btn-ghost" onclick="updateStudentConcession('${id}')">${esc(t.concSave)}</button>
+    <button class="btn-ghost" onclick="updateStudentConcession('${escJs(id)}')">${esc(t.concSave)}</button>
     <div style="font-size:12px;opacity:.7;margin:6px 0 16px;">${esc(t.concNote)}</div>
     ` : ''}
     <div class="row2" style="align-items:end;margin-bottom:16px;">
@@ -8723,13 +8748,13 @@ function openStudentDetail(id, viewYear) {
           ${!CLASS_OPTIONS.includes(s.class_name) && s.class_name ? `<option value="${esc(s.class_name)}" selected>${esc(s.class_name)}</option>` : ''}
         </select>
       </label>
-      <button class="btn-ghost" onclick="updateStudentClass('${id}')">${esc(t.save)}</button>
+      <button class="btn-ghost" onclick="updateStudentClass('${escJs(id)}')">${esc(t.save)}</button>
     </div>
     <div class="row2" style="align-items:end;margin-bottom:16px;">
       <label style="margin-bottom:0;"><span>${esc(t.studentNameUr)}</span>
         <input id="d-name-ur" dir="rtl" value="${esc(s.name_ur||'')}">
       </label>
-      <button class="btn-ghost" onclick="updateStudentNameUr('${id}')">${esc(t.save)}</button>
+      <button class="btn-ghost" onclick="updateStudentNameUr('${escJs(id)}')">${esc(t.save)}</button>
     </div>
     <div style="display:flex;gap:8px;margin-bottom:16px;">
       <div class="greenbox" style="flex:1;margin-bottom:0;"><div class="lbl">${esc(t.totalCollectedAllTime)}</div><div class="val">₨${fmt(totalPaidAllTime)}</div></div>
@@ -8739,7 +8764,7 @@ function openStudentDetail(id, viewYear) {
       </div>
     </div>
     ${isFeePaying(s) && currentBalance > 0 ? `
-    <button class="btn-ghost" style="width:100%;margin-bottom:16px;color:var(--rust);border-color:var(--rust);" onclick="sendOverdueReminderWhatsapp('${id}')">
+    <button class="btn-ghost" style="width:100%;margin-bottom:16px;color:var(--rust);border-color:var(--rust);" onclick="sendOverdueReminderWhatsapp('${escJs(id)}')">
       💬 ${esc(t.sendSmsToFather)}
     </button>` : ''}
 
@@ -8767,14 +8792,14 @@ function openStudentDetail(id, viewYear) {
     </div>
     <div id="p-summary" style="margin-top:10px;"></div>
     ${feeInstWarnHtml()}${feeColsWarnHtml()}
-    <div style="margin-top:10px;"><button class="btn-primary" onclick="guardedSubmit(this, ()=>submitFeePayment('${id}'))">+ ${esc(t.save)}</button></div>
-    <div style="margin-top:8px;"><button class="btn-ghost" style="width:100%;" onclick="openFeeAdjust('${id}')">± ${esc(qt('Adjustment / Refund / Write-off', 'ایڈجسٹمنٹ / واپسی / معافی'))}</button></div>
+    <div style="margin-top:10px;"><button class="btn-primary" onclick="guardedSubmit(this, ()=>submitFeePayment('${escJs(id)}'))">+ ${esc(t.save)}</button></div>
+    <div style="margin-top:8px;"><button class="btn-ghost" style="width:100%;" onclick="openFeeAdjust('${escJs(id)}')">± ${esc(qt('Adjustment / Refund / Write-off', 'ایڈجسٹمنٹ / واپسی / معافی'))}</button></div>
 
     <div style="display:flex;align-items:center;justify-content:space-between;margin-top:16px;">
       <h4 class="section-title" style="margin:0;">${esc(t.feeLedger)} · ${sessionLabel(startYear)}</h4>
       <div style="display:flex;gap:6px;">
-        <button class="btn-ghost" style="padding:5px 10px;font-size:12px;" ${earliestYear!==null && startYear<=earliestYear?'disabled':''} onclick="openStudentDetail('${id}', ${startYear-1})">‹ ${esc(t.previous)}</button>
-        <button class="btn-ghost" style="padding:5px 10px;font-size:12px;" onclick="openStudentDetail('${id}', ${startYear+1})">${esc(t.next)} ›</button>
+        <button class="btn-ghost" style="padding:5px 10px;font-size:12px;" ${earliestYear!==null && startYear<=earliestYear?'disabled':''} onclick="openStudentDetail('${escJs(id)}', ${startYear-1})">‹ ${esc(t.previous)}</button>
+        <button class="btn-ghost" style="padding:5px 10px;font-size:12px;" onclick="openStudentDetail('${escJs(id)}', ${startYear+1})">${esc(t.next)} ›</button>
       </div>
     </div>
     <div class="card-table-wrap">
@@ -8800,19 +8825,19 @@ function openStudentDetail(id, viewYear) {
               <td class="${!r.blank && r.balance>0?'bal-neg':'bal-pos'}">${r.blank ? '—' : fmtBal(r.balance)}</td>
               <td>${r.blank ? '—' : esc(r.e.receipt_no||'—')}${!r.blank && r.e.pay_method ? `<div style="font-size:10px;opacity:.65;">${esc(feeMethodLabel(r.e.pay_method))}</div>` : ''}</td>
               <td>${r.blank ? '—' : esc(fmtDate(r.e.pay_date)||'')}</td>
-              <td>${r.blank ? '' : `<button class="print-btn" title="${esc(t.print)}" onclick="printReceipt('${id}','${r.e.id}')">🖨️</button>`}</td>
-              <td>${r.blank ? '' : `<button class="print-btn" title="Send SMS to father" onclick="sendPaidReceiptSms('${id}','${r.mk}')">💬</button>`}</td>
-              <td>${r.blank ? '' : `<button class="del-x" onclick="deleteFeePayment('${r.e.id}','${id}')">✕</button>`}</td>
+              <td>${r.blank ? '' : `<button class="print-btn" title="${esc(t.print)}" onclick="printReceipt('${escJs(id)}','${escJs(r.e.id)}')">🖨️</button>`}</td>
+              <td>${r.blank ? '' : `<button class="print-btn" title="Send SMS to father" onclick="sendPaidReceiptSms('${escJs(id)}','${escJs(r.mk)}')">💬</button>`}</td>
+              <td>${r.blank ? '' : `<button class="del-x" onclick="deleteFeePayment('${escJs(r.e.id)}','${escJs(id)}')">✕</button>`}</td>
             </tr>`).join('')}
         </tbody>
       </table>
     </div>
     <div style="margin-top:16px;display:flex;gap:8px;">
-      <button class="btn-ghost" style="flex:1;" onclick="printFeeCard('${id}', ${startYear})">🖨️ ${esc(t.printCard)}</button>
+      <button class="btn-ghost" style="flex:1;" onclick="printFeeCard('${escJs(id)}', ${startYear})">🖨️ ${esc(t.printCard)}</button>
       ${s.status === 'inactive'
-        ? `<button class="btn-ghost" style="flex:1;" onclick="guardedSubmit(this, ()=>unstrikeStudent('${id}'))">${esc(t.restoreStudent)}</button>`
-        : `<button class="btn-ghost danger" style="flex:1;" onclick="confirmStrikeOffStudent('${id}')">${esc(t.strikeOffStudent)}</button>`}
-      <button class="btn-ghost danger" style="flex:1;" onclick="confirmDelete('student','${id}')">${esc(t.delete)}</button>
+        ? `<button class="btn-ghost" style="flex:1;" onclick="guardedSubmit(this, ()=>unstrikeStudent('${escJs(id)}'))">${esc(t.restoreStudent)}</button>`
+        : `<button class="btn-ghost danger" style="flex:1;" onclick="confirmStrikeOffStudent('${escJs(id)}')">${esc(t.strikeOffStudent)}</button>`}
+      <button class="btn-ghost danger" style="flex:1;" onclick="confirmDelete('student','${escJs(id)}')">${esc(t.delete)}</button>
     </div>
   `);
   feeMonthChanged(id);
@@ -8896,8 +8921,8 @@ function openFeeAdjust(studentId) {
     <label><span>${esc(qt('Reason / note (required)', 'وجہ / نوٹ (ضروری)'))}</span><input id="fa-note" placeholder="${esc(qt('e.g. fee waived by principal', 'مثلاً پرنسپل کی طرف سے معاف'))}"></label>
     <div id="fa-preview" style="margin:8px 0;font-size:13px;line-height:1.5;"></div>
     <div class="flexgap">
-      <button class="btn-ghost" onclick="openStudentDetail('${studentId}')">${esc(t.cancel)}</button>
-      <button class="btn-primary" style="flex:1" onclick="guardedSubmit(this, ()=>submitFeeAdjust('${studentId}'))">${esc(t.save)}</button>
+      <button class="btn-ghost" onclick="openStudentDetail('${escJs(studentId)}')">${esc(t.cancel)}</button>
+      <button class="btn-primary" style="flex:1" onclick="guardedSubmit(this, ()=>submitFeeAdjust('${escJs(studentId)}'))">${esc(t.save)}</button>
     </div>`);
   feeAdjRefresh(studentId);
 }
@@ -9001,8 +9026,8 @@ function lfBannerHtml() {
     const n = lfCalc(mk).length; if (!n) return '';
     return `<div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;padding:9px 11px;border-radius:12px;background:rgba(200,150,40,.14);font-size:12.5px;line-height:1.45;">
       <div style="flex:1;">⏰ ${esc(qt(n + ' students still owe the ' + monthLabel(mk) + ' fee and no late fee has been applied.', n + ' طلبہ کی ' + monthLabel(mk) + ' کی فیس باقی ہے اور جرمانہ ابھی نہیں لگا۔'))}</div>
-      <button class="btn-ghost" style="flex:none;padding:6px 10px;font-size:12px;" onclick="openApplyLateFee('${mk}')">${esc(qt('Apply', 'لگائیں'))}</button>
-      <button class="btn-ghost" style="flex:none;padding:6px 10px;font-size:12px;" title="${esc(qt('Not needed', 'ضرورت نہیں'))}" onclick="lfDismiss('${mk}')">✕</button></div>`;
+      <button class="btn-ghost" style="flex:none;padding:6px 10px;font-size:12px;" onclick="openApplyLateFee('${escJs(mk)}')">${esc(qt('Apply', 'لگائیں'))}</button>
+      <button class="btn-ghost" style="flex:none;padding:6px 10px;font-size:12px;" title="${esc(qt('Not needed', 'ضرورت نہیں'))}" onclick="lfDismiss('${escJs(mk)}')">✕</button></div>`;
   } catch (e) { return ''; }
 }
 function lfDismiss(mk) { try { localStorage.setItem('sms_lf_dismiss_' + mk, '1'); } catch (e) {} if (TAB) safeRenderTab(); }
@@ -9154,8 +9179,8 @@ function confirmStrikeOffStudent(id) {
       <input id="so-reason" style="display:none;margin-top:6px;" placeholder="${esc(qt('Write the reason', 'وجہ لکھیں'))}">
     </label>
     <div class="flexgap">
-      <button class="btn-ghost" onclick="openStudentDetail('${id}')">${esc(t.no)}</button>
-      <button class="btn-primary" style="flex:1;background:var(--rust);" onclick="guardedSubmit(this, ()=>strikeOffStudent('${id}'))">${esc(t.yes)}</button>
+      <button class="btn-ghost" onclick="openStudentDetail('${escJs(id)}')">${esc(t.no)}</button>
+      <button class="btn-primary" style="flex:1;background:var(--rust);" onclick="guardedSubmit(this, ()=>strikeOffStudent('${escJs(id)}'))">${esc(t.yes)}</button>
     </div>
   `);
 }
@@ -9297,7 +9322,7 @@ function openConcessionReport() {
   const reasonHtml = CONCESSION_REASONS.filter(k => byReason[k]).map(k =>
     `<div style="display:flex;justify-content:space-between;padding:4px 0;"><span>${esc(concessionReasonLabel(k))} (${byReason[k].n})</span><b>₨${fmt(byReason[k].sum)}</b></div>`).join('');
   const listHtml = rows.map(r => `
-    <button class="card-btn" onclick="closeModal(); openStudentDetail('${r.s.id}')">
+    <button class="card-btn" onclick="closeModal(); openStudentDetail('${escJs(r.s.id)}')">
       <div><div class="nm">${esc(r.s.name)}</div>
         <div class="sub">${esc(r.s.class_name || '')} · ${esc(concessionReasonLabel(r.s.concession_reason))}</div></div>
       <div style="text-align:end;"><div>₨${fmt(r.gross)} → <b>₨${fmt(r.gross - r.c)}</b></div><div class="sub">−₨${fmt(r.c)}</div></div>
@@ -9586,8 +9611,8 @@ function deleteFeePayment(paymentId, studentId) {
     <label>${esc(hasMoney ? qt('Reason for deleting (required)', 'حذف کرنے کی وجہ (ضروری)') : qt('Reason (optional)', 'وجہ (اختیاری)'))}
       <textarea id="del-reason" rows="2" placeholder="${esc(qt('e.g. entered twice by mistake', 'مثلاً غلطی سے دو بار درج ہو گئی'))}"></textarea></label>
     <div class="flexgap" style="margin-top:12px;">
-      <button class="btn-ghost" onclick="openStudentDetail('${studentId}')">${esc(t.no)}</button>
-      <button class="btn-primary" style="flex:1;background:var(--rust);" onclick="guardedSubmit(this, ()=>doDeleteFeePayment('${paymentId}','${studentId}',${hasMoney ? 'true' : 'false'}))">${esc(t.yes)}</button>
+      <button class="btn-ghost" onclick="openStudentDetail('${escJs(studentId)}')">${esc(t.no)}</button>
+      <button class="btn-primary" style="flex:1;background:var(--rust);" onclick="guardedSubmit(this, ()=>doDeleteFeePayment('${escJs(paymentId)}','${escJs(studentId)}',${hasMoney ? 'true' : 'false'}))">${esc(t.yes)}</button>
     </div>`);
 }
 async function doDeleteFeePayment(paymentId, studentId, reasonRequired) {
@@ -9746,7 +9771,7 @@ function tplTeachersResults() {
           const left = teacherIsLeft(tc);
           const due = left ? 0 : teacherMonthDue(tc, cur);
           return `
-          <button class="card-btn" onclick="openTeacherDetail('${tc.id}')">
+          <button class="card-btn" onclick="openTeacherDetail('${escJs(tc.id)}')">
             <div><div class="nm">${esc(tc.name)}</div><div class="sub">${esc(tc.subject||'')}</div></div>
             <span class="pill ${left ? 'free' : due>0?'bad':'good'}">${left ? esc(qt('Left', 'چھوڑ گئے')) : due>0 ? '₨'+fmt(due)+' '+esc(t.due) : esc(t.paid)}</span>
           </button>`;
@@ -9811,8 +9836,8 @@ function openEditTeacher(id) {
     <label><span>${esc(t.joinDate)}</span><input id="f-join" type="date" value="${esc(String(tc.join_date || '').slice(0, 10))}"></label>
     <label><span>${esc(t.contact)}</span><input id="f-contact" type="tel" value="${esc(tc.contact || '')}" placeholder="03XXXXXXXXX"></label>
     <div class="flexgap">
-      <button class="btn-ghost" onclick="openTeacherDetail('${id}')">${esc(t.cancel)}</button>
-      <button class="btn-primary" style="flex:1" onclick="guardedSubmit(this, () => submitEditTeacher('${id}'))">${esc(t.save)}</button>
+      <button class="btn-ghost" onclick="openTeacherDetail('${escJs(id)}')">${esc(t.cancel)}</button>
+      <button class="btn-primary" style="flex:1" onclick="guardedSubmit(this, () => submitEditTeacher('${escJs(id)}'))">${esc(t.save)}</button>
     </div>`);
 }
 async function submitEditTeacher(id) {
@@ -9849,8 +9874,8 @@ function confirmStrikeOffTeacher(id) {
     <p style="font-size:13px;margin-bottom:10px;">${esc(qt('The teacher is hidden from the active list, attendance and unpaid-salary reminders. All salary, attendance and advance history is kept. You can bring the teacher back later.', 'استاد فعال فہرست، حاضری اور بقایا تنخواہ کی یاد دہانی سے ہٹ جائے گا۔ تنخواہ، حاضری اور ایڈوانس کی تمام تاریخ محفوظ رہے گی۔ بعد میں واپس لایا جا سکتا ہے۔'))}</p>
     <label><span>${esc(qt('Last working day', 'آخری کام کا دن'))}</span><input id="tl-date" type="date" max="${todayISO()}" value="${todayISO()}"></label>
     <div class="flexgap">
-      <button class="btn-ghost" onclick="openTeacherDetail('${id}')">${esc(t.cancel)}</button>
-      <button class="btn-primary" style="flex:1;background:var(--rust);" onclick="guardedSubmit(this, () => setTeacherStatus('${id}','left'))">${esc(t.yes)}</button>
+      <button class="btn-ghost" onclick="openTeacherDetail('${escJs(id)}')">${esc(t.cancel)}</button>
+      <button class="btn-primary" style="flex:1;background:var(--rust);" onclick="guardedSubmit(this, () => setTeacherStatus('${escJs(id)}','left'))">${esc(t.yes)}</button>
     </div>`);
 }
 async function setTeacherStatus(id, status) {
@@ -9908,7 +9933,7 @@ function openMarkAttendance() {
     <div id="attendance-roster">${renderAttendanceRoster()}</div>
     <div class="flexgap" style="margin-top:12px;">
       <button class="btn-ghost" onclick="closeModal()">${esc(t.cancel)}</button>
-      <button class="btn-primary" style="flex:1" onclick="guardedSubmit(this, ()=>submitAttendance('${date}'))">${esc(t.saveAttendance)}</button>
+      <button class="btn-primary" style="flex:1" onclick="guardedSubmit(this, ()=>submitAttendance('${escJs(date)}'))">${esc(t.saveAttendance)}</button>
     </div>
   `);
 }
@@ -9917,7 +9942,7 @@ function renderAttendanceRoster() {
   if (!activeTeachers().length) return `<div class="empty">${esc(t.noTeachers)}</div>`;
   const opt = (id, session, val, label, color) => {
     const cur = (attendanceDraft[id] || {})[session];
-    return `<button type="button" onclick="setAttendanceMark('${id}','${session}','${val}')" style="flex:1;padding:6px 3px;border-radius:8px;font-size:10.5px;font-weight:600;border:1.5px solid ${cur===val?color:'var(--line)'};background:${cur===val?color:'#fff'};color:${cur===val?'#fff':'var(--ink)'};">${esc(label)}</button>`;
+    return `<button type="button" onclick="setAttendanceMark('${escJs(id)}','${escJs(session)}','${escJs(val)}')" style="flex:1;padding:6px 3px;border-radius:8px;font-size:10.5px;font-weight:600;border:1.5px solid ${cur===val?color:'var(--line)'};background:${cur===val?color:'#fff'};color:${cur===val?'#fff':'var(--ink)'};">${esc(label)}</button>`;
   };
   return activeTeachers().map(tc => `
     <div style="border-bottom:1px solid var(--line);padding:8px 0;">
@@ -10150,14 +10175,14 @@ function tplTeacherRegister() {
     const wk = d.toLocaleDateString(LANG==='ur'?'ur-PK':'en-PK', { weekday:'short' });
     const sunday = isSunday(date);
     const holiday = isHoliday(date);
-    const dateCell = `<td class="date-col" style="${sunday?'':'cursor:pointer;'}" ${sunday?'':`onclick="toggleHoliday('${date}')"`}>${dayNum} <span style="font-weight:400;opacity:.6;font-size:9.5px;">${esc(wk)}</span></td>`;
+    const dateCell = `<td class="date-col" style="${sunday?'':'cursor:pointer;'}" ${sunday?'':`onclick="toggleHoliday('${escJs(date)}')"`}>${dayNum} <span style="font-weight:400;opacity:.6;font-size:9.5px;">${esc(wk)}</span></td>`;
     if (holiday) {
       return `<tr class="hol-row">${dateCell}<td colspan="${colCount-1}" style="font-style:italic;opacity:.65;font-weight:600;">${esc(t.holiday)}${sunday?'':` · ${esc(t.tapToUnmark)}`}</td></tr>`;
     }
     const cells = teachersToShow.map(tc => {
       const am = registerCellInfo(tc.id, date, 'am');
       const pm = registerCellInfo(tc.id, date, 'pm');
-      const cell = (info, session) => `<td style="cursor:pointer;color:${registerCellColor(info.status)};" onclick="registerCycleMark('${tc.id}','${date}','${session}')">${esc(info.code)}</td>`;
+      const cell = (info, session) => `<td style="cursor:pointer;color:${registerCellColor(info.status)};" onclick="registerCycleMark('${escJs(tc.id)}','${escJs(date)}','${escJs(session)}')">${esc(info.code)}</td>`;
       return cell(am,'am') + cell(pm,'pm');
     }).join('');
     return `<tr>${dateCell}${cells}</tr>`;
@@ -10261,8 +10286,8 @@ function tplClassLogins() {
             <div style="display:flex;justify-content:space-between;align-items:center;">
               <div><div class="nm">${esc(cl.class_name)}</div><div class="sub">${cl.teacher_name ? esc(cl.teacher_name) + ' · ' : ''}${esc(t.loginId)}: ${esc(cl.login_id)}</div></div>
               <div style="display:flex;gap:6px;">
-                <button title="${esc(t.editClassLogin)}" style="background:none;border:none;font-size:15px;padding:4px;" onclick="openAddClassLogin('${cl.id}')">✎</button>
-                <button title="${esc(t.delete)}" style="background:none;border:none;color:var(--rust);font-size:15px;padding:4px;" onclick="confirmDelete('classLogin','${cl.id}')">🗑️</button>
+                <button title="${esc(t.editClassLogin)}" style="background:none;border:none;font-size:15px;padding:4px;" onclick="openAddClassLogin('${escJs(cl.id)}')">✎</button>
+                <button title="${esc(t.delete)}" style="background:none;border:none;color:var(--rust);font-size:15px;padding:4px;" onclick="confirmDelete('classLogin','${escJs(cl.id)}')">🗑️</button>
               </div>
             </div>
             <div class="flexgap" style="margin-top:10px;">
@@ -10398,13 +10423,7 @@ function ttTimeProblem() {
   for (let i = 1; i < spans.length; i++) if (spans[i][0] < spans[i - 1][1]) return spans[i - 1][2] + ' / ' + spans[i][2] + ': ' + qt('times overlap', 'اوقات آپس میں ٹکرا رہے ہیں');
   return '';
 }
-function ttSaveBreakTime(field, value) {
-  const old = field === 'start' ? ttBreakStart : ttBreakEnd;
-  if (field === 'start') ttBreakStart = value; else ttBreakEnd = value;
-  const bad = ttTimeProblem();
-  if (bad) { if (field === 'start') ttBreakStart = old; else ttBreakEnd = old; alert(bad); renderTab(); return; }
-  saveTimetableSettings();
-}
+function ttSaveBreakTime(field, value) { ttApplyTimeEdit('b', 0, field, value); }
 
 // "Manage Classes" — lets a school hide the class rows it doesn't have
 // (a school that only goes up to 5th, say, unticks 6th–12th) without
@@ -10462,13 +10481,41 @@ async function saveTimetableCell(className, period, field, value) {
   }
 }
 
-async function savePeriodTime(period, field, value) {
-  const prev = ttPeriodTimes[period];
-  ttPeriodTimes[period] = { ...(prev || {}), [field]: value };
-  const bad = ttTimeProblem();
-  if (bad) { if (prev) ttPeriodTimes[period] = prev; else delete ttPeriodTimes[period]; alert(bad); renderTab(); return; }
-  ttLocalWrite();
+// ---- Cascading time edit -------------------------------------------------
+// Changing ANY time (a period's start/end, or the break's start/end) moves every
+// later time by the same amount (forward or backward). Everything stays editable.
+function ttFmtMin(m) { m = ((m % 1440) + 1440) % 1440; return String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(m % 60).padStart(2, '0'); }
+function ttShiftTimes(kind, period, field, value) {
+  // timeline = [{get,set}] in left-to-right order: P1 start, P1 end, (break start, end), P2 start, ...
+  const items = [];
+  for (let p = 1; p <= ttPeriods; p++) {
+    items.push({ k: 'p', p, f: 'start_time' }, { k: 'p', p, f: 'end_time' });
+    if (ttBreakAfter === p) items.push({ k: 'b', f: 'start' }, { k: 'b', f: 'end' });
+  }
+  const get = it => it.k === 'p' ? ((ttPeriodTimes[it.p] || {})[it.f] || '') : (it.f === 'start' ? ttBreakStart : ttBreakEnd);
+  const set = (it, v) => { if (it.k === 'p') ttPeriodTimes[it.p] = { ...(ttPeriodTimes[it.p] || {}), [it.f]: v }; else if (it.f === 'start') ttBreakStart = v; else ttBreakEnd = v; };
+  const idx = items.findIndex(it => kind === 'p' ? (it.k === 'p' && it.p === period && it.f === field) : (it.k === 'b' && it.f === field));
+  if (idx < 0) return;
+  const oldMin = ttMin(get(items[idx])), newMin = ttMin(value);
+  set(items[idx], value);
+  if (oldMin == null || newMin == null) return;           // first time being filled in: nothing to shift
+  const delta = newMin - oldMin;
+  if (!delta) return;
+  // editing a START also moves its own END (keeps the same length); editing an END keeps its own start
+  for (let i = idx + 1; i < items.length; i++) {
+    const m = ttMin(get(items[i]));
+    if (m != null) set(items[i], ttFmtMin(m + delta));
+  }
 }
+function ttSnapshotTimes() { return JSON.stringify({ t: ttPeriodTimes, bs: ttBreakStart, be: ttBreakEnd }); }
+function ttRestoreTimes(snap) { const o = JSON.parse(snap); ttPeriodTimes = o.t; ttBreakStart = o.bs; ttBreakEnd = o.be; }
+function ttApplyTimeEdit(kind, period, field, value) {
+  // No validation: any time is accepted and saved as typed (e.g. start 10:00 AM, end 9:00 AM is fine).
+  ttShiftTimes(kind, period, field, value);
+  ttLocalWrite();
+  renderTab();
+}
+async function savePeriodTime(period, field, value) { ttApplyTimeEdit('p', period, field, value); }
 
 // Lightweight logo upload for the Timetable header — reuses the same school
 // logo/name shown on certificates (dmcLogo/dmcSchoolName, saved via
@@ -10728,7 +10775,7 @@ function ttOpenAssign() {
     return `<div style="border:1px solid var(--line);border-radius:8px;padding:8px;margin-bottom:8px;">
       <div style="display:flex;gap:6px;align-items:flex-start;">
         <textarea dir="auto" rows="3" style="flex:1;min-width:0;width:100%;padding:8px;border:1px solid var(--line);border-radius:8px;font-family:inherit;font-size:14px;" placeholder="Azhar sir, Islamiat 2nd, Urdu 3rd, Islamiat 4th" onchange="ttTchSet('${t.id}', this.value)">${esc(t.text)}</textarea>
-        <button class="btn-ghost" style="padding:4px 10px;" onclick="ttTchDel('${t.id}')">✕</button>
+        <button class="btn-ghost" style="padding:4px 10px;" onclick="ttTchDel('${escJs(t.id)}')">✕</button>
       </div>
       ${p.name ? `<div style="font-size:11px;margin-top:5px;"><b>${esc(p.name)}</b>${sum ? ' — ' + sum : ''}</div>` : ''}
       ${p.dup.length ? `<div style="font-size:11px;opacity:.7;margin-top:3px;">${esc(qt('Written twice, counted once: ', 'دو بار لکھا، ایک بار گنا: ') + p.dup.join(', '))}</div>` : ''}
@@ -11064,7 +11111,7 @@ function openAddClassLogin(id) {
     <div id="cl-msg"></div>
     <div class="flexgap">
       <button class="btn-ghost" onclick="closeModal()">${esc(t.cancel)}</button>
-      <button class="btn-primary" style="flex:1" onclick="guardedSubmit(this, ()=>submitClassLogin('${existing?existing.id:''}'))">${esc(t.save)}</button>
+      <button class="btn-primary" style="flex:1" onclick="guardedSubmit(this, ()=>submitClassLogin('${escJs(existing?existing.id:'')}'))">${esc(t.save)}</button>
     </div>
   `);
 }
@@ -11261,14 +11308,14 @@ function openTeacherDetail(id) {
     ${teacherIsLeft(tc) ? `<div style="padding:8px 10px;border-radius:10px;background:rgba(150,150,150,.15);font-size:12px;margin-bottom:10px;">${esc(qt('Left the school', 'ادارہ چھوڑ گئے'))}${tc.left_date ? ': ' + esc(fmtDate(tc.left_date)) : ''}</div>` : ''}
     <div class="greenbox"><div class="lbl">${esc(t.totalSalariesAllTime)}</div><div class="val">₨${fmt(totalPaid)}</div></div>
     <div class="flexgap" style="margin:10px 0 0;">
-       <button class="btn-ghost" onclick="openEditTeacher('${id}')">✏️ ${esc(qt('Edit', 'ترمیم'))}</button>
+       <button class="btn-ghost" onclick="openEditTeacher('${escJs(id)}')">✏️ ${esc(qt('Edit', 'ترمیم'))}</button>
        ${teacherIsLeft(tc)
-         ? `<button class="btn-ghost" onclick="guardedSubmit(this, () => setTeacherStatus('${id}','active'))">↩ ${esc(qt('Bring back', 'واپس لائیں'))}</button>`
-         : `<button class="btn-ghost" onclick="confirmStrikeOffTeacher('${id}')">🚪 ${esc(qt('Has left', 'چھوڑ گئے'))}</button>`}
+         ? `<button class="btn-ghost" onclick="guardedSubmit(this, () => setTeacherStatus('${escJs(id)}','active'))">↩ ${esc(qt('Bring back', 'واپس لائیں'))}</button>`
+         : `<button class="btn-ghost" onclick="confirmStrikeOffTeacher('${escJs(id)}')">🚪 ${esc(qt('Has left', 'چھوڑ گئے'))}</button>`}
     </div>
     <div class="flexgap" style="margin:10px 0;">
-       <button class="btn-ghost" onclick="openStaffAdvances('${id}')">💸 ${esc(qt('Advance / Loan', 'ایڈوانس / قرض'))}${(STF.loaded && !STF.err && stfTeacherOutstanding(id) > 0) ? ' · ₨' + fmt(stfTeacherOutstanding(id)) : ''}</button>
-       <button class="btn-ghost" onclick="openStaffLeaves('${id}')">🗓 ${esc(qt('Leave', 'چھٹی'))}</button>
+       <button class="btn-ghost" onclick="openStaffAdvances('${escJs(id)}')">💸 ${esc(qt('Advance / Loan', 'ایڈوانس / قرض'))}${(STF.loaded && !STF.err && stfTeacherOutstanding(id) > 0) ? ' · ₨' + fmt(stfTeacherOutstanding(id)) : ''}</button>
+       <button class="btn-ghost" onclick="openStaffLeaves('${escJs(id)}')">🗓 ${esc(qt('Leave', 'چھٹی'))}</button>
      </div>
      <div class="section-title" style="margin-top:0;">${esc(t.payMonth)}</div>
     <div class="row2">
@@ -11287,7 +11334,7 @@ function openTeacherDetail(id) {
       <label style="margin-bottom:0;"><span>${esc(qt('Payment method', 'ادائیگی کا طریقہ'))}</span><select id="p-method">${feeMethodOptions(lastFeeMethod())}</select></label>
     </div>
     ${salColsWarnHtml()}
-    <div style="margin-top:8px;"><button class="btn-primary" onclick="guardedSubmit(this, ()=>submitSalaryPayment('${id}'))">+ ${esc(t.save)}</button></div>
+    <div style="margin-top:8px;"><button class="btn-primary" onclick="guardedSubmit(this, ()=>submitSalaryPayment('${escJs(id)}'))">+ ${esc(t.save)}</button></div>
     <div class="section-title">${esc(t.salaryLedger)}</div>
     <div class="ledger">
       ${payments.length===0 ? `<div style="padding:10px;text-align:center;font-size:12px;opacity:.5;">—</div>` :
@@ -11302,12 +11349,12 @@ function openTeacherDetail(id) {
             <div style="font-size:12px;">${esc(monthLabel(p.month))} <span style="opacity:.5;">· ${esc(fmtDate(p.pay_date))}</span>${breakdown}</div>
             <div style="display:flex;align-items:center;gap:8px;">
               <span class="amt-neg">₨${fmt(p.amount)}</span>
-              <button class="print-btn" title="${esc(t.print)}" onclick="printSalaryVoucher('${p.id}','${id}')">🖨️</button>
-              <button class="del-btn" onclick="deleteSalaryPayment('${p.id}','${id}')">✕</button>
+              <button class="print-btn" title="${esc(t.print)}" onclick="printSalaryVoucher('${escJs(p.id)}','${escJs(id)}')">🖨️</button>
+              <button class="del-btn" onclick="deleteSalaryPayment('${escJs(p.id)}','${escJs(id)}')">✕</button>
             </div>
           </div>`;}).join('')}
     </div>
-    <div style="margin-top:16px;"><button class="btn-ghost danger" onclick="confirmDelete('teacher','${id}')">${esc(t.delete)}</button></div>
+    <div style="margin-top:16px;"><button class="btn-ghost danger" onclick="confirmDelete('teacher','${escJs(id)}')">${esc(t.delete)}</button></div>
   `);
   updateAttendanceSalaryInfo(id);
 }
@@ -11411,8 +11458,8 @@ function deleteSalaryPayment(paymentId, teacherId) {
     <label>${esc(qt('Reason for deleting (required)', 'حذف کرنے کی وجہ (ضروری)'))}
       <textarea id="del-reason" rows="2" placeholder="${esc(qt('e.g. entered twice by mistake', 'مثلاً غلطی سے دو بار درج ہو گئی'))}"></textarea></label>
     <div class="flexgap" style="margin-top:12px;">
-      <button class="btn-ghost" onclick="openTeacherDetail('${teacherId}')">${esc(t.no)}</button>
-      <button class="btn-primary" style="flex:1;background:var(--rust);" onclick="guardedSubmit(this, () => doDeleteSalaryPayment('${paymentId}','${teacherId}'))">${esc(t.yes)}</button>
+      <button class="btn-ghost" onclick="openTeacherDetail('${escJs(teacherId)}')">${esc(t.no)}</button>
+      <button class="btn-primary" style="flex:1;background:var(--rust);" onclick="guardedSubmit(this, () => doDeleteSalaryPayment('${escJs(paymentId)}','${escJs(teacherId)}'))">${esc(t.yes)}</button>
     </div>`);
 }
 async function doDeleteSalaryPayment(paymentId, teacherId) {
@@ -11578,7 +11625,7 @@ async function openLessonPlans(useCache) {
   showModal(qt('Lesson Plans', 'لیسن پلان'), `<div id="lpv-body" style="padding:10px 0;text-align:center;opacity:.6;">…</div>`);
   if (!useCache || !LPV.loaded) {
     if (!navigator.onLine) { document.getElementById('lpv-body').innerHTML = `<div class="err">${esc(qt('You are offline. Connect to the internet to view lesson plans.', 'آپ آف لائن ہیں۔ لیسن پلان دیکھنے کے لیے انٹرنیٹ سے جڑیں۔'))}</div>`; return; }
-    const { data, error } = await sb.from('lesson_plans').select('*').order('updated_at', { ascending: false }).limit(300);
+    const { data, error } = await fetchAll(() => sb.from('lesson_plans').select('*').order('updated_at', { ascending: false }));
     LPV.err = !!error; LPV.rows = data || []; LPV.loaded = !error;
   }
   lpvRender();
@@ -11599,7 +11646,7 @@ function lpvRender() {
       ${sel('st', [['', qt('All', 'سب')], ['submitted', qt('Not seen', 'نہیں دیکھے')], ['seen', qt('Seen', 'دیکھ لیے')]])}
     </div>
     ${rows.length ? rows.map(r => `
-      <button class="card-btn" onclick="openLessonPlan('${r.id}')">
+      <button class="card-btn" onclick="openLessonPlan('${escJs(r.id)}')">
         <div><div class="nm">${esc(r.class_name)} · ${esc(r.subject)}</div>
           <div class="sub">${esc(lpTypeLabel(r.plan_type))} · ${esc(lpPeriodLabel(r.plan_type, r.period_start))}${r.teacher_name ? ' · ' + esc(r.teacher_name) : ''}</div></div>
         ${lpStatusPill(r.status)}
@@ -11611,7 +11658,7 @@ function openLessonPlan(id) {
     <div style="font-size:12px;opacity:.7;margin-bottom:8px;">${esc(lpTypeLabel(r.plan_type))} · ${esc(lpPeriodLabel(r.plan_type, r.period_start))}${r.teacher_name ? ' · ' + esc(r.teacher_name) : ''}<br>${esc(qt('Updated', 'اپ ڈیٹ'))}: ${esc(fmtDate(String(r.updated_at).slice(0, 10)))}</div>
     <div dir="auto" style="white-space:pre-wrap;background:#fff;border:1px solid var(--line);border-radius:10px;padding:12px;font-size:14px;line-height:1.7;">${esc(r.content)}</div>
     <div class="field-box" style="margin-top:12px;"><label><span>${esc(qt("Principal's note (optional)", 'پرنسپل کا نوٹ (اختیاری)'))}</span><input id="lpv-note" dir="auto" value="${esc(r.principal_note || '')}"></label></div>
-    <button class="btn-primary" onclick="guardedSubmit(this, ()=>lpvMarkSeen('${r.id}'))">✓ ${esc(r.status === 'seen' ? qt('Save note', 'نوٹ محفوظ کریں') : qt('Mark as seen', 'دیکھ لیا'))}</button>
+    <button class="btn-primary" onclick="guardedSubmit(this, ()=>lpvMarkSeen('${escJs(r.id)}'))">✓ ${esc(r.status === 'seen' ? qt('Save note', 'نوٹ محفوظ کریں') : qt('Mark as seen', 'دیکھ لیا'))}</button>
     <button class="btn-ghost" style="width:100%;margin-top:8px;" onclick="openLessonPlans(true)">← ${esc(qt('All lesson plans', 'تمام لیسن پلان'))}</button>`);
 }
 async function lpvMarkSeen(id) {
@@ -11772,8 +11819,8 @@ async function openStaffLeaves(teacherId) {
         ${pill(lv.status)}
       </div>${actions}</div>`;
   const pendActions = lv => `<div style="display:flex;gap:8px;">
-      <button class="btn-primary" style="flex:1;padding:8px;" onclick="guardedSubmit(this, ()=>stfDecideLeave('${lv.id}','approved'))">${esc(qt('Approve', 'منظور'))}</button>
-      <button class="btn-ghost" style="flex:1;padding:8px;" onclick="guardedSubmit(this, ()=>stfDecideLeave('${lv.id}','rejected'))">${esc(qt('Reject', 'مسترد'))}</button>
+      <button class="btn-primary" style="flex:1;padding:8px;" onclick="guardedSubmit(this, ()=>stfDecideLeave('${escJs(lv.id)}','approved'))">${esc(qt('Approve', 'منظور'))}</button>
+      <button class="btn-ghost" style="flex:1;padding:8px;" onclick="guardedSubmit(this, ()=>stfDecideLeave('${escJs(lv.id)}','rejected'))">${esc(qt('Reject', 'مسترد'))}</button>
     </div>`;
   const ok = STF.loaded && !STF.err && !STF.cached;
   const form = !ok ? '' : `
@@ -11864,7 +11911,7 @@ async function openStaffAdvances(teacherId) {
         </div>
         <div style="text-align:right;white-space:nowrap;">
           <span class="pill ${out > 0 ? 'bad' : 'good'}">${out > 0 ? '₨' + fmt(out) + ' ' + esc(qt('left', 'باقی')) : esc(qt('Cleared', 'ادا'))}</span>
-          <button class="print-btn" title="${esc(qt('Edit', 'ترمیم'))}" onclick="stfEditAdvance('${a.id}')">✏️</button>${rec <= 0 ? `<button class="del-btn" onclick="stfDeleteAdvance('${a.id}')">✕</button>` : ''}
+          <button class="print-btn" title="${esc(qt('Edit', 'ترمیم'))}" onclick="stfEditAdvance('${escJs(a.id)}')">✏️</button>${rec <= 0 ? `<button class="del-btn" onclick="stfDeleteAdvance('${escJs(a.id)}')">✕</button>` : ''}
         </div>
       </div></div>`;
   };
@@ -11928,8 +11975,8 @@ function stfDeleteAdvance(id) {
     <p style="font-size:13px;color:var(--rust);margin-bottom:10px;">${esc(qt('This removes the advance from the list and from the Day Book for good.', 'اس سے ایڈوانس فہرست اور روزنامچے سے ہمیشہ کے لیے ہٹ جائے گا۔'))}</p>
     <label>${esc(qt('Reason for deleting (required)', 'حذف کرنے کی وجہ (ضروری)'))}<textarea id="del-reason" rows="2"></textarea></label>
     <div class="flexgap" style="margin-top:12px;">
-      <button class="btn-ghost" onclick="openStaffAdvances('${STF_AD_TEACHER}')">${esc(t.no)}</button>
-      <button class="btn-primary" style="flex:1;background:var(--rust);" onclick="guardedSubmit(this, () => doStfDeleteAdvance('${id}'))">${esc(t.yes)}</button>
+      <button class="btn-ghost" onclick="openStaffAdvances('${escJs(STF_AD_TEACHER)}')">${esc(t.no)}</button>
+      <button class="btn-primary" style="flex:1;background:var(--rust);" onclick="guardedSubmit(this, () => doStfDeleteAdvance('${escJs(id)}'))">${esc(t.yes)}</button>
     </div>`);
 }
 async function doStfDeleteAdvance(id) {
@@ -11965,8 +12012,8 @@ function stfEditAdvance(id) {
     <div class="field-box"><label><span>${esc(qt('Why are you changing it? (required if you change anything)', 'تبدیلی کی وجہ (کچھ بدلیں تو ضروری)'))}</span><input id="se-why"></label></div>
     ${rec > 0 ? `<div style="font-size:12px;opacity:.7;margin-bottom:8px;">${esc(qt('₨' + fmt(rec) + ' is already recovered, so the amount cannot go below that.', '₨' + fmt(rec) + ' پہلے کٹ چکے ہیں، اس لیے رقم اس سے کم نہیں ہو سکتی۔'))}</div>` : ''}
     <div class="flexgap">
-      <button class="btn-ghost" onclick="openStaffAdvances('${STF_AD_TEACHER}')">${esc(t.cancel)}</button>
-      <button class="btn-primary" style="flex:1" onclick="guardedSubmit(this, () => stfSaveAdvance('${id}'))">${esc(t.save)}</button>
+      <button class="btn-ghost" onclick="openStaffAdvances('${escJs(STF_AD_TEACHER)}')">${esc(t.cancel)}</button>
+      <button class="btn-primary" style="flex:1" onclick="guardedSubmit(this, () => stfSaveAdvance('${escJs(id)}'))">${esc(t.save)}</button>
     </div>`);
 }
 async function stfSaveAdvance(id) {
@@ -12101,9 +12148,9 @@ function tplFinance() {
             <div><div class="nm">${esc(txnDesc(x))}${linked.has(x.id) ? ' 🔗' : ''}</div><div class="sub">${isTransferTxn(x) ? '↔ ' + esc(qt('Transfer', 'منتقلی')) : esc(x.category||'')}${x.account_id ? ' · ' + esc(finAccName(x.account_id)) : ''} · ${esc(fmtDate(x.txn_date)||'')}</div></div>
             <div style="display:flex;align-items:center;gap:8px;">
               <span class="${x.type==='income'?'amt-pos':'amt-neg'}">${x.type==='income'?'+':'−'}₨${fmt(x.amount)}</span>
-              ${isTransferTxn(x) ? '' : `<button class="print-btn" title="${esc(qt('Edit', 'ترمیم'))}" onclick="openAddTxn('${x.id}')">✏️</button>
-              <button class="print-btn" title="${esc(t.print)}" onclick="printTxnVoucher('${x.id}')">🖨️</button>`}
-              <button class="del-btn" onclick="deleteTxn('${x.id}')">✕</button>
+              ${isTransferTxn(x) ? '' : `<button class="print-btn" title="${esc(qt('Edit', 'ترمیم'))}" onclick="openAddTxn('${escJs(x.id)}')">✏️</button>
+              <button class="print-btn" title="${esc(t.print)}" onclick="printTxnVoucher('${escJs(x.id)}')">🖨️</button>`}
+              <button class="del-btn" onclick="deleteTxn('${escJs(x.id)}')">✕</button>
             </div>
           </div>`).join('') + `</div>`}
         ${all.length > shown.length ? `<button class="btn-ghost" style="width:100%;margin-top:10px;" onclick="txnMore()">${esc(qt('Show more', 'مزید دکھائیں'))} (${all.length - shown.length})</button>` : ''}`}
@@ -12278,7 +12325,7 @@ function deleteTxn(id) {
       <textarea id="del-reason" rows="2" placeholder="${esc(qt('e.g. entered twice by mistake', 'مثلاً غلطی سے دو بار درج ہو گیا'))}"></textarea></label>
     <div class="flexgap" style="margin-top:12px;">
       <button class="btn-ghost" onclick="closeModal()">${esc(t.no)}</button>
-      <button class="btn-primary" style="flex:1;background:var(--rust);" onclick="guardedSubmit(this, () => doDeleteTxn('${id}'))">${esc(t.yes)}</button>
+      <button class="btn-primary" style="flex:1;background:var(--rust);" onclick="guardedSubmit(this, () => doDeleteTxn('${escJs(id)}'))">${esc(t.yes)}</button>
     </div>`);
 }
 async function doDeleteTxn(id) {
@@ -12497,7 +12544,7 @@ function finSetupNote() {
 // ---- Custom heads ----
 function openFinHeads() {
   const row = h => `<div class="list-row"><div><div class="nm">${esc(h.name)}</div><div class="sub">${h.type === 'income' ? esc(t.income) : esc(t.expense)}</div></div>
-    <div style="display:flex;gap:6px;"><button class="print-btn" title="${esc(qt('Edit', 'ترمیم'))}" onclick="openFinEdit('fin_heads','${h.id}')">✏️</button><button class="del-btn" onclick="finDelete('fin_heads','${h.id}')">✕</button></div></div>`;
+    <div style="display:flex;gap:6px;"><button class="print-btn" title="${esc(qt('Edit', 'ترمیم'))}" onclick="openFinEdit('fin_heads','${escJs(h.id)}')">✏️</button><button class="del-btn" onclick="finDelete('fin_heads','${escJs(h.id)}')">✕</button></div></div>`;
   showModal(qt('Custom Heads', 'اپنی مدات'), `${finSetupNote()}
     <div class="type-toggle"><button id="fh-income" onclick="finHeadType('income')">${esc(t.income)}</button><button id="fh-expense" class="on-expense" onclick="finHeadType('expense')">${esc(t.expense)}</button></div>
     <div class="field-box"><label><span>${esc(qt('Head name', 'مد کا نام'))}</span><input id="fh-name"></label></div>
@@ -12543,7 +12590,7 @@ function openFinEdit(table, id) {
     ${table === 'fin_accounts' ? `<div class="field-box"><label><span>${esc(qt('Opening balance (Rs)', 'ابتدائی بیلنس (روپے)'))}</span><input id="fe-open" type="number" value="${esc(row.opening_balance || 0)}"></label></div>` : `<div style="font-size:12px;opacity:.7;margin-bottom:10px;">${esc(qt('Renaming also updates the category of all existing entries of this head.', 'نام بدلنے سے اس مد کے تمام پرانے اندراجات کی مد بھی بدل جائے گی۔'))}</div>`}
     <div class="flexgap">
       <button class="btn-ghost" onclick="${table === 'fin_heads' ? 'openFinHeads()' : 'openFinAccounts()'}">${esc(t.cancel)}</button>
-      <button class="btn-primary" style="flex:1" onclick="guardedSubmit(this, () => finSaveEdit('${table}','${id}'))">${esc(t.save)}</button>
+      <button class="btn-primary" style="flex:1" onclick="guardedSubmit(this, () => finSaveEdit('${escJs(table)}','${escJs(id)}'))">${esc(t.save)}</button>
     </div>`);
 }
 async function finSaveEdit(table, id) {
@@ -12578,7 +12625,7 @@ async function finSaveEdit(table, id) {
 function openFinAccounts() {
   const row = a => `<div class="list-row"><div><div class="nm">${a.kind === 'bank' ? '🏦' : '💵'} ${esc(a.name)}</div>
     <div class="sub">${esc(qt('Opening', 'ابتدائی'))} ₨${fmt(a.opening_balance)} · ${esc(qt('Balance', 'بیلنس'))} ₨${fmt(finAccBalance(a))}</div></div>
-    <div style="display:flex;gap:6px;"><button class="print-btn" title="${esc(qt('Edit', 'ترمیم'))}" onclick="openFinEdit('fin_accounts','${a.id}')">✏️</button><button class="del-btn" onclick="finDelete('fin_accounts','${a.id}')">✕</button></div></div>`;
+    <div style="display:flex;gap:6px;"><button class="print-btn" title="${esc(qt('Edit', 'ترمیم'))}" onclick="openFinEdit('fin_accounts','${escJs(a.id)}')">✏️</button><button class="del-btn" onclick="finDelete('fin_accounts','${escJs(a.id)}')">✕</button></div></div>`;
   showModal(qt('Cash & Bank Accounts', 'کیش اور بینک اکاؤنٹس'), `${finSetupNote()}
     <div style="font-size:11.5px;opacity:.7;margin-bottom:10px;line-height:1.5;">${esc(qt('Fee collection and salaries are added to these balances automatically: Cash → your Cash account; Bank → your Bank account; JazzCash / EasyPaisa → an account with that name (otherwise your Bank account). Only money dated on or after the account was created is counted.', 'فیس کی وصولی اور تنخواہیں ان بیلنس میں خود شامل ہوتی ہیں: کیش ← آپ کا کیش اکاؤنٹ؛ بینک ← آپ کا بینک اکاؤنٹ؛ جاز کیش / ایزی پیسہ ← اسی نام کا اکاؤنٹ (ورنہ بینک اکاؤنٹ)۔ صرف اکاؤنٹ بننے کی تاریخ یا اس کے بعد کی رقم گنی جاتی ہے۔'))}</div>
     <div class="field-box"><label><span>${esc(qt('Account name', 'اکاؤنٹ کا نام'))}</span><input id="fa-name"></label></div>
@@ -12808,9 +12855,9 @@ async function openFinVendors() {
     const b = finvBalance(v.id);
     const lbl = b > 0 ? qt('Payable', 'ادا کرنا ہے') : b < 0 ? qt('Receivable', 'وصول کرنا ہے') : qt('Settled', 'برابر');
     const col = b > 0 ? '#d9534f' : b < 0 ? '#2e9e5b' : 'inherit';
-    return `<div class="list-row" style="cursor:pointer;" onclick="openFinVendor('${v.id}')"><div><div class="nm">${esc(v.name)}</div><div class="sub">${esc(finvKindLabel(v.kind))}${v.contact ? ' · ' + esc(v.contact) : ''}</div></div>
+    return `<div class="list-row" style="cursor:pointer;" onclick="openFinVendor('${escJs(v.id)}')"><div><div class="nm">${esc(v.name)}</div><div class="sub">${esc(finvKindLabel(v.kind))}${v.contact ? ' · ' + esc(v.contact) : ''}</div></div>
       <div style="text-align:right;margin-left:auto;"><div style="font-weight:700;color:${col};">Rs${fmt(Math.abs(b))}</div><div class="sub">${esc(lbl)}</div></div>
-      <button class="del-btn" onclick="event.stopPropagation();finvDeleteVendor('${v.id}')">✕</button></div>`;
+      <button class="del-btn" onclick="event.stopPropagation();finvDeleteVendor('${escJs(v.id)}')">✕</button></div>`;
   };
   const card = (label, val, color) => `<div class="card" style="padding:10px 12px;flex:1;min-width:120px;"><div style="font-size:11px;opacity:.65;">${esc(label)}</div><div style="font-weight:700;color:${color};">Rs${fmt(val)}</div></div>`;
   showModal(qt('Vendors / Suppliers / Agents', 'وینڈرز / سپلائرز / ایجنٹس'), `${finvSetupNote()}
@@ -12860,7 +12907,7 @@ async function openFinVendor(id) {
     run += (x.entry_type === 'bill' ? 1 : -1) * Number(x.amount || 0);
     return `<div class="list-row"><div><div class="nm">${x.entry_type === 'bill' ? esc(qt('Bill', 'بل')) : esc(qt('Paid', 'ادائیگی'))} · Rs${fmt(x.amount)}</div>
       <div class="sub">${esc(fmtDate(x.entry_date))}${x.note ? ' · ' + esc(x.note) : ''} · ${esc(qt('Balance', 'بیلنس'))} Rs${fmt(Math.round(run * 100) / 100)}</div></div>
-      <button class="del-btn" onclick="finvDeleteEntry('${x.id}')">✕</button></div>`;
+      <button class="del-btn" onclick="finvDeleteEntry('${escJs(x.id)}')">✕</button></div>`;
   }).reverse();
   const b = finvBalance(id);
   const lbl = b > 0 ? qt('Payable', 'ادا کرنا ہے') : b < 0 ? qt('Receivable', 'وصول کرنا ہے') : qt('Settled', 'برابر');
@@ -13153,9 +13200,9 @@ function tplReports() {
       <div class="list-card">
         ${defs.length === 0 ? `<div style="padding:16px;text-align:center;opacity:.5;font-size:13px;">—</div>` :
           pageRows.map(r => { const x = r.s; return `
-          <div class="list-row" style="cursor:pointer;" onclick="setTab('students'); openStudentDetail('${x.id}')">
+          <div class="list-row" style="cursor:pointer;" onclick="setTab('students'); openStudentDetail('${escJs(x.id)}')">
             <span style="font-size:13px;">${esc(x.name)}${esc(leftTag(x))}<span style="display:block;font-size:11px;opacity:.55;">${esc(x.father_name || '—')} · ${esc(x.class_name || '—')}${x.contact ? ' · ' + esc(x.contact) : ''}</span></span>
-            <span style="display:flex;align-items:center;gap:8px;"><span class="amt-neg">${money(r.bal)}</span>${x.contact ? `<button class="print-btn" title="WhatsApp" onclick="event.stopPropagation(); sendFeeRequestWhatsapp('${x.id}')">💬</button>` : ''}</span>
+            <span style="display:flex;align-items:center;gap:8px;"><span class="amt-neg">${money(r.bal)}</span>${x.contact ? `<button class="print-btn" title="WhatsApp" onclick="event.stopPropagation(); sendFeeRequestWhatsapp('${escJs(x.id)}')">💬</button>` : ''}</span>
           </div>`; }).join('')}
       </div>
       ${defs.length <= REP_PAGE ? '' : `
@@ -13280,7 +13327,7 @@ function openActivityHistory(kind, refId) {
   showModal(x.description||'—', `
     <div class="list-row"><span style="font-size:13px;opacity:.65;">${esc(t.dateCol)}</span><span style="font-size:13px;">${esc(fmtDate(x.txn_date)||'')}</span></div>
     <div class="list-row"><span style="font-size:13px;opacity:.65;">${esc(t.amount)}</span><span class="${x.type==='income'?'amt-pos':'amt-neg'}">${x.type==='income'?'+':'−'}₨${fmt(x.amount)}</span></div>
-    <button class="btn-ghost" style="width:100%;margin-top:14px;" onclick="printTxnVoucher('${x.id}')">🖨️ ${esc(t.print)}</button>
+    <button class="btn-ghost" style="width:100%;margin-top:14px;" onclick="printTxnVoucher('${escJs(x.id)}')">🖨️ ${esc(t.print)}</button>
   `);
 }
 
@@ -13843,7 +13890,7 @@ function tplDateSheet() {
     <th>
       <div style="display:flex;align-items:center;gap:2px;margin-bottom:3px;">
         <input type="date" value="${esc(c.date || '')}" style="flex:1;min-width:0;font-size:11px;padding:2px;" onchange="dsSetCol('${c.id}','date',this.value)">
-        <button class="del-x" style="padding:0 4px;" onclick="dsDeleteCol('${c.id}')">✕</button>
+        <button class="del-x" style="padding:0 4px;" onclick="dsDeleteCol('${escJs(c.id)}')">✕</button>
       </div>
       <div class="tt-period-label" id="ds-day-${c.id}">${esc(dsDayName(c.date))}</div>
       <div class="tt-period-time">
@@ -14059,8 +14106,8 @@ async function logCertificateIssued(certType, studentName, className, refId) {
   } catch (e) { /* non-critical */ }
 }
 async function loadCertificateLog() {
-  const { data, error } = await sb.from('certificate_log').select('*')
-    .eq('owner_id', CURRENT_USER.id).order('issued_at', { ascending: false }).limit(30);
+  const { data, error } = await fetchAll(() => sb.from('certificate_log').select('*')
+    .eq('owner_id', CURRENT_USER.id).order('issued_at', { ascending: false }));
   if (!error) certLogCache = data || [];
 }
 let dmcLogo = null; // base64 logo image
@@ -14580,7 +14627,7 @@ function dmcBgSrc() {
 }
 function dmcBgTileHtml(id, label, inner) {
   const on = dmcBgSelected() === id;
-  return `<button type="button" onclick="selectDMCBgPreset('${id}')" title="${esc(label)}" style="padding:0;margin:0;border:${on ? '3px solid #2E7D32' : '1px solid var(--line)'};border-radius:8px;overflow:hidden;background:#fff;cursor:pointer;position:relative;aspect-ratio:3/4;display:block;width:100%;">
+  return `<button type="button" onclick="selectDMCBgPreset('${escJs(id)}')" title="${esc(label)}" style="padding:0;margin:0;border:${on ? '3px solid #2E7D32' : '1px solid var(--line)'};border-radius:8px;overflow:hidden;background:#fff;cursor:pointer;position:relative;aspect-ratio:3/4;display:block;width:100%;">
     ${inner}
     ${on ? '<span style="position:absolute;top:4px;right:4px;background:#2E7D32;color:#fff;border-radius:50%;width:20px;height:20px;line-height:20px;font-size:12px;font-weight:700;text-align:center;">&#10003;</span>' : ''}
     <span style="position:absolute;left:0;right:0;bottom:0;background:rgba(15,39,64,.78);color:#fff;font-size:10px;line-height:1.2;padding:3px 4px;text-align:center;">${esc(label)}</span>
@@ -16513,7 +16560,7 @@ function dmcColorBoxHtml() {
   const pal = dmcLogoPaletteCache.src === dmcLogo ? dmcLogoPaletteCache.colors : [];
   if (dmcLogo && dmcLogoPaletteCache.src !== dmcLogo) dmcEnsurePalette();
   const cur = { primary: (d.primaryColor || '').toLowerCase(), accent: (d.accentColor || '').toLowerCase() };
-  const dot = (which, c) => `<button type="button" title="${c}" onclick="dmcPickColor('${which}','${c}')" style="width:32px;height:32px;border-radius:50%;padding:0;flex-shrink:0;background:${c};border:${cur[which] === c.toLowerCase() ? '3px solid #111' : '1px solid #bbb'};"></button>`;
+  const dot = (which, c) => `<button type="button" title="${c}" onclick="dmcPickColor('${escJs(which)}','${escJs(c)}')" style="width:32px;height:32px;border-radius:50%;padding:0;flex-shrink:0;background:${c};border:${cur[which] === c.toLowerCase() ? '3px solid #111' : '1px solid #bbb'};"></button>`;
   const row = which => {
     const light = pal.map(c => lightenColor(c, 0.55));
     return `<div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:6px 0;">
@@ -16678,8 +16725,8 @@ async function dmcCountArchiveOverwrites(results) {
     const rows = dmcBuildRecordRows(results);
     const classes = [...new Set(rows.map(r => r.class_name))];
     const { data, error } = await withTimeout(
-      sb.from('dmc_records').select('class_name,roll_no,student_name,marks,subjects')
-        .eq('owner_id', CURRENT_USER.id).eq('academic_year', dmcArchiveYear()).in('class_name', classes).limit(5000)
+      fetchAll(() => sb.from('dmc_records').select('class_name,roll_no,student_name,marks,subjects')
+        .eq('owner_id', CURRENT_USER.id).eq('academic_year', dmcArchiveYear()).in('class_name', classes))
     );
     if (error || !data) return 0;
     const old = new Map(data.map(d => [dmcRecKey(d), d]));
@@ -16759,7 +16806,7 @@ async function viewSavedDMCRecord(id) {
   showModal(`${rec.student_name} — ${rec.academic_year}`, `
     <div style="max-height:65vh;overflow-y:auto;">${certHtml}</div>
     <div style="margin-top:12px;">
-      <button class="btn-primary" onclick="printSavedDMCRecord('${id}')">🖨️ Print</button>
+      <button class="btn-primary" onclick="printSavedDMCRecord('${escJs(id)}')">🖨️ Print</button>
     </div>
   `);
 }
@@ -17159,7 +17206,7 @@ async function msCloudSync() {
   const yearKey = startYear || 'Unspecified';
   let server;
   try {
-    const r = await sb.from('marks_sheet_data').select('*').eq('owner_id', CURRENT_USER.id).order('updated_at', { ascending: false }).limit(12);
+    const r = await fetchAll(() => sb.from('marks_sheet_data').select('*').eq('owner_id', CURRENT_USER.id).order('updated_at', { ascending: false }));
     if (r.error) throw r.error;
     server = r.data || [];
   } catch (e) { console.error('Marks sheet server check failed:', e && e.message || e); return; }
@@ -17843,7 +17890,7 @@ function registerLedgerTableHtml(rows) {
   const dupSerials = {};
   (DATA.admissionRegister || []).forEach(x => { if (x.serial_no != null && x.serial_no !== '') dupSerials[x.serial_no] = (dupSerials[x.serial_no] || 0) + 1; });
   const dataRow = r => `
-    <tr class="${r.withdrawal_date ? 'rb-out' : ''}" onclick="openEditAdmissionEntry('${r.id}')">
+    <tr class="${r.withdrawal_date ? 'rb-out' : ''}" onclick="openEditAdmissionEntry('${escJs(r.id)}')">
       <td class="act" onclick="event.stopPropagation();"><input type="checkbox" ${REGISTER_SELECTED.has(r.id)?'checked':''} onchange="toggleRegisterSelect('${r.id}')"></td>
       <td>${esc(fmtDate(r.admission_date)||'—')}</td>
       <td>${esc(r.serial_no||'—')}${dupSerials[r.serial_no] > 1 ? ' <span title="Duplicate Serial No." style="color:var(--rust);">⚠️</span>' : ''}</td>
@@ -17858,7 +17905,7 @@ function registerLedgerTableHtml(rows) {
       <td>${esc(r.class_withdrawn||'—')}</td>
       <td>${esc(fmtDate(r.withdrawal_date)||'—')}${arWithdrawnButActive(r) ? ' <span title="Student is still active in fees/attendance - open the entry and strike off" style="color:var(--rust);">⚠️</span>' : ''}</td>
       <td>${esc(r.remarks||'—')}</td>
-      <td class="act">${r.withdrawal_date ? `<span class="print-btn" title="${esc(t.print)}" onclick="event.stopPropagation(); printAdmissionEntry('${r.id}')">🖨️</span>` : ''}<span class="print-btn" title="${esc(t.printCc)}" onclick="event.stopPropagation(); printCharacterCertificate('${r.id}')">📜</span></td>
+      <td class="act">${r.withdrawal_date ? `<span class="print-btn" title="${esc(t.print)}" onclick="event.stopPropagation(); printAdmissionEntry('${escJs(r.id)}')">🖨️</span>` : ''}<span class="print-btn" title="${esc(t.printCc)}" onclick="event.stopPropagation(); printCharacterCertificate('${escJs(r.id)}')">📜</span></td>
     </tr>`;
 
   if (rows.length === 0) return `<div class="empty">${esc(t.noRegisterEntries)}</div>`;
@@ -18107,7 +18154,7 @@ function tplRegisterList() {
       <button class="icon-btn" title="${esc(t.searchRegister)}" onclick="setRegisterSearch(document.getElementById('register-search-input').value)">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#E4C765" stroke-width="2.5"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.35-4.35"/></svg>
       </button>
-      ${registerSearch.trim() && full.length===1 ? `<button class="icon-btn" title="${esc(t.print)}" onclick="printSingleAdmissionEntry('${full[0].id}')">🖨️</button>` : ''}
+      ${registerSearch.trim() && full.length===1 ? `<button class="icon-btn" title="${esc(t.print)}" onclick="printSingleAdmissionEntry('${escJs(full[0].id)}')">🖨️</button>` : ''}
       <button class="icon-btn" onclick="openNewAdmission()">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#E4C765" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg>
       </button>
@@ -18694,14 +18741,14 @@ function kgPairEditor(i, j, it) {
       <div style="font-size:11px;font-weight:700;margin-bottom:4px;">${lab}</div>
       <div style="display:flex;gap:4px;align-items:center;flex-wrap:wrap;">
         <span style="display:block;width:48px;height:48px;border:1px solid var(--line,#ddd);border-radius:8px;overflow:hidden;flex-shrink:0;">${has ? kpic({ img: it['img' + sx], em: it['em' + sx], w: 46, h: 46 }, '', 'contain') : ''}</span>
-        <button class="${on ? 'btn-primary' : 'btn-ghost'}" style="padding:4px 8px;font-size:12px;" onclick="kgCmpT={i:${i},j:${j},s:'${s}'};renderTab()">📚</button>
+        <button class="${on ? 'btn-primary' : 'btn-ghost'}" style="padding:4px 8px;font-size:12px;" onclick="kgCmpT={i:${i},j:${j},s:'${escJs(s)}'};renderTab()">📚</button>
         <label class="btn-ghost" style="padding:4px 8px;font-size:12px;cursor:pointer;">📷<input type="file" accept="image/*" style="display:none;" onchange="kgItemImg(${i},${j},this.files[0],'${s}')"></label>
-        <button class="btn-ghost" style="padding:4px 8px;font-size:12px;" onclick="kgSideClear(${i},${j},'${s}')">🗑</button></div>
+        <button class="btn-ghost" style="padding:4px 8px;font-size:12px;" onclick="kgSideClear(${i},${j},'${escJs(s)}')">🗑</button></div>
       <input dir="auto" style="width:100%;margin-top:6px;" placeholder="label (e.g. Big)" value="${esc(it['txt' + sx] || '')}" oninput="kgBlocks[${i}].items[${j}].txt${sx}=this.value">
       <div style="display:flex;align-items:center;gap:4px;margin-top:6px;font-size:11px;">
         <span>↔</span><input type="range" min="20" max="400" value="${cw}" style="flex:1;min-width:0;" oninput="kgSideSize(${i},${j},'${s}','w',this.value)">
         <span>↕</span><input type="range" min="20" max="400" value="${ch}" style="flex:1;min-width:0;" oninput="kgSideSize(${i},${j},'${s}','h',this.value)"></div>
-      <div style="display:flex;gap:4px;margin-top:4px;"><button class="btn-ghost" style="padding:2px 8px;flex:1;" onclick="kgZoom(${i},${j},'${s}',0.85)">🔍－</button><button class="btn-ghost" style="padding:2px 8px;flex:1;" onclick="kgZoom(${i},${j},'${s}',1.2)">🔍＋</button></div></div>`; };
+      <div style="display:flex;gap:4px;margin-top:4px;"><button class="btn-ghost" style="padding:2px 8px;flex:1;" onclick="kgZoom(${i},${j},'${escJs(s)}',0.85)">🔍－</button><button class="btn-ghost" style="padding:2px 8px;flex:1;" onclick="kgZoom(${i},${j},'${escJs(s)}',1.2)">🔍＋</button></div></div>`; };
   return `<div class="paper-q-row" style="margin-bottom:10px;padding-bottom:10px;border-bottom:1px dashed var(--line,#ddd);">
     <div style="display:flex;gap:8px;align-items:flex-start;">${side('L', '⬅ Left picture')}${side('R', 'Right picture ➡')}<button class="btn-ghost" style="padding:6px 10px;" onclick="kgDelItem(${i},${j})">✕</button></div>
     ${kgCmpT && kgCmpT.i === i && kgCmpT.j === j ? `<div style="font-size:12px;margin-top:8px;">Picking for: <b>${kgCmpT.s === 'L' ? 'Left' : 'Right'}</b> <button class="btn-ghost" style="padding:2px 8px;" onclick="kgCmpT=null;renderTab()">Close</button></div>` + kgLibHtml(i, 'cmp') : ''}</div>`; }
@@ -18865,7 +18912,7 @@ function kgMcqEditor(i, j, it) {
   kgSlot(i, j, 'q');
   const slotHtml = (s, label) => { const arr = kgSlot(i, j, s), base = s === 'q' ? 64 : 48;
     return `<div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap;align-items:center;">${label}${arr.map((pp, k) => { const cur = pp.w ? pp.w / base : 1;
-      return `<span style="display:inline-flex;flex-direction:column;align-items:center;gap:2px;border:1px solid var(--line,#ddd);border-radius:8px;padding:2px;"><span style="display:block;width:40px;height:40px;">${kpic({ ...pp, w: 38, h: 38 }, '', 'contain')}</span><span style="display:flex;gap:2px;"><select style="font-size:10px;padding:0;" onchange="kgPicSz(${i},${j},'${s}',${k},this.value,${base})">${[['.6', 'S'], ['1', 'M'], ['1.6', 'L'], ['2.2', 'XL'], ['3.2', 'XXL']].map(o => `<option value="${o[0]}"${Math.abs(cur - o[0]) < .15 ? ' selected' : ''}>${o[1]}</option>`).join('')}</select><button class="btn-ghost" style="padding:0 5px;font-size:11px;" onclick="kgPicDel(${i},${j},'${s}',${k})">✕</button></span></span>`; }).join('')}<button class="${kgLibT && kgLibT.i === i && kgLibT.j === j && kgLibT.s === s ? 'btn-primary' : 'btn-ghost'}" style="padding:4px 8px;font-size:12px;" onclick="kgLibT={i:${i},j:${j},s:'${s}'};renderTab()">＋ Picture</button><label class="btn-ghost" style="padding:4px 8px;font-size:12px;cursor:pointer;">📷<input type="file" accept="image/*" multiple style="display:none;" onchange="kgSlotImg(${i},${j},'${s}',this.files)"></label></div>`; };
+      return `<span style="display:inline-flex;flex-direction:column;align-items:center;gap:2px;border:1px solid var(--line,#ddd);border-radius:8px;padding:2px;"><span style="display:block;width:40px;height:40px;">${kpic({ ...pp, w: 38, h: 38 }, '', 'contain')}</span><span style="display:flex;gap:2px;"><select style="font-size:10px;padding:0;" onchange="kgPicSz(${i},${j},'${s}',${k},this.value,${base})">${[['.6', 'S'], ['1', 'M'], ['1.6', 'L'], ['2.2', 'XL'], ['3.2', 'XXL']].map(o => `<option value="${o[0]}"${Math.abs(cur - o[0]) < .15 ? ' selected' : ''}>${o[1]}</option>`).join('')}</select><button class="btn-ghost" style="padding:0 5px;font-size:11px;" onclick="kgPicDel(${i},${j},'${escJs(s)}',${k})">✕</button></span></span>`; }).join('')}<button class="${kgLibT && kgLibT.i === i && kgLibT.j === j && kgLibT.s === s ? 'btn-primary' : 'btn-ghost'}" style="padding:4px 8px;font-size:12px;" onclick="kgLibT={i:${i},j:${j},s:'${escJs(s)}'};renderTab()">＋ Picture</button><label class="btn-ghost" style="padding:4px 8px;font-size:12px;cursor:pointer;">📷<input type="file" accept="image/*" multiple style="display:none;" onchange="kgSlotImg(${i},${j},'${s}',this.files)"></label></div>`; };
   return `<div class="paper-q-row" style="margin-bottom:10px;padding-bottom:10px;border-bottom:1px dashed var(--line,#ddd);">
     <div class="flexgap" style="align-items:center;"><input dir="auto" style="flex:1;" placeholder="Question" value="${esc(it.txt||'')}" oninput="kgBlocks[${i}].items[${j}].txt=this.value"><button class="btn-ghost" style="padding:6px 10px;" onclick="kgDelItem(${i},${j})">✕</button></div>
     ${slotHtml('q', '<b style="font-size:11px;">Question</b>')}
@@ -18890,7 +18937,7 @@ function kgBlockHtml(b,i) {
     const ph = { trace:'e.g. A B C D E F', missing:'e.g. A _ C', picname:'answer (optional)', match:'name (e.g. Apple)', count:'number (e.g. 3)', colour:'', compare:'label (e.g. Big) — optional', mcq:'Question' }[b.type];
     let body;
     if (txtOnly) {
-      body = `<textarea rows="3" style="width:100%;" placeholder="${ph} — one line per row" oninput="kgBlocks[${i}].items=this.value.split('\\n').map(x=>({txt:x}))">${esc(b.items.map(x=>x.txt).join('\n'))}</textarea><div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;">${[['cap','A–Z'],['low','a–z'],['ur','اردو حروف'],['num','1–20'],['urnum','۱–۲۰']].map(f => `<button class="btn-ghost" style="padding:4px 10px;font-size:12px;" onclick="kgFill(${i},'${f[0]}')">${f[1]}</button>`).join('')}</div>`;
+      body = `<textarea rows="3" style="width:100%;" placeholder="${ph} — one line per row" oninput="kgBlocks[${i}].items=this.value.split('\\n').map(x=>({txt:x}))">${esc(b.items.map(x=>x.txt).join('\n'))}</textarea><div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;">${[['cap','A–Z'],['low','a–z'],['ur','اردو حروف'],['num','1–20'],['urnum','۱–۲۰']].map(f => `<button class="btn-ghost" style="padding:4px 10px;font-size:12px;" onclick="kgFill(${i},'${escJs(f[0])}')">${f[1]}</button>`).join('')}</div>`;
     } else {
       body = b.items.map((it,j) => { const d = kgDef(b.type), cw = it.w || d, ch = it.h || d; if (b.type === 'mcq') return kgMcqEditor(i, j, it); if (b.type === 'compare' && it.pair) return kgPairEditor(i, j, it);
         return `<div class="paper-q-row" style="margin-bottom:8px;padding-bottom:8px;border-bottom:1px dashed var(--line,#ddd);">
@@ -18996,7 +19043,7 @@ function symBarHtml() {
   }).join('')}</div>`).join('');
   return `<div style="position:fixed;right:12px;bottom:84px;z-index:50;max-width:calc(100vw - 24px);" onmousedown="if(!event.target.closest('input,select'))event.preventDefault()">
     <div id="symBox" style="display:none;margin-bottom:10px;width:318px;max-width:100%;background:var(--card,#fff);border:1px solid var(--line,#d9d2c0);border-radius:20px;box-shadow:0 14px 40px rgba(20,30,50,.28);overflow:hidden;">
-      <div class="symtabs">${SYM_TABS.map(tb => `<button type="button" data-tab="${tb.id}" class="symtab${tb.id===symTab?' on':''}${tb.ur?' ur':''}" onclick="symTabSet('${tb.id}')">${tb.label}</button>`).join('')}<button type="button" class="symx" onclick="symToggle()">✕</button></div>
+      <div class="symtabs">${SYM_TABS.map(tb => `<button type="button" data-tab="${tb.id}" class="symtab${tb.id===symTab?' on':''}${tb.ur?' ur':''}" onclick="symTabSet('${escJs(tb.id)}')">${tb.label}</button>`).join('')}<button type="button" class="symx" onclick="symToggle()">✕</button></div>
       <div id="symHint">Pehle question box par tap karein, phir chunein</div>
       <div class="symbody">${panes}</div>
     </div>
@@ -19799,7 +19846,7 @@ function openArTrash() {
       ? `<div style="font-size:12px;opacity:.7;margin-bottom:8px;">${esc(qt('Kept on this device only (last 30).', 'صرف اسی ڈیوائس پر محفوظ (آخری 30)۔'))}</div>` +
         a.map(x => `<div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--surface2);">
           <div style="flex:1;font-size:13px;"><b>${esc(x.row.student_name || '—')}</b><br><span style="opacity:.65;">${esc(qt('Serial', 'سیریل'))} ${esc(x.row.serial_no || '—')} · ${esc(fmtDate(String(x.at).slice(0, 10)))}</span></div>
-          <button class="btn-primary" onclick="guardedSubmit(this, ()=>arTrashRestore('${x.row.id}'))">${esc(qt('Restore', 'بحال کریں'))}</button></div>`).join('')
+          <button class="btn-primary" onclick="guardedSubmit(this, ()=>arTrashRestore('${escJs(x.row.id)}'))">${esc(qt('Restore', 'بحال کریں'))}</button></div>`).join('')
       : `<div class="empty">${esc(qt('Nothing deleted.', 'کچھ حذف نہیں ہوا۔'))}</div>`);
 }
 async function arTrashRestore(id) {
@@ -19916,16 +19963,16 @@ function openEditAdmissionEntry(id) {
     </div>` : `
     <div style="background:var(--surface2);border-radius:8px;padding:10px 12px;margin-bottom:12px;font-size:13px;">
       <span style="opacity:.7;">${esc(t.parentCodeNone)}</span>
-      <button type="button" class="btn-ghost" style="margin-top:6px;width:100%;" onclick="generateParentPinForEntry('${id}')">${esc(t.parentGenerateCode)}</button>
+      <button type="button" class="btn-ghost" style="margin-top:6px;width:100%;" onclick="generateParentPinForEntry('${escJs(id)}')">${esc(t.parentGenerateCode)}</button>
     </div>`;
   showModal(r.student_name || t.editRegisterEntry, `
     ${codeBox}
     ${admissionEntryForm(r)}
     <div class="flexgap" style="flex-wrap:wrap;">
-      <button class="btn-ghost" style="color:var(--rust);border-color:var(--rust);" onclick="confirmDelete('admissionEntry','${id}')">${esc(t.delete)}</button>
-      <button class="btn-ghost" onclick="printAdmissionEntry('${id}')">🖨️ ${esc(t.print)}</button>
-      <button class="btn-ghost" onclick="printCharacterCertificate('${id}')">🖨️ ${esc(t.printCc)}</button>
-      <button class="btn-primary" style="flex:1" onclick="guardedSubmit(this, ()=>submitEditAdmissionEntry('${id}'))">${esc(t.save)}</button>
+      <button class="btn-ghost" style="color:var(--rust);border-color:var(--rust);" onclick="confirmDelete('admissionEntry','${escJs(id)}')">${esc(t.delete)}</button>
+      <button class="btn-ghost" onclick="printAdmissionEntry('${escJs(id)}')">🖨️ ${esc(t.print)}</button>
+      <button class="btn-ghost" onclick="printCharacterCertificate('${escJs(id)}')">🖨️ ${esc(t.printCc)}</button>
+      <button class="btn-primary" style="flex:1" onclick="guardedSubmit(this, ()=>submitEditAdmissionEntry('${escJs(id)}'))">${esc(t.save)}</button>
     </div>
   `);
 }
@@ -20289,11 +20336,11 @@ function confirmDelete(kind, id, _staffTried) {
           'This will permanently erase: ' + pays.length + ' salary record(s) totalling ₨' + fmt(paid) + ', ' + _att + ' attendance record(s), ' + _lv + ' leave(s) and ' + _adv + ' advance(s). Salaries will disappear from the Day Book, reports and totals. This cannot be undone.',
           'یہ ہمیشہ کے لیے مٹ جائے گا: ' + pays.length + ' تنخواہ ریکارڈ (کل ₨' + fmt(paid) + ')، ' + _att + ' حاضری ریکارڈ، ' + _lv + ' چھٹیاں اور ' + _adv + ' ایڈوانس۔ تنخواہیں روزنامچے، رپورٹس اور ٹوٹلز سے غائب ہو جائیں گی۔ یہ واپس نہیں ہو سکتا۔'))}</p>
         <p style="font-size:13px;margin-bottom:10px;">${esc(qt('If the teacher has only left the school, use "Has left" instead — it keeps all history.', 'اگر استاد نے صرف ادارہ چھوڑا ہے تو حذف کے بجائے "چھوڑ گئے" استعمال کریں — اس سے تمام تاریخ محفوظ رہتی ہے۔'))}</p>
-        <button class="btn-ghost" style="width:100%;margin-bottom:10px;" onclick="confirmStrikeOffTeacher('${id}')">🚪 ${esc(qt('Has left', 'چھوڑ گئے'))}</button>
+        <button class="btn-ghost" style="width:100%;margin-bottom:10px;" onclick="confirmStrikeOffTeacher('${escJs(id)}')">🚪 ${esc(qt('Has left', 'چھوڑ گئے'))}</button>
         <label style="display:flex;gap:8px;align-items:flex-start;font-size:13px;margin-bottom:12px;"><input type="checkbox" style="width:auto;margin-top:3px;" onchange="document.getElementById('del-yes').disabled=!this.checked"> <span>${esc(qt('I understand, delete the teacher and all records', 'مجھے معلوم ہے، استاد اور تمام ریکارڈ حذف کریں'))}</span></label>
         <div class="flexgap">
           <button class="btn-ghost" onclick="closeModal()">${esc(t.no)}</button>
-          <button id="del-yes" class="btn-primary" disabled style="flex:1;background:var(--rust);" onclick="doDelete('${kind}','${id}')">${esc(t.yes)}</button>
+          <button id="del-yes" class="btn-primary" disabled style="flex:1;background:var(--rust);" onclick="doDelete('${escJs(kind)}','${escJs(id)}')">${esc(t.yes)}</button>
         </div>`);
       return;
     }
@@ -20312,12 +20359,12 @@ function confirmDelete(kind, id, _staffTried) {
           'This will ALSO permanently erase ' + pays.length + ' fee record(s) with ₨' + fmt(paid) + ' collected. That money will disappear from the fee card, reports and Day Book. This cannot be undone.',
           'اس سے ' + pays.length + ' فیس ریکارڈ بھی ہمیشہ کے لیے مٹ جائیں گے جن میں ₨' + fmt(paid) + ' وصول شدہ ہیں۔ یہ رقم فیس کارڈ، رپورٹس اور روزنامچے سے غائب ہو جائے گی۔ یہ واپس نہیں ہو سکتا۔'))}</p>
         <p style="font-size:13px;margin-bottom:10px;">${esc(qt('If the student has only left the school, use Strike Off instead — it keeps all fee history.', 'اگر طالب علم نے صرف اسکول چھوڑا ہے تو حذف کے بجائے "اسکول چھوڑنے پر نشان زد" استعمال کریں — اس سے فیس کی تاریخ محفوظ رہتی ہے۔'))}</p>
-        <button class="btn-ghost" style="width:100%;margin-bottom:10px;" onclick="confirmStrikeOffStudent('${id}')">${esc(t.strikeOffStudent)}</button>
+        <button class="btn-ghost" style="width:100%;margin-bottom:10px;" onclick="confirmStrikeOffStudent('${escJs(id)}')">${esc(t.strikeOffStudent)}</button>
         <label style="display:flex;gap:8px;align-items:flex-start;font-size:13px;margin-bottom:12px;"><input type="checkbox" id="del-ack" style="width:auto;margin-top:3px;" onchange="document.getElementById('del-yes').disabled=!this.checked"> <span>${esc(qt('I understand, delete the student and all fee records', 'مجھے معلوم ہے، طالب علم اور تمام فیس ریکارڈ حذف کریں'))}</span></label>
         <label><span>${esc(qt('Reason (required)', 'وجہ (ضروری)'))}</span><input id="del-reason" autocomplete="off"></label>
         <div class="flexgap">
           <button class="btn-ghost" onclick="closeModal()">${esc(t.no)}</button>
-          <button id="del-yes" class="btn-primary" disabled style="flex:1;background:var(--rust);" onclick="doDelete('${kind}','${id}')">${esc(t.yes)}</button>
+          <button id="del-yes" class="btn-primary" disabled style="flex:1;background:var(--rust);" onclick="doDelete('${escJs(kind)}','${escJs(id)}')">${esc(t.yes)}</button>
         </div>`);
       return;
     }
@@ -20330,8 +20377,8 @@ function confirmDelete(kind, id, _staffTried) {
       <label><span>${esc(qt('Reason (required)', 'وجہ (ضروری)'))}</span><input id="del-reason" autocomplete="off"></label>
       <div class="flexgap">
         <button class="btn-ghost" onclick="closeModal()">${esc(t.no)}</button>
-        <button class="btn-ghost" onclick="confirmStrikeOffStudent('${id}')">${esc(t.strikeOffStudent)}</button>
-        <button class="btn-primary" style="flex:1;background:var(--rust);" onclick="guardedSubmit(this, ()=>doDelete('${kind}','${id}'))">${esc(t.yes)}</button>
+        <button class="btn-ghost" onclick="confirmStrikeOffStudent('${escJs(id)}')">${esc(t.strikeOffStudent)}</button>
+        <button class="btn-primary" style="flex:1;background:var(--rust);" onclick="guardedSubmit(this, ()=>doDelete('${escJs(kind)}','${escJs(id)}'))">${esc(t.yes)}</button>
       </div>`);
     return;
   }
@@ -20339,7 +20386,7 @@ function confirmDelete(kind, id, _staffTried) {
     <p style="font-size:14px;">${esc(t.confirmDelete)}</p>
     <div class="flexgap">
       <button class="btn-ghost" onclick="closeModal()">${esc(t.no)}</button>
-      <button class="btn-primary" style="flex:1;background:var(--rust);" onclick="doDelete('${kind}','${id}')">${esc(t.yes)}</button>
+      <button class="btn-primary" style="flex:1;background:var(--rust);" onclick="doDelete('${escJs(kind)}','${escJs(id)}')">${esc(t.yes)}</button>
     </div>
   `);
 }
@@ -20663,8 +20710,8 @@ function noticeAudColor(a) { return a === 'teachers' ? '#2f6fab' : a === 'parent
 
 // ---------- Owner side ----------
 function tplNotices() {
-  const chip = (k) => `<button type="button" id="nt-aud-${k}" onclick="noticeSetAud('${k}')" style="flex:1;padding:10px 6px;border-radius:10px;font-weight:700;font-size:13px;cursor:pointer;border:2px solid ${noticeAudColor(k)};background:${NOTICE_AUD === k ? noticeAudColor(k) : 'transparent'};color:${NOTICE_AUD === k ? '#fff' : noticeAudColor(k)};">${esc(noticeAudLabel(k))}</button>`;
-  const tb = (cmd, label, style) => `<button type="button" onmousedown="event.preventDefault()" onclick="document.execCommand('${cmd}')" style="flex:none;width:38px;padding:6px 0;border-radius:8px;border:1px solid var(--line);background:transparent;color:inherit;cursor:pointer;${style}">${label}</button>`;
+  const chip = (k) => `<button type="button" id="nt-aud-${k}" onclick="noticeSetAud('${escJs(k)}')" style="flex:1;padding:10px 6px;border-radius:10px;font-weight:700;font-size:13px;cursor:pointer;border:2px solid ${noticeAudColor(k)};background:${NOTICE_AUD === k ? noticeAudColor(k) : 'transparent'};color:${NOTICE_AUD === k ? '#fff' : noticeAudColor(k)};">${esc(noticeAudLabel(k))}</button>`;
+  const tb = (cmd, label, style) => `<button type="button" onmousedown="event.preventDefault()" onclick="document.execCommand('${escJs(cmd)}')" style="flex:none;width:38px;padding:6px 0;border-radius:8px;border:1px solid var(--line);background:transparent;color:inherit;cursor:pointer;${style}">${label}</button>`;
   return `
     <h2>${esc(qt('Notice Board', 'نوٹس بورڈ'))}</h2>
     <p class="desc">${esc(qt('Write a notice and tap who it is for. It appears in the Teachers\' or Parents\' portal.', 'نوٹس لکھیں اور منتخب کریں کہ یہ کس کے لیے ہے۔ یہ اساتذہ یا والدین کے پورٹل میں نظر آئے گا۔'))}</p>
@@ -20766,7 +20813,7 @@ async function noticeLoad() {
   let list = null, err = null;
   if (navigator.onLine) {
     try {
-      const { data, error } = await sb.from('notices').select('*').eq('owner_id', CURRENT_USER.id).order('created_at', { ascending: false }).limit(50);
+      const { data, error } = await fetchAll(() => sb.from('notices').select('*').eq('owner_id', CURRENT_USER.id).order('created_at', { ascending: false }));
       if (error) err = error; else list = data || [];
     } catch (e) { err = e; }
   }
@@ -20802,9 +20849,9 @@ function noticeRenderList() {
       <div style="font-weight:700;font-size:15px;margin-bottom:6px;">${esc(n.topic)}</div>
       <div style="font-size:13px;line-height:1.5;">${noticeClean(n.details)}</div>
       <div style="display:flex;gap:8px;margin-top:12px;">
-        <button class="btn-ghost" style="flex:1;padding:8px 6px;font-size:12px;" onclick="noticeEdit('${n.id}')">✏️ ${esc(qt('Edit', 'ایڈیٹ'))}</button>
-        <button class="btn-ghost" style="flex:1;padding:8px 6px;font-size:12px;" onclick="noticeShareWA('${n.id}')">WhatsApp</button>
-        <button class="btn-ghost" style="flex:1;padding:8px 6px;font-size:12px;" onclick="noticeDelete('${n.id}')">🗑 ${esc(qt('Delete', 'حذف'))}</button>
+        <button class="btn-ghost" style="flex:1;padding:8px 6px;font-size:12px;" onclick="noticeEdit('${escJs(n.id)}')">✏️ ${esc(qt('Edit', 'ایڈیٹ'))}</button>
+        <button class="btn-ghost" style="flex:1;padding:8px 6px;font-size:12px;" onclick="noticeShareWA('${escJs(n.id)}')">WhatsApp</button>
+        <button class="btn-ghost" style="flex:1;padding:8px 6px;font-size:12px;" onclick="noticeDelete('${escJs(n.id)}')">🗑 ${esc(qt('Delete', 'حذف'))}</button>
       </div>
     </div>`).join('');
 }
@@ -20934,7 +20981,7 @@ async function noticeFetch(kind, before, limit) {
 
 function noticeRowHtml(n) {
   return `
-    <div class="list-row" style="cursor:pointer;flex-direction:column;align-items:stretch;" onclick="toggleNoticeRow('${n.id}')">
+    <div class="list-row" style="cursor:pointer;flex-direction:column;align-items:stretch;" onclick="toggleNoticeRow('${escJs(n.id)}')">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
         <div class="nm">${esc(n.topic)}</div>
         <div style="display:flex;align-items:center;gap:8px;flex:none;">
@@ -20955,7 +21002,7 @@ function noticePaint(elId, kind) {
     return;
   }
   el.innerHTML = `<div class="list-card">${st.items.map(noticeRowHtml).join('')}</div>` +
-    (st.more ? `<button class="btn-ghost" style="width:100%;margin-top:8px;" onclick="noticeMore('${kind}','${elId}')">${esc(qt('Show older notices', 'پرانے نوٹس دیکھیں'))}</button>` : '');
+    (st.more ? `<button class="btn-ghost" style="width:100%;margin-top:8px;" onclick="noticeMore('${escJs(kind)}','${escJs(elId)}')">${esc(qt('Show older notices', 'پرانے نوٹس دیکھیں'))}</button>` : '');
 }
 
 async function noticeRefresh(elId, kind, limit) {
@@ -20998,7 +21045,7 @@ function noticeOpenScreen(kind) {
 // in the Notice Board tab. Needs parent_messages.sql to be run once in Supabase.
 // =====================================================================
 function ppContactBoxHtml() {
-  const btn = (k, label) => `<button type="button" class="btn-primary pp-send-btn" style="flex:1;padding:10px 4px;font-size:13px;" onclick="ppSendMessage('${k}')">${label}</button>`;
+  const btn = (k, label) => `<button type="button" class="btn-primary pp-send-btn" style="flex:1;padding:10px 4px;font-size:13px;" onclick="ppSendMessage('${escJs(k)}')">${label}</button>`;
   return `
     <div class="section-title" style="margin-top:6px;">${esc(qt('Contact school', 'اسکول سے رابطہ'))}</div>
     <div class="card" style="margin-bottom:14px;">
@@ -21080,12 +21127,12 @@ function pmRowHtml(m, role) {
       <div style="margin-top:6px;font-size:13px;line-height:1.5;white-space:pre-wrap;">${esc(m.message || '')}</div>
       ${pmRepliesHtml(m)}
       <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:6px;">
-        <button class="btn-ghost" style="flex:none;padding:4px 12px;font-size:12px;" onclick="pmToggleReply('${m.id}')">↩ ${esc(qt('Reply', 'جواب'))}</button>
-        <button class="btn-ghost" style="flex:none;padding:4px 12px;font-size:12px;" onclick="${role === 'owner' ? 'pmOwnerDelete' : 'pmTeacherDelete'}('${m.id}')">${esc(qt('Delete', 'حذف کریں'))}</button>
+        <button class="btn-ghost" style="flex:none;padding:4px 12px;font-size:12px;" onclick="pmToggleReply('${escJs(m.id)}')">↩ ${esc(qt('Reply', 'جواب'))}</button>
+        <button class="btn-ghost" style="flex:none;padding:4px 12px;font-size:12px;" onclick="${role === 'owner' ? 'pmOwnerDelete' : 'pmTeacherDelete'}('${escJs(m.id)}')">${esc(qt('Delete', 'حذف کریں'))}</button>
       </div>
       <div id="pm-rbox-${m.id}" class="hidden" style="margin-top:6px;">
         <textarea id="pm-rtxt-${m.id}" maxlength="500" rows="2" style="width:100%;box-sizing:border-box;" placeholder="${esc(qt('Write your reply…', 'اپنا جواب لکھیں…'))}"></textarea>
-        <button class="btn-primary" style="width:100%;margin-top:6px;" onclick="pmSendReply('${m.id}','${role}')">${esc(qt('Send reply', 'جواب بھیجیں'))}</button>
+        <button class="btn-primary" style="width:100%;margin-top:6px;" onclick="pmSendReply('${escJs(m.id)}','${escJs(role)}')">${esc(qt('Send reply', 'جواب بھیجیں'))}</button>
         <div id="pm-rst-${m.id}" style="font-size:12px;margin-top:6px;"></div>
       </div>
     </div>`;
@@ -21324,7 +21371,7 @@ async function ppToggleMyMsgs() {
       <div style="display:flex;justify-content:space-between;gap:8px;"><div class="sub">${esc(qt('To', 'بنام'))}: ${esc(who)}</div><div class="sub" style="flex:none;">${esc(fmtDate((m.created_at || '').slice(0, 10)) || '')}</div></div>
       <div style="margin-top:4px;font-size:13px;line-height:1.5;white-space:pre-wrap;">${esc(m.message || '')}</div>
       ${pmRepliesHtml(m, seen)}
-      <div style="display:flex;justify-content:flex-end;margin-top:6px;"><button class="btn-ghost" style="flex:none;padding:4px 12px;font-size:12px;" onclick="ppDeleteMy('${m.id}')">${esc(qt('Delete', 'حذف کریں'))}</button></div>
+      <div style="display:flex;justify-content:flex-end;margin-top:6px;"><button class="btn-ghost" style="flex:none;padding:4px 12px;font-size:12px;" onclick="ppDeleteMy('${escJs(m.id)}')">${esc(qt('Delete', 'حذف کریں'))}</button></div>
     </div>`; }).join('')}</div>` : `<p class="desc">${esc(qt('You have not sent any message yet.', 'آپ نے ابھی تک کوئی پیغام نہیں بھیجا۔'))}</p>`;
   let mx = seen; list.forEach(m => (m.replies || []).forEach(r => { const ts = new Date(r.created_at).getTime(); if (ts > mx) mx = ts; }));
   try { localStorage.setItem(ppMyKey(), String(mx)); } catch (e) {}
@@ -21614,7 +21661,7 @@ function renderClassPortalManageStudents() {
     ${students.length ? students.map(st => `
       <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;border-bottom:1px solid var(--line);padding:10px 0;">
         <div style="font-size:13px;font-weight:600;">${esc(st.name)}</div>
-        <button class="btn-ghost danger" style="flex:none;padding:6px 12px;font-size:11px;" onclick="confirmClassPortalStrikeOff('${st.id}','${escJs(st.name)}')">${esc(t.strikeOffStudent)}</button>
+        <button class="btn-ghost danger" style="flex:none;padding:6px 12px;font-size:11px;" onclick="confirmClassPortalStrikeOff('${escJs(st.id)}','${escJs(st.name)}')">${esc(t.strikeOffStudent)}</button>
       </div>`).join('') : `<p class="desc">${esc(t.classPortalNoStudents)}</p>`}
   `;
 }
@@ -21625,7 +21672,7 @@ function confirmClassPortalStrikeOff(studentId, studentName) {
     <p style="font-size:14px;">${esc(t.confirmStrikeOff)}</p>
     <div class="flexgap">
       <button class="btn-ghost" onclick="closeModal()">${esc(t.no)}</button>
-      <button class="btn-primary" style="flex:1;background:var(--rust);" onclick="guardedSubmit(this, ()=>submitClassPortalStrikeOff('${studentId}'))">${esc(t.yes)}</button>
+      <button class="btn-primary" style="flex:1;background:var(--rust);" onclick="guardedSubmit(this, ()=>submitClassPortalStrikeOff('${escJs(studentId)}'))">${esc(t.yes)}</button>
     </div>
   `);
 }
@@ -21743,7 +21790,7 @@ function renderClassPortalAttendance() {
 function classPortalRosterHtml(session) {
   const opt = (id, session_, val, label, color) => {
     const cur = (classAttendanceDraft[id] || {})[session_];
-    return `<button type="button" onclick="setClassAttendanceMark('${id}','${session_}','${val}')" style="flex:1;padding:6px 3px;border-radius:8px;font-size:10.5px;font-weight:600;border:1.5px solid ${cur===val?color:'var(--line)'};background:${cur===val?color:'#fff'};color:${cur===val?'#fff':'var(--ink)'};">${esc(label)}</button>`;
+    return `<button type="button" onclick="setClassAttendanceMark('${escJs(id)}','${escJs(session_)}','${escJs(val)}')" style="flex:1;padding:6px 3px;border-radius:8px;font-size:10.5px;font-weight:600;border:1.5px solid ${cur===val?color:'var(--line)'};background:${cur===val?color:'#fff'};color:${cur===val?'#fff':'var(--ink)'};">${esc(label)}</button>`;
   };
   return session.students.slice().sort((a,b)=>Number(a.roll_no||0)-Number(b.roll_no||0)).map(st => {
     const isAbsent = (classAttendanceDraft[st.id] || {}).am === 'absent' || (classAttendanceDraft[st.id] || {}).pm === 'absent';
@@ -21758,7 +21805,7 @@ function classPortalRosterHtml(session) {
         <div style="width:56px;font-size:10.5px;opacity:.65;">${esc(t.afternoon)}</div>
         <div style="display:flex;gap:5px;flex:1;">${opt(st.id,'pm','present',t.present,'var(--sage)')}${opt(st.id,'pm','leave',t.leave,'var(--gold)')}${opt(st.id,'pm','absent',t.absent,'var(--rust)')}${opt(st.id,'pm','sick',t.sick,'#3B6FA0')}</div>
       </div>
-      ${isAbsent ? `<button type="button" onclick="sendAbsentSms('${st.id}')" style="margin-top:6px;width:100%;padding:6px;border-radius:8px;font-size:11px;font-weight:600;border:1.5px solid var(--rust);background:#fff;color:var(--rust);">📩 ${esc(LANG==='ur'?'والدین کو SMS بھیجیں':"Send SMS to Parent")}</button>` : ''}
+      ${isAbsent ? `<button type="button" onclick="sendAbsentSms('${escJs(st.id)}')" style="margin-top:6px;width:100%;padding:6px;border-radius:8px;font-size:11px;font-weight:600;border:1.5px solid var(--rust);background:#fff;color:var(--rust);">📩 ${esc(LANG==='ur'?'والدین کو SMS بھیجیں':"Send SMS to Parent")}</button>` : ''}
     </div>`;
   }).join('');
 }
@@ -22231,11 +22278,11 @@ function dpmRow(m) {
       <div style="margin-top:6px;font-size:13px;line-height:1.5;white-space:pre-wrap;">${esc(m.message || '')}</div>
       ${pmRepliesHtml(m)}
       <div style="display:flex;justify-content:flex-end;margin-top:6px;">
-        <button class="btn-ghost" style="flex:none;padding:4px 12px;font-size:12px;" onclick="pmToggleReply('${m.id}')">↩ ${esc(qt('Reply', 'جواب'))}</button>
+        <button class="btn-ghost" style="flex:none;padding:4px 12px;font-size:12px;" onclick="pmToggleReply('${escJs(m.id)}')">↩ ${esc(qt('Reply', 'جواب'))}</button>
       </div>
       <div id="pm-rbox-${m.id}" class="hidden" style="margin-top:6px;">
         <textarea id="pm-rtxt-${m.id}" maxlength="500" rows="2" style="width:100%;box-sizing:border-box;" placeholder="${esc(qt('Write your reply…', 'اپنا جواب لکھیں…'))}"></textarea>
-        <button class="btn-primary" style="width:100%;margin-top:6px;" onclick="dpmSendReply('${m.id}')">${esc(qt('Send reply', 'جواب بھیجیں'))}</button>
+        <button class="btn-primary" style="width:100%;margin-top:6px;" onclick="dpmSendReply('${escJs(m.id)}')">${esc(qt('Send reply', 'جواب بھیجیں'))}</button>
         <div id="pm-rst-${m.id}" style="font-size:12px;margin-top:6px;"></div>
       </div>
     </div>`;
@@ -23109,7 +23156,7 @@ function qzRenderClass() {
     <h2 style="margin-top:0;">${esc(qt('Daily Quiz', 'روزانہ کوئز'))} — ${esc(QZ.cls)}</h2>
     ${banners}
     <div style="display:flex;gap:8px;margin-bottom:12px;">
-      <button class="btn-primary" style="flex:1;" onclick="qzRenderCreate(QZ.ov.next ? QZ.ov.next.subject : '', QZ.ov.next ? QZ.ov.next.date : '${tomorrow}')">+ ${esc(qt('New quiz', 'نیا کوئز'))}</button>
+      <button class="btn-primary" style="flex:1;" onclick="qzRenderCreate(QZ.ov.next ? QZ.ov.next.subject : '', QZ.ov.next ? QZ.ov.next.date : '${escJs(tomorrow)}')">+ ${esc(qt('New quiz', 'نیا کوئز'))}</button>
       <button class="btn-ghost" style="flex:1;" onclick="qzRenderSchedule()">${esc(qt('Weekly schedule', 'ہفتے کا شیڈول'))}</button>
     </div>
     <div class="section-title" style="margin-top:6px;">${esc(qt('Quizzes', 'کوئز'))}</div>
@@ -23218,7 +23265,7 @@ function qzRenderCards() {
     <p class="desc">${esc(qt('Tap the correct option of each question. Students will not see this.', 'ہر سوال کا صحیح آپشن ٹیپ کریں۔ طلبہ کو یہ نظر نہیں آئے گا۔'))}</p>
     ${qs.map((q, i) => `<div class="card" style="margin:10px 0;">
       <div class="nm" dir="auto" style="white-space:pre-wrap;">${i + 1}. ${esc(q.q)}</div>
-      ${['A', 'B', 'C', 'D'].map(L => `<div onclick="qzPick(${i},'${L}')" style="display:flex;align-items:center;gap:10px;padding:9px 2px;cursor:pointer;">${qzCircle(q.correct === L, `qz-dot-${i}-${L}`)}<span dir="auto">${L}) ${esc(q[L.toLowerCase()])}</span></div>`).join('')}
+      ${['A', 'B', 'C', 'D'].map(L => `<div onclick="qzPick(${i},'${escJs(L)}')" style="display:flex;align-items:center;gap:10px;padding:9px 2px;cursor:pointer;">${qzCircle(q.correct === L, `qz-dot-${i}-${L}`)}<span dir="auto">${L}) ${esc(q[L.toLowerCase()])}</span></div>`).join('')}
     </div>`).join('')}
     <div id="qz-left" style="font-size:12px;margin:8px 0;"></div>
     <button class="btn-primary" id="qz-save-btn" onclick="qzSave()">${esc(qt('Save quiz', 'کوئز محفوظ کریں'))}</button>`;
@@ -23376,7 +23423,7 @@ function ppQuizRender() {
     <p class="desc">${esc(qt('Tap one option for each question. You can change it until you press Submit.', 'ہر سوال کے لیے ایک آپشن ٹیپ کریں۔ سبمٹ دبانے تک بدل سکتے ہیں۔'))}</p>
     ${s.questions.map((q, i) => `<div class="card" style="margin:10px 0;">
       <div class="nm" dir="auto" style="white-space:pre-wrap;">${i + 1}. ${esc(q.q)}</div>
-      ${['A', 'B', 'C', 'D'].map(L => `<div onclick="ppQuizPick(${i},'${L}')" style="display:flex;align-items:center;gap:10px;padding:10px 2px;cursor:pointer;">${qzCircle(false, `ppq-dot-${i}-${L}`)}<span dir="auto">${L}) ${esc(q[L.toLowerCase()])}</span></div>`).join('')}
+      ${['A', 'B', 'C', 'D'].map(L => `<div onclick="ppQuizPick(${i},'${escJs(L)}')" style="display:flex;align-items:center;gap:10px;padding:10px 2px;cursor:pointer;">${qzCircle(false, `ppq-dot-${i}-${L}`)}<span dir="auto">${L}) ${esc(q[L.toLowerCase()])}</span></div>`).join('')}
     </div>`).join('')}
     <div id="ppq-left" style="font-size:12px;margin:8px 0;"></div>
     <button class="btn-primary" id="ppq-submit" onclick="ppQuizSubmit()">${esc(qt('Submit', 'سبمٹ'))}</button>`;
@@ -23611,14 +23658,14 @@ function chBubble(m) {
   const to = m.to_role === 'parents' ? (m.student_name || (m.class_name ? qt('Class ', 'کلاس ') + m.class_name : qt('All parents', 'تمام والدین')))
     : m.to_role === 'owner' ? qt('Principal', 'پرنسپل') : qt('Teacher', 'استاد') + (m.class_name ? ' (' + m.class_name + ')' : '');
   const voice = m.has_audio
-    ? `<button class="btn-ghost" id="chv-${m.id}" style="flex:none;padding:6px 12px;margin-top:6px;" onclick="chPlay('${m.id}')">▶ ${esc(qt('Voice', 'وائس'))} ${m.secs || 0}s</button>`
+    ? `<button class="btn-ghost" id="chv-${m.id}" style="flex:none;padding:6px 12px;margin-top:6px;" onclick="chPlay('${escJs(m.id)}')">▶ ${esc(qt('Voice', 'وائس'))} ${m.secs || 0}s</button>`
     : (m.had_audio ? `<div class="sub" style="margin-top:6px;">🎙 ${esc(qt('Voice note expired', 'وائس نوٹ ختم ہو گیا'))}</div>` : '');
   return `<div style="display:flex;justify-content:${mine ? 'flex-end' : 'flex-start'};margin-bottom:10px;">
     <div style="max-width:85%;background:${mine ? '#E9F2E4' : '#fff'};border:1px solid var(--line);border-radius:12px;padding:8px 10px;">
       <div class="sub" style="font-size:11px;"><b>${esc(m.from_label || m.from_role)}</b> → ${esc(to)}</div>
       ${m.body ? `<div dir="auto" style="white-space:pre-wrap;font-size:14px;margin-top:4px;">${esc(m.body)}</div>` : ''}${voice}
       <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:4px;">
-        ${mine || CH.role === 'owner' ? `<button onclick="chDel('${m.id}')" title="${esc(qt('Delete', 'حذف کریں'))}" style="background:none;border:none;padding:0;font-size:13px;opacity:.55;">🗑</button>` : '<span></span>'}
+        ${mine || CH.role === 'owner' ? `<button onclick="chDel('${escJs(m.id)}')" title="${esc(qt('Delete', 'حذف کریں'))}" style="background:none;border:none;padding:0;font-size:13px;opacity:.55;">🗑</button>` : '<span></span>'}
         <span class="sub" style="font-size:10px;">${esc(new Date(m.created_at).toLocaleString())}</span></div>
     </div></div>`;
 }
@@ -23761,8 +23808,8 @@ function sylpEditFixed(k) {
   showModal(qt('Edit text', 'متن ایڈیٹ کریں'), `
     <label><span>${esc(qt('Text shown in this block (all classes)', 'اس بلاک میں لکھا متن (تمام کلاسوں کے لیے)'))}</span><input id="sylp-fx-txt" dir="auto" maxlength="40" value="${esc(sylpFixedText(col))}"></label>
     <div class="flexgap" style="margin-top:10px;">
-      <button class="btn-ghost" onclick="sylpSaveFixed('${k}',true)">${esc(qt('Reset', 'اصل حالت'))}</button>
-      <button class="btn-primary" style="flex:1" onclick="sylpSaveFixed('${k}',false)">${esc(qt('Save', 'محفوظ کریں'))}</button>
+      <button class="btn-ghost" onclick="sylpSaveFixed('${escJs(k)}',true)">${esc(qt('Reset', 'اصل حالت'))}</button>
+      <button class="btn-primary" style="flex:1" onclick="sylpSaveFixed('${escJs(k)}',false)">${esc(qt('Save', 'محفوظ کریں'))}</button>
     </div>`);
 }
 function sylpSaveFixed(k, reset) {
@@ -23779,8 +23826,8 @@ function sylpEditCol(k) {
     <label><span>${esc(qt('Column type (all classes)', 'کالم کی قسم (تمام کلاسوں کے لیے)'))}</span><select id="sylp-col-ty">${[['teach', qt('Teaching (syllabus boxes)', 'پڑھائی (نصاب کے خانے)')], ['exam', qt('Result + Exam block', 'رزلٹ + امتحان بلاک')], ['vac', qt('Vacation block', 'چھٹیوں کا بلاک')]].map(o => `<option value="${o[0]}" ${(col.type || 'teach') === o[0] ? 'selected' : ''}>${esc(o[1])}</option>`).join('')}</select></label>
     <p style="font-size:11px;opacity:.6;margin:4px 0 0;">${esc(qt('Text already written in a column stays saved if you change its type.', 'کالم کی قسم بدلنے پر اس میں لکھا متن محفوظ رہتا ہے۔'))}</p>
     <div class="flexgap" style="margin-top:10px;">
-      <button class="btn-ghost" onclick="sylpSaveCol('${k}',true)">${esc(qt('Reset', 'اصل حالت'))}</button>
-      <button class="btn-primary" style="flex:1" onclick="sylpSaveCol('${k}',false)">${esc(qt('Save', 'محفوظ کریں'))}</button>
+      <button class="btn-ghost" onclick="sylpSaveCol('${escJs(k)}',true)">${esc(qt('Reset', 'اصل حالت'))}</button>
+      <button class="btn-primary" style="flex:1" onclick="sylpSaveCol('${escJs(k)}',false)">${esc(qt('Save', 'محفوظ کریں'))}</button>
     </div>`);
 }
 async function sylpSaveCol(k, reset) {
@@ -23910,17 +23957,17 @@ function sylpRender() {
   const c = SYLP_CLASS, d = sylpData(c), subs = d.subjects;
   const clsOpts = CLASS_OPTIONS.map(x => `<option value="${esc(x)}" ${x === c ? 'selected' : ''}>${esc(x)}${SYLP_ALL[x] && SYLP_ALL[x].subjects.length ? ' ✓' : ''}</option>`).join('');
   const colgroup = `<col style="width:112px">` + sylpCols().map(col => `<col style="width:${col.type ? 46 : 132}px">`).join('');
-  const head = `<th>${esc(qt('Subjects', 'مضامین'))}</th>` + sylpCols().map(col => `<th style="cursor:pointer;" onclick="sylpEditCol('${col.k}')">${esc(sylpColLabel(col, d.session))}<small style="display:block;font-size:9px;opacity:.55;">✏️</small></th>`).join('');
+  const head = `<th>${esc(qt('Subjects', 'مضامین'))}</th>` + sylpCols().map(col => `<th style="cursor:pointer;" onclick="sylpEditCol('${escJs(col.k)}')">${esc(sylpColLabel(col, d.session))}<small style="display:block;font-size:9px;opacity:.55;">✏️</small></th>`).join('');
   const body = subs.map((s, i) => {
     const cells = sylpCols().map(col => {
       if (col.type) {
         if (i > 0) return '';
-        return `<td class="sylp-fixed sylp-${col.type}" rowspan="${subs.length}" style="cursor:pointer;" onclick="sylpEditFixed('${col.k}')"><span>${esc(sylpFixedText(col))}</span></td>`;
+        return `<td class="sylp-fixed sylp-${col.type}" rowspan="${subs.length}" style="cursor:pointer;" onclick="sylpEditFixed('${escJs(col.k)}')"><span>${esc(sylpFixedText(col))}</span></td>`;
       }
       const v = (d.cells[s.id] || {})[col.k] || '';
-      return `<td class="sylp-cell" onclick="sylpEditCell('${s.id}','${col.k}')">${v ? `<div dir="auto">${((d.cells[s.id] || {})._done || {})[col.k] ? '✅ ' : ''}${esc(v)}</div>` : '<span class="sylp-plus">＋</span>'}</td>`;
+      return `<td class="sylp-cell" onclick="sylpEditCell('${escJs(s.id)}','${escJs(col.k)}')">${v ? `<div dir="auto">${((d.cells[s.id] || {})._done || {})[col.k] ? '✅ ' : ''}${esc(v)}</div>` : '<span class="sylp-plus">＋</span>'}</td>`;
     }).join('');
-    return `<tr><th class="sylp-subj" dir="auto" onclick="sylpEditSubject('${s.id}')">${esc(s.name)}<small>✏️${sylpProg(d, s)}</small></th>${cells}</tr>`;
+    return `<tr><th class="sylp-subj" dir="auto" onclick="sylpEditSubject('${escJs(s.id)}')">${esc(s.name)}<small>✏️${sylpProg(d, s)}</small></th>${cells}</tr>`;
   }).join('');
   box.innerHTML = `
     <div class="field-box"><label><span>${esc(qt('Class', 'کلاس'))}</span><select onchange="sylpPick(this.value)">${clsOpts}</select></label></div>
@@ -24039,7 +24086,7 @@ function sylpEditCell(sid, k) {
     <label style="display:flex !important;flex-direction:row !important;justify-content:flex-start !important;align-items:center;gap:10px;font-size:13px;margin:8px 0;"><input type="checkbox" id="sylp-cell-done" ${((((d.cells[sid] || {})._done) || {})[k]) ? 'checked' : ''}>✅ ${esc(qt('Completed (already taught)', 'مکمل (پڑھایا جا چکا)'))}</label>
     <div class="flexgap">
       <button class="btn-ghost" onclick="closeModal()">${esc(qt('Cancel', 'منسوخ'))}</button>
-      <button class="btn-primary" style="flex:1" onclick="sylpSaveCell('${sid}','${k}')">${esc(qt('Save', 'محفوظ کریں'))}</button>
+      <button class="btn-primary" style="flex:1" onclick="sylpSaveCell('${escJs(sid)}','${escJs(k)}')">${esc(qt('Save', 'محفوظ کریں'))}</button>
     </div>`);
 }
 function sylpSaveCell(sid, k) {
@@ -24062,11 +24109,11 @@ function sylpEditSubject(sid) {
     <datalist id="sylp-sub-list">${dl}</datalist>
     <div id="sylp-msg"></div>
     ${s ? `<div class="flexgap" style="margin-bottom:10px;">
-      <button class="btn-ghost" onclick="sylpMoveSubject('${sid}',-1)">⬆ ${esc(qt('Move up', 'اوپر'))}</button>
-      <button class="btn-ghost" onclick="sylpMoveSubject('${sid}',1)">⬇ ${esc(qt('Move down', 'نیچے'))}</button>
-      <button class="btn-ghost danger" onclick="sylpDeleteSubject('${sid}')">🗑 ${esc(qt('Delete', 'حذف'))}</button>
+      <button class="btn-ghost" onclick="sylpMoveSubject('${escJs(sid)}',-1)">⬆ ${esc(qt('Move up', 'اوپر'))}</button>
+      <button class="btn-ghost" onclick="sylpMoveSubject('${escJs(sid)}',1)">⬇ ${esc(qt('Move down', 'نیچے'))}</button>
+      <button class="btn-ghost danger" onclick="sylpDeleteSubject('${escJs(sid)}')">🗑 ${esc(qt('Delete', 'حذف'))}</button>
     </div>` : ''}
-    <button class="btn-primary" style="width:100%;" onclick="sylpSaveSubject('${sid || ''}')">${esc(qt('Save', 'محفوظ کریں'))}</button>`);
+    <button class="btn-primary" style="width:100%;" onclick="sylpSaveSubject('${escJs(sid || '')}')">${esc(qt('Save', 'محفوظ کریں'))}</button>`);
 }
 function sylpSaveSubject(sid) {
   const d = sylpData(SYLP_CLASS);
