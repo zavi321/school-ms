@@ -176,6 +176,11 @@ html, body{overscroll-behavior:none;}
   /* ---- Dashboard launcher (app-drawer style) ---- */
   .dl-wrap{padding:14px 20px 24px 0;position:relative;}
   body.ur .dl-wrap{padding:14px 0 24px 20px;}
+  .dl-sum{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin:0 0 18px;}
+  .dl-sum button{border:0;text-align:start;background:#fff;border-radius:16px;padding:12px 14px;box-shadow:0 1px 3px rgba(0,0,0,.08);cursor:pointer;font:inherit;color:inherit;}
+  .dl-sum .l{font-size:12px;opacity:.7;}
+  .dl-sum .v{font-size:20px;font-weight:800;margin-top:2px;}
+  .dl-sum .d{font-size:11px;opacity:.65;margin-top:2px;}
   .dl-search{display:flex;align-items:center;gap:10px;background:#EFEAE0;border-radius:28px;padding:0 16px;height:50px;margin:0 0 22px;}
   .dl-search svg{width:20px;height:20px;fill:none;stroke:#6b6657;stroke-width:2;stroke-linecap:round;flex:none;}
   .dl-search input{flex:1;min-width:0;border:0;background:transparent;font:inherit;font-size:16px;color:var(--ink);outline:none;height:100%;-webkit-appearance:none;}
@@ -1047,7 +1052,7 @@ body:not(.ur) .qpaper-print .pq-instruction::before{counter-increment:pqq;conten
 <!-- ============            fill with dummy data), then put its email & password here.                        ============ -->
 <script>
   const DEMO_EMAIL = "nadeemullah107@gmail.com";      // e.g. "demo@yourdomain.com"
-  const DEMO_PASSWORD = "Demo1122";   // e.g. "demo12345"
+  const DEMO_PASSWORD = "Zavi2565";   // e.g. "demo12345"
 </script>
 <!-- ==================================================================================== -->
 
@@ -4022,24 +4027,78 @@ function sendFeeRequestWhatsapp(id) {
   openFatherWhatsapp(s.contact, duesReminderMessageUrdu(s));
 }
 
-function openFeeRequestReminders() {
-  const due = DATA.students
-    .filter(s => studentBalance(s.id) > 0)
-    .sort((a, b) => studentBalance(b.id) - studentBalance(a.id));
-  const rows = due.length === 0
+// ---------------- Fee defaulters: months unpaid, class filter, one-tap reminders ----------------
+let DEF_FILTER = { cls:'', minMonths:0 };
+let DEF_QUEUE = [];
+let DEF_POS = 0;
+let DEF_SENT = {};
+function defaultersList() {
+  return DATA.students
+    .filter(s => studentBalance(s.id) > 0 && (!DEF_FILTER.cls || s.class_name === DEF_FILTER.cls))
+    .map(s => ({ s, bal: studentBalance(s.id), months: monthsOverdue(s) }))
+    .filter(r => r.months >= DEF_FILTER.minMonths)
+    .sort((a, b) => (b.months - a.months) || (b.bal - a.bal));
+}
+function defRender() {
+  const list = defaultersList();
+  const total = list.reduce((a, r) => a + r.bal, 0);
+  const withPhone = list.filter(r => r.s.contact);
+  const classes = CLASS_OPTIONS.filter(c => DATA.students.some(s => s.class_name === c && studentBalance(s.id) > 0));
+  const monthOpts = [[0, qt('All', 'سب')], [1, qt('1+ months', '1+ مہینے')], [2, qt('2+ months', '2+ مہینے')], [3, qt('3+ months', '3+ مہینے')], [6, qt('6+ months', '6+ مہینے')]];
+  const sel = 'style="flex:1;min-width:0;padding:9px 10px;border-radius:10px;border:1px solid #D8D2C4;background:#fff;font-size:14px;"';
+  const queueOn = DEF_QUEUE.length > 0 && DEF_POS < DEF_QUEUE.length;
+  const nextS = queueOn ? DATA.students.find(x => x.id === DEF_QUEUE[DEF_POS]) : null;
+  const queueBar = queueOn && nextS
+    ? `<button class="btn-primary" style="width:100%;margin:10px 0;" onclick="defNext()">▶ ${esc(qt('Send next', 'اگلا بھیجیں'))}: ${esc(nextS.name)} (${DEF_POS + 1}/${DEF_QUEUE.length})</button>
+       <button class="btn-ghost" style="width:100%;margin-bottom:10px;" onclick="defStopQueue()">${esc(qt('Stop', 'روکیں'))}</button>`
+    : (withPhone.length
+        ? `<button class="btn-primary" style="width:100%;margin:10px 0;" onclick="defStartQueue()">📩 ${esc(qt('Remind all shown, one by one', 'دکھائے گئے سب کو ایک ایک کر کے یاد دہانی'))} (${withPhone.length})</button>`
+        : '');
+  const rows = list.length === 0
     ? `<div class="empty">${esc(t.noDueStudents)}</div>`
-    : due.map(s => `
+    : list.map(r => {
+        const s2 = r.s;
+        const done = DEF_SENT[s2.id] ? ' ✓' : '';
+        const mTxt = r.months > 0 ? ` · ${r.months} ${esc(qt('month(s) unpaid', 'مہینے باقی'))}` : '';
+        return `
       <div class="card-btn" style="cursor:default;">
         <div>
-          <div class="nm">${esc(s.name)}${esc(leftTag(s))}</div>
-          <div class="sub">${esc(t.fatherName)}: ${esc(s.father_name||'')} · ₨${fmt(studentBalance(s.id))} ${esc(t.due)}</div>
+          <div class="nm">${esc(s2.name)}${esc(leftTag(s2))}${done}</div>
+          <div class="sub">${esc(s2.class_name || '')} · ${esc(t.fatherName)}: ${esc(s2.father_name || '')}</div>
+          <div class="sub">₨${fmt(r.bal)} ${esc(t.due)}${mTxt}${s2.contact ? '' : ' · ' + esc(qt('no phone number', 'نمبر موجود نہیں'))}</div>
         </div>
-        <button class="btn-primary" style="padding:6px 14px;" onclick="sendFeeRequestWhatsapp('${escJs(s.id)}')">${esc(t.send)}</button>
-      </div>`).join('');
+        <button class="btn-primary" style="padding:6px 14px;" onclick="defSendOne('${escJs(s2.id)}')">${esc(t.send)}</button>
+      </div>`;
+      }).join('');
   showModal(t.feeRequestTitle, `
-    <div style="font-size:13px;opacity:.75;margin-bottom:14px;">${esc(t.feeRequestDesc)}</div>
+    <div style="font-size:13px;opacity:.75;margin-bottom:10px;">${esc(t.feeRequestDesc)}</div>
+    <div style="display:flex;gap:8px;margin-bottom:8px;">
+      <select ${sel} onchange="DEF_FILTER.cls=this.value;defStopQueue()">
+        <option value="">${esc(qt('All classes', 'تمام کلاسیں'))}</option>
+        ${classes.map(c => `<option value="${esc(c)}"${DEF_FILTER.cls === c ? ' selected' : ''}>${esc(c)}</option>`).join('')}
+      </select>
+      <select ${sel} onchange="DEF_FILTER.minMonths=Number(this.value);defStopQueue()">
+        ${monthOpts.map(([v, l]) => `<option value="${v}"${DEF_FILTER.minMonths === v ? ' selected' : ''}>${esc(l)}</option>`).join('')}
+      </select>
+    </div>
+    <div style="font-weight:700;margin:6px 0;">${esc(qt('Defaulters', 'نادہندگان'))}: ${list.length} · ${esc(qt('Total due', 'کل بقایا'))}: ₨${fmt(total)}</div>
+    ${queueBar}
     ${rows}
   `);
+}
+function defSendOne(id) { DEF_SENT[id] = 1; sendFeeRequestWhatsapp(id); defRender(); }
+function defStartQueue() { DEF_QUEUE = defaultersList().filter(r => r.s.contact && !DEF_SENT[r.s.id]).map(r => r.s.id); DEF_POS = 0; defRender(); }
+function defStopQueue() { DEF_QUEUE = []; DEF_POS = 0; defRender(); }
+function defNext() {
+  if (DEF_POS >= DEF_QUEUE.length) { defStopQueue(); return; }
+  const id = DEF_QUEUE[DEF_POS++];
+  DEF_SENT[id] = 1;
+  sendFeeRequestWhatsapp(id);
+  defRender();
+}
+function openFeeRequestReminders() {
+  DEF_FILTER = { cls: '', minMonths: 0 }; DEF_QUEUE = []; DEF_POS = 0;
+  defRender();
 }
 
 // Lookup indexes. The dashboard calls studentPayments()/teacherPayments() for every
@@ -6678,6 +6737,24 @@ function dashIndexTouch(e) {
   if (el && el.dataset && el.dataset.l && el.closest('#dl-index')) { dashJump(el.dataset.l); e.preventDefault && e.cancelable && e.preventDefault(); }
 }
 
+function dashSummaryHtml() {
+  try {
+    const st = computeStats();
+    const att = todayStudentAttendanceSummary();
+    const today = todayISO();
+    let todayCol = 0;
+    DATA.feePayments.forEach(p => { if (String(p.pay_date || '').slice(0, 10) === today) todayCol += Number(p.amount || 0); });
+    let defCount = 0;
+    DATA.students.forEach(x => { if (studentBalance(x.id) > 0) defCount++; });
+    const card = (l, v, d, act) => `<button onclick="${act}"><div class="l">${esc(l)}</div><div class="v">${v}</div><div class="d">${esc(d)}</div></button>`;
+    return `<div class="dl-sum">
+      ${card(qt("Today's attendance", 'آج کی حاضری'), `${att.present}/${st.activeCount}`, `${qt('Absent', 'غیر حاضر')}: ${att.absent} · ${qt('Not marked', 'نشان نہیں')}: ${Math.max(0, st.activeCount - att.marked)}`, 'openDashTodayAttendanceModal()')}
+      ${card(qt("Today's collection", 'آج کی وصولی'), '₨' + fmt(todayCol), qt('Fees received today', 'آج وصول ہوئی فیس'), 'openDashFeesCollectedModal()')}
+      ${card(qt("This month's balance", 'اس مہینے کا بقایا'), '₨' + fmt(st.feesDueThisMonth), qt('Still unpaid this month', 'اس مہینے کی باقی فیس'), 'openDashFeesDueModal()')}
+      ${card(qt('Total outstanding', 'کل بقایا'), '₨' + fmt(st.totalDuesAllTime), `${defCount} ${qt('defaulters', 'نادہندگان')}`, 'openFeeRequestReminders()')}
+    </div>`;
+  } catch (e) { return ''; }
+}
 function tplDashboard() {
   if (!STF.loaded && !STF.loading) { STF.loading = true; stfLoad().then(() => { STF.loading = false; if (TAB === 'dashboard' && STF.loaded) safeRenderTab(); }).catch(() => { STF.loading = false; }); }
   if (DASH_VIEW === 'activity') {
@@ -22017,7 +22094,16 @@ async function submitClassPortalMarks() {
   const session = getClassSession();
   const msg = document.getElementById('cp-marks-msg');
   const examName = (classMarksDraft.examName || '').trim();
-  if (!examName || !classMarksDraft.subjects.length) return;
+  if (!examName) {
+    if (msg) msg.innerHTML = `<span style="color:#B00020;font-weight:600;">${esc(qt('Please type the Exam Name first (e.g. Mid-Term 2026), then press Save.', 'پہلے امتحان کا نام لکھیں (مثلاً Mid-Term 2026)، پھر محفوظ کریں۔'))}</span>`;
+    const en = document.getElementById('cp-exam-name') || document.querySelector('input[placeholder*="Mid-Term"]');
+    if (en) { try { en.focus(); en.scrollIntoView({ block:'center' }); } catch (e) {} }
+    return;
+  }
+  if (!classMarksDraft.subjects.length) {
+    if (msg) msg.innerHTML = `<span style="color:#B00020;font-weight:600;">${esc(t.classPortalNoSubjects)}</span>`;
+    return;
+  }
   const payload = { schoolCode: session.schoolCode, loginId: session.loginId, password: session.password, examName, marks: classMarksDraft.marks, subjects: classMarksDraft.subjects };
   if (msg) msg.textContent = '…';
   if (!navigator.onLine) {
@@ -22031,10 +22117,16 @@ async function submitClassPortalMarks() {
       p_school_code: session.schoolCode, p_login_id: session.loginId, p_password: session.password,
       p_exam_name: examName, p_marks: classMarksDraft.marks, p_subjects: classMarksDraft.subjects
     });
-    if (error || data !== true) throw new Error('failed');
+    if (error && /subscription_expired/i.test(String(error.message || error.details || ''))) {
+      // The school's subscription is not active: say so instead of silently queueing forever.
+      if (msg) msg.innerHTML = `<span style="color:#B00020;font-weight:600;">${esc(qt('Not saved: this school\'s subscription is not active. Please contact the school owner.', 'محفوظ نہیں ہوا: اس اسکول کی سبسکرپشن فعال نہیں ہے۔ براہ کرم اسکول کے مالک سے رابطہ کریں۔'))}</span>`;
+      return;
+    }
+    if (error || data !== true) throw new Error((error && error.message) || 'failed');
     if (msg) msg.innerHTML = `<span class="ok">✓ ${esc(t.classPortalMarksSaved)}</span>`;
     cpAfterSavePrompt();
   } catch(e) {
+    console.warn('class_exam_marks_save failed:', e && e.message);
     queueClassWrite({ type:'marks', ...payload });
     if (msg) msg.innerHTML = `<span class="ok">${esc(t.classPortalOffline)}</span>`;
     cpAfterSavePrompt();
