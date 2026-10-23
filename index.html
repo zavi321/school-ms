@@ -18889,10 +18889,11 @@ const pqNorm = l => String(l || '').replace(/[٠-٩]/g, c => c.charCodeAt(0) - 0
 function pqLines(items) { const rows = []; items.forEach(it => { if (!it.str) return; const y = it.transform[5], x = it.transform[4]; let r = rows.find(r => Math.abs(r.y - y) < 3); if (!r) rows.push(r = { y, it: [] }); r.it.push({ x, s: it.str }); });
   return rows.sort((a, b) => b.y - a.y).map(r => { const rtl = /[\u0600-\u06FF]/.test(r.it.map(i => i.s).join('')); r.it.sort((a, b) => rtl ? b.x - a.x : a.x - b.x); return r.it.map(i => i.s).join(' '); }); }
 async function pqOcr(canvas, n, total) { await pqLoadScript(PQ_TESS);
-  const r = await Tesseract.recognize(canvas, LANG === 'ur' ? 'eng+urd' : 'eng', { logger: m => { if (m.status === 'recognizing text') pqImpMsg('🔎 Reading page ' + n + '/' + total + ' … ' + Math.round(m.progress * 100) + '%'); } });
+  const _tr = l => Tesseract.recognize(canvas, l, { logger: m => { if (m.status === 'recognizing text') pqImpMsg('🔎 Reading page ' + n + '/' + total + ' … ' + Math.round(m.progress * 100) + '%'); } });
+  let r; try { r = await _tr('eng+urd'); } catch (e) { r = await _tr('eng'); }
   return r.data.text.split('\n'); }
 async function pqImgCanvas(file) { const url = URL.createObjectURL(file); const im = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = () => rej(new Error('Cannot open image')); i.src = url; });
-  const c = document.createElement('canvas'), k = Math.min(1, 2200 / Math.max(im.width, im.height)); c.width = im.width * k; c.height = im.height * k; c.getContext('2d').drawImage(im, 0, 0, c.width, c.height); URL.revokeObjectURL(url); return c; }
+  const c = document.createElement('canvas'), k = Math.min(2, 2200 / Math.max(im.width, im.height)); c.width = im.width * k; c.height = im.height * k; { const g = c.getContext('2d'); try { g.filter = 'grayscale(1) contrast(1.35)'; } catch (e) {} g.drawImage(im, 0, 0, c.width, c.height); } URL.revokeObjectURL(url); return c; }
 function pqMeta(lines) { const m = {}, h = lines.slice(0, 14).join('\n'), cl = v => v.replace(/\s*(subject|total|time|date|class|marks?)\b.*$/i, '').trim(), g = re => { const x = h.match(re); return x ? x[1].trim() : ''; };
   const tm = g(/total\s*marks?\s*[:\-]?\s*(\d+)/i), tl = cl(g(/time(?:\s*allowed)?\s*[:\-]?\s*([^\n]{1,30})/i)), c = cl(g(/class\s*[:\-]?\s*([^\n]{1,20})/i)), sb = cl(g(/subject\s*[:\-]?\s*([^\n]{1,30})/i)), ex = lines.slice(0, 6).find(l => /exam|test|term|paper/i.test(l));
   if (tm) m.total_marks = tm; if (tl) m.time_allowed = tl; if (c) m.class_name = c; if (sb) m.subject = sb; if (ex) m.exam_name = ex; return m; }
