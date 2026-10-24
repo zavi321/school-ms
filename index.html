@@ -2270,6 +2270,11 @@ const fmtDate = (iso) => {
   return `${m[3]}-${m[2]}-${m[1]}`;
 };
 const escJs = s => esc(String(s==null?'':s).replace(/\\/g,'\\\\').replace(/'/g,"\\'"));
+// Only real image/audio data-URLs, https/blob URLs or plain relative file names may reach a src="" / url('') attribute.
+// Anything else (e.g. a crafted value containing a quote + onerror=) becomes '' so stored data can never break out of the attribute.
+const safeSrc = v => { v = String(v == null ? '' : v).trim();
+  return (/^data:(image\/(png|jpe?g|gif|webp|bmp|avif|svg\+xml)|audio\/[a-z0-9.+-]+)(;[a-z0-9=.-]+)*;base64,[A-Za-z0-9+\/=\s]+$/i.test(v)
+    || /^(https:\/\/|blob:)[^\s"'<>()\\]+$/i.test(v) || /^[\w\-.\/]+\.(png|jpe?g|gif|webp|svg|ico)$/i.test(v)) ? v : ''; };
 const esc = s => (s==null?'':String(s)).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 // Wraps free-typed text (question wording, MCQ options, matching entries...)
 // in a <bdi> element so it gets its own bidi-isolated run: the browser reads
@@ -5410,7 +5415,7 @@ function openSettings() {
       <button class="btn-primary" style="width:100%;" onclick="saveSchoolCode()">${esc(t.saveSettings)}</button>
     </div>
     <div style="margin-top:18px;padding-top:16px;border-top:1px solid var(--line);">
-      <label><span>${esc(t.diaryPasswordLabel)}</span><input id="set-diary-pw" type="password" autocomplete="off" value="" placeholder="New password (min 6 characters)"></label>
+      <label><span>${esc(t.diaryPasswordLabel)}</span><input id="set-diary-pw" type="password" autocomplete="off" value="" placeholder="New password (min 10 characters)"></label>
       <p style="font-size:11px;opacity:.6;margin:4px 0 8px;">${esc(t.diaryPasswordHint)}</p>
       <div id="set-diary-msg"></div>
       <button class="btn-primary" style="width:100%;" onclick="saveDiaryPassword()">${esc(t.saveSettings)}</button>
@@ -5625,7 +5630,9 @@ async function saveSchoolCode() {
 async function saveDiaryPassword() {
   const msg = document.getElementById('set-diary-msg');
   const pw = document.getElementById('set-diary-pw').value.trim();
-  if (!pw || pw.length < 6) { msg.innerHTML = `<div class="err">${esc(t.diaryPasswordRequired)} (min 6)</div>`; return; }
+  if (!pw || pw.length < 10 || !/[A-Za-z]/.test(pw) || !/[0-9]/.test(pw)) {
+    msg.innerHTML = `<div class="err">${esc(qt('Use at least 10 characters with letters and numbers.', 'کم از کم 10 حروف، جن میں حروف اور ہندسے دونوں ہوں۔'))}</div>`; return;
+  }
   const { error } = await sb.from('profiles').update({ diary_password: pw }).eq('id', CURRENT_USER.id);
   if (error) { msg.innerHTML = `<div class="err">${esc(friendlyErrorMsg(error))}</div>`; return; }
   try { const { data: dp } = await sb.from('profiles').select('diary_password').eq('id', CURRENT_USER.id).single(); if (dp) CURRENT_PROFILE.diary_password = dp.diary_password; } catch(e) {}
@@ -6098,7 +6105,7 @@ function renderSetupWizard() {
   } else if (SETUP.step === 2) {
     body = `<p style="font-size:13px;opacity:.7;margin:0 0 10px;">${tt('Step 2 of 4 — School logo (optional)','مرحلہ 2 / 4 — اسکول لوگو (اختیاری)')}</p>
       <div style="text-align:center;margin:8px 0 14px;">
-        <div id="sw-logo-prev" style="width:110px;height:110px;margin:0 auto 12px;border-radius:24px;background:#EFEAE0;display:grid;place-items:center;overflow:hidden;font-size:12px;opacity:.8;">${SETUP.logo ? `<img alt="" src="${SETUP.logo}" style="max-width:100%;max-height:100%;">` : tt('No logo','لوگو نہیں')}</div>
+        <div id="sw-logo-prev" style="width:110px;height:110px;margin:0 auto 12px;border-radius:24px;background:#EFEAE0;display:grid;place-items:center;overflow:hidden;font-size:12px;opacity:.8;">${SETUP.logo ? `<img alt="" src="${safeSrc(SETUP.logo)}" style="max-width:100%;max-height:100%;">` : tt('No logo','لوگو نہیں')}</div>
         <label class="btn-ghost" style="display:inline-block;cursor:pointer;padding:10px 18px;">📷 ${tt('Choose logo from phone','فون سے لوگو چنیں')}
           <input type="file" accept="image/*" style="display:none;" onchange="setupPickLogo(this)"></label>
       </div>`;
@@ -10716,7 +10723,7 @@ function tplTimetable() {
       </div>
       <div class="card" style="display:grid;grid-template-columns:minmax(100px,1fr) minmax(0,2fr) minmax(100px,1fr);align-items:center;gap:12px;margin-bottom:14px;">
         <div style="text-align:center;justify-self:start;">
-          ${dmcLogo ? `<img alt="" src="${dmcLogo}" style="height:46px;width:46px;object-fit:contain;border-radius:8px;display:block;margin:0 auto 4px;">`
+          ${dmcLogo ? `<img alt="" src="${safeSrc(dmcLogo)}" style="height:46px;width:46px;object-fit:contain;border-radius:8px;display:block;margin:0 auto 4px;">`
             : `<div style="height:46px;width:46px;border-radius:8px;background:var(--line);display:flex;align-items:center;justify-content:center;font-size:9px;color:#999;margin:0 auto 4px;">${LANG === 'ur' ? 'لوگو' : 'Logo'}</div>`}
           <input type="file" accept="image/*" style="font-size:9px;width:100px;" onchange="handleTimetableLogoUpload(this.files[0])">
           ${dmcLogo ? `<button class="btn-ghost" style="font-size:9px;padding:2px 8px;margin-top:3px;" onclick="ttRemoveLogo()">✕ ${esc(qt('Remove logo', 'لوگو ہٹائیں'))}</button>` : ''}
@@ -11142,9 +11149,9 @@ async function printTimetable() {
     </style>
     <div class="tt-print-page" style="position:fixed;left:0;top:0;right:0;bottom:0;width:auto;height:auto;container-type:size;overflow:hidden;break-after:avoid;page-break-after:avoid;"><div class="tt-print-rotate" style="width:100vh;height:100vw;width:100cqh;height:100cqw;">
     <div class="tt-print" dir="${LANG === 'ur' ? 'rtl' : 'ltr'}">
-      ${dmcLogo ? `<img alt="" class="tt-print-wm" src="${dmcLogo}">` : ''}
+      ${dmcLogo ? `<img alt="" class="tt-print-wm" src="${safeSrc(dmcLogo)}">` : ''}
       <div class="tt-print-head">
-        ${dmcLogo ? `<img alt="" class="tt-print-logo" src="${dmcLogo}">` : ''}
+        ${dmcLogo ? `<img alt="" class="tt-print-logo" src="${safeSrc(dmcLogo)}">` : ''}
         <div class="eyebrow">${LANG === 'ur' ? 'ٹائم ٹیبل' : 'School Timetable'}</div>
         <h2>${esc(schoolName)}</h2>
       </div>
@@ -14001,7 +14008,7 @@ function tplDateSheet() {
       </div>
       <div class="list-card" style="display:flex;align-items:center;gap:12px;padding:14px;margin-bottom:12px;">
         <div style="flex-shrink:0;text-align:center;">
-          ${dmcLogo ? `<img alt="" src="${dmcLogo}" style="height:46px;width:46px;object-fit:contain;border-radius:8px;display:block;margin:0 auto 4px;">`
+          ${dmcLogo ? `<img alt="" src="${safeSrc(dmcLogo)}" style="height:46px;width:46px;object-fit:contain;border-radius:8px;display:block;margin:0 auto 4px;">`
             : `<div style="height:46px;width:46px;border-radius:8px;background:var(--line);display:flex;align-items:center;justify-content:center;font-size:9px;color:#999;margin:0 auto 4px;">${esc(qt('Logo', 'لوگو'))}</div>`}
           <input type="file" accept="image/*" style="font-size:9px;width:100px;" onchange="handleTimetableLogoUpload(this.files[0])">
         </div>
@@ -14087,9 +14094,9 @@ async function dsPrintDateSheet() {
     </style>
     <div class="tt-print-page" style="position:fixed;left:0;top:0;right:0;bottom:0;width:auto;height:auto;container-type:size;overflow:hidden;break-after:avoid;page-break-after:avoid;"><div class="tt-print-rotate" style="width:100vh;height:100vw;width:100cqh;height:100cqw;">
       <div class="dsp">
-        ${logoSrc ? `<img alt="" class="dsp-wm" src="${logoSrc}">` : ''}
+        ${logoSrc ? `<img alt="" class="dsp-wm" src="${safeSrc(logoSrc)}">` : ''}
         <div class="dsp-head">
-          ${logoSrc ? `<img alt="" class="dsp-logo" src="${logoSrc}">` : ''}
+          ${logoSrc ? `<img alt="" class="dsp-logo" src="${safeSrc(logoSrc)}">` : ''}
           <div class="dsp-title">
             <div class="dsp-eyebrow">${esc(qt('Exam Date Sheet', 'امتحانی ڈیٹ شیٹ'))}</div>
             <div class="dsp-school" dir="auto">${esc(school)}</div>
@@ -14131,9 +14138,9 @@ function dsSlipHtml(x, cls) {
     </table>` : `<div class="rs-nosheet">${esc(qt('Date sheet not entered yet', 'ڈیٹ شیٹ ابھی درج نہیں'))}</div>`;
   return `
     <div class="rs-slip${rows.length > 10 ? ' rs-tight' : ''}" dir="${ur ? 'rtl' : 'ltr'}"><div class="rs-card">
-      ${dmcLogo ? `<img alt="" class="rs-wm" src="${dmcLogo}" style="width:${DS_WM_SIZE}%;height:${DS_WM_SIZE}%;opacity:${DS_SLIP_WM_OPACITY};">` : ''}
+      ${dmcLogo ? `<img alt="" class="rs-wm" src="${safeSrc(dmcLogo)}" style="width:${DS_WM_SIZE}%;height:${DS_WM_SIZE}%;opacity:${DS_SLIP_WM_OPACITY};">` : ''}
       <div class="rs-head">
-        ${dmcLogo ? `<img alt="" class="rs-logo" src="${dmcLogo}">` : ''}
+        ${dmcLogo ? `<img alt="" class="rs-logo" src="${safeSrc(dmcLogo)}">` : ''}
         <div class="rs-htitle">
           <div class="rs-school" dir="auto">${esc(dsSchoolName())}</div>
           <div class="rs-title">${esc(qt('Roll Number Slip', 'رول نمبر سلپ'))}${dsData.examName ? ' · ' + esc(dsData.examName) : ''}</div>
@@ -14421,7 +14428,7 @@ let dmcPreviewRefs = null;   // students shown in the preview (null = first 3 / 
 let dmcConfigLoaded = false;
 
 function dmcLogoPreviewHtml() {
-  return dmcLogo ? `<div style="margin-bottom:12px;"><img alt="" src="${dmcLogo}" style="max-height:80px;max-width:150px;border-radius:4px;"></div>` : '';
+  return dmcLogo ? `<div style="margin-bottom:12px;"><img alt="" src="${safeSrc(dmcLogo)}" style="max-height:80px;max-width:150px;border-radius:4px;"></div>` : '';
 }
 
 // Pushes the current dmcSchoolName/dmcTagline/etc. globals into the already-
@@ -14719,8 +14726,8 @@ function dmcBgBoxHtml() {
   const has = sel !== 'none' && !!dmcBgSrc();
   const op = Math.round((d.bgImageOpacity == null ? 0.25 : d.bgImageOpacity) * 100);
   const noneTile = dmcBgTileHtml('none', 'Koi nahi (sirf rang)', '<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:26px;opacity:.5;background:' + esc(d.bgColor || '#FAF6EC') + ';">&#8856;</div>');
-  const customTile = d.bgImage ? dmcBgTileHtml('custom', 'Meri upload ki hui', `<img alt="" src="${d.bgImage}" style="width:100%;height:100%;object-fit:cover;display:block;">`) : '';
-  const presetTiles = dmcBgPresets().map((p, i) => dmcBgTileHtml(p.id, (i + 1) + '. ' + p.name, `<img alt="" loading="lazy" src="${p.thumb || p.src}" decoding="async" style="width:100%;height:100%;object-fit:cover;display:block;">`)).join('');
+  const customTile = d.bgImage ? dmcBgTileHtml('custom', 'Meri upload ki hui', `<img alt="" src="${safeSrc(d.bgImage)}" style="width:100%;height:100%;object-fit:cover;display:block;">`) : '';
+  const presetTiles = dmcBgPresets().map((p, i) => dmcBgTileHtml(p.id, (i + 1) + '. ' + p.name, `<img alt="" loading="lazy" src="${safeSrc(p.thumb || p.src)}" decoding="async" style="width:100%;height:100%;object-fit:cover;display:block;">`)).join('');
   return `
     <p style="font-size:12px;opacity:.7;margin:0 0 8px;">Neeche se jo background pasand ho select karein. Pasand na ho to apni picture upload karein.</p>
     <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px;">${noneTile}${customTile}${presetTiles}</div>
@@ -15747,9 +15754,9 @@ function dmcAltCtx(result, kind) {
   c.v = { name: result.studentName, father: result.fatherName, roll: result.rollNo, cls: result.class,
     section: result.section || dmcBatchSection, date: fmtDate(dmcBatchDateOfIssue || todayISO()) };
   c.info = [['Student Name', c.v.name], ['Class', c.v.cls], ['Father Name', c.v.father], ['Section', c.v.section], ['Roll No.', c.v.roll], ['Date of Issue', c.v.date]];
-  c.logo = (size, extra) => dmcLogo ? `<img alt="" src="${dmcLogo}" style="width:${size}px;height:${size}px;object-fit:contain;border-radius:50%;${extra || ''}">` : '';
-  c.bg = dmcBgSrc() ? `<div style="position:absolute;inset:0;z-index:-1;pointer-events:none;background:url('${dmcBgSrc()}') center/${dmcDesign.bgImageFit === 'contain' ? 'contain' : 'cover'} no-repeat;opacity:${dmcDesign.bgImageOpacity == null ? 0.25 : dmcDesign.bgImageOpacity};-webkit-print-color-adjust:exact;print-color-adjust:exact;"></div>` : '';
-  c.wm = dmcLogo ? `<div style="position:absolute;inset:0;z-index:-1;display:flex;align-items:center;justify-content:center;pointer-events:none;overflow:hidden;"><img alt="" src="${dmcLogo}" style="width:62%;max-width:420px;object-fit:contain;opacity:.20;-webkit-print-color-adjust:exact;print-color-adjust:exact;"></div>` : '';
+  c.logo = (size, extra) => dmcLogo ? `<img alt="" src="${safeSrc(dmcLogo)}" style="width:${size}px;height:${size}px;object-fit:contain;border-radius:50%;${extra || ''}">` : '';
+  c.bg = dmcBgSrc() ? `<div style="position:absolute;inset:0;z-index:-1;pointer-events:none;background:url('${safeSrc(dmcBgSrc())}') center/${dmcDesign.bgImageFit === 'contain' ? 'contain' : 'cover'} no-repeat;opacity:${dmcDesign.bgImageOpacity == null ? 0.25 : dmcDesign.bgImageOpacity};-webkit-print-color-adjust:exact;print-color-adjust:exact;"></div>` : '';
+  c.wm = dmcLogo ? `<div style="position:absolute;inset:0;z-index:-1;display:flex;align-items:center;justify-content:center;pointer-events:none;overflow:hidden;"><img alt="" src="${safeSrc(dmcLogo)}" style="width:62%;max-width:420px;object-fit:contain;opacity:.20;-webkit-print-color-adjust:exact;print-color-adjust:exact;"></div>` : '';
   c.verify = (col) => dmcDesign.showVerifyCode === false ? '' : `<div style="text-align:center;font-size:11px;font-weight:700;letter-spacing:.05em;color:${col};">Cert. No: ${esc(dmcCertNo(result))} &nbsp;&middot;&nbsp; Verification Code: <b style="font-size:13px;letter-spacing:.08em;">${esc(dmcVerifyCode(result))}</b></div>`;
   c.stamp = (w, col) => dmcDesign.showStamp ? `<div style="flex-shrink:0;width:${w}px;height:${w}px;border:1px dashed ${col};border-radius:50%;display:flex;align-items:center;justify-content:center;text-align:center;font-size:8px;font-weight:700;color:${col};">SCHOOL<br>STAMP</div>` : '';
   c.sig = (line, gap, col, labCol) => { const lab = `flex:1;border-top:${line};padding-top:6px;text-align:center;font-size:10px;font-weight:700;letter-spacing:.06em;${labCol ? 'color:' + labCol + ';' : ''}`; return `<div style="display:flex;justify-content:space-between;align-items:flex-end;gap:${gap}px;"><div style="${lab}">${c.tl}</div>${c.stamp(60, col)}<div style="${lab}">${c.pl}</div></div>`; };
@@ -16396,8 +16403,8 @@ function renderDMCCertificateRaw(result) {
     <div class="dmc-cert" style="page-break-inside:avoid;break-inside:avoid;margin-bottom:24px;font-family:Inter,sans-serif;">
       <div class="dmc-frame" style="max-width:800px;margin:0 auto;background:${pc};padding:8px;border-radius:22px;position:relative;overflow:hidden;">
         <div class="dmc-card" style="background:${bg};border:2px solid ${ac};border-radius:16px;padding:18px 26px 16px;position:relative;z-index:0;overflow:hidden;">
-          ${dmcBgSrc() ? `<div style="position:absolute;inset:0;z-index:-1;pointer-events:none;background:url('${dmcBgSrc()}') center/${dmcDesign.bgImageFit === 'contain' ? 'contain' : 'cover'} no-repeat;opacity:${dmcDesign.bgImageOpacity == null ? 0.25 : dmcDesign.bgImageOpacity};-webkit-print-color-adjust:exact;print-color-adjust:exact;"></div>` : ''}
-          ${dmcLogo ? `<div style="position:absolute;inset:0;z-index:-1;display:flex;align-items:center;justify-content:center;pointer-events:none;overflow:hidden;"><img alt="" src="${dmcLogo}" style="width:75.6%;max-width:437px;object-fit:contain;opacity:.20;transform:translateY(15%);"></div>` : ''}
+          ${dmcBgSrc() ? `<div style="position:absolute;inset:0;z-index:-1;pointer-events:none;background:url('${safeSrc(dmcBgSrc())}') center/${dmcDesign.bgImageFit === 'contain' ? 'contain' : 'cover'} no-repeat;opacity:${dmcDesign.bgImageOpacity == null ? 0.25 : dmcDesign.bgImageOpacity};-webkit-print-color-adjust:exact;print-color-adjust:exact;"></div>` : ''}
+          ${dmcLogo ? `<div style="position:absolute;inset:0;z-index:-1;display:flex;align-items:center;justify-content:center;pointer-events:none;overflow:hidden;"><img alt="" src="${safeSrc(dmcLogo)}" style="width:75.6%;max-width:437px;object-fit:contain;opacity:.20;transform:translateY(15%);"></div>` : ''}
 
           <!-- Header: logo back on the side (as in the original layout), with
                the school name as a plain auto-sizing line so long names never
@@ -16405,7 +16412,7 @@ function renderDMCCertificateRaw(result) {
           <div style="display:flex;align-items:center;justify-content:space-between;gap:14px;">
             <div style="flex-shrink:0;width:100px;height:100px;margin-left:-12px;">
               ${dmcLogo
-                ? `<img alt="" src="${dmcLogo}" style="width:100px;height:100px;object-fit:contain;border-radius:50%;border:2px solid ${ac};">`
+                ? `<img alt="" src="${safeSrc(dmcLogo)}" style="width:100px;height:100px;object-fit:contain;border-radius:50%;border:2px solid ${ac};">`
                 : `<svg viewBox="0 0 64 64" width="100" height="100"><path d="M32 4 L58 12 V32 C58 46 47 56 32 60 C17 56 6 46 6 32 V12 Z" fill="${pc}" stroke="${ac}" stroke-width="2"/><circle cx="32" cy="26" r="10" fill="none" stroke="${acLight}" stroke-width="1.5"/><path d="M24 40 L40 40" stroke="${acLight}" stroke-width="1.5"/></svg>`}
             </div>
             <div style="flex:1;min-width:0;">
@@ -18923,7 +18930,7 @@ function kpic(it, cls, fit) {
   const w = it.w ? it.w + 'px' : '', h = it.h ? it.h + 'px' : '';
   const st = (it.w || it.h) ? ` style="${w ? 'width:' + w + ';' : ''}${h ? 'height:' + h + ';' : ''}max-width:none;object-fit:${fit || 'fill'};"` : '';
   const svgOpen = `<svg viewBox="0 0 100 100" preserveAspectRatio="none" class="${cls}"${(it.w || it.h) ? ` width="${it.w || it.h}" height="${it.h || it.w}" style="width:${it.w || it.h}px;height:${it.h || it.w}px;max-width:none;"` : ''}`;
-  if (it.img) return `<img alt="" src="${it.img}" class="${cls}"${fit === 'contain' ? st.replace('object-fit:fill', 'object-fit:contain') : st}>`;
+  if (it.img) return `<img alt="" src="${safeSrc(it.img)}" class="${cls}"${fit === 'contain' ? st.replace('object-fit:fill', 'object-fit:contain') : st}>`;
   const e = it.em || '';
   if (e.startsWith('shape:')) return `${svgOpen} fill="#fff" stroke="#222" stroke-width="4" stroke-linejoin="round">${KG_SHAPES[e.slice(6)] || ''}</svg>`;
   if (e.startsWith('color:')) return `${svgOpen}><rect x="4" y="4" width="92" height="92" rx="14" fill="${e.slice(6)}" stroke="#222" stroke-width="3"/></svg>`;
@@ -19440,7 +19447,7 @@ function tplPapersStd() {
     <div class="card" style="margin-bottom:14px;">
       <div class="flexgap" style="align-items:center;margin-top:0;">
         <label style="cursor:pointer;flex-shrink:0;">
-          ${paperMeta.logo ? `<img alt="" src="${paperMeta.logo}" style="width:48px;height:48px;object-fit:contain;border-radius:8px;border:1px solid var(--line);">` : `<div style="width:48px;height:48px;border-radius:8px;border:1px dashed var(--line);display:flex;align-items:center;justify-content:center;font-size:10px;opacity:.6;text-align:center;">${esc(t.logo||'Logo')}</div>`}
+          ${paperMeta.logo ? `<img alt="" src="${safeSrc(paperMeta.logo)}" style="width:48px;height:48px;object-fit:contain;border-radius:8px;border:1px solid var(--line);">` : `<div style="width:48px;height:48px;border-radius:8px;border:1px dashed var(--line);display:flex;align-items:center;justify-content:center;font-size:10px;opacity:.6;text-align:center;">${esc(t.logo||'Logo')}</div>`}
           <input type="file" accept="image/*" style="display:none;" onchange="handlePaperLogoUpload(this.files[0])">
         </label>
         <input style="flex:1;font-weight:600;" value="${esc(paperMeta.school_name)}" oninput="paperMeta.school_name=this.value">
@@ -19476,7 +19483,7 @@ function tplPapersStd() {
       <b style="font-size:13px;display:block;margin-bottom:4px;">${esc(t.paperEndImageLabel)}</b>
       <div style="font-size:11px;opacity:.6;margin-bottom:8px;">${esc(t.paperEndImageHint)}</div>
       <div class="flexgap" style="align-items:center;">
-        ${paperEndImage ? `<img alt="" src="${paperEndImage}" style="width:44px;height:44px;object-fit:cover;border-radius:6px;border:1px solid var(--line);background:repeating-conic-gradient(#ddd 0% 25%, #fff 0% 50%) 50%/10px 10px;">` : ''}
+        ${paperEndImage ? `<img alt="" src="${safeSrc(paperEndImage)}" style="width:44px;height:44px;object-fit:cover;border-radius:6px;border:1px solid var(--line);background:repeating-conic-gradient(#ddd 0% 25%, #fff 0% 50%) 50%/10px 10px;">` : ''}
         <label class="btn-ghost" style="cursor:pointer;font-size:12px;padding:6px 10px;">${esc(t.addImage)}<input type="file" accept="image/*" style="display:none;" onchange="handlePaperEndImageUpload(this.files[0])"></label>
         ${paperEndImage ? `<button class="btn-ghost" style="font-size:12px;padding:6px 10px;" onclick="removePaperEndImage()">${esc(t.removeImage)}</button>` : ''}
       </div>
@@ -19571,13 +19578,13 @@ function printQuestionPaper() {
   };
 
   document.getElementById('print-area').innerHTML = `
-    ${paperMeta.logo ? `<div class="pq-wm-fixed"><img src="${paperMeta.logo}" alt=""></div>` : ''}
+    ${paperMeta.logo ? `<div class="pq-wm-fixed"><img src="${safeSrc(paperMeta.logo)}" alt=""></div>` : ''}
     <div class="qpaper-print" id="qpaper-print-el">
       <div class="qp-head">
         <div class="qp-head-row">
           <div class="qp-side qp-side-left">${esc(t.paperTime)}: ${esc(paperMeta.time_allowed||'—')}<br>${esc(t.paperDate)}: ${esc(formatPaperDate(paperMeta.exam_date))}</div>
           <div class="qp-center">
-            ${paperMeta.logo ? `<img alt="" src="${paperMeta.logo}" class="qp-logo">` : ''}
+            ${paperMeta.logo ? `<img alt="" src="${safeSrc(paperMeta.logo)}" class="qp-logo">` : ''}
             <div class="qp-school">${esc(paperMeta.school_name || 'School')}</div>
             <div class="qp-examname">${esc(paperMeta.exam_name || (LANG==='ur'?'سوالیہ پرچہ':'Question Paper'))}</div>
             <div class="qp-subject">${esc(paperMeta.subject||'')}</div>
@@ -19588,7 +19595,7 @@ function printQuestionPaper() {
         <div class="qp-name-line">${esc(t.studentNameLbl||'Name')}: ______________________&nbsp;&nbsp;&nbsp; ${LANG==='ur'?'رول نمبر':'Roll No.'}: __________</div>
       </div>
       ${paperMode==='kg' ? kgBodyHtml() : `${pqTablesHtml('top')}${paperSecs.map(sc => secHtml(sc) + pqTablesHtml('after:' + sc.id)).join('')}${pqTablesHtml('end')}`}
-      ${paperEndImage ? `<div class="pq-end-img-wrap"><img alt="" src="${paperEndImage}" class="pq-end-img"></div>` : ''}
+      ${paperEndImage ? `<div class="pq-end-img-wrap"><img alt="" src="${safeSrc(paperEndImage)}" class="pq-end-img"></div>` : ''}
     </div>`;
   // The paper is forced onto exactly one A4 page via fitAndSpacePaper, which
   // first stretches or tightens the line/section spacing (a short paper gets
@@ -20114,10 +20121,10 @@ async function printSingleAdmissionEntry(id) {
       <span class="slc-corner bl">❧</span>
       <span class="slc-corner br">❧</span>
       <div class="slc-inner">
-        ${dmcLogo ? `<div class="slc-watermark"><img src="${dmcLogo}" alt=""></div>` : ''}
+        ${dmcLogo ? `<div class="slc-watermark"><img src="${safeSrc(dmcLogo)}" alt=""></div>` : ''}
         <div class="slc-content">
           <div class="slc-head">
-            ${dmcLogo ? `<img class="slc-logo" src="${dmcLogo}" alt="School Logo">` : ''}
+            ${dmcLogo ? `<img class="slc-logo" src="${safeSrc(dmcLogo)}" alt="School Logo">` : ''}
             <div class="eyebrow">${esc(t.headOfInstitution)}</div>
             <div class="slc-name-wrap"><span class="flourish">✦</span><h2>${esc(CURRENT_PROFILE.school_name || 'School')}</h2><span class="flourish">✦</span></div>
             <div class="slc-title-wrap">
@@ -20210,9 +20217,9 @@ async function printAdmissionEntry(id) {
   document.getElementById('print-area').innerHTML = `
     <div class="slc-print slc2" dir="${ur ? 'rtl' : 'ltr'}" style="--c1:${c1};--bg:${bg};">
       <div class="slc2-in">
-        ${dmcLogo ? `<div class="slc2-wm"><img src="${dmcLogo}" alt=""></div>` : ''}
+        ${dmcLogo ? `<div class="slc2-wm"><img src="${safeSrc(dmcLogo)}" alt=""></div>` : ''}
         <div class="slc2-head">
-          ${dmcLogo ? `<img src="${dmcLogo}" alt="School Logo">` : ''}
+          ${dmcLogo ? `<img src="${safeSrc(dmcLogo)}" alt="School Logo">` : ''}
           <h2>${esc(schoolName)}</h2>
           ${dmcDesign.slcLocation ? `<div class="slc2-sub">${esc(dmcDesign.slcLocation)}</div>` : ''}
         </div>
@@ -20301,10 +20308,10 @@ async function printCharacterCertificate(id) {
       <span class="cc-corner bl">❧</span>
       <span class="cc-corner br">❧</span>
       <div class="cc-inner">
-        ${dmcLogo ? `<div class="cc-watermark"><img src="${dmcLogo}" alt=""></div>` : ''}
+        ${dmcLogo ? `<div class="cc-watermark"><img src="${safeSrc(dmcLogo)}" alt=""></div>` : ''}
         <div class="cc-content">
           <div class="cc-head">
-            ${dmcLogo ? `<img class="cc-logo" src="${dmcLogo}" alt="School Logo">` : ''}
+            ${dmcLogo ? `<img class="cc-logo" src="${safeSrc(dmcLogo)}" alt="School Logo">` : ''}
             <div class="eyebrow">${esc(t.headOfInstitution)}</div>
             <div class="cc-name-wrap"><span class="flourish">✦</span><h2>${esc((LANG === 'ur' ? schoolNameUrdu() : CURRENT_PROFILE.school_name) || 'School')}</h2><span class="flourish">✦</span></div>
             <div class="cc-title-wrap">
@@ -21587,12 +21594,21 @@ async function renderClassPortalMarksViewBody() {
   const session = getClassSession();
   const body = document.getElementById('cp-marksview-body');
   if (!session || !body) return;
-  if (!navigator.onLine) { body.innerHTML = `<div class="err">${esc(t.classPortalOfflineNoList)}</div>`; return; }
+  // navigator.onLine can wrongly say "offline" (VPN / private DNS / some Android browsers), so we
+  // always try the server and only show the offline message if the request itself fails.
   body.innerHTML = '…';
-  const { data, error } = await sb.rpc('class_exam_marks_list', {
-    p_school_code: session.schoolCode, p_login_id: session.loginId, p_password: session.password
-  });
-  if (error) { body.innerHTML = `<div class="err">${esc(t.classPortalInvalid)}</div>`; return; }
+  let data = null, error = null;
+  try {
+    const r = await sb.rpc('class_exam_marks_list', {
+      p_school_code: session.schoolCode, p_login_id: session.loginId, p_password: session.password
+    });
+    data = r.data; error = r.error;
+  } catch (e) { error = { message: String((e && e.message) || e) }; }
+  if (error) {
+    const netFail = !navigator.onLine || /failed to fetch|network|load failed|timeout/i.test(String(error.message || ''));
+    body.innerHTML = `<div class="err">${esc(netFail ? t.classPortalOfflineNoList : t.classPortalInvalid)}</div>`;
+    return;
+  }
   classPortalExams = data || [];
   if (!classPortalExams.length) { body.innerHTML = `<div class="empty">${esc(t.classPortalNoExams)}</div>`; return; }
   if (!classPortalSelectedExam || !classPortalExams.some(e => e.exam_name === classPortalSelectedExam)) {
@@ -22646,7 +22662,17 @@ function diaryAfterSave() {
 
 function classPortalDiarySessionOk() {
   const cs = getClassSession(), ds = getDiarySession();
-  return !!(cs && ds && String(ds.schoolCode || '').trim().toUpperCase() === String(cs.schoolCode || '').trim().toUpperCase());
+  if (!cs) return false;
+  // Per-teacher login: the diary/quiz server functions accept the teacher's own CLASS login
+  // ('@@cls@@<login>@@<password>') and then only allow that teacher's own class. So a class
+  // teacher never needs (or sees) the shared school diary password.
+  const same = ds && ds.viaClass && String(ds.schoolCode || '').trim().toUpperCase() === String(cs.schoolCode || '').trim().toUpperCase()
+    && ds.password === '@@cls@@' + cs.loginId + '@@' + cs.password;
+  if (!same) {
+    setDiarySession({ schoolCode: cs.schoolCode, password: '@@cls@@' + cs.loginId + '@@' + cs.password,
+                      ownerId: cs.ownerId, schoolName: cs.schoolName || '', viaClass: true });
+  }
+  return true;
 }
 
 function renderClassPortalDiary() {
@@ -22667,7 +22693,6 @@ function renderClassPortalDiary() {
       <button class="btn-ghost" style="flex:none;padding:9px 16px;" onclick="promptClassPortalDiarySubject()">${esc(t.diaryAddSubject)}</button>
     </div>
     <button class="btn-primary" style="margin-bottom:12px;" onclick="qzOpen()">📝 ${esc(qt('Daily Quiz', 'روزانہ کوئز'))}</button>
-    <button class="btn-ghost" style="font-size:12px;padding:7px 12px;" onclick="classPortalDiaryChangePw()">${esc(t.classPortalDiaryChangePw)}</button>
     ${queue.length ? `<p style="font-size:11px;opacity:.6;margin-top:14px;">${esc(t.classPortalOffline)} (${queue.length})</p>` : ''}
   `;
 }
@@ -23725,7 +23750,7 @@ async function chRecToggle() {
 }
 function chPrev() {
   const p = document.getElementById('ch-prev'); if (!p) return;
-  p.innerHTML = CH.audio ? `<div style="display:flex;gap:6px;align-items:center;margin-bottom:6px;"><audio controls src="${CH.audio}" style="flex:1;height:36px;min-width:0;"></audio><button class="btn-ghost danger" style="flex:none;padding:6px 10px;" onclick="CH.audio=null;chPrev()">✕</button></div>` : '';
+  p.innerHTML = CH.audio ? `<div style="display:flex;gap:6px;align-items:center;margin-bottom:6px;"><audio controls src="${safeSrc(CH.audio)}" style="flex:1;height:36px;min-width:0;"></audio><button class="btn-ghost danger" style="flex:none;padding:6px 10px;" onclick="CH.audio=null;chPrev()">✕</button></div>` : '';
 }
 
 // ---------- send / SMS ----------
@@ -23800,7 +23825,7 @@ async function chLoad(force) {
 }
 async function chPlay(id) {
   const b = document.getElementById('chv-' + id), cr = chCreds(); if (!b || !cr) return;
-  const show = d => { const el = document.getElementById('chv-' + id); if (el) el.outerHTML = `<audio controls autoplay src="${d}" style="width:100%;margin-top:6px;"></audio>`; };
+  const show = d => { const el = document.getElementById('chv-' + id); if (el) el.outerHTML = `<audio controls autoplay src="${safeSrc(d)}" style="width:100%;margin-top:6px;"></audio>`; };
   if (CH.cache[id]) { show(CH.cache[id]); return; }
   b.disabled = true; b.textContent = '…';
   try {
@@ -24564,9 +24589,9 @@ async function sylpPrint() {
     </style>
     <div class="tt-print-page" style="position:fixed;left:0;top:0;right:0;bottom:0;width:auto;height:auto;container-type:size;overflow:hidden;break-after:avoid;page-break-after:avoid;"><div class="tt-print-rotate" style="width:100vh;height:100vw;width:100cqh;height:100cqw;">
       <div class="sylp-pr">
-        ${logoSrc ? `<img alt="" class="sylp-pr-wm" src="${logoSrc}">` : ''}
+        ${logoSrc ? `<img alt="" class="sylp-pr-wm" src="${safeSrc(logoSrc)}">` : ''}
         <div class="sylp-pr-head">
-          ${logoSrc ? `<img alt="" class="sylp-pr-logo" src="${logoSrc}">` : ''}
+          ${logoSrc ? `<img alt="" class="sylp-pr-logo" src="${safeSrc(logoSrc)}">` : ''}
           <div>
             <div class="sylp-pr-school">${esc(school)}</div>
             <div class="sylp-pr-title" dir="auto">${esc(LANG === 'ur' ? 'نصاب — کلاس ' + c + ' — سیشن ' + d.session : 'SYLLABUS ' + (/^(Nursery|KG)$/i.test(c) ? c.toUpperCase() : 'GRADE ' + c) + ' Session ' + d.session)}</div>
