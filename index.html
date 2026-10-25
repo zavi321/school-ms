@@ -22662,17 +22662,7 @@ function diaryAfterSave() {
 
 function classPortalDiarySessionOk() {
   const cs = getClassSession(), ds = getDiarySession();
-  if (!cs) return false;
-  // Per-teacher login: the diary/quiz server functions accept the teacher's own CLASS login
-  // ('@@cls@@<login>@@<password>') and then only allow that teacher's own class. So a class
-  // teacher never needs (or sees) the shared school diary password.
-  const same = ds && ds.viaClass && String(ds.schoolCode || '').trim().toUpperCase() === String(cs.schoolCode || '').trim().toUpperCase()
-    && ds.password === '@@cls@@' + cs.loginId + '@@' + cs.password;
-  if (!same) {
-    setDiarySession({ schoolCode: cs.schoolCode, password: '@@cls@@' + cs.loginId + '@@' + cs.password,
-                      ownerId: cs.ownerId, schoolName: cs.schoolName || '', viaClass: true });
-  }
-  return true;
+  return !!(cs && ds && String(ds.schoolCode || '').trim().toUpperCase() === String(cs.schoolCode || '').trim().toUpperCase());
 }
 
 function renderClassPortalDiary() {
@@ -22693,6 +22683,7 @@ function renderClassPortalDiary() {
       <button class="btn-ghost" style="flex:none;padding:9px 16px;" onclick="promptClassPortalDiarySubject()">${esc(t.diaryAddSubject)}</button>
     </div>
     <button class="btn-primary" style="margin-bottom:12px;" onclick="qzOpen()">📝 ${esc(qt('Daily Quiz', 'روزانہ کوئز'))}</button>
+    <button class="btn-ghost" style="font-size:12px;padding:7px 12px;" onclick="classPortalDiaryChangePw()">${esc(t.classPortalDiaryChangePw)}</button>
     ${queue.length ? `<p style="font-size:11px;opacity:.6;margin-top:14px;">${esc(t.classPortalOffline)} (${queue.length})</p>` : ''}
   `;
 }
@@ -25190,6 +25181,415 @@ console.log('SchoolMS build: 2026-10-13c-dmc-21-formats-qpaper-fixes-dashboard-i
     const nb = document.getElementById('navbar');
     if (nb && nb.children.length) { window.renderNav(); window.renderSidebar(); }
   } catch (e) { }
+})();
+</script>
+<!-- ======================================================================
+     Online fee payment SUBMISSIONS — added as a separate block.
+     No gateway, no money moves through the app: parents pay the school's own
+     JazzCash / Easypaisa / bank account and submit the Transaction ID; the admin
+     verifies it in their own account and then records the fee in the normal ledger.
+     Nothing above this line was changed. Run modules_part12_online_fee_submissions.sql first.
+     ====================================================================== -->
+<style>
+#fp-root{padding:14px 14px 96px;max-width:900px;margin:0 auto}
+.fp-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+.fp-head h2{display:flex;align-items:center;gap:8px;font-size:20px;color:var(--navy);margin:0}
+.fp-head svg{width:22px;height:22px}
+.fp-ref{background:#F0EBDA;color:var(--navy);border:none;border-radius:10px;width:38px;height:38px;font-size:18px}
+.fp-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(105px,1fr));gap:8px;margin-bottom:12px}
+.fp-stat{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px 12px}
+.fp-stat b{display:block;font-size:18px;color:var(--navy)}
+.fp-stat span{font-size:11px;opacity:.65}
+.fp-pills{display:flex;gap:6px;margin-bottom:10px;overflow-x:auto}
+.fp-pill{flex:none;background:#F0EBDA;color:var(--navy);border:none;border-radius:999px;padding:7px 14px;font-size:13px;font-weight:500}
+.fp-pill.on{background:var(--navy);color:var(--gold-soft)}
+.fp-bar{display:flex;gap:8px;margin-bottom:10px}
+.fp-bar input{flex:1}
+.fp-card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px 14px;margin-bottom:8px}
+.fp-row{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
+.fp-t{font-weight:600;color:var(--navy);font-size:14px}
+.fp-amt{font-weight:700;color:var(--navy);font-size:16px;white-space:nowrap}
+.fp-s{font-size:12px;opacity:.7;margin-top:2px;word-break:break-word}
+.fp-act{display:flex;gap:6px;margin-top:10px;flex-wrap:wrap}
+.fp-act button{flex:none;width:auto;padding:7px 12px;font-size:12px;border-radius:8px}
+.fp-badge{font-size:11px;font-weight:600;border-radius:999px;padding:3px 9px;background:#E8F1EA;color:var(--sage);white-space:nowrap}
+.fp-badge.warn{background:#FFF1D6;color:#8A5A00}
+.fp-badge.bad{background:#FBEAE5;color:var(--rust)}
+.fp-empty{text-align:center;opacity:.6;padding:30px 10px;font-size:13px}
+.fp-note{font-size:12px;line-height:1.6;opacity:.85;margin:6px 0 10px}
+.fp-acct{background:#F7F3E6;border-radius:10px;padding:8px 10px;margin:6px 0;font-size:13px}
+.fp-acct b{user-select:all}
+#fp-err:empty,.fp-msg:empty{display:none}
+</style>
+<script>
+/* ---------------------------------------------------------------------------
+   PART A — admin tab "Online payments"
+   --------------------------------------------------------------------------- */
+(function () {
+  'use strict';
+  if (typeof sb === 'undefined' || typeof window.renderNav !== 'function' ||
+      typeof window.renderSidebar !== 'function' || typeof window._renderTabInner !== 'function') return;
+
+  const KEY = 'payments';
+  const ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="6" width="20" height="14" rx="2"/><path d="M2 10h20M6 15h4"/></svg>';
+  const S = { subs: [], settings: null, view: 'pending', q: '', loaded: false, loading: false, err: '' };
+  const M = {};
+  let lastKey = null, ownerSeen;
+
+  const label = () => qt('Online payments', 'آن لائن ادائیگیاں');
+  const mname = m => ({ jazzcash: 'JazzCash', easypaisa: 'Easypaisa', bank: qt('Bank', 'بینک'), other: qt('Other', 'دیگر') })[m] || m;
+  const money = n => 'Rs ' + Math.round(n).toLocaleString('en-US');
+  const sid = x => String(x == null ? '' : x).replace(/[^A-Za-z0-9_-]/g, '');
+  const val = id => { const e = document.getElementById(id); return e ? String(e.value || '').trim() : ''; };
+  const find = id => S.subs.find(x => x.id === id) || null;
+  const fail = msg => { const e = document.getElementById('fp-err'); if (e) e.textContent = msg; return false; };
+  const empty = msg => `<div class="fp-empty">${esc(msg)}</div>`;
+  const fmtDate = s => { if (!s) return ''; const p = String(s).slice(0, 10).split('-'); return p.length === 3 ? p[2] + '-' + p[1] + '-' + p[0] : s; };
+  const curUid = () => (typeof CURRENT_USER !== 'undefined' && CURRENT_USER && CURRENT_USER.id) || null;
+  function resetState() { Object.assign(S, { subs: [], settings: null, view: 'pending', q: '', loaded: false, loading: false, err: '' }); lastKey = null; }
+  function ensureUser() { const id = curUid(); if (id !== ownerSeen) { ownerSeen = id; resetState(); } }
+
+  function errText(e) {
+    const m = (e && e.message) || String(e);
+    if (e && (e.code === '42P01' || /does not exist|schema cache|relation/i.test(m))) {
+      return qt('Setup needed: run the Part 12 SQL in Supabase first.', 'سیٹ اپ ضروری ہے: پہلے Supabase میں Part 12 SQL چلائیں۔');
+    }
+    return (typeof friendlyErrorMsg === 'function') ? friendlyErrorMsg(e) : m;
+  }
+  const SRV = {
+    mx_already_reviewed: ['This payment was already approved or rejected.', 'اس ادائیگی کا فیصلہ پہلے ہو چکا ہے۔'],
+    mx_reason_required:  ['Write a reason for rejecting.', 'مسترد کرنے کی وجہ لکھیں۔'],
+    mx_locked_field:     ['This record cannot be changed that way.', 'اس ریکارڈ میں یہ تبدیلی ممکن نہیں۔']
+  };
+  function bad(e) {
+    if (!e) return false;
+    const m = String(e.message || '');
+    const key = Object.keys(SRV).find(x => m.indexOf(x) > -1);
+    if (key) { const msg = qt(SRV[key][0], SRV[key][1]); if (document.getElementById('fp-err')) fail(msg); else alert(msg); return true; }
+    return reportSaveError(e);
+  }
+  async function all(make) {
+    let out = [], from = 0; const step = 1000;
+    for (;;) {
+      const r = await make().range(from, from + step - 1);
+      if (r.error) throw r.error;
+      out = out.concat(r.data || []);
+      if (!r.data || r.data.length < step) break;
+      from += step;
+    }
+    return out;
+  }
+  async function load() {
+    ensureUser();
+    const uid0 = curUid();
+    if (S.loading) return;
+    S.loading = true; S.err = '';
+    let subs = null, st = null, err = '';
+    try {
+      subs = await all(() => sb.from('fee_submissions').select('*').order('created_at', { ascending: false }).order('id'));
+      const r = await sb.from('fee_pay_settings').select('*').eq('owner_id', uid0).limit(1);
+      if (r.error) throw r.error;
+      st = (r.data && r.data[0]) || null;
+    } catch (e) { err = errText(e); }
+    if (uid0 !== curUid()) return;      // another account signed in meanwhile — drop this data
+    S.loading = false;
+    if (err) S.err = err; else { S.subs = subs; S.settings = st; S.loaded = true; }
+    if (TAB === KEY) render(false);
+  }
+  const reload = async () => { closeModal(); S.loaded = false; S.loading = false; await load(); };
+
+  // ---------- rendering ----------
+  function render(soft) {
+    const main = document.getElementById('main'); if (!main) return;
+    ensureUser();
+    const ae = document.activeElement;
+    if (soft && lastKey === KEY && ae && main.contains(ae) && /^(INPUT|SELECT|TEXTAREA)$/.test(ae.tagName)) return;
+    lastKey = KEY;
+    let body;
+    if (S.err) body = `<div class="card" style="text-align:center"><div class="err">${esc(S.err)}</div><button class="btn-ghost" style="margin-top:10px" onclick="FPAY.refresh()">${esc(qt('Retry', 'دوبارہ کوشش'))}</button></div>`;
+    else if (!S.loaded) body = empty(qt('Loading…', 'لوڈ ہو رہا ہے…'));
+    else body = bodyPay();
+    main.innerHTML = `<div id="fp-root"><div class="fp-head"><h2>${ICON}<span>${esc(label())}</span></h2><button class="fp-ref" onclick="FPAY.refresh()" aria-label="refresh">⟳</button></div>${body}</div>`;
+    if (!S.loaded && !S.loading) load();
+  }
+  M.refresh = function () { S.loaded = false; S.err = ''; render(false); };
+  M.view = function (v) { S.view = v; S.q = ''; render(false); };
+  M.search = function (v) { S.q = v; const el = document.getElementById('fp-list'); if (el) el.innerHTML = listPay(); };
+
+  function bodyPay() {
+    const pend = S.subs.filter(x => x.status === 'pending'), appr = S.subs.filter(x => x.status === 'approved'), rej = S.subs.filter(x => x.status === 'rejected');
+    const todo = appr.filter(x => !x.recorded);
+    const total = appr.reduce((a, x) => a + Number(x.amount || 0), 0);
+    const pill = (k, txt) => `<button class="fp-pill${S.view === k ? ' on' : ''}" onclick="FPAY.view('${k}')">${esc(txt)}</button>`;
+    let h = `<div class="fp-stats">${[[qt('To check', 'جانچنے والی'), pend.length], [qt('To record', 'درج کرنی ہیں'), todo.length], [qt('Approved total', 'منظور شدہ کل'), money(total)]]
+      .map(x => `<div class="fp-stat"><b>${esc(x[1])}</b><span>${esc(x[0])}</span></div>`).join('')}</div>`;
+    h += `<div class="fp-pills">${pill('pending', qt('To check', 'جانچنی ہیں') + ' (' + pend.length + ')')}${pill('approved', qt('Approved', 'منظور') + ' (' + appr.length + ')')}${pill('rejected', qt('Rejected', 'مسترد') + ' (' + rej.length + ')')}${pill('settings', qt('Accounts', 'اکاؤنٹس'))}</div>`;
+    if (S.view === 'settings') return h + settingsHtml();
+    return h + `<div class="fp-bar"><input id="fp-q" type="search" autocomplete="off" placeholder="${esc(qt('Search name or Transaction ID…', 'نام یا ٹرانزیکشن آئی ڈی تلاش کریں…'))}" value="${esc(S.q)}" oninput="FPAY.search(this.value)"></div><div id="fp-list">${listPay()}</div>`;
+  }
+  function listPay() {
+    const q = S.q.trim().toLowerCase();
+    let rows = S.subs.filter(x => x.status === S.view && (!q || (x.student_name + ' ' + x.trx_id + ' ' + x.class_name).toLowerCase().includes(q)));
+    if (S.view === 'approved') rows = rows.slice().sort((a, b) => (a.recorded === b.recorded ? 0 : a.recorded ? 1 : -1));
+    if (!rows.length) return empty(S.view === 'pending' ? qt('Nothing to check right now.', 'ابھی جانچنے کے لیے کچھ نہیں۔') : qt('Nothing here.', 'یہاں کچھ نہیں۔'));
+    return rows.map(x => {
+      const top = `<div class="fp-row"><div><div class="fp-t">${esc(x.student_name)}</div><div class="fp-s">${esc(x.class_name)}${x.serial_no ? ' · ' + esc(qt('Roll', 'رول')) + ' ' + esc(x.serial_no) : ''}</div></div><div class="fp-amt">${money(x.amount)}</div></div>
+        <div class="fp-s">${esc(mname(x.method))} · ${esc(qt('Transaction ID', 'ٹرانزیکشن آئی ڈی'))}: <b style="user-select:all">${esc(x.trx_id)}</b></div>
+        <div class="fp-s">${esc(qt('Paid on', 'ادائیگی کی تاریخ'))}: ${fmtDate(x.paid_on)} · ${esc(qt('Sent', 'بھیجا'))}: ${fmtDate(x.created_at)}</div>
+        ${x.note ? `<div class="fp-s">“${esc(x.note)}”</div>` : ''}`;
+      const btn = (t, fn, cls) => `<button class="${cls || 'btn-ghost'}" onclick="${fn}">${esc(t)}</button>`;
+      if (x.status === 'pending') {
+        return `<div class="fp-card">${top}<div class="fp-act">${btn(qt('Approve', 'منظور کریں'), `FPAY.approve('${sid(x.id)}')`, 'btn-primary')}${btn(qt('Reject', 'مسترد کریں'), `FPAY.rejectForm('${sid(x.id)}')`, 'btn-ghost danger')}${btn(qt('Student', 'طالب علم'), `FPAY.openStudent('${sid(x.student_id)}')`)}</div></div>`;
+      }
+      if (x.status === 'approved') {
+        return `<div class="fp-card">${top}<div class="fp-row" style="margin-top:6px"><span class="fp-badge${x.recorded ? '' : ' warn'}">${esc(x.recorded ? qt('Recorded in fees', 'فیس میں درج') : qt('Not yet recorded in fees', 'فیس میں درج نہیں'))}</span></div>
+          <div class="fp-act">${btn(qt('Open fee ledger', 'فیس لیجر کھولیں'), `FPAY.openStudent('${sid(x.student_id)}')`, x.recorded ? 'btn-ghost' : 'btn-primary')}${x.recorded ? '' : btn(qt('Mark as recorded', 'درج شدہ لکھیں'), `FPAY.recorded('${sid(x.id)}')`)}</div></div>`;
+      }
+      return `<div class="fp-card">${top}<div class="fp-row" style="margin-top:6px"><span class="fp-badge bad">${esc(qt('Rejected', 'مسترد'))}: ${esc(x.reject_reason)}</span></div>
+        <div class="fp-act">${btn(qt('Delete', 'حذف'), `FPAY.del('${sid(x.id)}')`, 'btn-ghost danger')}</div></div>`;
+    }).join('');
+  }
+  function settingsHtml() {
+    const s = S.settings || {};
+    const f = (id, lab, v, max, type) => `<label><span>${esc(lab)}</span><input id="${id}" ${type ? `type="${type}"` : ''} maxlength="${max}" value="${esc(v || '')}"></label>`;
+    return `<div class="fp-card"><div class="fp-note">${esc(qt('These numbers are shown to parents inside the Parent Portal, so they know where to send the fee. Use only YOUR school’s own accounts.', 'یہ نمبر پیرنٹ پورٹل میں والدین کو دکھائے جاتے ہیں تاکہ انہیں معلوم ہو فیس کہاں بھیجنی ہے۔ صرف اپنے اسکول کے اپنے اکاؤنٹ لکھیں۔'))}</div>
+      ${f('fp-jn', qt('JazzCash number', 'جاز کیش نمبر'), s.jazzcash_no, 30, 'tel')}${f('fp-jt', qt('JazzCash account title', 'جاز کیش اکاؤنٹ ٹائٹل'), s.jazzcash_title, 100)}
+      ${f('fp-en', qt('Easypaisa number', 'ایزی پیسہ نمبر'), s.easypaisa_no, 30, 'tel')}${f('fp-et', qt('Easypaisa account title', 'ایزی پیسہ اکاؤنٹ ٹائٹل'), s.easypaisa_title, 100)}
+      ${f('fp-bk', qt('Bank details (optional)', 'بینک کی تفصیل (اختیاری)'), s.bank_details, 400)}
+      ${f('fp-nt', qt('Message to parents (optional)', 'والدین کے لیے پیغام (اختیاری)'), s.note, 400)}
+      <div id="fp-err" class="err" style="margin-bottom:10px"></div>
+      <button class="btn-primary" onclick="FPAY.saveSettings(this)">${esc(qt('Save', 'محفوظ کریں'))}</button></div>`;
+  }
+  M.saveSettings = function (btn) {
+    const row = { owner_id: curUid(), jazzcash_no: val('fp-jn'), jazzcash_title: val('fp-jt'), easypaisa_no: val('fp-en'), easypaisa_title: val('fp-et'), bank_details: val('fp-bk'), note: val('fp-nt'), updated_at: new Date().toISOString() };
+    guardedSubmit(btn, async () => {
+      const r = await sb.from('fee_pay_settings').upsert(row, { onConflict: 'owner_id' });
+      if (bad(r.error)) return;
+      S.loaded = false; S.loading = false; await load();
+      alert(qt('Saved.', 'محفوظ ہو گیا۔'));
+    });
+  };
+
+  // ---------- actions ----------
+  M.approve = async function (id) {
+    const x = find(id); if (!x || x.status !== 'pending') return;
+    if (!confirm(qt('Approve ' + money(x.amount) + ' (ID ' + x.trx_id + ') from ' + x.student_name + '?\n\nApprove ONLY after you can see this payment in your own JazzCash / Easypaisa / bank account.',
+                    x.student_name + ' کی ' + money(x.amount) + ' (آئی ڈی ' + x.trx_id + ') منظور کریں؟\n\nصرف تب منظور کریں جب یہ رقم آپ اپنے جاز کیش / ایزی پیسہ / بینک اکاؤنٹ میں خود دیکھ لیں۔'))) return;
+    const r = await sb.from('fee_submissions').update({ status: 'approved' }).eq('id', id).eq('status', 'pending');
+    if (bad(r.error)) return;
+    S.loaded = false; S.loading = false; await load();
+  };
+  M.rejectForm = function (id) {
+    const x = find(id); if (!x) return;
+    showModal(qt('Reject payment', 'ادائیگی مسترد کریں'),
+      `<div class="fp-t">${esc(x.student_name)} — ${money(x.amount)}</div><div class="fp-s" style="margin-bottom:12px">${esc(x.trx_id)}</div>
+       <label><span>${esc(qt('Reason (parents will see this)', 'وجہ (والدین دیکھیں گے)'))}</span><input id="fp-rr" maxlength="200" placeholder="${esc(qt('e.g. Payment not received', 'مثلاً رقم موصول نہیں ہوئی'))}"></label>
+       <div id="fp-err" class="err" style="margin-bottom:10px"></div>
+       <button class="btn-primary" onclick="FPAY.reject(this,'${sid(id)}')">${esc(qt('Reject', 'مسترد کریں'))}</button>`);
+  };
+  M.reject = function (btn, id) {
+    const reason = val('fp-rr');
+    if (!reason) return fail(qt('Write a reason for rejecting.', 'مسترد کرنے کی وجہ لکھیں۔'));
+    guardedSubmit(btn, async () => {
+      const r = await sb.from('fee_submissions').update({ status: 'rejected', reject_reason: reason }).eq('id', id).eq('status', 'pending');
+      if (bad(r.error)) return;
+      await reload();
+    });
+  };
+  M.recorded = async function (id) {
+    const x = find(id); if (!x) return;
+    const r = await sb.from('fee_submissions').update({ recorded: true }).eq('id', id).eq('status', 'approved');
+    if (bad(r.error)) return;
+    S.loaded = false; S.loading = false; await load();
+  };
+  M.del = async function (id) {
+    const x = find(id); if (!x) return;
+    if (!confirm(qt('Delete this rejected payment?', 'یہ مسترد شدہ ادائیگی حذف کریں؟'))) return;
+    const r = await sb.from('fee_submissions').delete().eq('id', id).eq('status', 'rejected');
+    if (bad(r.error)) return;
+    S.loaded = false; S.loading = false; await load();
+  };
+  M.openStudent = function (studentId) {
+    const st = (typeof DATA !== 'undefined' && DATA.students || []).find(s => String(s.id) === String(studentId));
+    if (st && typeof window.openStudentDetail === 'function') window.openStudentDetail(st.id);
+    else alert(qt('Student not found in the Students list.', 'طالب علم اسٹوڈنٹس کی فہرست میں نہیں ملا۔'));
+  };
+
+  // ---------- plug into the app (wrap — originals stay untouched) ----------
+  const oNav = window.renderNav, oSide = window.renderSidebar, oInner = window._renderTabInner;
+  window.renderNav = function () {
+    const r = oNav.apply(this, arguments);
+    try {
+      const nb = document.getElementById('navbar');
+      if (nb) {
+        nb.insertAdjacentHTML('beforeend', `<button class="${TAB === KEY ? 'active' : ''}" onclick="setTab('${KEY}')">${ICON}<span>${esc(label())}</span></button>`);
+        if (typeof NAV_SCROLL === 'number') nb.scrollLeft = NAV_SCROLL;
+      }
+    } catch (e) { }
+    return r;
+  };
+  window.renderSidebar = function () {
+    const r = oSide.apply(this, arguments);
+    try {
+      const more = document.querySelector('#sidebar .side-more');
+      if (more) more.insertAdjacentHTML('beforeend', `<button class="side-link ${TAB === KEY ? 'active' : ''}" onclick="setTab('${KEY}')"><span class="side-ic">${ICON}</span><span>${esc(label())}</span></button>`);
+    } catch (e) { }
+    return r;
+  };
+  window._renderTabInner = function () {
+    if (TAB === KEY) { render(true); return; }
+    if (lastKey === KEY) lastKey = null;
+    return oInner.apply(this, arguments);
+  };
+  window.FPAY = M;
+  const oLogOut = window.logOut;
+  if (typeof oLogOut === 'function') window.logOut = function () { try { resetState(); ownerSeen = undefined; } catch (e) { } return oLogOut.apply(this, arguments); };
+  try {
+    const nb = document.getElementById('navbar');
+    if (nb && nb.children.length) { window.renderNav(); window.renderSidebar(); }
+  } catch (e) { }
+})();
+
+/* ---------------------------------------------------------------------------
+   PART B — Parent Portal: "Pay fees online" card (below the existing result)
+   --------------------------------------------------------------------------- */
+(function () {
+  'use strict';
+  if (typeof window.renderParentPortalResult !== 'function' || typeof sb === 'undefined' || typeof getPpCache !== 'function') return;
+  const oRes = window.renderParentPortalResult;
+  const P = {};
+  let OV = null, OVkey = '', OVts = 0, busy = false, unavailable = false;
+
+  const money = n => 'Rs ' + Math.round(n).toLocaleString('en-US');
+  const iso = d => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  const fmtDate = s => { if (!s) return ''; const p = String(s).slice(0, 10).split('-'); return p.length === 3 ? p[2] + '-' + p[1] + '-' + p[0] : s; };
+  const mname = m => ({ jazzcash: 'JazzCash', easypaisa: 'Easypaisa', bank: qt('Bank', 'بینک'), other: qt('Other', 'دیگر') })[m] || m;
+  function creds() {
+    const c = getPpCache();
+    return (c && c.schoolCode && c.roll != null && c.pin != null) ? { p_school_code: String(c.schoolCode), p_roll: String(c.roll), p_pin: String(c.pin) } : null;
+  }
+  const keyOf = c => c ? c.p_school_code + '|' + c.p_roll : '';
+
+  const ERR = {
+    bad_amount:       ['Enter a valid amount.', 'درست رقم لکھیں۔'],
+    bad_method:       ['Choose how you paid.', 'ادائیگی کا طریقہ منتخب کریں۔'],
+    bad_trx:          ['Transaction ID must be 4–40 letters or digits.', 'ٹرانزیکشن آئی ڈی 4 سے 40 حروف/ہندسوں کی ہو۔'],
+    bad_date:         ['The payment date is not valid (last 60 days only).', 'ادائیگی کی تاریخ درست نہیں (صرف پچھلے 60 دن)۔'],
+    duplicate_trx:    ['This Transaction ID was already submitted.', 'یہ ٹرانزیکشن آئی ڈی پہلے ہی جمع ہو چکی ہے۔'],
+    too_many_pending: ['You already have 3 payments waiting for the school to check. Please wait.', 'آپ کی 3 ادائیگیاں اسکول کی جانچ کی منتظر ہیں۔ براہ کرم انتظار کریں۔'],
+    too_many_today:   ['Too many submissions today. Try again tomorrow.', 'آج بہت زیادہ اندراجات ہو گئے۔ کل دوبارہ کوشش کریں۔'],
+    too_many_attempts:['Too many wrong attempts. Please try again after 15 minutes.', 'بہت زیادہ غلط کوششیں۔ براہ کرم 15 منٹ بعد کوشش کریں۔'],
+    invalid:          ['Could not verify your login. Please sign in to the portal again.', 'آپ کی شناخت نہیں ہو سکی۔ براہ کرم پورٹل میں دوبارہ داخل ہوں۔'],
+    not_linked:       ['This student is not linked to a fee record yet. Please contact the school.', 'اس طالب علم کا فیس ریکارڈ ابھی منسلک نہیں۔ اسکول سے رابطہ کریں۔']
+  };
+  const errMsg = code => { const e = ERR[code]; return e ? qt(e[0], e[1]) : qt('Something went wrong. Please try again.', 'کچھ خرابی ہوئی۔ دوبارہ کوشش کریں۔'); };
+  const isMissing = e => !!e && (e.code === 'PGRST202' || e.code === '42883' || /could not find the function|does not exist/i.test(String(e.message || '')));
+
+  function readDraft() {
+    const g = id => { const e = document.getElementById(id); return e ? e.value : null; };
+    return { amt: g('fp-p-amt'), m: g('fp-p-m'), trx: g('fp-p-trx'), d: g('fp-p-d'), n: g('fp-p-n') };
+  }
+  function applyDraft(d) {
+    if (!d) return;
+    [['fp-p-amt', 'amt'], ['fp-p-m', 'm'], ['fp-p-trx', 'trx'], ['fp-p-d', 'd'], ['fp-p-n', 'n']].forEach(p => {
+      const e = document.getElementById(p[0]); if (e && d[p[1]]) e.value = d[p[1]];
+    });
+  }
+
+  function cardHtml() {
+    if (!OV) return `<div class="sub">${esc(qt('Loading payment options…', 'ادائیگی کی تفصیل لوڈ ہو رہی ہے…'))}</div>`;
+    if (OV.ok === false) return OV.error === 'too_many_attempts' ? `<div class="err">${esc(errMsg('too_many_attempts'))}</div>` : '';
+    const s = OV.settings || {};
+    const hasAcct = !!(s.jazzcash_no || s.easypaisa_no || s.bank_details);
+    const title = `<div class="nm" style="margin-bottom:6px">${esc(qt('Pay fees online', 'آن لائن فیس جمع کروائیں'))}</div>`;
+    if (!hasAcct) return title + `<div class="sub">${esc(qt('The school has not set up online payment yet.', 'اسکول نے ابھی آن لائن ادائیگی سیٹ اپ نہیں کی۔'))}</div>` + histHtml();
+    const acct = (nm, no, ttl) => no ? `<div class="fp-acct">${esc(nm)}: <b>${esc(no)}</b>${ttl ? ' — ' + esc(ttl) : ''}</div>` : '';
+    return title +
+      `<div class="fp-note">${esc(qt('1. Send the fee to the school account below from your JazzCash / Easypaisa / bank app. 2. Enter the Transaction ID here. The school will check it and add it to your child’s fee record.', '1۔ اپنی جاز کیش / ایزی پیسہ / بینک ایپ سے فیس نیچے دیے گئے اسکول اکاؤنٹ میں بھیجیں۔ 2۔ یہاں ٹرانزیکشن آئی ڈی لکھیں۔ اسکول جانچ کر آپ کے بچے کے فیس ریکارڈ میں درج کر دے گا۔'))}</div>` +
+      acct('JazzCash', s.jazzcash_no, s.jazzcash_title) + acct('Easypaisa', s.easypaisa_no, s.easypaisa_title) +
+      (s.bank_details ? `<div class="fp-acct">${esc(qt('Bank', 'بینک'))}: <b>${esc(s.bank_details)}</b></div>` : '') +
+      (s.note ? `<div class="fp-note">${esc(s.note)}</div>` : '') +
+      `<label><span>${esc(qt('Amount paid (Rs)', 'ادا کی گئی رقم (روپے)'))}</span><input id="fp-p-amt" type="number" inputmode="decimal" min="1" max="1000000"></label>
+       <label><span>${esc(qt('Paid through', 'ادائیگی کا ذریعہ'))}</span><select id="fp-p-m">${['jazzcash', 'easypaisa', 'bank', 'other'].map(k => `<option value="${k}">${esc(mname(k))}</option>`).join('')}</select></label>
+       <label><span>${esc(qt('Transaction ID', 'ٹرانزیکشن آئی ڈی'))}</span><input id="fp-p-trx" maxlength="40" autocomplete="off" autocapitalize="characters"></label>
+       <label><span>${esc(qt('Payment date', 'ادائیگی کی تاریخ'))}</span><input id="fp-p-d" type="date" value="${iso(new Date())}" max="${iso(new Date())}"></label>
+       <label><span>${esc(qt('Note (optional, e.g. which months)', 'نوٹ (اختیاری، مثلاً کون سے مہینے)'))}</span><input id="fp-p-n" maxlength="200"></label>
+       <div id="fp-p-msg" class="fp-msg" style="margin-bottom:10px"></div>
+       <button id="fp-p-btn" class="btn-primary" onclick="FPPAY.submit()">${esc(qt('Submit payment', 'ادائیگی جمع کروائیں'))}</button>
+       <div class="fp-note" style="margin-top:10px">${esc(qt('Only submit a payment you really sent to the school account. Never share your PIN with anyone.', 'صرف وہی ادائیگی جمع کروائیں جو آپ نے واقعی اسکول اکاؤنٹ میں بھیجی ہو۔ اپنا پن کسی کو نہ بتائیں۔'))}</div>` + histHtml();
+  }
+  function histHtml() {
+    const list = (OV && OV.submissions) || [];
+    if (!list.length) return '';
+    return `<div class="nm" style="margin:14px 0 6px;font-size:14px">${esc(qt('Your submitted payments', 'آپ کی جمع کردہ ادائیگیاں'))}</div>` + list.map(x => {
+      const st = x.status === 'approved' ? `<span class="fp-badge">${esc(qt('Verified ✓', 'تصدیق شدہ ✓'))}</span>`
+        : x.status === 'rejected' ? `<span class="fp-badge bad">${esc(qt('Rejected', 'مسترد'))}${x.reject_reason ? ': ' + esc(x.reject_reason) : ''}</span>`
+        : `<span class="fp-badge warn">${esc(qt('Waiting for school', 'اسکول کی جانچ کا انتظار'))}</span>`;
+      return `<div class="fp-acct"><div class="fp-row"><div>${money(x.amount)} · ${esc(mname(x.method))}</div>${st}</div><div class="fp-s">${esc(qt('ID', 'آئی ڈی'))}: ${esc(x.trx_id)} · ${fmtDate(x.paid_on)}</div></div>`;
+    }).join('');
+  }
+
+  function draw(draft) {
+    const el = document.getElementById('fp-card'); if (!el) return;
+    const html = cardHtml();
+    if (!html) { el.remove(); return; }
+    el.innerHTML = html;
+    applyDraft(draft);
+  }
+  async function refresh(force) {
+    const c = creds(); if (!c || unavailable) return;
+    const k = keyOf(c);
+    if (!force && OV && OVkey === k && Date.now() - OVts < 15000) return;
+    try {
+      const { data, error } = await sb.rpc('parent_payment_overview', c);
+      if (error) { if (isMissing(error)) { unavailable = true; const el = document.getElementById('fp-card'); if (el) el.remove(); } return; }
+      if (keyOf(creds()) !== k) return;
+      OV = data; OVkey = k; OVts = Date.now();
+      draw(readDraft());
+    } catch (e) { }
+  }
+  function mount(draft) {
+    const body = document.getElementById('parent-portal-body');
+    if (!body || unavailable || !navigator.onLine || !creds()) return;
+    if (!document.getElementById('fp-card')) body.insertAdjacentHTML('beforeend', '<div id="fp-card" class="card" style="margin:12px 0"></div>');
+    if (OV && OVkey === keyOf(creds())) draw(draft); else { OV = null; draw(draft); }
+    refresh(false);
+  }
+  window.renderParentPortalResult = function () {
+    let d = null;
+    try { d = readDraft(); } catch (e) { }
+    const out = oRes.apply(this, arguments);
+    try { mount(d); } catch (e) { }
+    return out;
+  };
+
+  P.submit = async function () {
+    if (busy) return;
+    const c = creds(); if (!c) return;
+    const g = id => { const e = document.getElementById(id); return e ? String(e.value || '').trim() : ''; };
+    const btn = document.getElementById('fp-p-btn');
+    const show = (t, ok) => { const m = document.getElementById('fp-p-msg'); if (m) m.innerHTML = `<div class="${ok ? 'ok' : 'err'}">${esc(t)}</div>`; };
+    const amount = parseFloat(g('fp-p-amt')), trx = g('fp-p-trx'), d = g('fp-p-d');
+    if (!(amount > 0 && amount <= 1000000)) return show(errMsg('bad_amount'));
+    if (!/^[A-Za-z0-9._-]{4,40}$/.test(trx)) return show(errMsg('bad_trx'));
+    if (!d) return show(errMsg('bad_date'));
+    if (!navigator.onLine) return show(qt('You are offline. Please connect to the internet and try again.', 'آپ آف لائن ہیں۔ انٹرنیٹ سے جڑ کر دوبارہ کوشش کریں۔'));
+    if (!confirm(qt('Submit Rs ' + Math.round(amount) + ' with Transaction ID ' + trx + '?\n\nOnly submit a payment you really sent to the school account.',
+                    'ٹرانزیکشن آئی ڈی ' + trx + ' کے ساتھ Rs ' + Math.round(amount) + ' جمع کروائیں؟\n\nصرف وہی ادائیگی جمع کروائیں جو آپ نے واقعی اسکول اکاؤنٹ میں بھیجی ہو۔'))) return;
+    busy = true; if (btn) btn.disabled = true; show('…');
+    try {
+      const { data, error } = await sb.rpc('parent_payment_submit', Object.assign({}, c, { p_amount: amount, p_method: g('fp-p-m'), p_trx_id: trx, p_paid_on: d, p_note: g('fp-p-n') }));
+      if (error) show(isMissing(error) ? qt('Online payment is not available yet. Please contact the school.', 'آن لائن ادائیگی ابھی دستیاب نہیں۔ اسکول سے رابطہ کریں۔') : errMsg('x'));
+      else if (!data || data.ok !== true) show(errMsg(data && data.error));
+      else {
+        ['fp-p-amt', 'fp-p-trx', 'fp-p-n'].forEach(id => { const e = document.getElementById(id); if (e) e.value = ''; });
+        OVts = 0; await refresh(true);
+        show(qt('Submitted. The school will check it and add it to your fee record.', 'جمع ہو گیا۔ اسکول جانچ کر آپ کے فیس ریکارڈ میں درج کر دے گا۔'), true);
+      }
+    } catch (e) { show(errMsg('x')); }
+    busy = false; const b2 = document.getElementById('fp-p-btn'); if (b2) b2.disabled = false;
+  };
+  window.FPPAY = P;
 })();
 </script>
 </body>
