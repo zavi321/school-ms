@@ -439,6 +439,7 @@ html, body{overscroll-behavior:none;}
     .pq-tf{font-size:13px;opacity:.8;white-space:nowrap;}
     .pq-match{display:grid;grid-template-columns:1fr 1fr;gap:5px 20px;font-size:14px;}
     .pq-2col{display:grid;grid-template-columns:1fr 1fr;gap:calc(4px * var(--pq-space,1)) 20px;}
+    .pq-2col > .pq-q[dir=rtl]{grid-column:1/-1;}
     /* Optional divider line a user can type after every 5th question in a
        section (see paperBreaks). grid-column:1/-1 makes it span the full
        width even inside a .pq-2col two-column grid; printed only when the
@@ -988,7 +989,7 @@ body:not(.ur) .qpaper-print .pq-instruction::before{counter-increment:pqq;conten
 .qpaper-print .pq-title-box{display:table;margin-left:auto;margin-right:auto;border:2px solid #000;padding:3px 18px;text-align:center;}
 .qpaper-print .pq-title-plain{text-align:center;}
 .qpaper-print .pq-free-title{font-weight:900;margin-bottom:3px;}
-.qpaper-print .pq-free-text{white-space:pre-wrap;line-height:1.5;}
+.qpaper-print .pq-free-text{line-height:1.5;}
 .qpaper-print .pq-free-box{border:1.5px solid #000;padding:6px 10px;border-radius:4px;}
 .qpaper-print .pq-options{font-size:14px;padding-inline-start:20px;}
 </style>
@@ -2794,6 +2795,16 @@ let pendingRenderOnBlur = false;
 // looked like the table scrolling, then snapping back to the start.
 let _regBookDragActive = false;
 let pendingRenderOnDragEnd = false;
+// Typed-but-not-yet-saved guard: when the app returns from the background it used to
+// redraw the current screen, which wiped anything typed into a form that had not been
+// saved yet. If the person has typed on this screen since it was last drawn, that
+// automatic redraw is skipped (the screen refreshes the next time they open it).
+let _uiDirtySinceRender = false;
+(function () {
+  const mark = (e) => { try { const m = document.getElementById('main'); if (m && e.target && m.contains(e.target)) _uiDirtySinceRender = true; } catch (x) {} };
+  document.addEventListener('input', mark, true);
+  document.addEventListener('change', mark, true);
+})();
 function safeRenderTab() {
   const ae = document.activeElement;
   const main = document.getElementById('main');
@@ -3069,7 +3080,7 @@ async function reconcileOnReconnect() {
   await flushSyncQueue();
   if (!SYNCING && CACHE_UNAVAILABLE) { await loadAllData(); }
   renderOfflineBanner();
-  if (TAB) safeRenderTab();
+  if (TAB && !_uiDirtySinceRender) safeRenderTab();
 }
 window.addEventListener('online', () => { renderOfflineBanner(); reconcileOnReconnect(); });
 window.addEventListener('offline', () => renderOfflineBanner());
@@ -4816,6 +4827,7 @@ function reFocusAfterRender(inputId) {
 // Keeps the page scroll and the picture-library scroll where they were when the KG paper
 // builder re-renders (picking a picture, zooming, adding a question...).
 function renderTab() {
+  _uiDirtySinceRender = false;
   let keep = false;
   try { const m0 = document.getElementById('main'); keep = paperMode === 'kg' && TAB === 'papers' && !!(m0 && m0.querySelector('.paper-q-row, #kgLib, .card')); } catch (e) {}
   const lib = document.getElementById('kgLib'), ls = lib ? lib.scrollTop : 0, ws = window.scrollY || 0;
@@ -18698,7 +18710,7 @@ function pqSecCard(sc, si) {
   const optSel = (prop, opts, cur) => `<select style="width:100%;" onchange="paperSecs[${si}].${prop}=this.value;pqTouch();">${opts.map(o => `<option value="${o[0]}"${String(cur) === o[0] ? ' selected' : ''}>${esc(o[1])}</option>`).join('')}</select>`;
   const chk = (prop, label, rerender) => `<label style="display:flex;align-items:center;gap:6px;font-size:13px;margin:0;"><input type="checkbox" style="width:auto;" ${sc[prop] ? 'checked' : ''} onchange="paperSecs[${si}].${prop}=this.checked;pqTouch();${rerender ? 'renderTab();' : ''}"> ${esc(label)}</label>`;
   const freeBody = `
-      <textarea dir="auto" rows="6" style="width:100%;" placeholder="${esc(qt('Write anything here — a note, a heading, a passage, a diagram caption...', 'یہاں جو چاہیں لکھیں — نوٹ، عنوان، عبارت، یا کچھ بھی...'))}" oninput="paperSecs[${si}].text=this.value">${esc(sc.text || '')}</textarea>
+      <textarea dir="${qDir(sc.text || '')}" rows="6" style="width:100%;" placeholder="${esc(qt('Write anything here — a note, a heading, a passage, a diagram caption...', 'یہاں جو چاہیں لکھیں — نوٹ، عنوان، عبارت، یا کچھ بھی...'))}" oninput="paperSecs[${si}].text=this.value;this.dir=qDir(this.value)">${esc(sc.text || '')}</textarea>
       <div class="row2" style="margin-top:8px;">
         <label><span>${esc(qt('Align', 'ترتیب'))}</span>${optSel('align', [['', qt('Auto', 'خودکار')], ['left', qt('Left', 'بائیں')], ['center', qt('Center', 'درمیان')], ['right', qt('Right', 'دائیں')]], sc.align || '')}</label>
         <label><span>${esc(qt('Text size', 'لکھائی کا سائز'))}</span>${optSel('size', [['s', qt('Small', 'چھوٹا')], ['m', qt('Normal', 'عام')], ['l', qt('Large', 'بڑا')], ['xl', qt('Extra large', 'بہت بڑا')]], sc.size || 'm')}</label>
@@ -18712,7 +18724,7 @@ function pqSecCard(sc, si) {
         ${chk('numbered', qt('Count as a numbered Q', 'سوال نمبر لگائیں'), true)}
       </div>`;
   const titleBody = `
-      <input dir="auto" style="width:100%;font-weight:700;" placeholder="${esc(qt('e.g. Section A  /  Combine Test  /  Subject name', 'مثلاً Section A  /  Combine Test  /  مضمون کا نام'))}" value="${esc(sc.text || '')}" oninput="paperSecs[${si}].text=this.value">
+      <input dir="${qDir(sc.text || '')}" style="width:100%;font-weight:700;" placeholder="${esc(qt('e.g. Section A  /  Combine Test  /  Subject name', 'مثلاً Section A  /  Combine Test  /  مضمون کا نام'))}" value="${esc(sc.text || '')}" oninput="paperSecs[${si}].text=this.value;this.dir=qDir(this.value)">
       <div class="row2" style="margin-top:8px;">
         <label><span>${esc(qt('Line style', 'لائن کا انداز'))}</span>${optSel('style', [['lines', qt('—— Title ——  (line both sides)', '—— عنوان ——  (دونوں طرف لائن)')], ['under', qt('Title with line below', 'نیچے لائن')], ['box', qt('Title in a box', 'ڈبے میں')], ['plain', qt('Title only (no line)', 'صرف عنوان')]], sc.style || 'lines')}</label>
         <label><span>${esc(qt('Text size', 'لکھائی کا سائز'))}</span>${optSel('size', [['s', qt('Small', 'چھوٹا')], ['m', qt('Normal', 'عام')], ['l', qt('Large', 'بڑا')], ['xl', qt('Extra large', 'بہت بڑا')]], sc.size || 'l')}</label>
@@ -18739,7 +18751,7 @@ function pqSecCard(sc, si) {
           <button class="btn-ghost" style="padding:4px 8px;" onclick="pqDelSec(${si})">🗑</button>
         </span>
       </div>
-      ${k === 'title' ? '' : `<input dir="auto" style="width:100%;font-size:12px;font-style:italic;margin-bottom:8px;" placeholder="${esc(k === 'free' ? qt('Heading (optional)', 'عنوان (اختیاری)') : pqTypeDefInstr(k))}" value="${esc(sc.instr)}" oninput="paperSecs[${si}].instr=this.value">`}
+      ${k === 'title' ? '' : `<input dir="${qDir(sc.instr || '')}" style="width:100%;font-size:12px;font-style:italic;margin-bottom:8px;" placeholder="${esc(k === 'free' ? qt('Heading (optional)', 'عنوان (اختیاری)') : pqTypeDefInstr(k))}" value="${esc(sc.instr)}" oninput="paperSecs[${si}].instr=this.value;this.dir=qDir(this.value)">`}
       ${body}
     </div>`;
 }
@@ -19764,7 +19776,7 @@ function printQuestionPaper() {
       const tsz = ({ s:15, m:18, l:23, xl:31 })[sc.size] || 23;
       const tgp = ({ '0':0, '1':8, '2':16, '3':32 })[String(sc.gap == null ? '2' : sc.gap)];
       const st = ['lines', 'under', 'box', 'plain'].indexOf(sc.style) >= 0 ? sc.style : 'lines';
-      const inner = st === 'lines' ? `<span class="pq-tl-line"></span><span class="pq-tl-text" dir="auto">${esc(tt)}</span><span class="pq-tl-line"></span>` : `<span class="pq-tl-text" dir="auto">${esc(tt)}</span>`;
+      const inner = st === 'lines' ? `<span class="pq-tl-line"></span><span class="pq-tl-text" dir="${qDir(tt)}">${esc(tt)}</span><span class="pq-tl-line"></span>` : `<span class="pq-tl-text" dir="${qDir(tt)}">${esc(tt)}</span>`;
       return `<div class="pq-section pq-title pq-title-${st}" style="margin-top:calc(${tgp}px * var(--pq-space,1));font-size:${tsz}px;">${inner}</div>`;
     }
     if (sc.type === 'free') {
@@ -19774,9 +19786,10 @@ function printQuestionPaper() {
       const al = ['left', 'center', 'right'].indexOf(sc.align) >= 0 ? sc.align : '';
       const bx = String(sc.marks == null ? '' : sc.marks).trim();
       const fhead = sc.numbered
-        ? `<div class="pq-instruction" dir="auto">${bx ? `<span class="pq-mbox${RTL_CHAR_RE.test(heading) ? ' pq-mbox-l' : ''}" dir="ltr">${esc(bx)}</span>` : ''}${esc(heading)}</div>`
-        : (heading ? `<div class="pq-free-title" dir="auto" style="font-size:${sz}px;${al ? 'text-align:' + al + ';' : ''}">${esc(heading)}</div>` : '');
-      const fbody = tx ? `<div class="pq-free-text${sc.boxed ? ' pq-free-box' : ''}" dir="auto" style="font-size:${sz}px;${sc.bold ? 'font-weight:800;' : ''}${al ? 'text-align:' + al + ';' : ''}">${esc(tx)}</div>` : '';
+        ? `<div class="pq-instruction" dir="${qDir(heading)}">${bx ? `<span class="pq-mbox${RTL_CHAR_RE.test(heading) ? ' pq-mbox-l' : ''}" dir="ltr">${esc(bx)}</span>` : ''}${esc(heading)}</div>`
+        : (heading ? `<div class="pq-free-title" dir="${qDir(heading)}" style="font-size:${sz}px;${al ? 'text-align:' + al + ';' : ''}">${esc(heading)}</div>` : '');
+      const flines = tx ? tx.split(/\r?\n/).map(ln => `<div dir="${qDir(ln)}" style="min-height:1.4em;">${esc(ln)}</div>`).join('') : '';
+      const fbody = tx ? `<div class="pq-free-text${sc.boxed ? ' pq-free-box' : ''}" style="font-size:${sz}px;${sc.bold ? 'font-weight:800;' : ''}${al ? 'text-align:' + al + ';' : ''}">${flines}</div>` : '';
       return `<div class="pq-section pq-free" style="margin-top:calc(${gp}px * var(--pq-space,1));">${fhead}${fbody}</div>`;
     }
     const k = sc.type, src = sc.items || [];
@@ -19792,9 +19805,9 @@ function printQuestionPaper() {
         </div>${pqBreakLine(sc.id, src.indexOf(m))}`; }).join('');
     } else if (k === 'blanks') {
       two = true;
-      body = valid.map((b, i) => `<div class="pq-q"><div class="pq-q-text" dir="auto"><b>${esc(printNo(src, b, i))}.</b> ${pqEsc(b.q)}</div></div>${pqBreakLine(sc.id, src.indexOf(b))}`).join('');
+      body = valid.map((b, i) => `<div class="pq-q" dir="${qDir(b.q)}"><div class="pq-q-text" dir="${qDir(b.q)}"><b>${esc(printNo(src, b, i))}.</b> ${pqEsc(b.q)}</div></div>${pqBreakLine(sc.id, src.indexOf(b))}`).join('');
     } else if (k === 'tf') {
-      body = valid.map((x, i) => `<div class="pq-q"><div class="pq-q-text" dir="auto"><b>${esc(printNo(src, x, i))}.</b> ${pqEsc(x.q)} <span class="pq-tf">${RTL_CHAR_RE.test(x.q) ? '( &nbsp;صحیح&nbsp; / &nbsp;غلط&nbsp; )' : '( &nbsp;True&nbsp; / &nbsp;False&nbsp; )'}</span></div></div>${pqBreakLine(sc.id, src.indexOf(x))}`).join('');
+      body = valid.map((x, i) => `<div class="pq-q" dir="${qDir(x.q)}"><div class="pq-q-text" dir="${qDir(x.q)}"><b>${esc(printNo(src, x, i))}.</b> ${pqEsc(x.q)} <span class="pq-tf">${RTL_CHAR_RE.test(x.q) ? '( &nbsp;صحیح&nbsp; / &nbsp;غلط&nbsp; )' : '( &nbsp;True&nbsp; / &nbsp;False&nbsp; )'}</span></div></div>${pqBreakLine(sc.id, src.indexOf(x))}`).join('');
     } else if (k === 'match') {
       const A = sc.A.filter(v => v.trim()), B = sc.B.filter(v => v.trim());
       body = `<div class="pq-match">
@@ -19804,8 +19817,8 @@ function printQuestionPaper() {
     } else {
       two = true;
       body = valid.map((it, i) => `
-        <div class="pq-q">
-          <div class="pq-q-text" dir="auto"><b>${esc(printNo(src, it, i))}.</b> ${pqEsc(it.q)} ${it.marks ? `<span class="pq-marks">[${esc(it.marks)}]</span>` : ''}</div>
+        <div class="pq-q" dir="${qDir(it.q)}">
+          <div class="pq-q-text" dir="${qDir(it.q)}"><b>${esc(printNo(src, it, i))}.</b> ${pqEsc(it.q)} ${it.marks ? `<span class="pq-marks">[${esc(it.marks)}]</span>` : ''}</div>
         </div>${pqBreakLine(sc.id, src.indexOf(it))}`).join('');
     }
     return `
