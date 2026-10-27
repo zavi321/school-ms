@@ -5159,6 +5159,16 @@ function tplAdmin() {
       <p class="desc" style="margin-top:0;">${esc(t.confirmOtpDesc)}</p>
     </div>
 
+    <div class="card" style="margin-bottom:16px;">
+      <h3 style="margin-top:0;">${esc(qt('Pending payments (Approve)', 'زیر التواء ادائیگیاں (منظور کریں)'))}</h3>
+      <div id="pending-list" style="min-height:48px;"><div class="skel-line" style="width:50%;"></div></div>
+    </div>
+
+    <div class="card" style="margin-bottom:16px;">
+      <h3 style="margin-top:0;">${esc(t.subscriptionsTitle)}</h3>
+      <div id="sub-list" style="min-height:80px;"><div class="skel-line" style="width:60%;"></div><div class="skel-line" style="width:40%;"></div></div>
+    </div>
+
     <div id="admin-lists">
       <div class="card">
         <h3 style="margin-top:0;">${esc(t.whitelistedSchools)}</h3>
@@ -5175,7 +5185,7 @@ function tplAdmin() {
 // hiding a whole block and revealing it later — keeps this from causing a
 // sudden page-height jump ("wobble") once the school directory loads in.
 async function loadAdminLists() {
-  await loadWhitelist();
+  await Promise.all([loadWhitelist(), loadSubscriptionsAdmin()]);
 }
 
 // Loads every school's subscription row (creating a sensible default in the
@@ -5187,7 +5197,7 @@ async function loadSubscriptionsAdmin() {
   const pendEl = document.getElementById('pending-list');
   if (!el && !pendEl) return;
   const [{ data: profs, error: e1 }, { data: subs, error: e2 }, { data: pending, error: e3 }] = await Promise.all([
-    fetchAll(() => sb.from('profiles').select('id,school_name,school_code').eq('is_admin', false).order('school_name')),
+    fetchAll(() => sb.from('profiles').select('id,school_name,school_code,phone').eq('is_admin', false).order('school_name')),
     fetchAll(() => sb.from('subscriptions').select('*')),
     fetchAll(() => sb.from('payment_submissions').select('*').eq('status', 'pending').order('submitted_at', { ascending: false }))
   ]);
@@ -5215,6 +5225,7 @@ async function loadSubscriptionsAdmin() {
         return `
         <div class="card" style="margin-bottom:10px;">
           <div class="nm">${esc(p.school_name || '—')} <span style="opacity:.5;font-size:11px;">(${esc(p.school_code || '—')})</span></div>
+          ${subStateHtml(s)}
           <label><span>${esc(t.planType)}</span>
             <select id="plan-${p.id}">
               <option value="monthly" ${s.plan_type === 'monthly' ? 'selected' : ''}>${esc(t.monthlyPlan)}</option>
@@ -5224,6 +5235,8 @@ async function loadSubscriptionsAdmin() {
           <label><span>${esc(t.monthlyPrice)}</span><input id="price-${p.id}" type="number" value="${s.monthly_price || 0}"></label>
           <label><span>${esc(t.paidUntil)}</span><input id="paiduntil-${p.id}" type="date" value="${s.paid_until || ''}"></label>
           <button class="btn-primary" style="width:100%;" onclick="guardedSubmit(this, () => saveSubscription('${escJs(p.id)}'))">${esc(t.save)}</button>
+          <button class="btn-ghost" style="width:100%;margin-top:8px;" onclick="guardedSubmit(this, () => setSchoolSuspended('${escJs(p.id)}', ${s.status === 'suspended' ? 'false' : 'true'}))">${s.status === 'suspended' ? qt('🔓 Unlock now', '🔓 ابھی ان لاک کریں') : qt('🔒 Lock now', '🔒 ابھی لاک کریں')}</button>
+          <button class="btn-ghost" style="width:100%;margin-top:8px;" onclick="guardedSubmit(this, () => openReceipt('', '${escJs(p.id)}', ''))">${qt('🧾 Last payment receipt', '🧾 آخری ادائیگی کی رسید')}</button>
         </div>`;
       }).join('');
     }
@@ -5241,6 +5254,167 @@ async function loadSubscriptionsAdmin() {
         </div>`).join('');
     }
   }
+}
+
+
+// ===================== PAYMENT RECEIPT (admin → school) =====================
+// Built after Approve (or from the school card). Drawn on a canvas so it works
+// offline and shares as a PNG. Receipt number = how many payments have been
+// verified up to and including this one (ZS-0001, ZS-0002 ...), so it keeps
+// growing by itself and needs no database change.
+function rcptRR(c, x, y, w, h, r) {
+  c.beginPath(); c.moveTo(x + r, y); c.arcTo(x + w, y, x + w, y + h, r); c.arcTo(x + w, y + h, x, y + h, r);
+  c.arcTo(x, y + h, x, y, r); c.arcTo(x, y, x + w, y, r); c.closePath();
+}
+function rcptDate(d) {
+  const x = new Date(d); if (isNaN(x)) return '';
+  return String(x.getDate()).padStart(2, '0') + '-' + String(x.getMonth() + 1).padStart(2, '0') + '-' + x.getFullYear();
+}
+function rcptMoney(n) { return 'Rs. ' + Number(n || 0).toLocaleString('en-US'); }
+function drawReceipt(canvas, d, amount) {
+  const W = 820, H = 1080, c = canvas.getContext('2d');
+  canvas.width = W; canvas.height = H;
+  const F = 'Arial, Helvetica, sans-serif', NAVY = '#0a2a66';
+  c.fillStyle = '#e9edf5'; c.fillRect(0, 0, W, H);
+  c.save(); rcptRR(c, 30, 30, 760, 1020, 18); c.clip();
+  c.fillStyle = '#fff'; c.fillRect(30, 30, 760, 1020);
+  const g = c.createLinearGradient(30, 30, 790, 210); g.addColorStop(0, NAVY); g.addColorStop(1, '#1b5fd1');
+  c.fillStyle = g; c.fillRect(30, 30, 760, 152);
+  c.fillStyle = '#fff'; c.font = 'bold 38px ' + F; c.textAlign = 'left'; c.fillText('ZAVI SOFTWARE', 64, 98);
+  c.font = '15px ' + F; c.fillStyle = 'rgba(255,255,255,.85)'; c.fillText('SchoolMS — School Management System', 64, 126);
+  c.textAlign = 'right'; c.fillStyle = '#fff'; c.font = '17px ' + F; c.fillText('PAYMENT RECEIPT', 756, 76);
+  c.fillStyle = '#ffd24a'; c.font = 'bold 28px ' + F; c.fillText('#' + d.no, 756, 112);
+  c.fillStyle = '#fff'; c.font = '17px ' + F; c.fillText('Date: ' + d.date, 756, 142);
+  const box = (x, y, w, h, label, l1, l2) => {
+    c.fillStyle = '#f4f7fd'; rcptRR(c, x, y, w, h, 12); c.fill(); c.strokeStyle = '#d6e0f5'; c.lineWidth = 1; c.stroke();
+    c.textAlign = 'left'; c.fillStyle = '#5b6b92'; c.font = 'bold 13px ' + F; c.fillText(label, x + 16, y + 28);
+    c.fillStyle = '#12203f'; let fs = 18; c.font = 'bold ' + fs + 'px ' + F; while (c.measureText(l1).width > w - 32 && fs > 11) { fs -= 1; c.font = 'bold ' + fs + 'px ' + F; } c.fillText(l1, x + 16, y + 56);
+    c.fillStyle = '#42527a'; c.font = '15px ' + F; c.fillText(l2, x + 16, y + 80);
+  };
+  const fit = (t, mx) => { t = String(t || ''); while (c.measureText(t).width > mx && t.length > 4) t = t.slice(0, -2); return t; };
+  c.font = 'bold 18px ' + F;
+  box(64, 212, 330, 104, 'RECEIVED FROM', d.school, 'School code: ' + (d.code || '—'));
+  box(410, 212, 346, 104, 'SCHOOL CONTACT', d.phone || '—', '');
+  // table
+  c.fillStyle = NAVY; c.fillRect(64, 340, 692, 40);
+  c.fillStyle = '#fff'; c.font = 'bold 15px ' + F; c.textAlign = 'left'; c.fillText('Description', 76, 366);
+  c.textAlign = 'right'; c.fillText('Amount', 744, 366);
+  c.textAlign = 'left'; c.fillStyle = '#12203f'; c.font = '18px ' + F; c.fillText('SchoolMS subscription', 76, 412);
+  c.fillStyle = '#5b6b92'; c.font = '14px ' + F; c.fillText('Month: ' + d.month, 76, 436);
+  c.textAlign = 'right'; c.fillStyle = '#12203f'; c.font = '18px ' + F; c.fillText(rcptMoney(amount), 744, 412);
+  c.strokeStyle = '#e2e8f5'; c.beginPath(); c.moveTo(64, 452); c.lineTo(756, 452); c.stroke();
+  c.fillStyle = '#12203f'; c.font = '18px ' + F; c.textAlign = 'left'; c.fillText('Sub-total', 436, 490); c.textAlign = 'right'; c.fillText(rcptMoney(amount), 756, 490);
+  c.textAlign = 'left'; c.fillText('Discount', 436, 526); c.textAlign = 'right'; c.fillText('Rs. 0', 756, 526);
+  c.strokeStyle = NAVY; c.lineWidth = 3; c.beginPath(); c.moveTo(436, 546); c.lineTo(756, 546); c.stroke();
+  c.fillStyle = NAVY; c.font = 'bold 26px ' + F; c.textAlign = 'left'; c.fillText('Total Paid', 436, 586); c.textAlign = 'right'; c.fillText(rcptMoney(amount), 756, 586);
+  box(64, 620, 330, 104, 'PAYMENT METHOD', 'EasyPaisa', 'TRX ID: ' + (d.trx || '—'));
+  box(410, 620, 346, 104, 'SERVICE ACTIVE UNTIL', d.until, d.due ? 'Next payment due by ' + d.due : '');
+  // PAID stamp
+  c.save(); c.translate(170, 790); c.rotate(-0.14); c.strokeStyle = '#17a85a'; c.lineWidth = 5; rcptRR(c, -86, -34, 172, 68, 12); c.stroke();
+  c.fillStyle = '#17a85a'; c.font = 'bold 46px ' + F; c.textAlign = 'center'; c.fillText('PAID', 0, 16); c.restore();
+  c.textAlign = 'left'; c.fillStyle = '#42527a'; c.font = '15px ' + F;
+  c.strokeStyle = '#9aa8c7'; c.lineWidth = 1.5;
+  c.beginPath(); c.moveTo(64, 940); c.lineTo(304, 940); c.stroke(); c.fillText('Received by (Zavi Software)', 72, 962);
+  c.beginPath(); c.moveTo(516, 940); c.lineTo(756, 940); c.stroke(); c.textAlign = 'right'; c.fillText('School Stamp / Signature', 748, 962);
+  c.fillStyle = NAVY; c.fillRect(30, 1000, 760, 50);
+  c.fillStyle = '#fff'; c.textAlign = 'center'; c.font = '17px ' + F; c.fillText('WhatsApp / Support: 03412565659  •  Thank you for choosing SchoolMS', 410, 1031);
+  c.restore();
+}
+
+async function openReceipt(submissionId, schoolId, paidUntilISO) {
+  // find the payment: the one just approved, or the school's latest verified one
+  let row = null;
+  if (submissionId) {
+    const r = await sb.from('payment_submissions').select('*').eq('id', submissionId).maybeSingle(); row = r.data;
+  } else {
+    const r = await sb.from('payment_submissions').select('*').eq('school_id', schoolId).eq('status', 'verified').order('verified_at', { ascending: false }).limit(1); row = r.data && r.data[0];
+  }
+  if (!row) { alert(qt('No approved payment found for this school yet.', 'اس اسکول کی کوئی منظور شدہ ادائیگی ابھی نہیں ملی۔')); return; }
+  const [pr, sb1, cnt] = await Promise.all([
+    sb.from('profiles').select('school_name,school_code,phone').eq('id', schoolId).maybeSingle(),
+    sb.from('subscriptions').select('monthly_price,paid_until').eq('school_id', schoolId).maybeSingle(),
+    sb.from('payment_submissions').select('id', { count: 'exact', head: true }).eq('status', 'verified').lte('verified_at', row.verified_at || new Date().toISOString())
+  ]);
+  const prof = pr.data || {}, sub = sb1.data || {};
+  const untilISO = paidUntilISO || sub.paid_until || '';
+  const until = untilISO ? new Date(untilISO + 'T00:00:00') : null;
+  const due = until ? new Date(until.getFullYear(), until.getMonth(), until.getDate() + 3) : null;
+  const paidMonth = until ? new Date(until.getFullYear(), until.getMonth() - 1, 1) : new Date(row.verified_at || Date.now());
+  const MN = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+  window._rcpt = {
+    no: 'ZS-' + String(cnt.count || 1).padStart(4, '0'),
+    date: rcptDate(row.verified_at || new Date()),
+    school: prof.school_name || '—', code: prof.school_code || '', phone: prof.phone || '',
+    trx: row.trx_id || '', month: MN[paidMonth.getMonth()] + ' ' + paidMonth.getFullYear(),
+    until: until ? rcptDate(until) : '—', due: due ? rcptDate(due) : '',
+    amount: Number(sub.monthly_price) || 0
+  };
+  showModal(qt('Payment receipt', 'ادائیگی کی رسید'), `
+    <div style="text-align:center"><canvas id="rcpt-cv" style="width:100%;max-width:380px;border-radius:10px;box-shadow:0 2px 10px rgba(0,0,0,.2)"></canvas></div>
+    <label style="display:block;margin-top:12px"><span>${esc(qt('Amount received (Rs.)', 'وصول شدہ رقم (روپے)'))}</span>
+      <input id="rcpt-amt" type="number" inputmode="numeric" value="${window._rcpt.amount}" oninput="rcptRedraw()"></label>
+    <button class="btn-primary" style="width:100%;margin-top:10px" onclick="rcptShareImage()">${esc(qt('📤 Share receipt picture (WhatsApp)', '📤 رسید کی تصویر شیئر کریں (واٹس ایپ)'))}</button>
+    <button class="btn-ghost" style="width:100%;margin-top:8px" onclick="rcptWhatsAppText()">${esc(qt('💬 Send message to school', '💬 اسکول کو پیغام بھیجیں'))}</button>
+    <button class="btn-ghost" style="width:100%;margin-top:8px" onclick="rcptSaveImage()">${esc(qt('⬇ Save picture', '⬇ تصویر محفوظ کریں'))}</button>`);
+  rcptRedraw();
+}
+function rcptAmount() { const el = document.getElementById('rcpt-amt'); return Math.max(0, Number(el && el.value) || 0); }
+function rcptRedraw() { const cv = document.getElementById('rcpt-cv'); if (cv && window._rcpt) drawReceipt(cv, window._rcpt, rcptAmount()); }
+function rcptBlob() { return new Promise(res => document.getElementById('rcpt-cv').toBlob(res, 'image/png')); }
+async function rcptShareImage() {
+  const d = window._rcpt; const blob = await rcptBlob(); if (!blob) return;
+  const file = new File([blob], 'Receipt_' + d.no + '.png', { type: 'image/png' });
+  if (navigator.canShare && navigator.canShare({ files: [file] })) {
+    try { await navigator.share({ files: [file], title: 'SchoolMS Receipt ' + d.no }); } catch (e) {}
+  } else { rcptSaveImage(); alert(qt('Picture saved. Open WhatsApp and send it from your gallery.', 'تصویر محفوظ ہو گئی۔ واٹس ایپ کھول کر گیلری سے بھیج دیں۔')); }
+}
+async function rcptSaveImage() {
+  const d = window._rcpt; const blob = await rcptBlob(); if (!blob) return;
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'Receipt_' + d.no + '.png';
+  document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+}
+function rcptWhatsAppText() {
+  const d = window._rcpt, amt = rcptAmount();
+  const msg = 'Assalam o Alaikum.\nSchoolMS payment received, thank you.\nReceipt: ' + d.no + '\nSchool: ' + d.school + '\nMonth: ' + d.month +
+    '\nAmount: ' + rcptMoney(amt) + '\nTRX ID: ' + d.trx + '\nActive until: ' + d.until + (d.due ? '\nNext payment due by: ' + d.due : '') + '\n— Zavi Software';
+  const num = normalizePkMobile(d.phone);
+  window.open((num ? 'https://wa.me/' + num : 'https://wa.me/') + '?text=' + encodeURIComponent(msg), '_blank');
+}
+
+// 2nd of the month that comes AFTER `base` (a Date). paid_until + 3 grace days = the 5th.
+function nextSecondOfMonth(base) {
+  const b = new Date(base.getFullYear(), base.getMonth(), base.getDate());
+  let d = new Date(b.getFullYear(), b.getMonth(), 2);
+  if (d <= b) d = new Date(b.getFullYear(), b.getMonth() + 1, 2);
+  return d;
+}
+
+// Small status line for each school card in the admin Subscriptions list.
+function subStateHtml(s) {
+  let txt, col;
+  if (s.plan_type === 'lifetime') { txt = qt('♾ Lifetime — never locks', '♾ لائف ٹائم — کبھی لاک نہیں'); col = '#1a7f37'; }
+  else if (s.status === 'suspended') { txt = qt('🔒 LOCKED by you — tap Unlock to open', '🔒 آپ نے لاک کیا ہے — کھولنے کے لیے ان لاک دبائیں'); col = '#c0392b'; }
+  else if (!s.paid_until) { txt = qt('No due date set yet — not locked', 'ابھی تاریخ مقرر نہیں — لاک نہیں'); col = '#666'; }
+  else {
+    const lockOn = new Date(s.paid_until + 'T00:00:00'); lockOn.setDate(lockOn.getDate() + 3);
+    if (new Date() > lockOn) { txt = qt('🔒 LOCKED (payment overdue since ' + localISO(lockOn) + ')', '🔒 لاک (ادائیگی ' + localISO(lockOn) + ' سے باقی)'); col = '#c0392b'; }
+    else { txt = qt('✅ Active — will lock on ' + localISO(lockOn), '✅ فعال — ' + localISO(lockOn) + ' کو لاک ہو گا'); col = '#1a7f37'; }
+  }
+  return '<div style="font-size:12px;font-weight:600;margin:4px 0 8px;color:' + col + ';">' + esc(txt) + '</div>';
+}
+
+// Manual lock / unlock of one school (status = suspended / active).
+async function setSchoolSuspended(schoolId, suspend) {
+  const status = suspend ? 'suspended' : 'active';
+  const stamp = new Date().toISOString();
+  const { data: ex } = await sb.from('subscriptions').select('school_id').eq('school_id', schoolId).maybeSingle();
+  const q = ex
+    ? sb.from('subscriptions').update({ status, updated_at: stamp }).eq('school_id', schoolId).select()
+    : sb.from('subscriptions').upsert({ school_id: schoolId, plan_type: 'monthly', monthly_price: 0, paid_until: null, status, updated_at: stamp }, { onConflict: 'school_id' }).select();
+  const { data, error } = await q;
+  if (reportSaveError(error)) return;
+  if (!data || !data.length) { reportSaveError({ message: LANG === 'ur' ? 'اجازت نہیں ملی — کوئی ریکارڈ محفوظ نہیں ہوا (RLS چیک کریں)۔' : 'No row was saved — likely blocked by a database permission (RLS) rule.' }); return; }
+  loadSubscriptionsAdmin();
 }
 
 async function saveSubscription(schoolId) {
@@ -5262,19 +5436,19 @@ async function saveSubscription(schoolId) {
   loadSubscriptionsAdmin();
 }
 
-// Manual fallback: extends paid_until by 30 days from whichever is later —
-// today, or the school's current paid_until (so early/extra payments stack
-// forward instead of being wasted) — same rule the sms-webhook uses.
+// Manual fallback: moves paid_until to the 2nd of the next month (after whichever is later —
+// today, or the school's current paid_until, so early payments stack forward).
+// With the 3-day grace this locks the school on the 5th if it has not paid.
 async function approvePending(submissionId, schoolId) {
   const { data: sub } = await sb.from('subscriptions').select('*').eq('school_id', schoolId).maybeSingle();
   const today = new Date();
   const base = (sub && sub.paid_until && new Date(sub.paid_until + 'T00:00:00') > today) ? new Date(sub.paid_until + 'T00:00:00') : today;
-  base.setDate(base.getDate() + 30);
+  const next2 = nextSecondOfMonth(base); // 2nd + 3 grace days = lock on the 5th
   // Same onConflict fix as saveSubscription — without it this also silently
   // inserted a duplicate row per approval instead of extending the real one.
   const { data, error } = await sb.from('subscriptions')
     .upsert({ school_id: schoolId, plan_type: sub ? sub.plan_type : 'monthly', monthly_price: sub ? sub.monthly_price : 0,
-      paid_until: localISO(base), status: 'active', updated_at: new Date().toISOString() }, { onConflict: 'school_id' })
+      paid_until: localISO(next2), status: 'active', updated_at: new Date().toISOString() }, { onConflict: 'school_id' })
     .select();
   if (reportSaveError(error)) return;
   if (!data || !data.length) { reportSaveError({ message: LANG === 'ur' ? 'اجازت نہیں ملی — کوئی ریکارڈ محفوظ نہیں ہوا (RLS چیک کریں)۔' : 'No row was saved — likely blocked by a database permission (RLS) rule.' }); return; }
@@ -5282,6 +5456,7 @@ async function approvePending(submissionId, schoolId) {
   if (reportSaveError(payErr)) return;
   if (!payData || !payData.length) { reportSaveError({ message: LANG === 'ur' ? 'ادائیگی کا ریکارڈ اپ ڈیٹ نہیں ہوا (اجازت کا مسئلہ)۔' : 'Payment record was not updated (permission issue).' }); return; }
   loadSubscriptionsAdmin();
+  openReceipt(submissionId, schoolId, localISO(next2));
 }
 
 // Smoothly grows/shrinks a container from whatever height it's currently
@@ -25498,7 +25673,10 @@ console.log('SchoolMS build: 2026-10-13c-dmc-21-formats-qpaper-fixes-dashboard-i
 
   function cardHtml() {
     if (!OV) return `<div class="sub">${esc(qt('Loading payment options…', 'ادائیگی کی تفصیل لوڈ ہو رہی ہے…'))}</div>`;
-    if (OV.ok === false) return OV.error === 'too_many_attempts' ? `<div class="err">${esc(errMsg('too_many_attempts'))}</div>` : '';
+    if (OV.ok === false) {
+      const k = (OV.error === 'too_many_attempts' || OV.error === 'not_linked') ? OV.error : 'invalid';
+      return `<div class="nm" style="margin-bottom:6px">${esc(qt('Pay fees online', 'آن لائن فیس جمع کروائیں'))}</div><div class="sub">${esc(k === 'invalid' ? qt('Online payment is not available for this login. Please contact the school.', 'اس لاگ اِن کے لیے آن لائن ادائیگی دستیاب نہیں۔ اسکول سے رابطہ کریں۔') : errMsg(k))}</div>`;
+    }
     const s = OV.settings || {};
     const hasAcct = !!(s.jazzcash_no || s.easypaisa_no || s.bank_details);
     const title = `<div class="nm" style="margin-bottom:6px">${esc(qt('Pay fees online', 'آن لائن فیس جمع کروائیں'))}</div>`;
@@ -25551,7 +25729,11 @@ console.log('SchoolMS build: 2026-10-13c-dmc-21-formats-qpaper-fixes-dashboard-i
   function mount(draft) {
     const body = document.getElementById('parent-portal-body');
     if (!body || unavailable || !navigator.onLine || !creds()) return;
-    if (!document.getElementById('fp-card')) body.insertAdjacentHTML('beforeend', '<div id="fp-card" class="card" style="margin:12px 0"></div>');
+    if (!document.getElementById('fp-card')) {
+      const html = '<div id="fp-card" class="card" style="margin:12px 0"></div>';
+      const anchor = body.querySelector ? body.querySelector('button[onclick="ppCopyMyLink()"]') : null;
+      if (anchor) anchor.insertAdjacentHTML('beforebegin', html); else body.insertAdjacentHTML('beforeend', html);
+    }
     if (OV && OVkey === keyOf(creds())) draw(draft); else { OV = null; draw(draft); }
     refresh(false);
   }
