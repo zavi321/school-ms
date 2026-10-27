@@ -18686,7 +18686,7 @@ function pqSecCard(sc, si) {
   const k = sc.type;
   const itemRow = (it, i) => {
     const base = `paperSecs[${si}].items[${i}]`;
-    const noIn = `<input type="number" value="${esc(it.no)}" oninput="${base}.no=this.value" style="width:40px;flex-shrink:0;padding:6px;">`;
+    const noIn = `<input type="text" inputmode="text" autocapitalize="none" autocomplete="off" maxlength="8" value="${esc(it.no)}" oninput="${base}.no=this.value" style="width:52px;flex-shrink:0;padding:6px;text-align:center;">`;
     const q = `<textarea rows="1" style="flex:1;" placeholder="${esc(pqTypeLbl(k))}..." oninput="${base}.q=this.value">${esc(it.q)}</textarea>`;
     const del = `<button class="btn-ghost" style="padding:6px 10px;" onclick="pqDelItem(${si},${i})">✕</button>`;
     if (k === 'mcq') return `
