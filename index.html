@@ -19310,6 +19310,47 @@ function pqApplyStd(lines) { const o = pqParseStd(lines), arr = (a, d) => a.leng
   paperSecs = pqLegacyToSecs();
   window.pqLastSkipped = o.matchSkipped || 0; Object.assign(paperMeta, o.meta); return o.mcq.length + o.blank.length + o.tf.length + o.short.length + o.long.length; }
 function pqApplyKg(lines) { kgBlocks = pqParseKg(lines); kgLibOpen = -1; kgLibT = null; kgCmpT = null; Object.assign(paperMeta, pqMeta(lines)); return kgBlocks.length; }
+// ---- Exact paper inside the PDF -------------------------------------------------
+// Every paper printed from here carries its own full data as a block of tiny white text
+// at the very end of the sheet (invisible on paper, but it is real text inside the PDF).
+// "Import paper from PDF" looks for that block first and, if it is there, rebuilds the paper
+// exactly as it was (sections, numbers, marks, Urdu text, tables...). PDFs without it fall
+// back to the old text-reading import.
+function pqHash8(str) { let h = 5381; for (let i = 0; i < str.length; i++) h = ((h << 5) + h + str.charCodeAt(i)) | 0; return ('00000000' + (h >>> 0).toString(16)).slice(-8); }
+function pqPackPaper() {
+  const d = pqSnapshot(false); delete d.uid; delete d.t; d.kgBlocks = []; d.paperMode = 'std';
+  const b64 = btoa(unescape(encodeURIComponent(JSON.stringify(d))));
+  return 'SMSPQ1' + pqHash8(b64) + b64 + 'SMSPQEND';
+}
+function pqUnpackPaper(text) {
+  const m = /SMSPQ1([0-9a-f]{8})([A-Za-z0-9+\/=]+?)SMSPQEND/.exec(String(text || '').replace(/\s+/g, ''));
+  if (!m || pqHash8(m[2]) !== m[1]) return null;
+  try { const d = JSON.parse(decodeURIComponent(escape(atob(m[2])))); return (d && Array.isArray(d.paperSecs)) ? d : null; } catch (e) { return null; }
+}
+async function pqFindPackInPdf(pdf) {
+  let txt = '';
+  for (let n = pdf.numPages; n >= 1; n--) {
+    const page = await pdf.getPage(n);
+    txt = (await page.getTextContent()).items.map(it => it.str).join('') + txt;
+    const d = pqUnpackPaper(txt); if (d) return d;
+  }
+  return null;
+}
+function pqApplyPack(d) {
+  pqResetPaper();
+  const arr = (v, def) => (Array.isArray(v) && v.length ? v : def);
+  if (d.paperMeta) { const m = Object.assign({}, d.paperMeta); delete m.logo; Object.assign(paperMeta, m); }
+  if (d.paperMcqMarksEach != null) paperMcqMarksEach = d.paperMcqMarksEach;
+  paperMcqs = arr(d.paperMcqs, paperMcqs); paperBlanks = arr(d.paperBlanks, paperBlanks); paperTF = arr(d.paperTF, paperTF);
+  paperMatchA = arr(d.paperMatchA, paperMatchA); paperMatchB = arr(d.paperMatchB, paperMatchB);
+  paperShort = arr(d.paperShort, paperShort); paperLong = arr(d.paperLong, paperLong);
+  if (d.paperInstructions) paperInstructions = Object.assign(paperInstructions, d.paperInstructions);
+  if (d.paperSectionTitles) paperSectionTitles = Object.assign(paperSectionTitles, d.paperSectionTitles);
+  if (d.paperBreaks) paperBreaks = Object.assign(paperBreaks, d.paperBreaks);
+  if (Array.isArray(d.paperTables)) paperTables = d.paperTables;
+  paperSecs = d.paperSecs;
+  paperMode = 'std';
+}
 async function pqImportFile(file) {
   if (!file) return;
   const ur = LANG === 'ur', kg = paperMode === 'kg', has = kg ? kgHasContent() : pqHasContent();
@@ -19319,6 +19360,14 @@ async function pqImportFile(file) {
     if (file.type === 'application/pdf' || /\.pdf$/i.test(file.name)) {
       await pqLoadScript(PQ_PDFJS); pdfjsLib.GlobalWorkerOptions.workerSrc = PQ_PDFJS_W;
       const pdf = await pdfjsLib.getDocument({ data: await file.arrayBuffer() }).promise;
+      pqImpMsg('🔎 Looking for the saved paper inside the PDF…');
+      const pack = await pqFindPackInPdf(pdf);
+      if (pack) {
+        if (has) { if (kg) { await kgKvSet('backup', kgSnap()); kgHasBackup = true; } else if (!pqBackupOk(ur, pqStoreBackup())) { pqImpMsg('Import cancelled', 3000); return; } }
+        pqApplyPack(pack); pqFlush(); renderTab();
+        pqImpMsg('✅ ' + (ur ? 'پرچہ بالکل ویسا ہی واپس آ گیا' : 'Paper restored exactly as it was printed'), 5000);
+        return;
+      }
       for (let n = 1; n <= pdf.numPages; n++) { pqImpMsg('📄 Page ' + n + '/' + pdf.numPages);
         const page = await pdf.getPage(n); let pl = pqLines((await page.getTextContent()).items);
         if (pl.join('').trim().length < 20) { const vp = page.getViewport({ scale: 2 }), c = document.createElement('canvas'); c.width = vp.width; c.height = vp.height;
@@ -19857,6 +19906,7 @@ function printQuestionPaper() {
   // function's comment for why transform doesn't work here) if it's still
   // too tall even at minimum spacing.
   document.querySelectorAll('#print-area .pq-instruction').forEach(el => { if (RTL_CHAR_RE.test(el.textContent || '')) el.classList.add('pq-ur'); });
+  if (paperMode !== 'kg') { try { const hb = document.createElement('div'); hb.className = 'pq-data'; hb.setAttribute('aria-hidden', 'true'); hb.style.cssText = 'position:absolute;left:0;top:0;width:100%;font:2px/2px Arial,sans-serif;color:rgba(0,0,0,0.008);word-break:break-all;overflow-wrap:anywhere;pointer-events:none;user-select:none;z-index:0;'; hb.textContent = pqPackPaper(); document.getElementById('print-area').appendChild(hb); } catch (e) {} }
   const printEl = document.getElementById('qpaper-print-el');
   const imgs = Array.from(document.querySelectorAll('#print-area img'));   // header logo, watermark, end image
   const imgsReady = Promise.all(imgs.map(img => img.complete ? Promise.resolve() : new Promise(res => { img.onload = res; img.onerror = res; })));
