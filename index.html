@@ -980,6 +980,16 @@ html, body{overscroll-behavior:none;}
 body:not(.ur) .qpaper-print .pq-instruction{font-style:italic;font-weight:900;font-size:15px;margin:6px 0 4px;}
 body:not(.ur) .qpaper-print .pq-instruction::before{counter-increment:pqq;content:"Q" counter(pqq) ". ";}
 .qpaper-print .pq-q{font-size:15px;}
+.qpaper-print .pq-title{font-weight:900;line-height:1.3;break-inside:avoid;page-break-after:avoid;-webkit-text-stroke:.3px currentColor;}
+.qpaper-print .pq-title-lines{display:flex;align-items:center;gap:12px;}
+.qpaper-print .pq-tl-line{flex:1;border-top:2px solid #000;}
+.qpaper-print .pq-tl-text{white-space:pre-wrap;text-align:center;}
+.qpaper-print .pq-title-under{text-align:center;border-bottom:2px solid #000;padding-bottom:2px;}
+.qpaper-print .pq-title-box{display:table;margin-left:auto;margin-right:auto;border:2px solid #000;padding:3px 18px;text-align:center;}
+.qpaper-print .pq-title-plain{text-align:center;}
+.qpaper-print .pq-free-title{font-weight:900;margin-bottom:3px;}
+.qpaper-print .pq-free-text{white-space:pre-wrap;line-height:1.5;}
+.qpaper-print .pq-free-box{border:1.5px solid #000;padding:6px 10px;border-radius:4px;}
 .qpaper-print .pq-options{font-size:14px;padding-inline-start:20px;}
 </style>
 <style>
@@ -18604,21 +18614,29 @@ let paperTables = [];
 // sec = { id, type:'mcq'|'blanks'|'tf'|'match'|'short'|'long', instr, marksEach, items:[...], A:[...], B:[...] (match only) }
 let paperSecs = [];
 let paperPickerOpen = false;
-const PQ_TYPES = ['mcq','blanks','tf','match','short','long'];
+const PQ_TYPES = ['mcq','blanks','tf','match','short','long','title','free'];
 const pqTypeLbl = k => ({ mcq:t.mcqType, blanks:t.blanksType, tf:t.tfType, match:t.matchType,
-  short:qt('Short Questions','مختصر سوالات'), long:qt('Long Questions','تفصیلی سوالات') })[k];
+  short:qt('Short Questions','مختصر سوالات'), long:qt('Long Questions','تفصیلی سوالات'),
+  title:qt('📌 Section title with line (Section A, Subject name...)','📌 لائن والا عنوان (Section A، مضمون کا نام...)'),
+  free:qt('✏️ Free text (write anything)','✏️ فری ٹیکسٹ (جو چاہیں لکھیں)') })[k];
 const pqTypeDefInstr = k => ({ mcq:qt('Choose the correct option','درست جواب منتخب کریں'), blanks:qt('Fill in the blanks','خالی جگہ پر کریں'),
   tf:qt('Write True or False','درست یا غلط لکھیں'), match:qt('Match the columns','کالم ملائیں'),
-  short:qt('Write short answers of the following questions','مختصر جواب لکھیں'), long:qt('Answer the following questions in detail','تفصیلی جواب لکھیں') })[k];
+  short:qt('Write short answers of the following questions','مختصر جواب لکھیں'), long:qt('Answer the following questions in detail','تفصیلی جواب لکھیں'), free:'', title:'' })[k];
 function pqBlankItem(k) { return k === 'mcq' ? { no:1, q:'', options:['','','',''] } : (k === 'short' || k === 'long') ? { no:1, q:'', marks:'' } : { no:1, q:'' }; }
 function pqNewSec(k, list) {
   list = list || paperSecs; let n = 0;
   list.forEach(x => { const m = /^s(\d+)$/.exec(x.id || ''); if (m) n = Math.max(n, +m[1]); });
   const sc = { id:'s' + (n + 1), type:k, instr:'', marks:'', items:[], A:[], B:[] };
-  if (k === 'match') { sc.A = ['','']; sc.B = ['','']; } else sc.items = [pqBlankItem(k)];
+  if (k === 'match') { sc.A = ['','']; sc.B = ['','']; }
+  else if (k === 'title') { sc.text = ''; sc.style = 'lines'; sc.size = 'l'; sc.gap = '2'; }
+  else if (k === 'free') { sc.text = ''; sc.align = ''; sc.size = 'm'; sc.gap = '2'; sc.bold = false; sc.boxed = false; sc.numbered = false; }
+  else sc.items = [pqBlankItem(k)];
   return sc;
 }
+function pqQNo(si) { return 1 + paperSecs.slice(0, si).filter(x => (x.type !== 'free' && x.type !== 'title') || x.numbered).length; }
 function pqSecHasContent(sc) {
+  if (sc.type === 'title') return !!String(sc.text || '').trim();
+  if (sc.type === 'free') return !!(String(sc.text || '').trim() || String(sc.instr || '').trim());
   if (sc.type === 'match') return (sc.A || []).some(Boolean) || (sc.B || []).some(Boolean);
   return (sc.items || []).some(x => x.q || (x.options || []).some(Boolean));
 }
@@ -18677,7 +18695,32 @@ function pqSecCard(sc, si) {
       <input style="flex:1;" value="${esc(v)}" oninput="paperSecs[${si}].${c}[${i}]=this.value">
       <button class="btn-ghost" style="padding:6px 10px;" onclick="pqMatchDel(${si},'${c}',${i})">✕</button>
     </div>`).join('');
-  const body = k === 'match' ? `
+  const optSel = (prop, opts, cur) => `<select style="width:100%;" onchange="paperSecs[${si}].${prop}=this.value;pqTouch();">${opts.map(o => `<option value="${o[0]}"${String(cur) === o[0] ? ' selected' : ''}>${esc(o[1])}</option>`).join('')}</select>`;
+  const chk = (prop, label, rerender) => `<label style="display:flex;align-items:center;gap:6px;font-size:13px;margin:0;"><input type="checkbox" style="width:auto;" ${sc[prop] ? 'checked' : ''} onchange="paperSecs[${si}].${prop}=this.checked;pqTouch();${rerender ? 'renderTab();' : ''}"> ${esc(label)}</label>`;
+  const freeBody = `
+      <textarea dir="auto" rows="6" style="width:100%;" placeholder="${esc(qt('Write anything here — a note, a heading, a passage, a diagram caption...', 'یہاں جو چاہیں لکھیں — نوٹ، عنوان، عبارت، یا کچھ بھی...'))}" oninput="paperSecs[${si}].text=this.value">${esc(sc.text || '')}</textarea>
+      <div class="row2" style="margin-top:8px;">
+        <label><span>${esc(qt('Align', 'ترتیب'))}</span>${optSel('align', [['', qt('Auto', 'خودکار')], ['left', qt('Left', 'بائیں')], ['center', qt('Center', 'درمیان')], ['right', qt('Right', 'دائیں')]], sc.align || '')}</label>
+        <label><span>${esc(qt('Text size', 'لکھائی کا سائز'))}</span>${optSel('size', [['s', qt('Small', 'چھوٹا')], ['m', qt('Normal', 'عام')], ['l', qt('Large', 'بڑا')], ['xl', qt('Extra large', 'بہت بڑا')]], sc.size || 'm')}</label>
+      </div>
+      <div class="row2">
+        <label><span>${esc(qt('Space before', 'اوپر خالی جگہ'))}</span>${optSel('gap', [['0', qt('None', 'کوئی نہیں')], ['1', qt('Small', 'کم')], ['2', qt('Normal', 'عام')], ['3', qt('Large', 'زیادہ')]], sc.gap == null ? '2' : sc.gap)}</label>
+      </div>
+      <div class="flexgap" style="margin-top:8px;flex-wrap:wrap;gap:14px;">
+        ${chk('bold', qt('Bold', 'گہرا'))}
+        ${chk('boxed', qt('Box around it', 'ڈبہ بنائیں'))}
+        ${chk('numbered', qt('Count as a numbered Q', 'سوال نمبر لگائیں'), true)}
+      </div>`;
+  const titleBody = `
+      <input dir="auto" style="width:100%;font-weight:700;" placeholder="${esc(qt('e.g. Section A  /  Combine Test  /  Subject name', 'مثلاً Section A  /  Combine Test  /  مضمون کا نام'))}" value="${esc(sc.text || '')}" oninput="paperSecs[${si}].text=this.value">
+      <div class="row2" style="margin-top:8px;">
+        <label><span>${esc(qt('Line style', 'لائن کا انداز'))}</span>${optSel('style', [['lines', qt('—— Title ——  (line both sides)', '—— عنوان ——  (دونوں طرف لائن)')], ['under', qt('Title with line below', 'نیچے لائن')], ['box', qt('Title in a box', 'ڈبے میں')], ['plain', qt('Title only (no line)', 'صرف عنوان')]], sc.style || 'lines')}</label>
+        <label><span>${esc(qt('Text size', 'لکھائی کا سائز'))}</span>${optSel('size', [['s', qt('Small', 'چھوٹا')], ['m', qt('Normal', 'عام')], ['l', qt('Large', 'بڑا')], ['xl', qt('Extra large', 'بہت بڑا')]], sc.size || 'l')}</label>
+      </div>
+      <div class="row2">
+        <label><span>${esc(qt('Space before', 'اوپر خالی جگہ'))}</span>${optSel('gap', [['0', qt('None', 'کوئی نہیں')], ['1', qt('Small', 'کم')], ['2', qt('Normal', 'عام')], ['3', qt('Large', 'زیادہ')]], sc.gap == null ? '2' : sc.gap)}</label>
+      </div>`;
+  const body = k === 'title' ? titleBody : k === 'free' ? freeBody : k === 'match' ? `
       <div class="row2">
         <div><div style="font-size:11px;opacity:.6;margin-bottom:4px;">Column A</div>${matchCol('A', true)}
           <button class="btn-ghost" style="margin-top:4px;" onclick="pqMatchAdd(${si},'A')">${esc(t.addQuestion)}</button></div>
@@ -18688,7 +18731,7 @@ function pqSecCard(sc, si) {
   return `
     <div class="card" id="pq-sec-${esc(sc.id)}" style="margin-bottom:14px;">
       <div class="flexgap" style="justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;">
-        <b style="font-size:14px;">Q${si + 1}. <span style="font-weight:600;font-size:12px;opacity:.75;">${esc(pqTypeLbl(k))}</span></b>
+        <b style="font-size:14px;">${k === 'title' ? '📌' : (k === 'free' && !sc.numbered ? '✏️' : 'Q' + pqQNo(si) + '.')} <span style="font-weight:600;font-size:12px;opacity:.75;">${esc(pqTypeLbl(k))}</span></b>
         <span class="flexgap" style="gap:4px;align-items:center;">
           <label style="margin:0;display:flex;align-items:center;gap:4px;font-size:11px;"><span>${esc(t.marks)}</span><input type="text" inputmode="decimal" style="width:52px;padding:4px;text-align:center;" value="${esc(sc.marks)}" oninput="paperSecs[${si}].marks=this.value"></label>
           <button class="btn-ghost" style="padding:4px 8px;" ${si === 0 ? 'disabled' : ''} onclick="pqMoveSec(${si},-1)">↑</button>
@@ -18696,7 +18739,7 @@ function pqSecCard(sc, si) {
           <button class="btn-ghost" style="padding:4px 8px;" onclick="pqDelSec(${si})">🗑</button>
         </span>
       </div>
-      <input dir="auto" style="width:100%;font-size:12px;font-style:italic;margin-bottom:8px;" placeholder="${esc(pqTypeDefInstr(k))}" value="${esc(sc.instr)}" oninput="paperSecs[${si}].instr=this.value">
+      ${k === 'title' ? '' : `<input dir="auto" style="width:100%;font-size:12px;font-style:italic;margin-bottom:8px;" placeholder="${esc(k === 'free' ? qt('Heading (optional)', 'عنوان (اختیاری)') : pqTypeDefInstr(k))}" value="${esc(sc.instr)}" oninput="paperSecs[${si}].instr=this.value">`}
       ${body}
     </div>`;
 }
@@ -18704,10 +18747,10 @@ function pqAddQuestionBar() {
   const open = paperPickerOpen || !paperSecs.length;
   return `
     <div class="card" style="margin-bottom:14px;">
-      <button class="btn-primary" style="width:100%;" onclick="pqTogglePicker()">+ ${esc(qt('Add Question', 'سوال شامل کریں'))} (Q${paperSecs.length + 1})</button>
+      <button class="btn-primary" style="width:100%;" onclick="pqTogglePicker()">+ ${esc(qt('Add Question', 'سوال شامل کریں'))} (Q${pqQNo(paperSecs.length)})</button>
       ${open ? `<div style="font-size:12px;opacity:.7;margin:10px 0 6px;">${esc(qt('Choose the type of this question:', 'اس سوال کی قسم منتخب کریں:'))}</div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
-        ${PQ_TYPES.map(k => `<button type="button" class="btn-ghost" style="padding:10px 8px;font-size:13px;" onclick="pqAddSec('${k}')">${esc(pqTypeLbl(k))}</button>`).join('')}
+        ${PQ_TYPES.map(k => `<button type="button" class="btn-ghost" style="padding:10px 8px;font-size:13px;${(k === 'free' || k === 'title') ? 'grid-column:1/-1;' : ''}" onclick="pqAddSec('${k}')">${esc(pqTypeLbl(k))}</button>`).join('')}
       </div>` : ''}
     </div>`;
 }
@@ -18723,7 +18766,7 @@ function pqTblPos(tb) {
 function pqPosOptions(tb) {
   const cur = pqTblPos(tb);
   const opts = [['top', qt('At the start (before Q1)', 'شروع میں (Q1 سے پہلے)')]]
-    .concat(paperSecs.map((x, i) => ['after:' + x.id, qt('After Q' + (i + 1), 'سوال ' + (i + 1) + ' کے بعد') + ' (' + pqTypeLbl(x.type) + ')']))
+    .concat(paperSecs.map((x, i) => ['after:' + x.id, (x.type === 'title' ? qt('After title: ' + String(x.text || '').slice(0, 24), 'عنوان کے بعد: ' + String(x.text || '').slice(0, 24)) : x.type === 'free' && !x.numbered ? qt('After free block ' + (i + 1), 'فری بلاک ' + (i + 1) + ' کے بعد') : qt('After Q' + pqQNo(i), 'سوال ' + pqQNo(i) + ' کے بعد')) + ' (' + pqTypeLbl(x.type) + ')']))
     .concat([['end', qt('At the end', 'آخر میں')]]);
   return opts.map(o => `<option value="${esc(o[0])}"${o[0] === cur ? ' selected' : ''}>📍 ${esc(o[1])}</option>`).join('');
 }
@@ -19698,7 +19741,7 @@ const pqEsc = s => esc(s)
   .replace(/\{\{([^{}]{1,80})\}\}/g, (m, e) => pqColSumHtml(e));
 
 function printQuestionPaper() {
-  const hasSec = sc => sc.type === 'match' ? ((sc.A || []).some(v => v.trim()) && (sc.B || []).some(v => v.trim())) : (sc.items || []).some(x => (x.q || '').trim());
+  const hasSec = sc => (sc.type === 'free' || sc.type === 'title') ? pqSecHasContent(sc) : sc.type === 'match' ? ((sc.A || []).some(v => v.trim()) && (sc.B || []).some(v => v.trim())) : (sc.items || []).some(x => (x.q || '').trim());
   const pqHasQs = paperSecs.some(hasSec) || (paperTables || []).length || paperEndImage;
   if (paperMode === 'kg' ? !(typeof kgHasContent === 'function' && kgHasContent()) : !pqHasQs) {
     alert(qt('The paper is empty. Please add at least one question first.', 'پرچہ خالی ہے۔ پہلے کم از کم ایک سوال لکھیں۔'));
@@ -19716,6 +19759,26 @@ function printQuestionPaper() {
   // One printed block per Q — in exactly the order the user added them. The "Q1." number is added by CSS on .pq-instruction.
   const secHtml = sc => {
     if (!hasSec(sc)) return '';
+    if (sc.type === 'title') {
+      const tt = String(sc.text || '').trim();
+      const tsz = ({ s:15, m:18, l:23, xl:31 })[sc.size] || 23;
+      const tgp = ({ '0':0, '1':8, '2':16, '3':32 })[String(sc.gap == null ? '2' : sc.gap)];
+      const st = ['lines', 'under', 'box', 'plain'].indexOf(sc.style) >= 0 ? sc.style : 'lines';
+      const inner = st === 'lines' ? `<span class="pq-tl-line"></span><span class="pq-tl-text" dir="auto">${esc(tt)}</span><span class="pq-tl-line"></span>` : `<span class="pq-tl-text" dir="auto">${esc(tt)}</span>`;
+      return `<div class="pq-section pq-title pq-title-${st}" style="margin-top:calc(${tgp}px * var(--pq-space,1));font-size:${tsz}px;">${inner}</div>`;
+    }
+    if (sc.type === 'free') {
+      const tx = String(sc.text || '').trim(), heading = String(sc.instr || '').trim();
+      const sz = ({ s:13, m:15, l:20, xl:28 })[sc.size] || 15;
+      const gp = ({ '0':0, '1':8, '2':16, '3':32 })[String(sc.gap == null ? '2' : sc.gap)];
+      const al = ['left', 'center', 'right'].indexOf(sc.align) >= 0 ? sc.align : '';
+      const bx = String(sc.marks == null ? '' : sc.marks).trim();
+      const fhead = sc.numbered
+        ? `<div class="pq-instruction" dir="auto">${bx ? `<span class="pq-mbox${RTL_CHAR_RE.test(heading) ? ' pq-mbox-l' : ''}" dir="ltr">${esc(bx)}</span>` : ''}${esc(heading)}</div>`
+        : (heading ? `<div class="pq-free-title" dir="auto" style="font-size:${sz}px;${al ? 'text-align:' + al + ';' : ''}">${esc(heading)}</div>` : '');
+      const fbody = tx ? `<div class="pq-free-text${sc.boxed ? ' pq-free-box' : ''}" dir="auto" style="font-size:${sz}px;${sc.bold ? 'font-weight:800;' : ''}${al ? 'text-align:' + al + ';' : ''}">${esc(tx)}</div>` : '';
+      return `<div class="pq-section pq-free" style="margin-top:calc(${gp}px * var(--pq-space,1));">${fhead}${fbody}</div>`;
+    }
     const k = sc.type, src = sc.items || [];
     const ins = (sc.instr || '').trim() || pqTypeDefInstr(k);
     const bx = String(sc.marks == null ? '' : sc.marks).trim();   // marks box for the main question only, at the page edge
