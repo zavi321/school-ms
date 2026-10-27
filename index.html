@@ -19749,6 +19749,8 @@ const pqEsc = s => esc(s)
   .replace(/\[\[(.+?)\]\]/g, '<u>$1</u>')
   // {#} {#a} {#i} ... -> auto serial numbers (counter restarts for every question text)
   .replace(/\{#([1aAiI\u06F1\u0627]?)\}/g, (() => { const c = {}; return (m, k) => { k = k || '1'; c[k] = (c[k] || 0) + 1; return `<span class="pq-sn" dir="ltr">${pqSerialText(k, c[k])})</span>`; }; })())
+  // a new line typed inside a question stays a new line on the printed paper
+  .replace(/\r?\n/g, '<br>')
   // {{345+128}} -> vertical column sum (works in every question type)
   .replace(/\{\{([^{}]{1,80})\}\}/g, (m, e) => pqColSumHtml(e));
 
