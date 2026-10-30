@@ -14922,13 +14922,18 @@ async function dmcBgFetchBlob(path) {
       const c = await caches.open('dmc-bg-v1');
       let r = await c.match(url);
       if (!r) { r = await fetch(url); if (!r.ok) throw new Error('bg ' + r.status); try { await c.put(url, r.clone()); } catch (e) {} }
-      return await r.blob();
+      const b = await r.blob();
+      if (!/^image\//i.test(b.type)) { try { await c.delete(url); } catch (e) {} throw new Error('not an image (' + (b.type || 'unknown') + ')'); }
+      return b;
     }
-  } catch (e) { /* fall through to a plain fetch */ }
-  const r = await fetch(url);
-  if (!r.ok) throw new Error('bg ' + r.status);
-  return await r.blob();
+  } catch (e) { _dmcBgLastError = String(e && e.message || e); /* fall through to a plain fetch */ }
+  const r = await fetch(url, { cache: 'reload' });
+  if (!r.ok) { _dmcBgLastError = 'HTTP ' + r.status + ' for ' + path; throw new Error(_dmcBgLastError); }
+  const b = await r.blob();
+  if (!/^image\//i.test(b.type)) { _dmcBgLastError = 'file is not an image (' + (b.type || 'unknown') + ') for ' + path; throw new Error(_dmcBgLastError); }
+  return b;
 }
+let _dmcBgLastError = '';
 function dmcBgEnsure(id, retry) {
   if (_dmcBgData[id]) return Promise.resolve(true);
   if (_dmcBgLoading[id]) return _dmcBgLoading[id];
@@ -14941,14 +14946,17 @@ function dmcBgEnsure(id, retry) {
     _dmcBgData[id] = url; delete _dmcBgFailed[id];
     try { refreshDMCBgBox(); renderDMCPreviewIfOpen(); } catch (e) {}
     return true;
-  }).catch(() => { _dmcBgFailed[id] = true; return false; })
+  }).catch(() => { _dmcBgFailed[id] = true; try { refreshDMCBgBox(); } catch (e) {} return false; })
     .finally(() => { delete _dmcBgLoading[id]; });
   return _dmcBgLoading[id];
 }
 // Wait for the chosen gallery picture (if any) before building a printout.
 async function dmcBgReady() {
   const sel = dmcBgSelected();
-  if (/^bg\d+$/.test(sel)) await dmcBgEnsure(sel, true);
+  if (/^bg\d+$/.test(sel)) {
+    const ok = await dmcBgEnsure(sel, true);
+    if (!ok) alert('Background picture load nahi hui, certificate bina background ke print hoga.\n\nWajah: ' + (_dmcBgLastError || 'unknown') + '\n\nCheck karein ke "bg" folder index.html ke saath upload hai aur internet chal raha hai.');
+  }
 }
 function dmcBgTileHtml(id, label, inner) {
   const on = dmcBgSelected() === id;
@@ -14968,6 +14976,7 @@ function dmcBgBoxHtml() {
   const presetTiles = dmcBgPresets().map((p, i) => dmcBgTileHtml(p.id, (i + 1) + '. ' + p.name, `<img alt="" loading="lazy" src="${safeSrc(p.thumb || p.file || p.src)}" decoding="async" style="width:100%;height:100%;object-fit:cover;display:block;">`)).join('');
   return `
     <p style="font-size:12px;opacity:.7;margin:0 0 8px;">Neeche se jo background pasand ho select karein. Pasand na ho to apni picture upload karein.</p>
+    ${/^bg\d+$/.test(sel) ? `<p style="font-size:12px;margin:0 0 8px;padding:6px 10px;border-radius:8px;background:${_dmcBgData[sel] ? '#e6f4ec' : (_dmcBgFailed[sel] ? '#fdecdc' : '#eef2f7')};color:#1d2433;">${_dmcBgData[sel] ? '&#10003; Background tayar hai (' + esc(sel) + ')' : (_dmcBgFailed[sel] ? '&#10007; Background load nahi hui: ' + esc(_dmcBgLastError || 'file nahi mili') + ' &mdash; "bg" folder index.html ke saath upload karein' : 'Background load ho rahi hai...')} <span style="opacity:.5">[bg-v3]</span></p>` : ''}
     <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px;">${noneTile}${customTile}${presetTiles}</div>
     <label style="display:block;margin-bottom:10px;">
       <span style="display:block;font-size:12px;font-weight:500;opacity:.7;margin-bottom:4px;">Apni background picture upload karein (agar upar koi pasand na ho)</span>
@@ -18666,6 +18675,7 @@ let paperBreaks = { a:[], b:[], c:[] };
 // to label or refer to.
 let paperEndImage = null;
 let paperTables = [];
+let paperShapes = [];
 
 // ---- Question sections: Q1, Q2, Q3 ... each with its OWN type, added one by one with "+ Add Question" ----
 // sec = { id, type:'mcq'|'blanks'|'tf'|'match'|'short'|'long', instr, marksEach, items:[...], A:[...], B:[...] (match only) }
@@ -18841,7 +18851,7 @@ function pqSnapshot(withImages) {
   if (!withImages || (typeof dmcLogo !== 'undefined' && meta.logo === dmcLogo)) meta.logo = null; // default logo is refilled automatically
   return { v:1, t:Date.now(), uid:((typeof CURRENT_USER !== 'undefined' && CURRENT_USER) ? CURRENT_USER.id : pqDraftUid), paperMeta:meta, paperMcqMarksEach, paperMcqs, paperBlanks, paperTF,
            paperMatchA, paperMatchB, paperShort, paperLong, paperInstructions, paperSectionTitles, paperBreaks,
-           paperEndImage: withImages ? paperEndImage : null, paperMode, kgBlocks: [], paperTables, paperSecs };
+           paperEndImage: withImages ? paperEndImage : null, paperMode, kgBlocks: [], paperTables, paperShapes, paperSecs };
 }
 function savePaperDraft() {
   if (!pqReady) return;
@@ -18875,6 +18885,7 @@ function loadPaperDraft() {
     if (d.paperMode) paperMode = d.paperMode;
     if (Array.isArray(d.kgBlocks)) kgBlocks = d.kgBlocks;
     if (Array.isArray(d.paperTables)) paperTables = d.paperTables;
+    if (Array.isArray(d.paperShapes)) paperShapes = d.paperShapes;
     paperSecs = Array.isArray(d.paperSecs) ? d.paperSecs : pqLegacyToSecs();
     pqReady = true;
   } catch (e) {
@@ -18890,7 +18901,7 @@ const PQ_BACKUP_KEY = 'pqBackup_v1';
 function pqHasContent() {
   const m = paperMeta;
   return !!(m.exam_name || m.class_name || m.subject || m.total_marks || m.time_allowed || paperEndImage ||
-    paperSecs.length || (paperTables || []).length ||
+    paperSecs.length || (paperTables || []).length || (paperShapes || []).length ||
     Object.values(paperBreaks).some(arr => (arr||[]).some(Boolean)));
 }
 function pqStoreBackup() {   // 1 = saved fully, 2 = saved without images, 0 = could not save
@@ -18919,6 +18930,7 @@ function pqResetPaper() {
   paperBreaks = { a:[], b:[], c:[] };
   paperEndImage = null;
   paperTables = [];
+  paperShapes = [];
   paperSecs = []; paperPickerOpen = false;
 }
 function newPaper() {
@@ -18953,6 +18965,7 @@ function restorePreviousPaper() {
   if (d.paperBreaks) paperBreaks = Object.assign(paperBreaks, d.paperBreaks);
   paperEndImage = d.paperEndImage || null;
   paperTables = Array.isArray(d.paperTables) ? d.paperTables : [];
+  paperShapes = Array.isArray(d.paperShapes) ? d.paperShapes : [];
   paperSecs = Array.isArray(d.paperSecs) ? d.paperSecs : pqLegacyToSecs();
   try { if (current) localStorage.setItem(PQ_BACKUP_KEY, current); else localStorage.removeItem(PQ_BACKUP_KEY); } catch (e) {}
   pqFlush();
@@ -19393,6 +19406,7 @@ function pqApplyPack(d) {
   if (d.paperSectionTitles) paperSectionTitles = Object.assign(paperSectionTitles, d.paperSectionTitles);
   if (d.paperBreaks) paperBreaks = Object.assign(paperBreaks, d.paperBreaks);
   if (Array.isArray(d.paperTables)) paperTables = d.paperTables;
+  if (Array.isArray(d.paperShapes)) paperShapes = d.paperShapes;
   paperSecs = d.paperSecs;
   paperMode = 'std';
 }
@@ -19644,6 +19658,359 @@ function pqAddRow(i) { const tb = paperTables[i]; tb.rows.push(tb.cols.map(() =>
 function pqDelRow(i,r) { paperTables[i].rows.splice(r,1); pqTouch(); renderTab(); }
 function pqAddCol(i) { const tb = paperTables[i]; if (tb.cols.length >= 6) return; tb.cols.push(''); tb.rows.forEach(r => r.push('')); pqTouch(); renderTab(); }
 function pqDelCol(i) { const tb = paperTables[i]; if (tb.cols.length <= 1) return; tb.cols.pop(); tb.rows.forEach(r => r.pop()); pqTouch(); renderTab(); }
+// =====================================================================================
+// GEOMETRY SHAPES for the Question Paper (triangles, quadrilaterals, polygons, circle & its
+// parts, lines & angles, 3D solids). Drawn as inline SVG, so they stay sharp at any size and
+// add almost nothing to the file size. Every shape can be made any size from 10 mm to 190 mm.
+// =====================================================================================
+const PQ_SH_PAD = 16;
+const PQ_SH_GROUPS = [
+  ['tri', 'Triangles', 'تکون'], ['quad', 'Quadrilaterals', 'چوکور'], ['poly', 'Polygons', 'کثیر الاضلاع'],
+  ['circ', 'Circle & its parts', 'دائرہ اور اس کے حصے'], ['line', 'Lines & angles', 'لکیریں اور زاویے'], ['solid', '3D solids', 'ٹھوس اشکال']
+];
+const PQ_SH = (function () {
+  const R = n => Math.round(n * 10) / 10;
+  const LET = 'ABCDEFGHIJKL';
+  let o = { fs: 6, labels: true, marks: true, fill: false };
+  const VE = ' vector-effect="non-scaling-stroke"';
+  const fillA = () => ' fill="' + (o.fill ? '#e3e3e3' : 'none') + '"';
+  const PTS = a => a.map(p => R(p[0]) + ',' + R(p[1])).join(' ');
+  const poly = a => '<polygon points="' + PTS(a) + '"' + fillA() + VE + '/>';
+  const ln = (a, b, ex) => '<line x1="' + R(a[0]) + '" y1="' + R(a[1]) + '" x2="' + R(b[0]) + '" y2="' + R(b[1]) + '"' + VE + (ex || '') + '/>';
+  const DASH = ' stroke-dasharray="4 3"';
+  const THIN = ' stroke-width="1"';
+  const txt = (x, y, t, sz) => '<text x="' + R(x) + '" y="' + R(y) + '" font-size="' + R(sz || o.fs) + '" font-family="Arial,Helvetica,sans-serif" text-anchor="middle" dominant-baseline="central" stroke="none" fill="#000">' + t + '</text>';
+  const dot = p => '<circle cx="' + R(p[0]) + '" cy="' + R(p[1]) + '" r="' + R(Math.max(1.2, o.fs * 0.2)) + '" fill="#000" stroke="none"/>';
+  const cen = a => [a.reduce((s, p) => s + p[0], 0) / a.length, a.reduce((s, p) => s + p[1], 0) / a.length];
+  const unit = (p, q) => { const dx = q[0] - p[0], dy = q[1] - p[1], d = Math.hypot(dx, dy) || 1; return [dx / d, dy / d]; };
+  const pt = (cx, cy, r, deg) => [cx + r * Math.cos(deg * Math.PI / 180), cy + r * Math.sin(deg * Math.PI / 180)];
+  // letters placed just outside each corner
+  const vl = (a, letters) => {
+    if (!o.labels) return '';
+    const c = cen(a);
+    return a.map((p, i) => { const dx = p[0] - c[0], dy = p[1] - c[1], d = Math.hypot(dx, dy) || 1; return txt(p[0] + dx / d * o.fs * 0.95, p[1] + dy / d * o.fs * 0.95, (letters || LET)[i]); }).join('');
+  };
+  // small square at a right-angled corner p (neighbours q and r)
+  const ra = (p, q, r) => {
+    const u = unit(p, q), v = unit(p, r), s = Math.min(8, o.fs * 1.1);
+    const a = [p[0] + u[0] * s, p[1] + u[1] * s], b = [a[0] + v[0] * s, a[1] + v[1] * s], c = [p[0] + v[0] * s, p[1] + v[1] * s];
+    return '<path d="M' + R(a[0]) + ' ' + R(a[1]) + ' L' + R(b[0]) + ' ' + R(b[1]) + ' L' + R(c[0]) + ' ' + R(c[1]) + '" fill="none"' + VE + THIN + '/>';
+  };
+  // equal-side tick marks (n strokes) in the middle of side p-q
+  const tick = (p, q, n) => {
+    const m = [(p[0] + q[0]) / 2, (p[1] + q[1]) / 2], u = unit(p, q), nn = [-u[1], u[0]];
+    let s = '';
+    for (let k = 0; k < n; k++) { const off = (k - (n - 1) / 2) * 3.2, c = [m[0] + u[0] * off, m[1] + u[1] * off]; s += ln([c[0] - nn[0] * 3, c[1] - nn[1] * 3], [c[0] + nn[0] * 3, c[1] + nn[1] * 3], THIN); }
+    return s;
+  };
+  const pg = (a, ticks, rights, letters) => {
+    let s = poly(a);
+    if (o.marks) {
+      (ticks || []).forEach(t => { s += tick(a[t[0]], a[t[1]], t[2]); });
+      (rights || []).forEach(i => { s += ra(a[i], a[(i + 1) % a.length], a[(i + a.length - 1) % a.length]); });
+    }
+    return s + vl(a, letters);
+  };
+  const reg = (n, r) => Array.from({ length: n }, (_, k) => [50 + (r || 50) * Math.cos(-Math.PI / 2 + 2 * Math.PI * k / n), 50 + (r || 50) * Math.sin(-Math.PI / 2 + 2 * Math.PI * k / n)]);
+  const circ = (cx, cy, r, ex) => '<circle cx="' + R(cx) + '" cy="' + R(cy) + '" r="' + R(r) + '"' + (ex || ' fill="none"') + VE + '/>';
+  const arc = (cx, cy, r, a0, a1, ex) => {
+    const p = pt(cx, cy, r, a0), q = pt(cx, cy, r, a1);
+    return '<path d="M' + R(p[0]) + ' ' + R(p[1]) + ' A' + R(r) + ' ' + R(r) + ' 0 ' + (Math.abs(a1 - a0) > 180 ? 1 : 0) + ' ' + (a1 > a0 ? 1 : 0) + ' ' + R(q[0]) + ' ' + R(q[1]) + '"' + (ex || ' fill="none"') + VE + '/>';
+  };
+  const ell = (cx, cy, rx, ry, ex) => '<ellipse cx="' + R(cx) + '" cy="' + R(cy) + '" rx="' + R(rx) + '" ry="' + R(ry) + '"' + (ex || ' fill="none"') + VE + '/>';
+  // lower (front) and upper (back) halves of a horizontal ellipse
+  const ellFront = (cx, cy, rx, ry) => '<path d="M' + R(cx - rx) + ' ' + R(cy) + ' A' + R(rx) + ' ' + R(ry) + ' 0 0 0 ' + R(cx + rx) + ' ' + R(cy) + '" fill="none"' + VE + '/>';
+  const ellBack = (cx, cy, rx, ry) => '<path d="M' + R(cx - rx) + ' ' + R(cy) + ' A' + R(rx) + ' ' + R(ry) + ' 0 0 1 ' + R(cx + rx) + ' ' + R(cy) + '" fill="none"' + VE + DASH + '/>';
+  const arrowHead = (tip, from) => {
+    const u = unit(from, tip), nn = [-u[1], u[0]], b = [tip[0] - u[0] * 7, tip[1] - u[1] * 7];
+    return '<polygon points="' + PTS([tip, [b[0] + nn[0] * 2.6, b[1] + nn[1] * 2.6], [b[0] - nn[0] * 2.6, b[1] - nn[1] * 2.6]]) + '" fill="#000"' + VE + '/>';
+  };
+  const word = (x, y, t) => o.labels ? txt(x, y, t, o.fs * 0.8) : '';
+
+  const defs = [];
+  const add = (id, g, en, ur, f) => defs.push([id, g, en, ur, f]);
+
+  // ---------- Triangles ----------
+  add('tri-equilateral', 'tri', 'Equilateral triangle', 'مساوی الاضلاع تکون', () => ({ W: 100, H: 86.6, s: pg([[50, 0], [0, 86.6], [100, 86.6]], [[0, 1, 1], [1, 2, 1], [2, 0, 1]]) }));
+  add('tri-isosceles', 'tri', 'Isosceles triangle', 'مساوی الساقین تکون', () => ({ W: 100, H: 88, s: pg([[50, 0], [12, 88], [88, 88]], [[0, 1, 1], [2, 0, 1]]) }));
+  add('tri-scalene', 'tri', 'Scalene triangle', 'مختلف الاضلاع تکون', () => ({ W: 100, H: 88, s: pg([[70, 0], [0, 70], [100, 88]], [[0, 1, 1], [1, 2, 2], [2, 0, 3]]) }));
+  add('tri-right', 'tri', 'Right-angled triangle', 'قائمۃ الزاویہ تکون', () => ({ W: 100, H: 80, s: pg([[0, 0], [0, 80], [100, 80]], [], [1]) }));
+  add('tri-right-isos', 'tri', 'Right isosceles triangle', 'قائمۃ الزاویہ مساوی الساقین تکون', () => ({ W: 80, H: 80, s: pg([[0, 0], [0, 80], [80, 80]], [[0, 1, 1], [1, 2, 1]], [1]) }));
+  add('tri-acute', 'tri', 'Acute-angled triangle', 'حادۃ الزاویہ تکون', () => ({ W: 100, H: 80, s: pg([[42, 0], [0, 80], [100, 68]]) }));
+  add('tri-obtuse', 'tri', 'Obtuse-angled triangle', 'منفرجۃ الزاویہ تکون', () => ({ W: 100, H: 34, s: pg([[35, 0], [0, 34], [100, 34]]) }));
+  add('tri-altitude', 'tri', 'Triangle with altitude (height)', 'ارتفاع والا تکون', () => {
+    const a = [[62, 0], [0, 88], [100, 88]], d = [62, 88];
+    let s = poly(a) + ln(a[0], d, DASH + THIN);
+    if (o.marks) s += ra(d, a[2], a[0]);
+    if (o.labels) s += vl(a) + txt(d[0], d[1] + o.fs * 0.95, 'D');
+    return { W: 100, H: 88, s: s };
+  });
+  add('tri-incircle', 'tri', 'Triangle with incircle', 'اندرونی دائرے والا تکون', () => {
+    const a = [[50, 0], [0, 86.6], [100, 86.6]];
+    return { W: 100, H: 86.6, s: poly(a) + circ(50, 57.7, 28.9) + (o.labels ? dot([50, 57.7]) + txt(50, 57.7 + o.fs * 0.9, 'O') + vl(a) : '') };
+  });
+  add('tri-circumcircle', 'tri', 'Triangle inside a circle', 'دائرے کے اندر تکون', () => {
+    const a = [pt(50, 50, 50, 250), pt(50, 50, 50, 20), pt(50, 50, 50, 140)];
+    return { W: 100, H: 100, s: circ(50, 50, 50) + poly(a) + (o.labels ? dot([50, 50]) + txt(50, 50 + o.fs * 0.9, 'O') + vl(a) : '') };
+  });
+
+  // ---------- Quadrilaterals ----------
+  add('quad-square', 'quad', 'Square', 'مربع', () => ({ W: 80, H: 80, s: pg([[0, 0], [80, 0], [80, 80], [0, 80]], [[0, 1, 1], [1, 2, 1], [2, 3, 1], [3, 0, 1]], [0, 1, 2, 3]) }));
+  add('quad-rectangle', 'quad', 'Rectangle', 'مستطیل', () => ({ W: 110, H: 70, s: pg([[0, 0], [110, 0], [110, 70], [0, 70]], [[0, 1, 1], [2, 3, 1], [1, 2, 2], [3, 0, 2]], [0, 1, 2, 3]) }));
+  add('quad-parallelogram', 'quad', 'Parallelogram', 'متوازی الاضلاع', () => ({ W: 110, H: 70, s: pg([[25, 0], [110, 0], [85, 70], [0, 70]], [[0, 1, 1], [2, 3, 1], [1, 2, 2], [3, 0, 2]]) }));
+  add('quad-rhombus', 'quad', 'Rhombus', 'معین', () => ({ W: 100, H: 100, s: pg([[50, 0], [100, 50], [50, 100], [0, 50]], [[0, 1, 1], [1, 2, 1], [2, 3, 1], [3, 0, 1]]) }));
+  add('quad-trapezium', 'quad', 'Trapezium', 'منحرف', () => ({ W: 110, H: 70, s: pg([[20, 0], [75, 0], [110, 70], [0, 70]]) }));
+  add('quad-trap-isos', 'quad', 'Isosceles trapezium', 'مساوی الساقین منحرف', () => ({ W: 110, H: 70, s: pg([[30, 0], [80, 0], [110, 70], [0, 70]], [[1, 2, 1], [3, 0, 1]]) }));
+  add('quad-trap-right', 'quad', 'Right trapezium', 'قائمۃ الزاویہ منحرف', () => ({ W: 100, H: 70, s: pg([[0, 0], [60, 0], [100, 70], [0, 70]], [], [0, 3]) }));
+  add('quad-kite', 'quad', 'Kite', 'پتنگ نما چوکور', () => ({ W: 70, H: 110, s: pg([[35, 0], [70, 35], [35, 110], [0, 35]], [[0, 1, 1], [3, 0, 1], [1, 2, 2], [2, 3, 2]]) }));
+  add('quad-general', 'quad', 'General quadrilateral', 'عام چوکور', () => ({ W: 100, H: 75, s: pg([[10, 0], [100, 15], [85, 75], [0, 60]]) }));
+  add('quad-cyclic', 'quad', 'Cyclic quadrilateral', 'دائرے میں چوکور', () => {
+    const a = [pt(50, 50, 50, 250), pt(50, 50, 50, 335), pt(50, 50, 50, 80), pt(50, 50, 50, 170)];
+    return { W: 100, H: 100, s: circ(50, 50, 50) + poly(a) + vl(a) };
+  });
+
+  // ---------- Polygons ----------
+  [['pentagon', 5, 'Pentagon (5 sides)', 'پنج ضلعی'], ['hexagon', 6, 'Hexagon (6 sides)', 'شش ضلعی'], ['heptagon', 7, 'Heptagon (7 sides)', 'ہفت ضلعی'],
+   ['octagon', 8, 'Octagon (8 sides)', 'ہشت ضلعی'], ['nonagon', 9, 'Nonagon (9 sides)', 'نو ضلعی'], ['decagon', 10, 'Decagon (10 sides)', 'دس ضلعی'],
+   ['dodecagon', 12, 'Dodecagon (12 sides)', 'بارہ ضلعی']].forEach(x => {
+    add('poly-' + x[0], 'poly', 'Regular ' + x[2], 'باقاعدہ ' + x[3], () => {
+      const a = reg(x[1]); const t = [];
+      if (o.marks) for (let i = 0; i < x[1]; i++) t.push([i, (i + 1) % x[1], 1]);
+      return { W: 100, H: 100, s: pg(a, t) };
+    });
+  });
+  add('poly-irreg5', 'poly', 'Irregular pentagon', 'غیر باقاعدہ پنج ضلعی', () => ({ W: 100, H: 90, s: pg([[30, 0], [95, 20], [100, 75], [40, 90], [0, 45]]) }));
+  add('poly-star', 'poly', 'Star (5 points)', 'پانچ کونوں والا ستارہ', () => {
+    const a = []; for (let k = 0; k < 10; k++) a.push(pt(50, 50, k % 2 ? 20 : 50, -90 + 36 * k));
+    return { W: 100, H: 100, s: poly(a) };
+  });
+
+  // ---------- Circle and its parts ----------
+  add('circ-circle', 'circ', 'Circle', 'دائرہ', () => ({ W: 100, H: 100, s: circ(50, 50, 50, fillA()) }));
+  add('circ-centre', 'circ', 'Circle with centre', 'مرکز والا دائرہ', () => ({ W: 100, H: 100, s: circ(50, 50, 50, fillA()) + dot([50, 50]) + (o.labels ? txt(50, 50 + o.fs * 0.95, 'O') : '') }));
+  add('circ-radius', 'circ', 'Circle with radius', 'رداس والا دائرہ', () => {
+    const p = pt(50, 50, 50, -35);
+    return { W: 100, H: 100, s: circ(50, 50, 50, fillA()) + ln([50, 50], p) + dot([50, 50]) + (o.labels ? txt(50, 50 + o.fs * 0.95, 'O') + txt(p[0] + o.fs * 0.8, p[1] - o.fs * 0.5, 'P') + txt((50 + p[0]) / 2 + o.fs * 0.3, (50 + p[1]) / 2 - o.fs * 0.9, 'r') : '') };
+  });
+  add('circ-diameter', 'circ', 'Circle with diameter', 'قطر والا دائرہ', () => ({ W: 100, H: 100, s: circ(50, 50, 50, fillA()) + ln([0, 50], [100, 50]) + dot([50, 50]) + (o.labels ? txt(-o.fs * 0.9, 50, 'A') + txt(100 + o.fs * 0.9, 50, 'B') + txt(50, 50 - o.fs * 0.95, 'd') + txt(50, 50 + o.fs * 0.95, 'O') : '') }));
+  add('circ-chord', 'circ', 'Circle with chord', 'وتر والا دائرہ', () => {
+    const a = pt(50, 50, 50, 210), b = pt(50, 50, 50, 330);
+    return { W: 100, H: 100, s: circ(50, 50, 50, fillA()) + ln(a, b) + (o.labels ? txt(a[0] - o.fs * 0.9, a[1] - o.fs * 0.3, 'A') + txt(b[0] + o.fs * 0.9, b[1] - o.fs * 0.3, 'B') : '') };
+  });
+  add('circ-arc', 'circ', 'Circle with arc', 'قوس والا دائرہ', () => {
+    const a = pt(50, 50, 50, 210), b = pt(50, 50, 50, 330);
+    return { W: 100, H: 100, s: circ(50, 50, 50) + arc(50, 50, 50, 210, 330, ' fill="none" stroke-width="' + R(o.lw * 2.4) + '"') + (o.labels ? txt(a[0] - o.fs * 0.9, a[1] - o.fs * 0.3, 'A') + txt(b[0] + o.fs * 0.9, b[1] - o.fs * 0.3, 'B') : '') };
+  });
+  add('circ-tangent', 'circ', 'Circle with tangent', 'مماس والا دائرہ', () => ({
+    W: 100, H: 100,
+    s: circ(50, 50, 50) + ln([-12, 100], [112, 100]) + dot([50, 50]) + (o.marks ? ln([50, 50], [50, 100], DASH + THIN) + ra([50, 100], [100, 100], [50, 50]) : '') + (o.labels ? txt(50, 50 - o.fs * 0.95, 'O') + txt(50, 100 + o.fs * 0.95, 'T') : '')
+  }));
+  add('circ-secant', 'circ', 'Circle with secant', 'قاطع والا دائرہ', () => {
+    const a = pt(50, 50, 50, 205), b = pt(50, 50, 50, 320), u = unit(a, b);
+    const e1 = [a[0] - u[0] * 22, a[1] - u[1] * 22], e2 = [b[0] + u[0] * 22, b[1] + u[1] * 22];
+    return { W: 100, H: 100, s: circ(50, 50, 50) + ln(e1, e2) + dot(a) + dot(b) + (o.labels ? txt(a[0] + o.fs * 0.2, a[1] - o.fs * 1.1, 'A') + txt(b[0] + o.fs * 0.2, b[1] - o.fs * 1.1, 'B') : '') };
+  });
+  add('circ-sector', 'circ', 'Sector', 'قطاع', () => {
+    const p = pt(50, 50, 50, -50), q = pt(50, 50, 50, 30);
+    const d = 'M50 50 L' + R(p[0]) + ' ' + R(p[1]) + ' A50 50 0 0 1 ' + R(q[0]) + ' ' + R(q[1]) + ' Z';
+    return { W: 100, H: 100, s: circ(50, 50, 50, ' fill="none" stroke-dasharray="3 3" stroke-width="1"') + '<path d="' + d + '"' + fillA() + VE + '/>' + (o.labels ? txt(50 - o.fs * 0.9, 50, 'O') + txt(p[0] + o.fs * 0.5, p[1] - o.fs * 0.8, 'A') + txt(q[0] + o.fs * 0.9, q[1] + o.fs * 0.5, 'B') : '') };
+  });
+  add('circ-segment', 'circ', 'Segment', 'قطعہ', () => {
+    const a = pt(50, 50, 50, 210), b = pt(50, 50, 50, 330);
+    const d = 'M' + R(a[0]) + ' ' + R(a[1]) + ' A50 50 0 0 1 ' + R(b[0]) + ' ' + R(b[1]) + ' Z';
+    return { W: 100, H: 100, s: circ(50, 50, 50, ' fill="none" stroke-dasharray="3 3" stroke-width="1"') + '<path d="' + d + '"' + fillA() + VE + '/>' + (o.labels ? txt(a[0] - o.fs * 0.9, a[1] - o.fs * 0.3, 'A') + txt(b[0] + o.fs * 0.9, b[1] - o.fs * 0.3, 'B') : '') };
+  });
+  add('circ-semi', 'circ', 'Semicircle', 'نصف دائرہ', () => ({ W: 100, H: 50, s: '<path d="M0 50 A50 50 0 0 1 100 50 Z"' + fillA() + VE + '/>' + (o.labels ? dot([50, 50]) + txt(50, 50 + o.fs * 0.95, 'O') : '') }));
+  add('circ-quadrant', 'circ', 'Quadrant', 'ربع دائرہ', () => ({ W: 100, H: 100, s: '<path d="M0 100 L0 0 A100 100 0 0 1 100 100 Z"' + fillA() + VE + '/>' + (o.marks ? ra([0, 100], [100, 100], [0, 0]) : '') + (o.labels ? txt(-o.fs * 0.9, 100 + o.fs * 0.3, 'O') : '') }));
+  add('circ-ring', 'circ', 'Ring (annulus)', 'چھلا (دو دائروں کے درمیان)', () => {
+    const p = pt(50, 50, 50, -40), q = pt(50, 50, 30, 150);
+    return { W: 100, H: 100, s: '<path d="M0 50 A50 50 0 1 0 100 50 A50 50 0 1 0 0 50 Z M20 50 A30 30 0 1 0 80 50 A30 30 0 1 0 20 50 Z" fill-rule="evenodd"' + fillA() + VE + '/>' + dot([50, 50]) + (o.labels ? ln([50, 50], p, THIN) + ln([50, 50], q, THIN) + txt((50 + p[0]) / 2 + o.fs * 0.5, (50 + p[1]) / 2 - o.fs * 0.8, 'R') + txt((50 + q[0]) / 2 - o.fs * 0.2, (50 + q[1]) / 2 + o.fs * 0.9, 'r') : '') };
+  });
+  add('circ-concentric', 'circ', 'Concentric circles', 'ہم مرکز دائرے', () => ({ W: 100, H: 100, s: circ(50, 50, 50) + circ(50, 50, 35) + circ(50, 50, 20) + dot([50, 50]) }));
+  add('circ-ellipse', 'circ', 'Ellipse (oval)', 'بیضہ', () => ({ W: 120, H: 76, s: ell(60, 38, 60, 38, fillA()) }));
+  add('circ-parts', 'circ', 'Circle: all its parts', 'دائرہ: تمام حصے', () => {
+    const P1 = pt(50, 50, 50, 20), A = pt(50, 50, 50, 155), B = pt(50, 50, 50, 335), C = pt(50, 50, 50, 205), D = pt(50, 50, 50, 255);
+    let s = circ(50, 50, 50) + ln([-12, 100], [112, 100]) + ln(A, B) + ln([50, 50], P1) + ln(C, D) + arc(50, 50, 50, 205, 255, ' fill="none" stroke-width="' + R(o.lw * 2.4) + '"') + dot([50, 50]);
+    if (o.labels) {
+      const f = o.fs;
+      s += txt(50 - f * 0.2, 50 + f * 0.95, 'O') + txt(P1[0] + f * 0.9, P1[1] + f * 0.4, 'P') + txt(A[0] - f * 0.9, A[1] + f * 0.3, 'A') + txt(B[0] + f * 0.9, B[1] - f * 0.3, 'B') +
+        txt(C[0] - f * 0.9, C[1] - f * 0.2, 'C') + txt(D[0] - f * 0.3, D[1] - f * 0.9, 'D') + txt(50, 100 + f * 0.95, 'T');
+      const L = (y, t) => '<text x="125" y="' + R(y) + '" font-size="' + R(f * 0.9) + '" font-family="Arial,Helvetica,sans-serif" text-anchor="start" dominant-baseline="central" stroke="none" fill="#000">' + t + '</text>';
+      s += L(8, 'O  = Centre') + L(8 + f * 1.7, 'OP = Radius') + L(8 + f * 3.4, 'AB = Diameter') + L(8 + f * 5.1, 'CD = Chord') + L(8 + f * 6.8, 'Arc CD') + L(8 + f * 8.5, 'Line at T = Tangent');
+    }
+    return { W: o.labels ? 205 : 100, H: 100, s: s };
+  });
+  add('circ-in-square', 'circ', 'Circle inside a square', 'مربع کے اندر دائرہ', () => ({ W: 100, H: 100, s: poly([[0, 0], [100, 0], [100, 100], [0, 100]]) + circ(50, 50, 50) }));
+  add('circ-square-in', 'circ', 'Square inside a circle', 'دائرے کے اندر مربع', () => {
+    const a = [pt(50, 50, 50, 225), pt(50, 50, 50, 315), pt(50, 50, 50, 45), pt(50, 50, 50, 135)];
+    return { W: 100, H: 100, s: circ(50, 50, 50) + poly(a) };
+  });
+
+  // ---------- Lines and angles ----------
+  add('line-segment', 'line', 'Line segment', 'خط مستقیم (قطعہ)', () => ({ W: 100, H: 4, s: ln([0, 2], [100, 2]) + dot([0, 2]) + dot([100, 2]) + (o.labels ? txt(0, 2 - o.fs * 1.1, 'A') + txt(100, 2 - o.fs * 1.1, 'B') : '') }));
+  add('line-ray', 'line', 'Ray', 'شعاع', () => ({ W: 100, H: 4, s: ln([0, 2], [96, 2]) + arrowHead([100, 2], [0, 2]) + dot([0, 2]) + (o.labels ? txt(0, 2 - o.fs * 1.1, 'A') : '') }));
+  add('line-line', 'line', 'Line', 'لکیر', () => ({ W: 100, H: 4, s: ln([4, 2], [96, 2]) + arrowHead([100, 2], [0, 2]) + arrowHead([0, 2], [100, 2]) }));
+  add('line-parallel', 'line', 'Parallel lines', 'متوازی لکیریں', () => {
+    const ch = y => ln([48, y - 4], [54, y], THIN) + ln([54, y], [48, y + 4], THIN);
+    return { W: 100, H: 30, s: ln([0, 0], [100, 0]) + ln([0, 30], [100, 30]) + (o.marks ? ch(0) + ch(30) : '') + (o.labels ? txt(110, 0, 'l') + txt(110, 30, 'm') : '') };
+  });
+  add('line-perp', 'line', 'Perpendicular lines', 'عمودی لکیریں', () => ({ W: 100, H: 70, s: ln([0, 70], [100, 70]) + ln([50, 0], [50, 70]) + (o.marks ? ra([50, 70], [100, 70], [50, 0]) : '') + (o.labels ? txt(50, -o.fs * 0.9, 'A') + txt(50, 70 + o.fs * 0.95, 'O') : '') }));
+  add('line-cross', 'line', 'Intersecting lines', 'ایک دوسرے کو کاٹنے والی لکیریں', () => {
+    const a = pt(50, 40, 50, -20), b = pt(50, 40, 50, 160), c = pt(50, 40, 50, 20), d = pt(50, 40, 50, 200);
+    return { W: 100, H: 80, s: ln(a, b) + ln(c, d) + dot([50, 40]) + (o.labels ? txt(50, 40 - o.fs * 1.3, '1') + txt(50 + 24, 40, '2') + txt(50, 40 + o.fs * 1.3, '3') + txt(50 - 24, 40, '4') : '') };
+  });
+  const angle = (id, deg, en, ur) => add(id, 'line', en, ur, () => {
+    const Lr = 80, rad = deg * Math.PI / 180, r = 20;
+    const p1 = [Lr, 0], p2 = [Lr * Math.cos(rad), -Lr * Math.sin(rad)];
+    const q = [r * Math.cos(rad), -r * Math.sin(rad)];
+    const xs = [0, p1[0], p2[0], -r, r], ys = [0, p1[1], p2[1], -r, r];
+    const minX = Math.min.apply(null, xs), maxX = Math.max.apply(null, xs), minY = Math.min.apply(null, ys), maxY = Math.max.apply(null, ys);
+    let s = ln([0, 0], p1) + ln([0, 0], p2);
+    if (deg === 90 && o.marks) s += ra([0, 0], p1, p2);
+    else if (deg !== 90) s += '<path d="M' + r + ' 0 A' + r + ' ' + r + ' 0 ' + (deg > 180 ? 1 : 0) + ' 0 ' + R(q[0]) + ' ' + R(q[1]) + '" fill="none"' + VE + THIN + '/>';
+    if (o.labels) {
+      const mid = (deg / 2) * Math.PI / 180, rr = r + o.fs * 1.7;
+      s += txt(p1[0] + o.fs * 0.9, 0, 'A') + txt(p2[0] + (p2[0] >= 0 ? o.fs * 0.9 : -o.fs * 0.9), p2[1] - (Math.abs(p2[1]) < 1 ? 0 : o.fs * 0.5), 'B') + txt(-o.fs * 0.7, o.fs * 0.9, 'O') + txt(rr * Math.cos(mid), -rr * Math.sin(mid), deg + '°');
+    }
+    return { W: maxX - minX, H: maxY - minY, s: '<g transform="translate(' + R(-minX) + ' ' + R(-minY) + ')">' + s + '</g>' };
+  });
+  angle('ang-acute', 45, 'Acute angle (45°)', 'حادہ زاویہ (45°)');
+  angle('ang-right', 90, 'Right angle (90°)', 'قائمہ زاویہ (90°)');
+  angle('ang-obtuse', 120, 'Obtuse angle (120°)', 'منفرجہ زاویہ (120°)');
+  angle('ang-straight', 180, 'Straight angle (180°)', 'مستقیم زاویہ (180°)');
+  angle('ang-reflex', 250, 'Reflex angle (250°)', 'منعکس زاویہ (250°)');
+
+  // ---------- 3D solids ----------
+  add('sol-cube', 'solid', 'Cube', 'مکعب', () => ({ W: 85, H: 85, s:
+    poly([[0, 25], [60, 25], [60, 85], [0, 85]]) + ln([0, 25], [25, 0]) + ln([25, 0], [85, 0]) + ln([60, 25], [85, 0]) + ln([85, 0], [85, 60]) + ln([60, 85], [85, 60]) +
+    ln([25, 0], [25, 60], DASH + THIN) + ln([25, 60], [85, 60], DASH + THIN) + ln([0, 85], [25, 60], DASH + THIN) }));
+  add('sol-cuboid', 'solid', 'Cuboid', 'مستطیل نما ٹھوس (کیوبائڈ)', () => ({ W: 120, H: 85, s:
+    poly([[0, 30], [90, 30], [90, 85], [0, 85]]) + ln([0, 30], [30, 0]) + ln([30, 0], [120, 0]) + ln([90, 30], [120, 0]) + ln([120, 0], [120, 55]) + ln([90, 85], [120, 55]) +
+    ln([30, 0], [30, 55], DASH + THIN) + ln([30, 55], [120, 55], DASH + THIN) + ln([0, 85], [30, 55], DASH + THIN) }));
+  add('sol-cylinder', 'solid', 'Cylinder', 'بیلن', () => ({ W: 100, H: 100, s:
+    ell(50, 14, 40, 12, fillA()) + ln([10, 14], [10, 86]) + ln([90, 14], [90, 86]) + ellFront(50, 86, 40, 12) + ellBack(50, 86, 40, 12) +
+    (o.marks ? ln([50, 14], [90, 14], DASH + THIN) + (o.labels ? txt(70, 14 - o.fs * 0.9, 'r') : '') : '') }));
+  add('sol-cone', 'solid', 'Cone', 'مخروط', () => ({ W: 100, H: 94, s:
+    ln([50, 0], [10, 82]) + ln([50, 0], [90, 82]) + ellFront(50, 82, 40, 12) + ellBack(50, 82, 40, 12) }));
+  add('sol-sphere', 'solid', 'Sphere', 'کرہ', () => ({ W: 100, H: 100, s: circ(50, 50, 50, fillA()) + ellFront(50, 50, 50, 15) + ellBack(50, 50, 50, 15) }));
+  add('sol-hemisphere', 'solid', 'Hemisphere', 'نصف کرہ', () => ({ W: 100, H: 64, s:
+    '<path d="M0 50 A50 50 0 0 1 100 50"' + fillA() + VE + '/>' + ellFront(50, 50, 50, 14) + ellBack(50, 50, 50, 14) }));
+  add('sol-pyramid', 'solid', 'Square pyramid', 'مربع قاعدے والا ہرم', () => ({ W: 95, H: 70, s:
+    ln([47.5, 0], [0, 70]) + ln([47.5, 0], [70, 70]) + ln([47.5, 0], [95, 50]) + ln([0, 70], [70, 70]) + ln([70, 70], [95, 50]) +
+    ln([47.5, 0], [25, 50], DASH + THIN) + ln([0, 70], [25, 50], DASH + THIN) + ln([25, 50], [95, 50], DASH + THIN) }));
+  add('sol-prism', 'solid', 'Triangular prism', 'تکونی منشور', () => ({ W: 90, H: 75, s:
+    poly([[0, 75], [55, 75], [27.5, 25]]) + ln([27.5, 25], [62.5, 0]) + ln([55, 75], [90, 50]) + ln([62.5, 0], [90, 50]) +
+    ln([35, 50], [62.5, 0], DASH + THIN) + ln([35, 50], [90, 50], DASH + THIN) + ln([0, 75], [35, 50], DASH + THIN) }));
+
+  // draw(def, opts) -> {W,H,s}; opts: labels, marks, fill, lw, fs
+  function draw(d, opts) {
+    o = Object.assign({ fs: 6, labels: true, marks: true, fill: false, lw: 1.8 }, opts || {});
+    return d[4]();
+  }
+  return { defs: defs, draw: draw };
+})();
+
+function pqShDef(k) { return PQ_SH.defs.find(d => d[0] === k); }
+// opt.mm = real width of the shape on paper; opt.css = css width (used for previews/thumbnails)
+function pqShSvg(sh, opt) {
+  opt = opt || {};
+  const d = pqShDef(sh.kind);
+  if (!d) return '';
+  const lw = Number(sh.lw) || 1.8;
+  const base = { labels: sh.labels !== false && !opt.thumb, marks: sh.marks !== false, fill: !!sh.fill, lw: opt.thumb ? 2.4 : lw };
+  let r = PQ_SH.draw(d, Object.assign({ fs: 6 }, base));
+  const mm = Math.max(10, Math.min(190, Number(sh.size) || 60));
+  const fs = opt.thumb ? 6 : Math.max(3.2, Math.min(10, 4.2 * (r.W + 2 * PQ_SH_PAD) / mm));
+  r = PQ_SH.draw(d, Object.assign({}, base, { fs: fs }));
+  const vbW = r.W + 2 * PQ_SH_PAD, vbH = r.H + 2 * PQ_SH_PAD;
+  const css = opt.css || (R1(mm * vbW / Math.max(r.W, 1)) + 'mm');
+  return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="' + (-PQ_SH_PAD) + ' ' + (-PQ_SH_PAD) + ' ' + vbW + ' ' + vbH + '" style="width:' + css + ';max-width:100%;height:auto;display:block;margin:0 auto;overflow:visible" role="img" aria-label="' + esc(d[2]) + '">' +
+    '<g fill="none" stroke="#000" stroke-width="' + base.lw + '" stroke-linejoin="round" stroke-linecap="round">' + r.s + '</g></svg>';
+}
+function R1(n) { return Math.round(n * 10) / 10; }
+
+// ---- Shapes: editor cards + printing ----
+let pqShPickOpen = false;
+function pqShAdd(kind) {
+  paperShapes.push({ kind: kind, title: '', caption: '', pos: 'end', size: 60, labels: true, marks: true, fill: false, lw: 1.8 });
+  pqShPickOpen = false; pqTouch(); renderTab();
+}
+function pqShDup(i) { paperShapes.splice(i + 1, 0, JSON.parse(JSON.stringify(paperShapes[i]))); pqTouch(); renderTab(); }
+function pqShDel(i) { paperShapes.splice(i, 1); pqTouch(); renderTab(); }
+function pqShTogglePick() { pqShPickOpen = !pqShPickOpen; renderTab(); }
+function pqShPrevCss(sh) { return Math.max(14, Math.min(100, (Number(sh.size) || 60) / 190 * 100)) + '%'; }
+function pqShRefresh(i) {
+  const sh = paperShapes[i], el = document.getElementById('pqsh-prev-' + i);
+  if (sh && el) el.innerHTML = pqShSvg(sh, { css: pqShPrevCss(sh) });
+}
+function pqShSet(i, k, v, redraw) {
+  const sh = paperShapes[i]; if (!sh) return;
+  sh[k] = v; pqTouch();
+  if (redraw) renderTab(); else pqShRefresh(i);
+}
+function pqShSize(i, v, fromNum) {
+  const sh = paperShapes[i]; if (!sh) return;
+  let n = Number(v); if (!isFinite(n)) return;
+  if (fromNum && n < 10) { sh.size = 10; pqTouch(); return; }   // still typing, e.g. "4" on the way to "45"
+  n = Math.max(10, Math.min(190, Math.round(n)));
+  sh.size = n; pqTouch();
+  const r = document.getElementById('pqsh-rng-' + i), nu = document.getElementById('pqsh-num-' + i);
+  if (r && r !== document.activeElement) r.value = n;
+  if (r && fromNum) r.value = n;
+  if (nu && !fromNum) nu.value = n;
+  pqShRefresh(i);
+}
+function pqShGallery() {
+  return PQ_SH_GROUPS.map(g => {
+    const items = PQ_SH.defs.filter(d => d[1] === g[0]).map(d =>
+      `<button type="button" onclick="pqShAdd('${d[0]}')" title="${esc(qt(d[2], d[3]))}" style="padding:4px;border:1px solid var(--line,#ddd);border-radius:8px;background:#fff;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:2px;width:78px;">
+        <span style="display:block;width:60px;height:48px;overflow:hidden;">${pqShSvg({ kind: d[0], size: 60 }, { css: '60px', thumb: true })}</span>
+        <span style="font-size:9px;line-height:1.15;color:#222;text-align:center;">${esc(qt(d[2], d[3]))}</span></button>`).join('');
+    return `<div style="font-size:12px;font-weight:700;margin:10px 0 4px;">${esc(qt(g[1], g[2]))}</div><div style="display:flex;flex-wrap:wrap;gap:6px;">${items}</div>`;
+  }).join('');
+}
+function tplPqShapes() {
+  const cards = paperShapes.map((sh, i) => {
+    const d = pqShDef(sh.kind) || PQ_SH.defs[0];
+    const opts = PQ_SH_GROUPS.map(g => `<optgroup label="${esc(qt(g[1], g[2]))}">${PQ_SH.defs.filter(x => x[1] === g[0]).map(x => `<option value="${x[0]}"${x[0] === sh.kind ? ' selected' : ''}>${esc(qt(x[2], x[3]))}</option>`).join('')}</optgroup>`).join('');
+    const size = Math.max(10, Math.min(190, Number(sh.size) || 60));
+    return `<div style="border:1px solid var(--line,#ddd);border-radius:12px;padding:10px;margin-bottom:10px;">
+      <div style="font-size:11px;font-weight:700;opacity:.6;margin-bottom:4px;">${esc(qt('Shape', 'شکل'))} ${i + 1}: ${esc(qt(d[2], d[3]))}</div>
+      <select style="width:100%;padding:8px;margin-bottom:8px;" onchange="pqShSet(${i},'kind',this.value,1)">${opts}</select>
+      <input dir="auto" style="width:100%;margin-bottom:8px;" placeholder="${esc(qt('Question heading above the shape (optional)', 'شکل کے اوپر سوال/ہدایت (اختیاری)'))}" value="${esc(sh.title || '')}" oninput="paperShapes[${i}].title=this.value;pqTouch()">
+      <div id="pqsh-prev-${i}" style="background:#fafafa;border:1px dashed #ccc;border-radius:8px;padding:8px;margin-bottom:8px;text-align:center;">${pqShSvg(sh, { css: pqShPrevCss(sh) })}</div>
+      <div style="font-size:12px;font-weight:600;margin-bottom:2px;">${esc(qt('Size (width on paper)', 'سائز (کاغذ پر چوڑائی)'))}</div>
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+        <input id="pqsh-rng-${i}" type="range" min="10" max="190" step="1" value="${size}" style="flex:1;" oninput="pqShSize(${i},this.value,0)">
+        <input id="pqsh-num-${i}" type="number" min="10" max="190" value="${size}" style="width:64px;" oninput="pqShSize(${i},this.value,1)"><span style="font-size:12px;">mm</span>
+      </div>
+      <div style="font-size:11px;opacity:.6;margin:-4px 0 8px;">${esc(qt('10 mm = very small, 190 mm = full page width. A very large shape shrinks the rest of the paper to keep it on one page.', '10 ملی میٹر = بہت چھوٹی، 190 ملی میٹر = پورے صفحے کی چوڑائی۔ بہت بڑی شکل ہو تو باقی پرچہ ایک صفحے میں رکھنے کے لیے چھوٹا ہو جائے گا۔'))}</div>
+      <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:center;margin-bottom:8px;font-size:12px;">
+        <label><input type="checkbox" ${sh.labels !== false ? 'checked' : ''} onchange="pqShSet(${i},'labels',this.checked,0)"> ${esc(qt('Letters / names (A, B, C…)', 'حروف / نام (A, B, C…)'))}</label>
+        <label><input type="checkbox" ${sh.marks !== false ? 'checked' : ''} onchange="pqShSet(${i},'marks',this.checked,0)"> ${esc(qt('Equal-side & right-angle marks', 'برابر اطراف اور قائمہ زاویہ کے نشان'))}</label>
+        <label><input type="checkbox" ${sh.fill ? 'checked' : ''} onchange="pqShSet(${i},'fill',this.checked,0)"> ${esc(qt('Light grey fill', 'ہلکا سرمئی رنگ'))}</label>
+        <label>${esc(qt('Line', 'لکیر'))} <select onchange="pqShSet(${i},'lw',Number(this.value),0)">${[[1.2, qt('Thin', 'باریک')], [1.8, qt('Normal', 'عام')], [2.6, qt('Bold', 'موٹی')], [3.6, qt('Extra bold', 'بہت موٹی')]].map(x => `<option value="${x[0]}"${Number(sh.lw || 1.8) === x[0] ? ' selected' : ''}>${esc(x[1])}</option>`).join('')}</select></label>
+      </div>
+      <input dir="auto" style="width:100%;margin-bottom:8px;" placeholder="${esc(qt('Text below the shape (optional), e.g. Name this shape: ________', 'شکل کے نیچے لکھائی (اختیاری)، مثلاً اس شکل کا نام لکھیں: ________'))}" value="${esc(sh.caption || '')}" oninput="paperShapes[${i}].caption=this.value;pqTouch()">
+      <select style="width:100%;padding:8px;margin-bottom:8px;" onchange="paperShapes[${i}].pos=this.value;pqTouch()">${pqPosOptions(sh)}</select>
+      <div class="flexgap" style="flex-wrap:wrap;">
+        <button class="btn-ghost" onclick="pqShDup(${i})">⧉ ${esc(qt('Duplicate', 'نقل'))}</button>
+        <button class="btn-ghost" onclick="pqShDel(${i})">🗑️ ${esc(qt('Delete', 'حذف'))}</button>
+      </div></div>`;
+  }).join('');
+  return `<div class="card" style="margin-bottom:14px;">
+    <b style="font-size:13px;display:block;margin-bottom:4px;">${esc(qt('Geometry shapes', 'جیومیٹری کی اشکال'))}</b>
+    <div style="font-size:11px;opacity:.6;margin-bottom:8px;">${esc(qt('Triangles, quadrilaterals, polygons, circle and its parts, lines and angles, 3D solids. Pick a shape, then make it as big or as small as you need.', 'تکون، چوکور، کثیر الاضلاع، دائرہ اور اس کے حصے، لکیریں اور زاویے، ٹھوس اشکال۔ شکل چنیں اور اسے جتنا چاہیں بڑا یا چھوٹا کریں۔'))}</div>
+    ${cards}
+    <button class="btn-ghost" style="width:100%;" onclick="pqShTogglePick()">${pqShPickOpen ? '－ ' + esc(qt('Close shapes', 'اشکال بند کریں')) : '＋ ' + esc(qt('Add Shape', 'شکل شامل کریں'))}</button>
+    ${pqShPickOpen ? `<div style="margin-top:8px;max-height:60vh;overflow:auto;border:1px solid var(--line,#ddd);border-radius:10px;padding:8px;background:#fff;">${pqShGallery()}</div>` : ''}</div>`;
+}
+function pqShapesHtml(pos) {
+  return paperShapes.filter(sh => pqTblPos(sh) === pos && pqShDef(sh.kind)).map(sh =>
+    `<div class="pq-section" style="text-align:center;break-inside:avoid;page-break-inside:avoid;">${(sh.title || '').trim() ? `<div class="pq-instruction" dir="auto" style="text-align:start;">${esc(sh.title)}</div>` : ''}${pqShSvg(sh)}${(sh.caption || '').trim() ? `<div dir="auto" style="font-size:12px;margin-top:3px;">${esc(sh.caption)}</div>` : ''}</div>`
+  ).join('');
+}
+
 function tplPqTables() {
   const cards = paperTables.map((tb,i) => {
     const g = `display:grid;grid-template-columns:repeat(${tb.cols.length},1fr) 34px;gap:6px;margin-bottom:6px;`;
@@ -19803,6 +20170,7 @@ function tplPapersStd() {
     ${pqAddQuestionBar()}
 
     ${tplPqTables()}
+    ${tplPqShapes()}
     <div class="card" style="margin-bottom:14px;">
       <b style="font-size:13px;display:block;margin-bottom:4px;">${esc(t.paperEndImageLabel)}</b>
       <div style="font-size:11px;opacity:.6;margin-bottom:8px;">${esc(t.paperEndImageHint)}</div>
@@ -19850,7 +20218,7 @@ const pqEsc = s => esc(s)
 
 function printQuestionPaper() {
   const hasSec = sc => (sc.type === 'free' || sc.type === 'title') ? pqSecHasContent(sc) : sc.type === 'match' ? ((sc.A || []).some(v => v.trim()) && (sc.B || []).some(v => v.trim())) : (sc.items || []).some(x => (x.q || '').trim());
-  const pqHasQs = paperSecs.some(hasSec) || (paperTables || []).length || paperEndImage;
+  const pqHasQs = paperSecs.some(hasSec) || (paperTables || []).length || (paperShapes || []).length || paperEndImage;
   if (paperMode === 'kg' ? !(typeof kgHasContent === 'function' && kgHasContent()) : !pqHasQs) {
     alert(qt('The paper is empty. Please add at least one question first.', 'پرچہ خالی ہے۔ پہلے کم از کم ایک سوال لکھیں۔'));
     return;
@@ -19941,7 +20309,7 @@ function printQuestionPaper() {
         </div>
         <div class="qp-name-line">${esc(t.studentNameLbl||'Name')}: ______________________&nbsp;&nbsp;&nbsp; ${LANG==='ur'?'رول نمبر':'Roll No.'}: __________</div>
       </div>
-      ${paperMode==='kg' ? kgBodyHtml() : `${pqTablesHtml('top')}${paperSecs.map(sc => secHtml(sc) + pqTablesHtml('after:' + sc.id)).join('')}${pqTablesHtml('end')}`}
+      ${paperMode==='kg' ? kgBodyHtml() : `${pqTablesHtml('top')}${pqShapesHtml('top')}${paperSecs.map(sc => secHtml(sc) + pqTablesHtml('after:' + sc.id) + pqShapesHtml('after:' + sc.id)).join('')}${pqTablesHtml('end')}${pqShapesHtml('end')}`}
       ${paperEndImage ? `<div class="pq-end-img-wrap"><img alt="" src="${safeSrc(paperEndImage)}" class="pq-end-img"></div>` : ''}
     </div>`;
   // The paper is forced onto exactly one A4 page via fitAndSpacePaper, which
