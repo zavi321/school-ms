@@ -1010,6 +1010,28 @@ html, body{overscroll-behavior:none;}
 .qpaper-print .kg-line{border-bottom-width:3px;height:30px;}
 .qpaper-print .kg-eq{font-size:34px;font-weight:900;-webkit-text-stroke:.8px #000;}
 .qpaper-print .kg-mname{font-size:36px;font-weight:900;-webkit-text-stroke:.8px #000;}
+
+/* KG: three-subject page - each subject has its own pattern */
+.qpaper-print .kg-subj{font-size:24px;font-weight:900;margin:10px 0 6px;padding:4px 14px;-webkit-text-stroke:.5px #000;}
+.qpaper-print .kg-subj.kg-th-en{border:3px solid #000;border-radius:10px;text-align:left;letter-spacing:.06em;}
+.qpaper-print .kg-subj.kg-th-ur{border:3px double #000;border-radius:24px;text-align:right;font-family:'Noto Nastaliq Urdu','Jameel Noori Nastaleeq',serif;line-height:1.9;}
+.qpaper-print .kg-subj.kg-th-ma{border:3px dashed #000;border-radius:0;text-align:center;background:repeating-linear-gradient(135deg,#0000 0 7px,#00000012 7px 8px);}
+.qpaper-print .kg-sec.kg-th-en{border-left:4px solid #000;padding-left:8px;}
+.qpaper-print .kg-sec.kg-th-ur{border-right:4px double #000;padding-right:8px;}
+.qpaper-print .kg-sec.kg-th-ma{border-left:4px dashed #000;padding-left:8px;}
+.qpaper-print .kg-sums{display:flex;flex-wrap:wrap;gap:8px 36px;margin:6px 0;}
+.qpaper-print .kg-sum{display:inline-flex;align-items:center;gap:8px;font-size:40px;font-weight:900;-webkit-text-stroke:.8px #000;font-family:Inter,sans-serif;direction:ltr;}
+.qpaper-print .kg-sbox{display:inline-block;width:56px;height:56px;border:3px solid #000;border-radius:8px;}
+.qpaper-print .kg-multi .kg-sec .pq-section-title{font-size:20px !important;margin-bottom:4px;}
+.qpaper-print .kg-sec .pq-section-title{text-align:start !important;}
+.qpaper-print .kg-sec.kg-th-ur .pq-section-title{text-align:right !important;direction:rtl;}
+.qpaper-print .kg-sec.kg-th-en .pq-section-title,.qpaper-print .kg-sec.kg-th-ma .pq-section-title{text-align:left !important;direction:ltr;}
+.qpaper-print .kg-multi .kg-trace{font-size:36px;margin:4px 0;}
+.qpaper-print .kg-multi .kg-missing{font-size:32px;margin:4px 0;}
+.qpaper-print .kg-multi .kg-sum{font-size:30px;}
+.qpaper-print .kg-multi .kg-sbox{width:42px;height:42px;}
+.qpaper-print .kg-multi .kg-mname{font-size:26px;}
+.qpaper-print .kg-multi .kg-eq{font-size:26px;}
 .qpaper-print .kg-clab{font-size:26px;font-weight:900;-webkit-text-stroke:.6px #000;}
 .qpaper-print .kg-cbox{width:30px;height:30px;border-width:3px;}
 .qpaper-print .kg-mq{font-size:28px;font-weight:900;-webkit-text-stroke:.7px #000;}
@@ -19162,7 +19184,7 @@ function pqSetBreak(section, grp, val) {
 // ---------- Nursery / KG paper mode ----------
 let paperMode = 'std';
 let kgBlocks = [];
-const KG_TYPES = { trace:'✏️ Trace letters / numbers', missing:'🔤 Missing letters', picname:'🖼️ Write picture name', match:'🔗 Match pictures & names', count:'🔢 Count & write', colour:'🎨 Colour the picture', compare:'⚖️ Compare (big/small, long/short…)', mcq:'☑️ MCQs' };
+const KG_TYPES = { trace:'✏️ Trace letters / numbers', missing:'🔤 Missing letters', picname:'🖼️ Write picture name', match:'🔗 Match pictures & names', count:'🔢 Count & write', colour:'🎨 Colour the picture', compare:'⚖️ Compare (big/small, long/short…)', sum:'➕ Maths sums (+ − × ÷)', subject:'🏷️ Subject heading (Urdu / English / Maths)', mcq:'☑️ MCQs' };
 function setPaperMode(m) {
   paperMode = m;
   if (m === 'kg' && !kgBlocks.length) {
@@ -19176,7 +19198,7 @@ function setPaperMode(m) {
   renderTab();
 }
 function kgAddBlock(sel) { const ty = sel.value; if (!ty) return;
-  kgBlocks.push({ type:ty, title:'', items: (ty==='trace'||ty==='missing') ? [{txt:''}] : ty==='compare' ? [{pair:true,img:null,img2:null,txt:'',txt2:''}] : [{img:null,txt:''},{img:null,txt:''}] }); renderTab(); }
+  kgBlocks.push({ type:ty, title:'', theme: ty==='subject' ? 'en' : undefined, items: (ty==='trace'||ty==='missing'||ty==='sum'||ty==='subject') ? [{txt:''}] : ty==='compare' ? [{pair:true,img:null,img2:null,txt:'',txt2:''}] : [{img:null,txt:''},{img:null,txt:''}] }); renderTab(); }
 function kgDelBlock(i) { kgBlocks.splice(i,1); renderTab(); }
 function kgMoveBlock(i,d) { const j=i+d; if (j<0||j>=kgBlocks.length) return; [kgBlocks[i],kgBlocks[j]]=[kgBlocks[j],kgBlocks[i]]; renderTab(); }
 function kgAddItem(i) { kgBlocks[i].items.push(kgBlocks[i].type==='compare' ? {pair:true,img:null,img2:null,txt:'',txt2:''} : {img:null,txt:''}); renderTab(); }
@@ -19481,6 +19503,47 @@ const pqImportBtn = () => `<label class="btn-ghost" style="display:block;width:1
 const KG_SETS = { cap:'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split(''), low:'abcdefghijklmnopqrstuvwxyz'.split(''),
   ur:'ا ب پ ت ٹ ث ج چ ح خ د ڈ ذ ر ڑ ز ژ س ش ص ض ط ظ ع غ ف ق ک گ ل م ن و ہ ھ ء ی ے'.split(' '),
   num:Array.from({length:20}, (_, k) => '' + (k + 1)), urnum:'۱ ۲ ۳ ۴ ۵ ۶ ۷ ۸ ۹ ۱۰ ۱۱ ۱۲ ۱۳ ۱۴ ۱۵ ۱۶ ۱۷ ۱۸ ۱۹ ۲۰'.split(' ') };
+
+// ---- KG: 3 subjects on one page (Urdu / English / Maths), each with its own pattern ----
+const KG_SUBJ = { ur:{ name:'اردو', theme:'ur' }, en:{ name:'English', theme:'en' }, ma:{ name:'Maths', theme:'ma' } };
+const KG_E = em => ({ img:null, txt:'', em:em });
+function kgSubjectPreset(k) {
+  const S = {
+    ur: [ { type:'subject', theme:'ur', title:'اردو', items:[{txt:''}] },
+          { type:'trace', title:'حروف پر لکیر پھیریں', items:[{txt:'ا ب پ ت ٹ ث'}] },
+          { type:'missing', title:'خالی جگہ پر حرف لکھیں', items:[{txt:'ا _ پ'},{txt:'_ ت ٹ'}] },
+          { type:'picname', title:'تصویر کا نام لکھیں', items:[KG_E('🍎'),KG_E('🐱'),KG_E('🐟')] } ],
+    en: [ { type:'subject', theme:'en', title:'English', items:[{txt:''}] },
+          { type:'trace', title:'Trace the letters', items:[{txt:'A B C D E F'}] },
+          { type:'missing', title:'Write the missing letters', items:[{txt:'A _ C'},{txt:'_ E F'}] },
+          { type:'picname', title:'Write the name of the picture', items:[KG_E('🍎'),KG_E('🐱'),KG_E('🐟')] } ],
+    ma: [ { type:'subject', theme:'ma', title:'Maths', items:[{txt:''}] },
+          { type:'trace', title:'Trace the numbers', items:[{txt:'1 2 3 4 5 6'}] },
+          { type:'missing', title:'Write the missing numbers', items:[{txt:'1 _ 3 _ 5'},{txt:'_ 7 8 _ 10'}] },
+          { type:'count', title:'Count and write', items:[Object.assign(KG_E('🍎'),{txt:'3'}),Object.assign(KG_E('⭐'),{txt:'5'})] },
+          { type:'sum', title:'Add', items:[{txt:'1 + 1'},{txt:'2 + 1'},{txt:'2 + 2'},{txt:'3 + 1'}] } ]
+  };
+  return JSON.parse(JSON.stringify(S[k]));
+}
+function kgAddSubject(k) {
+  const add = k === 'all' ? ['ur','en','ma'].flatMap(kgSubjectPreset) : kgSubjectPreset(k);
+  kgBlocks = kgBlocks.concat(add); try { pqScheduleSave(); } catch (e) {} renderTab(); }
+function kgSetTheme(i, th) { const b = kgBlocks[i]; b.theme = th; if (!(b.title || '').trim() || Object.values(KG_SUBJ).some(x => x.name === b.title)) b.title = KG_SUBJ[th].name; try { pqScheduleSave(); } catch (e) {} renderTab(); }
+function kgSumFill(i, kind) {
+  const b = kgBlocks[i], r = [], rnd = (a, z) => a + Math.floor(Math.random() * (z - a + 1)), seen = {};
+  let guard = 0;
+  while (r.length < 6 && guard++ < 200) {
+    let x, y, o;
+    if (kind === 'add5') { x = rnd(1, 4); y = rnd(1, 5 - x); o = '+'; }
+    else if (kind === 'add10') { x = rnd(1, 9); y = rnd(1, 10 - x); o = '+'; }
+    else if (kind === 'add20') { x = rnd(5, 15); y = rnd(1, 20 - x); o = '+'; }
+    else if (kind === 'sub10') { x = rnd(2, 10); y = rnd(1, x - 1); o = '\u2212'; }
+    else if (kind === 'sub20') { x = rnd(8, 20); y = rnd(1, x - 1); o = '\u2212'; }
+    else if (kind === 'mul') { x = rnd(2, 5); y = rnd(1, 5); o = '\u00d7'; }
+    else { y = rnd(1, 5); x = y * rnd(1, 5); o = '\u00f7'; }
+    const key = x + o + y; if (seen[key]) continue; seen[key] = 1; r.push({ txt: x + ' ' + o + ' ' + y });
+  }
+  b.items = r; try { pqScheduleSave(); } catch (e) {} renderTab(); }
 function kgFill(i, k) { const b = kgBlocks[i], a = KG_SETS[k].slice(), n = k === 'ur' ? 8 : 6;
   if (b.type === 'missing') for (let j = 1; j < a.length; j += 3) a[j] = '_';
   const rows = []; for (let j = 0; j < a.length; j += n) rows.push({ txt: a.slice(j, j + n).join(' ') });
@@ -19527,11 +19590,17 @@ function kgLibHtml(i, t) {
   return `<div id="kgLib" style="border:1px solid var(--line,#ddd);border-radius:12px;padding:8px;margin-top:8px;max-height:340px;overflow:auto;">${Object.keys(KG_LIB).map(c => `<div style="font-size:12px;font-weight:700;margin:8px 0 4px;">${KG_LIB[c][0]}</div><div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;">${KG_LIB[c][1].map((str, idx) => { const [code, name] = kgEntry(str); return `<button class="btn-ghost" style="padding:6px 2px;display:flex;flex-direction:column;align-items:center;gap:2px;" onclick="${t === 'cmp' ? `kgCmpPick('${c}',${idx})` : t ? `kgMcqPick('${c}',${idx})` : `kgLibPick(${i},'${c}',${idx})`}"><span style="display:block;width:38px;height:38px;">${kpic({ em: code, w: 38, h: 38 }, '')}</span><span style="font-size:9px;line-height:1.1;">${name}</span></button>`; }).join('')}</div>`).join('')}</div>`;
 }
 function kgBlockHtml(b,i) {
-    const txtOnly = b.type==='trace' || b.type==='missing';
-    const ph = { trace:'e.g. A B C D E F', missing:'e.g. A _ C', picname:'answer (optional)', match:'name (e.g. Apple)', count:'number (e.g. 3)', colour:'', compare:'label (e.g. Big) — optional', mcq:'Question' }[b.type];
+    if (b.type === 'subject') return `<div class="card" style="margin-bottom:14px;border-inline-start:5px solid #0F2740;">
+      <div class="flexgap" style="align-items:center;margin-bottom:8px;"><b style="font-size:12px;flex:1;">${esc(KG_TYPES.subject)}</b>
+        <button class="btn-ghost" style="padding:4px 8px;" onclick="kgMoveBlock(${i},-1)">↑</button><button class="btn-ghost" style="padding:4px 8px;" onclick="kgMoveBlock(${i},1)">↓</button><button class="btn-ghost" style="padding:4px 8px;" onclick="kgDelBlock(${i})">✕</button></div>
+      <div class="flexgap" style="margin-bottom:8px;">${[['ur','اردو (Urdu)'],['en','English'],['ma','Maths']].map(x => `<button class="${(b.theme||'en')===x[0]?'btn-primary':'btn-ghost'}" style="flex:1;" onclick="kgSetTheme(${i},'${x[0]}')">${x[1]}</button>`).join('')}</div>
+      <input dir="auto" style="width:100%;font-weight:600;" placeholder="Subject name" value="${esc(b.title)}" oninput="kgBlocks[${i}].title=this.value">
+      <div style="font-size:11px;opacity:.65;margin-top:6px;">${LANG==='ur' ? 'اس کے بعد والے سوالات اسی مضمون کے انداز میں چھپیں گے اور نمبر Q1 سے دوبارہ شروع ہوگا۔' : 'Questions after this heading print in this subject\'s style, and numbering restarts at Q1.'}</div></div>`;
+    const txtOnly = b.type==='trace' || b.type==='missing' || b.type==='sum';
+    const ph = { trace:'e.g. A B C D E F', missing:'e.g. A _ C', sum:'e.g. 2 + 3', subject:'', picname:'answer (optional)', match:'name (e.g. Apple)', count:'number (e.g. 3)', colour:'', compare:'label (e.g. Big) — optional', mcq:'Question' }[b.type];
     let body;
     if (txtOnly) {
-      body = `<textarea rows="3" style="width:100%;" placeholder="${ph} — one line per row" oninput="kgBlocks[${i}].items=this.value.split('\\n').map(x=>({txt:x}))">${esc(b.items.map(x=>x.txt).join('\n'))}</textarea><div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;">${[['cap','A–Z'],['low','a–z'],['ur','اردو حروف'],['num','1–20'],['urnum','۱–۲۰']].map(f => `<button class="btn-ghost" style="padding:4px 10px;font-size:12px;" onclick="kgFill(${i},'${escJs(f[0])}')">${f[1]}</button>`).join('')}</div>`;
+      body = `<textarea rows="3" style="width:100%;" placeholder="${ph} — one line per row" oninput="kgBlocks[${i}].items=this.value.split('\\n').map(x=>({txt:x}))">${esc(b.items.map(x=>x.txt).join('\n'))}</textarea><div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;">${b.type==='sum' ? [['add5','+ (1–5)'],['add10','+ (1–10)'],['add20','+ (to 20)'],['sub10','− (1–10)'],['sub20','− (to 20)'],['mul','× (tables)'],['div','÷']].map(f => `<button class="btn-ghost" style="padding:4px 10px;font-size:12px;" onclick="kgSumFill(${i},'${f[0]}')">${f[1]}</button>`).join('') : [['cap','A–Z'],['low','a–z'],['ur','اردو حروف'],['num','1–20'],['urnum','۱–۲۰']].map(f => `<button class="btn-ghost" style="padding:4px 10px;font-size:12px;" onclick="kgFill(${i},'${escJs(f[0])}')">${f[1]}</button>`).join('')}</div>`;
     } else {
       body = b.items.map((it,j) => { const d = kgDef(b.type), cw = it.w || d, ch = it.h || d; if (b.type === 'mcq') return kgMcqEditor(i, j, it); if (b.type === 'compare' && it.pair) return kgPairEditor(i, j, it);
         return `<div class="paper-q-row" style="margin-bottom:8px;padding-bottom:8px;border-bottom:1px dashed var(--line,#ddd);">
@@ -19557,7 +19626,11 @@ function kgBlockHtml(b,i) {
 }
 function tplKgBuilder() {
   const blocks = kgBlocks.map((b,i) => `<div id="kgb-${i}">${kgBlockHtml(b,i)}</div>`).join('');
-  return blocks + `<div class="card" style="margin-bottom:14px;"><select style="width:100%;padding:8px;" onchange="kgAddBlock(this)"><option value="">＋ Add a new question type…</option>${Object.keys(KG_TYPES).map(k=>`<option value="${k}">${esc(KG_TYPES[k])}</option>`).join('')}</select></div>
+  const presetCard = `<div class="card" style="margin-bottom:14px;"><b style="font-size:13px;display:block;margin-bottom:6px;">${LANG==='ur' ? '📄 ایک صفحے پر تین مضامین' : '📄 Three subjects on one page'}</b>
+    <div style="font-size:11px;opacity:.65;margin-bottom:8px;">${LANG==='ur' ? 'ہر مضمون کا الگ انداز اور الگ سوالات۔ پہلے سے تیار نمونہ شامل کریں، پھر بدل لیں۔' : 'Each subject gets its own heading style and its own questions. Add a ready pattern, then edit it.'}</div>
+    <div class="flexgap" style="flex-wrap:wrap;"><button class="btn-primary" style="flex:1 1 100%;" onclick="kgAddSubject('all')">➕ ${LANG==='ur' ? 'تینوں: اردو + English + Maths' : 'All three: Urdu + English + Maths'}</button>
+    <button class="btn-ghost" style="flex:1;" onclick="kgAddSubject('ur')">+ اردو</button><button class="btn-ghost" style="flex:1;" onclick="kgAddSubject('en')">+ English</button><button class="btn-ghost" style="flex:1;" onclick="kgAddSubject('ma')">+ Maths</button></div></div>`;
+  return blocks + presetCard + `<div class="card" style="margin-bottom:14px;"><select style="width:100%;padding:8px;" onchange="kgAddBlock(this)"><option value="">＋ Add a new question type…</option>${Object.keys(KG_TYPES).map(k=>`<option value="${k}">${esc(KG_TYPES[k])}</option>`).join('')}</select></div>
     <button class="btn-primary" style="width:100%;" onclick="printQuestionPaper()">🖨️ ${esc(t.print)}</button>
     ${pqImportBtn()}<div class="flexgap" style="margin-top:10px;"><button class="btn-ghost" style="flex:1;" onclick="kgNewPaper()">🆕 ${LANG==='ur' ? 'نیا پرچہ' : 'New Paper'}</button>${kgHasBackup ? `<button class="btn-ghost" style="flex:1;" onclick="kgRestorePrevious()">↩️ ${LANG==='ur' ? 'پچھلا پرچہ' : 'Previous Paper'}</button>` : ''}</div>`;
 }
@@ -19659,12 +19732,21 @@ function tplPapers() {
 function kgBodyHtml() {
   const kimg = (x, cls) => kpic(x, cls);
   const ur = t => /[\u0600-\u06FF]/.test(t || '');
-  return kgBlocks.map((b,n) => {
-    const its = b.items.filter(x => (b.type==='trace'||b.type==='missing') ? (x.txt||'').trim() : true);
+  let qn = 0, th = '';
+  const hasSubj = kgBlocks.some(b => b.type === 'subject');
+  const out = kgBlocks.map((b,n) => {
+    if (b.type === 'subject') {
+      if (!(b.title || '').trim()) return '';
+      th = b.theme || 'en'; qn = 0;
+      return `<div class="kg-subj kg-th-${th}"${th==='ur'?' dir="rtl"':''}><span dir="auto">${pqEsc(b.title)}</span></div>`;
+    }
+    const its = b.items.filter(x => (b.type==='trace'||b.type==='missing'||b.type==='sum') ? (x.txt||'').trim() : true);
     if (!its.length) return '';
+    qn++;
     let body = '';
     if (b.type==='trace') body = its.map(x => `<div class="kg-trace${ur(x.txt)?' kg-ur':''}"${ur(x.txt)?' dir="rtl"':''}>${pqEsc(x.txt)}</div>`).join('');
     else if (b.type==='missing') body = `<div class="kg-missing${its.some(x=>ur(x.txt))?' kg-ur':''}"${its.some(x=>ur(x.txt))?' dir="rtl"':''}>${its.map(x => `<span>${pqEsc(x.txt).replace(/_+/g,'<i class="kg-gap"></i>')}</span>`).join('')}</div>`;
+    else if (b.type==='sum') body = `<div class="kg-sums">${its.map(x => { const m = /^\s*(\d+)\s*([+\u2212\-\u00d7x*\u00f7\/])\s*(\d+)\s*$/.exec(x.txt); const o = m ? m[2].replace('-','\u2212').replace(/[x*]/,'\u00d7').replace('/','\u00f7') : ''; return m ? `<span class="kg-sum"><span>${m[1]} ${o} ${m[3]} =</span><i class="kg-sbox"></i></span>` : `<span class="kg-sum"><span>${pqEsc(x.txt)}</span><i class="kg-sbox"></i></span>`; }).join('')}</div>`;
     else if (b.type==='picname') body = `<div class="kg-grid">${its.map(x => `<div class="kg-cell">${kimg(x,'kg-pic')}<div class="kg-line"></div></div>`).join('')}</div>`;
     else if (b.type==='colour') body = `<div class="kg-grid kg-big">${its.map(x => kimg(x,'kg-pic-big')).join('')}</div>`;
     else if (b.type==='count') body = its.map(x => { const c = Math.max(0, Math.min(10, parseInt(x.txt)||0)); return `<div class="kg-count">${Array(c||3).fill(kimg(x,'kg-pic-sm')).join('')}<span class="kg-eq">= ____</span></div>`; }).join('');
@@ -19677,8 +19759,10 @@ function kgBodyHtml() {
       const m = its.length, right = its.map((x,i) => its[(i+1)%m]);
       body = `<div class="kg-match">${its.map((x,i) => `<div class="kg-mrow"><div>${kimg(x,'kg-pic')}</div><i class="kg-dot"></i><span class="kg-mid"></span><i class="kg-dot"></i><div class="kg-mname">${pqEsc(right[i].txt||'')}</div></div>`).join('')}</div>`;
     }
-    return `<div class="pq-section kg-sec"><div class="pq-section-title" dir="auto">Q${n+1}. ${pqEsc(b.title)}</div>${body}</div>`;
+    const thc = th ? ' kg-th-' + th : '', rtl = th === 'ur' ? ' dir="rtl"' : '';
+    return `<div class="pq-section kg-sec${thc}"${rtl}><div class="pq-section-title" dir="auto">${th === 'ur' ? 'س' + (qn) + '. ' : 'Q' + qn + '. '}${pqEsc(b.title)}</div>${body}</div>`;
   }).join('');
+  return hasSubj ? `<div class="kg-multi">${out}</div>` : out;
 }
 
 
