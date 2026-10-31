@@ -420,6 +420,44 @@ html, body{overscroll-behavior:none;}
     .pq-sub{margin-bottom:calc(16px * var(--pq-space,1));}
     .pq-sub-title{font-weight:600;font-size:13px;text-decoration:underline;margin-bottom:2px;}
     .pq-instruction{font-size:13px;font-style:italic;font-weight:900;opacity:1;margin:-1px 0 3px;}
+    /* ---- maths text: $ ... $ ---- */
+    .pqm{white-space:nowrap;}
+    .pqm i{font-style:italic;}
+    .pqm .mo{padding:0 .22em;}
+    .pqm .mo.mu{padding:0 .04em 0 0;}
+    .pqm .mf{display:inline-block;vertical-align:middle;text-align:center;margin:0 .1em;}
+    .pqm .mfn{display:block;padding:0 .18em;border-bottom:1px solid currentColor;line-height:1.3;}
+    .pqm .mfd{display:block;padding:0 .18em;line-height:1.3;}
+    .pqm .mrt{display:inline-block;white-space:nowrap;}
+    .pqm .mrb{border-top:1px solid currentColor;padding:0 .12em;}
+    .pqm .mri{font-size:.6em;vertical-align:.7em;margin-right:-.35em;line-height:0;}
+    .pqm sup,.pqm sub{font-size:.72em;line-height:0;}
+    .pqm .mss{display:inline-flex;flex-direction:column;vertical-align:middle;}
+    .pqm .mss sup,.pqm .mss sub{position:static;vertical-align:baseline;line-height:1;font-size:.72em;}
+    .pqm .mmat table{display:inline-table;border-collapse:collapse;vertical-align:middle;border-left:1px solid currentColor;border-right:1px solid currentColor;border-radius:4px;margin:0 .15em;}
+    .pqm .mmat td{padding:.04em .5em;text-align:center;border:0;}
+    .pqm .mvec{position:relative;display:inline-block;}
+    .pqm .mva{position:absolute;left:0;right:0;top:-.8em;text-align:center;font-size:.7em;line-height:1;}
+    .pqm .mbar{border-top:1px solid currentColor;display:inline-block;line-height:1.1;}
+    .pqm .mbig{font-size:1.4em;line-height:1;vertical-align:-.08em;}
+    .pqm .mfn2,.pqm .mt{font-style:normal;}
+    .pqm .mfn2{margin-right:.12em;}
+    .pqm .mbn{font-size:2em;font-weight:200;vertical-align:middle;line-height:1;}
+    .pq-mkb-fab{position:fixed;right:12px;bottom:84px;z-index:55;background:#0F2740;color:#fff;border:0;border-radius:22px;padding:10px 16px;font-weight:700;font-size:14px;box-shadow:0 4px 14px rgba(0,0,0,.3);}
+    .pq-mkb{position:fixed;left:0;right:0;bottom:78px;z-index:56;background:#fff;color:#111;border-top:2px solid #0F2740;max-height:46vh;display:flex;flex-direction:column;box-shadow:0 -6px 20px rgba(0,0,0,.25);}
+    .pq-mkb-top{display:flex;gap:4px;padding:6px;background:#f1f4f8;overflow-x:auto;}
+    .pq-mkb-tab{flex:0 0 auto;border:1px solid #cfd8e3;background:#fff;border-radius:8px;padding:6px 10px;font-size:12px;font-weight:600;color:#0F2740;}
+    .pq-mkb-tab.on{background:#0F2740;color:#fff;}
+    .pq-mkb-x{margin-left:auto;flex:0 0 auto;border:0;background:transparent;font-size:18px;padding:2px 10px;}
+    .pq-mkb-body{overflow:auto;padding:6px 10px 12px;-webkit-overflow-scrolling:touch;}
+    .pq-mk-h{font-size:11px;font-weight:700;opacity:.7;margin:8px 0 4px;}
+    .pq-mk-row{display:flex;flex-wrap:wrap;gap:5px;}
+    .pq-mk{border:1px solid #cfd8e3;background:#fff;border-radius:8px;min-width:38px;height:38px;font-size:18px;color:#111;padding:0 8px;}
+    .pq-mk.w{height:auto;min-height:44px;min-width:0;padding:4px 8px;text-align:start;display:flex;flex-direction:column;gap:2px;font-size:15px;}
+    .pq-mk-lbl{font-size:10px;opacity:.6;}
+    .pq-mk-prev{font-size:15px;}
+    .pq-mk-note{font-size:11px;opacity:.75;margin:4px 0 6px;line-height:1.5;}
+    @media (min-width:960px) and (pointer:fine){.pq-mkb{bottom:0;left:auto;width:560px;right:16px;border-radius:12px 12px 0 0;border:2px solid #0F2740;}.pq-mkb-fab{bottom:16px;}}
     /* The paper font only has Regular/Bold, so a thin stroke makes the instruction lines truly extra-bold */
     .qpaper-print .pq-instruction{-webkit-text-stroke:.3px currentColor;}
     /* Urdu (Nastaliq has no italic): keep upright, still extra-bold */
@@ -19666,7 +19704,7 @@ function pqDelCol(i) { const tb = paperTables[i]; if (tb.cols.length <= 1) retur
 const PQ_SH_PAD = 16;
 const PQ_SH_GROUPS = [
   ['tri', 'Triangles', 'تکون'], ['quad', 'Quadrilaterals', 'چوکور'], ['poly', 'Polygons', 'کثیر الاضلاع'],
-  ['circ', 'Circle & its parts', 'دائرہ اور اس کے حصے'], ['line', 'Lines & angles', 'لکیریں اور زاویے'], ['solid', '3D solids', 'ٹھوس اشکال']
+  ['circ', 'Circle & its parts', 'دائرہ اور اس کے حصے'], ['line', 'Lines & angles', 'لکیریں اور زاویے'], ['solid', '3D solids', 'ٹھوس اشکال'], ['maths', 'Maths diagrams (number line, graphs, Venn, trigonometry…)', 'ریاضی کے خاکے (عددی لکیر، گراف، وین، مثلثات…)']
 ];
 const PQ_SH = (function () {
   const R = n => Math.round(n * 10) / 10;
@@ -19901,6 +19939,121 @@ const PQ_SH = (function () {
   add('sol-prism', 'solid', 'Triangular prism', 'تکونی منشور', () => ({ W: 90, H: 75, s:
     poly([[0, 75], [55, 75], [27.5, 25]]) + ln([27.5, 25], [62.5, 0]) + ln([55, 75], [90, 50]) + ln([62.5, 0], [90, 50]) +
     ln([35, 50], [62.5, 0], DASH + THIN) + ln([35, 50], [90, 50], DASH + THIN) + ln([0, 75], [35, 50], DASH + THIN) }));
+
+  // ---------- Maths diagrams (class 6-10) ----------
+  const axes = (W, H, ox, oy, step, nx, ny, grid) => {
+    let s = '';
+    if (grid) for (let i = -nx; i <= nx; i++) s += ln([ox + i * step, oy - ny * step], [ox + i * step, oy + ny * step], THIN + ' stroke="#999"');
+    if (grid) for (let j = -ny; j <= ny; j++) s += ln([ox - nx * step, oy + j * step], [ox + nx * step, oy + j * step], THIN + ' stroke="#999"');
+    s += ln([ox - nx * step - 4, oy], [ox + nx * step + 6, oy]) + ln([ox, oy + ny * step + 4], [ox, oy - ny * step - 6]);
+    s += arrowHead([ox + nx * step + 8, oy], [ox, oy]) + arrowHead([ox, oy - ny * step - 8], [ox, oy]);
+    if (o.labels) {
+      for (let i = -nx; i <= nx; i++) if (i) s += txt(ox + i * step, oy + o.fs * 0.9, String(i), o.fs * 0.7);
+      for (let j = -ny; j <= ny; j++) if (j) s += txt(ox - o.fs * 0.8, oy - j * step, String(j), o.fs * 0.7);
+      s += txt(ox + nx * step + 10, oy + o.fs * 0.9, 'x') + txt(ox + o.fs * 0.8, oy - ny * step - 10, 'y') + txt(ox - o.fs * 0.7, oy + o.fs * 0.8, 'O', o.fs * 0.8);
+    }
+    return s;
+  };
+  add('m-numline', 'maths', 'Number line (−5 to 5)', 'عددی لکیر (−5 تا 5)', () => {
+    let s = ln([0, 20], [190, 20]) + arrowHead([196, 20], [0, 20]) + arrowHead([-6, 20], [190, 20]);
+    for (let i = -5; i <= 5; i++) { const x = 95 + i * 16; s += ln([x, 15], [x, 25], THIN); if (o.labels) s += txt(x, 36, i < 0 ? '−' + (-i) : String(i), o.fs * 0.85); }
+    return { W: 200, H: 44, s: '<g transform="translate(6,0)">' + s + '</g>' };
+  });
+  add('m-numline-pos', 'maths', 'Number line (0 to 10)', 'عددی لکیر (0 تا 10)', () => {
+    let s = ln([0, 20], [200, 20]) + arrowHead([206, 20], [0, 20]);
+    for (let i = 0; i <= 10; i++) { const x = 5 + i * 18; s += ln([x, 15], [x, 25], THIN); if (o.labels) s += txt(x, 36, String(i), o.fs * 0.85); }
+    return { W: 210, H: 44, s: s };
+  });
+  add('m-plane', 'maths', 'Coordinate plane (4 quadrants)', 'نقاط کا مستوی (چاروں ربع)', () => ({ W: 120, H: 120, s: '<g transform="translate(2,2)">' + axes(120, 120, 58, 58, 11, 5, 5, false) + '</g>' }));
+  add('m-graph', 'maths', 'Graph paper (axes + grid)', 'گراف پیپر', () => ({ W: 120, H: 120, s: '<g transform="translate(2,2)">' + axes(120, 120, 58, 58, 11, 5, 5, true) + '</g>' }));
+  add('m-graph1', 'maths', 'Graph paper (first quadrant)', 'گراف پیپر (پہلا ربع)', () => {
+    let s = '';
+    for (let i = 0; i <= 10; i++) { s += ln([i * 11, 0], [i * 11, 110], THIN + ' stroke="#999"') + ln([0, i * 11], [110, i * 11], THIN + ' stroke="#999"'); }
+    s += ln([0, 110], [118, 110]) + ln([0, 118], [0, -8]) + arrowHead([122, 110], [0, 110]) + arrowHead([0, -12], [0, 110]);
+    if (o.labels) for (let i = 1; i <= 10; i++) s += txt(i * 11, 110 + o.fs * 0.9, String(i), o.fs * 0.6) + txt(-o.fs * 0.8, 110 - i * 11, String(i), o.fs * 0.6);
+    if (o.labels) s += txt(126, 110 + o.fs * 0.9, 'x') + txt(o.fs * 0.8, -14, 'y') + txt(-o.fs * 0.7, 110 + o.fs * 0.8, 'O', o.fs * 0.7);
+    return { W: 130, H: 125, s: '<g transform="translate(8,12)">' + s + '</g>' };
+  });
+  add('m-pyth', 'maths', 'Pythagoras triangle (a, b, c)', 'فیثاغورث کا تکون', () => {
+    const a = [[0, 0], [0, 75], [100, 75]];
+    return { W: 100, H: 75, s: poly(a) + (o.marks ? ra(a[1], a[2], a[0]) : '') + (o.labels ? txt(-o.fs * 0.9, 37, 'a') + txt(50, 75 + o.fs * 0.95, 'b') + txt(54, 33, 'c') : '') };
+  });
+  add('m-345', 'maths', 'Right triangle 3-4-5', 'قائمہ تکون 3-4-5', () => {
+    const a = [[0, 0], [0, 60], [80, 60]];
+    return { W: 80, H: 60, s: poly(a) + (o.marks ? ra(a[1], a[2], a[0]) : '') + (o.labels ? txt(-o.fs * 0.8, 30, '3') + txt(40, 60 + o.fs * 0.95, '4') + txt(46, 26, '5') : '') };
+  });
+  add('m-30-60-90', 'maths', 'Triangle 30°-60°-90°', 'تکون 30°-60°-90°', () => {
+    const a = [[0, 0], [0, 57.7], [100, 57.7]];
+    return { W: 100, H: 57.7, s: poly(a) + (o.marks ? ra(a[1], a[2], a[0]) : '') + (o.labels ? txt(78, 51, '30°', o.fs * 0.7) + txt(7, 14, '60°', o.fs * 0.7) + txt(-o.fs * 0.8, 29, 'a') + txt(50, 57.7 + o.fs, '\u221a3 a', o.fs * 0.9) + txt(58, 22, '2a') : '') };
+  });
+  add('m-45-45-90', 'maths', 'Triangle 45°-45°-90°', 'تکون 45°-45°-90°', () => {
+    const a = [[0, 0], [0, 80], [80, 80]];
+    return { W: 80, H: 80, s: poly(a) + (o.marks ? ra(a[1], a[2], a[0]) : '') + (o.labels ? txt(-o.fs * 0.8, 40, 'a') + txt(40, 80 + o.fs * 0.95, 'a') + txt(48, 30, '√2 a', o.fs * 0.9) + txt(66, 72, '45°', o.fs * 0.7) + txt(10, 16, '45°', o.fs * 0.7) : '') };
+  });
+  add('m-elev', 'maths', 'Angle of elevation', 'زاویۂ ارتفاع', () => {
+    const g = [0, 70], b = [110, 70], t = [110, 0];
+    let s = ln(g, b) + ln(b, t) + ln(g, t) + (o.marks ? ra(b, g, t) : '');
+    if (o.labels) s += txt(g[0] - o.fs * 0.8, g[1], 'A') + txt(b[0] + o.fs * 0.8, b[1], 'B') + txt(t[0] + o.fs * 0.8, t[1], 'C') + txt(32, 62, 'θ') + txt(130, 35, 'h');
+    return { W: 135, H: 76, s: s };
+  });
+  add('m-depr', 'maths', 'Angle of depression', 'زاویۂ انحطاط', () => {
+    const t = [0, 0], g = [110, 70], f = [0, 70];
+    let s = ln(t, f) + ln(f, g) + ln(t, g) + (o.marks ? ra(f, t, g) + ln(t, [125, 0], DASH + THIN) : '');
+    if (o.labels) s += txt(t[0] - o.fs * 0.8, t[1], 'A') + txt(f[0] - o.fs * 0.8, f[1], 'B') + txt(g[0] + o.fs * 0.8, g[1], 'C') + txt(40, 8, 'θ') + txt(-o.fs * 1.2, 35, 'h');
+    return { W: 135, H: 76, s: s };
+  });
+  add('m-venn2', 'maths', 'Venn diagram (2 sets)', 'وین خاکہ (دو سیٹ)', () => ({ W: 140, H: 80, s: '<rect x="0" y="0" width="140" height="80" fill="none"' + VE + '/>' + circ(52, 42, 28) + circ(88, 42, 28) + (o.labels ? txt(40, 42, 'A') + txt(100, 42, 'B') + txt(132, 10, 'U') : '') }));
+  add('m-venn3', 'maths', 'Venn diagram (3 sets)', 'وین خاکہ (تین سیٹ)', () => ({ W: 140, H: 120, s: '<rect x="0" y="0" width="140" height="120" fill="none"' + VE + '/>' + circ(55, 45, 30) + circ(85, 45, 30) + circ(70, 72, 30) + (o.labels ? txt(40, 35, 'A') + txt(100, 35, 'B') + txt(70, 92, 'C') + txt(132, 10, 'U') : '') }));
+  add('m-pie', 'maths', 'Pie chart (4 sectors)', 'پائی چارٹ (چار حصے)', () => {
+    let s = circ(50, 50, 50), a = -90;
+    [90, 90, 90, 90].forEach(d => { const p = pt(50, 50, 50, a); s += ln([50, 50], p); a += d; });
+    return { W: 100, H: 100, s: s };
+  });
+  add('m-bar', 'maths', 'Bar graph (blank axes)', 'بار گراف (خالی)', () => {
+    let s = ln([0, 0], [0, 90]) + ln([0, 90], [130, 90]) + arrowHead([0, -6], [0, 90]) + arrowHead([136, 90], [0, 90]);
+    for (let j = 1; j <= 5; j++) s += ln([-3, 90 - j * 16], [130, 90 - j * 16], THIN + ' stroke="#bbb"');
+    if (o.labels) for (let j = 1; j <= 5; j++) s += txt(-o.fs * 0.9, 90 - j * 16, String(j * 10), o.fs * 0.7);
+    return { W: 140, H: 100, s: '<g transform="translate(14,6)">' + s + '</g>' };
+  });
+  add('m-clock', 'maths', 'Clock face', 'گھڑی', () => {
+    let s = circ(50, 50, 50);
+    for (let i = 0; i < 12; i++) { const a = -90 + i * 30; s += ln(pt(50, 50, 46, a), pt(50, 50, 50, a), THIN); if (o.labels) { const p = pt(50, 50, 37, a); s += txt(p[0], p[1], String(i === 0 ? 12 : i), o.fs * 0.95); } }
+    return { W: 100, H: 100, s: s + ln([50, 50], pt(50, 50, 28, -90 + 300), ' stroke-width="2.6"') + ln([50, 50], pt(50, 50, 18, -90 + 60), ' stroke-width="2.6"') + dot([50, 50]) };
+  });
+  add('m-dice', 'maths', 'Dice (6 faces)', 'پانسہ', () => {
+    const P = { 1: [[1, 1]], 2: [[0, 0], [2, 2]], 3: [[0, 0], [1, 1], [2, 2]], 4: [[0, 0], [2, 0], [0, 2], [2, 2]], 5: [[0, 0], [2, 0], [1, 1], [0, 2], [2, 2]], 6: [[0, 0], [2, 0], [0, 1], [2, 1], [0, 2], [2, 2]] };
+    let s = '';
+    for (let n = 1; n <= 6; n++) { const x = (n - 1) * 34; s += '<rect x="' + x + '" y="0" width="28" height="28" rx="4" fill="none"' + VE + '/>'; P[n].forEach(p => { s += '<circle cx="' + (x + 6 + p[0] * 8) + '" cy="' + (6 + p[1] * 8) + '" r="2.2" fill="#000" stroke="none"/>'; }); }
+    return { W: 200, H: 28, s: s };
+  });
+  add('m-spinner', 'maths', 'Spinner (8 equal parts)', 'اسپنر (8 برابر حصے)', () => {
+    let s = circ(50, 50, 50);
+    for (let i = 0; i < 8; i++) { const a = i * 45 - 90; s += ln([50, 50], pt(50, 50, 50, a)); if (o.labels) { const p = pt(50, 50, 33, a + 22.5); s += txt(p[0], p[1], String(i + 1)); } }
+    return { W: 100, H: 100, s: s + arrowHead([50, 12], [50, 50]) };
+  });
+  add('m-protractor', 'maths', 'Protractor (semicircle scale)', 'چاند ہ (زاویہ پیما)', () => {
+    let s = '<path d="M0 60 A60 60 0 0 1 120 60 Z"' + VE + ' fill="none"/>' + arc(60, 60, 20, -180, 0);
+    for (let d = 0; d <= 180; d += 10) { const a = -180 + d, len = d % 30 === 0 ? 8 : 4; s += ln(pt(60, 60, 60, a), pt(60, 60, 60 - len, a), THIN); if (o.labels && d % 30 === 0) { const p = pt(60, 60, 49, a); s += txt(p[0], p[1], String(d), o.fs * 0.65); } }
+    return { W: 120, H: 64, s: s + dot([60, 60]) };
+  });
+  add('m-transversal', 'maths', 'Parallel lines + transversal (angles 1–8)', 'متوازی لکیریں اور قاطع (زاویے 1–8)', () => {
+    let s = ln([0, 25], [120, 25]) + ln([0, 75], [120, 75]) + ln([25, 100], [75, 0]);
+    if (o.labels) {
+      const L = [[48, 18], [66, 18], [56, 32], [72, 32], [34, 68], [52, 68], [40, 82], [58, 82]];
+      L.forEach((p, i) => { s += txt(p[0] - 2, p[1], String(i + 1), o.fs * 0.75); });
+    }
+    return { W: 120, H: 100, s: s };
+  });
+  add('m-cube-net', 'maths', 'Cube net (6 squares)', 'مکعب کا جال', () => {
+    let s = '';
+    [[1, 0], [0, 1], [1, 1], [2, 1], [3, 1], [1, 2]].forEach(p => { s += '<rect x="' + p[0] * 24 + '" y="' + p[1] * 24 + '" width="24" height="24" fill="none"' + VE + '/>'; });
+    return { W: 96, H: 72, s: s };
+  });
+  add('m-fractions', 'maths', 'Fraction bars (1, ½, ⅓, ¼)', 'کسر کی پٹیاں', () => {
+    let s = '';
+    [1, 2, 3, 4].forEach((n, r) => { for (let k = 0; k < n; k++) s += '<rect x="' + (k * 120 / n) + '" y="' + (r * 18) + '" width="' + (120 / n) + '" height="16" fill="none"' + VE + '/>'; if (o.labels) s += txt(130, r * 18 + 8, n === 1 ? '1' : '1/' + n, o.fs * 0.85); });
+    return { W: 145, H: 70, s: s };
+  });
 
   // draw(def, opts) -> {W,H,s}; opts: labels, marks, fill, lw, fs
   function draw(d, opts) {
@@ -20171,6 +20324,7 @@ function tplPapersStd() {
 
     ${tplPqTables()}
     ${tplPqShapes()}
+    ${tplPqMathPanel()}
     <div class="card" style="margin-bottom:14px;">
       <b style="font-size:13px;display:block;margin-bottom:4px;">${esc(t.paperEndImageLabel)}</b>
       <div style="font-size:11px;opacity:.6;margin-bottom:8px;">${esc(t.paperEndImageHint)}</div>
@@ -20203,8 +20357,184 @@ function formatPaperDate(isoDate) {
 // Printed-paper text: like esc(), but turns superscript characters (10⁻¹⁹) and
 // ^ notation (10^-19) into real <sup> so the exponent never shows as an empty
 // box when the print font has no glyph for the superscript minus sign.
+// =====================================================================================
+// MATHS TEXT for the Question Paper. Anything written between dollar signs, $ ... $, becomes
+// proper maths on the printed paper (real fractions, powers, roots, matrices...) in every
+// question type. Plain HTML/CSS (no library), so it prints the same everywhere.
+//   $frac(a,b)$ or $a/b$      fraction          $x^2$, $x^(n+1)$, $x_1$   power / subscript
+//   $sqrt(x)$  $root(3,x)$    roots             $sin theta$  $pi$  $<=$    functions, symbols
+//   $mat(1,2;3,4)$            matrix            $vec(AB)$  $bar(x)$       vector / bar
+// =====================================================================================
+const PQ_M_GREEK = { alpha: 'α', beta: 'β', gamma: 'γ', delta: 'δ', epsilon: 'ε', theta: 'θ', lambda: 'λ', mu: 'μ', pi: 'π', rho: 'ρ', sigma: 'σ', tau: 'τ', phi: 'φ', omega: 'ω', omicron: 'ο',
+  Gamma: 'Γ', Delta: 'Δ', Theta: 'Θ', Lambda: 'Λ', Pi: 'Π', Sigma: 'Σ', Phi: 'Φ', Omega: 'Ω' };
+const PQ_M_WORDS = { inf: '∞', infty: '∞', deg: '°', angle: '∠', triangle: '△', therefore: '∴', because: '∵', cong: '≅', sim: '∼', perp: '⊥', parallel: '∥',
+  in: '∈', notin: '∉', subset: '⊂', subseteq: '⊆', union: '∪', inter: '∩', empty: '∅', forall: '∀', exists: '∃', NN: 'ℕ', ZZ: 'ℤ', QQ: 'ℚ', RR: 'ℝ', CC: 'ℂ',
+  pm: '±', mp: '∓', le: '≤', ge: '≥', ne: '≠', times: '×', div: '÷', cdot: '·', degree: '°', prime: '′', propto: '∝', approx: '≈', neq: '≠', leq: '≤', geq: '≥', to: '→', implies: '⇒', iff: '⇔' };
+const PQ_M_FUNCS = ['sin', 'cos', 'tan', 'cot', 'sec', 'csc', 'cosec', 'log', 'ln', 'exp', 'lim', 'max', 'min', 'det', 'mod', 'gcd', 'lcm', 'sinh', 'cosh', 'tanh', 'arcsin', 'arccos', 'arctan'];
+const PQ_M_BIG = { sum: '∑', prod: '∏', int: '∫' };
+const PQ_M_OPS = ['<->', '->', '=>', '<=', '>=', '!=', '+-', '-+', '~~', '...', '_|_', '/_', '//', '**'];
+const PQ_M_OPMAP = { '<->': '↔', '->': '→', '=>': '⇒', '<=': '≤', '>=': '≥', '!=': '≠', '+-': '±', '-+': '∓', '~~': '≈', '...': '…', '_|_': '⊥', '/_': '∠', '//': '∥', '**': '×', '*': '×', '-': '−' };
+const PQ_M_UN = new Set(['+', '\u2212', '±', '∓']);
+const PQ_M_BIN = new Set(['+', '−', '=', '×', '÷', '<', '>', '≤', '≥', '≠', '≈', '±', '∓', '→', '⇒', '↔', '⇔', '∈', '∉', '⊂', '⊆', '∪', '∩', '≅', '∼', '∥', '⊥', '∝', '·', '∴', '∵']);
+
+function pqMathTok(src) {
+  const out = []; let i = 0; const s = String(src);
+  while (i < s.length) {
+    const c = s[i];
+    if (/\s/.test(c)) { i++; continue; }
+    let m;
+    if (c === '"') { const j = s.indexOf('"', i + 1); const e = j < 0 ? s.length : j; out.push({ t: 'str', v: s.slice(i + 1, e) }); i = e + 1; continue; }
+    if ((m = /^\d+(\.\d+)?/.exec(s.slice(i)))) { out.push({ t: 'num', v: m[0] }); i += m[0].length; continue; }
+    if ((m = /^[A-Za-z]+/.exec(s.slice(i)))) { out.push({ t: 'word', v: m[0] }); i += m[0].length; continue; }
+    const op = PQ_M_OPS.find(o => s.startsWith(o, i));
+    if (op) { out.push({ t: 'sym', v: PQ_M_OPMAP[op] }); i += op.length; continue; }
+    out.push({ t: 'ch', v: c }); i++;
+  }
+  return out;
+}
+
+function pqMathHtml(src) {
+  const tk = pqMathTok(src); let i = 0;
+  const peek = () => tk[i];
+  const isCh = (v) => tk[i] && tk[i].t === 'ch' && tk[i].v === v;
+  const A = (h, p) => ({ h: h, p: p });
+  const ital = w => Array.from(w).map(c => '<i>' + esc(c) + '</i>').join('');
+  const op = (sym, unary) => '<span class="mo' + (unary ? ' mu' : '') + '">' + esc(sym) + '</span>';
+
+  function seq(stop) {                       // sequence of terms until one of the stop characters
+    let h = '', prevOp = true;
+    while (i < tk.length) {
+      const t = tk[i];
+      if (t.t === 'ch' && stop.indexOf(t.v) >= 0) break;
+      const a = term(stop);
+      h += (a.op && prevOp && PQ_M_UN.has(a.sym)) ? op(a.sym, true) : a.h;
+      prevOp = !!a.op;
+    }
+    return h;
+  }
+  function term(stop) {
+    let a = atom(stop);
+    if (a.op) return a;
+    for (;;) {
+      if (isCh('^') || isCh('_')) {
+        let sup = '', sub = '';
+        while (isCh('^') || isCh('_')) {
+          const k = tk[i].v; i++;
+          const o = scriptOperand();
+          if (k === '^') sup = o; else sub = o;
+        }
+        if (sup && sub) a = A(a.h + '<span class="mss"><sup>' + sup + '</sup><sub>' + sub + '</sub></span>');
+        else if (sup) a = A(a.h + '<sup>' + sup + '</sup>');
+        else a = A(a.h + '<sub>' + sub + '</sub>');
+        continue;
+      }
+      if (isCh('/') && tk[i + 1]) {
+        i++;
+        const b = denom(stop);
+        a = A('<span class="mf"><span class="mfn">' + (a.p != null ? a.p : a.h) + '</span><span class="mfd">' + (b.p != null ? b.p : b.h) + '</span></span>');
+        continue;
+      }
+      break;
+    }
+    return a;
+  }
+  function scriptOperand() {
+    if (isCh('-') || (tk[i] && tk[i].t === 'sym' && tk[i].v === '−')) { i++; const x = simpleAtom(); return '−' + (x.p != null ? x.p : x.h); }
+    if (isCh('+')) { i++; const x = simpleAtom(); return '+' + (x.p != null ? x.p : x.h); }
+    const x = simpleAtom(); return x.p != null ? x.p : x.h;
+  }
+  function denom(stop) {                      // operand after "/": an atom with its own powers, no further fraction
+    let a = simpleAtom();
+    while (isCh('^') || isCh('_')) {
+      const k = tk[i].v; i++; const o = scriptOperand();
+      a = A(a.h + (k === '^' ? '<sup>' + o + '</sup>' : '<sub>' + o + '</sub>'));
+    }
+    return a;
+  }
+  function simpleAtom() {
+    const t = tk[i];
+    if (!t) return A('');
+    if (t.t === 'num') { i++; return A(esc(t.v)); }
+    if (t.t === 'word') return wordAtom();
+    if (t.t === 'str') { i++; return A('<span class="mt">' + esc(t.v) + '</span>'); }
+    if (t.t === 'sym') { i++; return A(esc(t.v)); }
+    if (t.v === '(') { i++; const inner = seq(')'); if (isCh(')')) i++; return A('(' + inner + ')', inner); }
+    if (t.v === '{') { i++; const inner = seq('}'); if (isCh('}')) i++; return A(inner, inner); }
+    i++; return A(esc(t.v));
+  }
+  function call(name) {                       // name already consumed, '(' is next
+    if (!isCh('(')) return null;
+    i++;
+    const args = []; let cur = '', rows = null;
+    if (name === 'mat') {
+      rows = [[]];
+      while (i < tk.length && !isCh(')')) {
+        const cell = seq(',;)'); rows[rows.length - 1].push(cell);
+        if (isCh(',')) i++; else if (isCh(';')) { i++; rows.push([]); }
+      }
+      if (isCh(')')) i++;
+      return '<span class="mmat"><table>' + rows.map(r => '<tr>' + r.map(c => '<td>' + c + '</td>').join('') + '</tr>').join('') + '</table></span>';
+    }
+    for (;;) { cur = seq(',)'); args.push(cur); if (isCh(',')) { i++; continue; } break; }
+    if (isCh(')')) i++;
+    const a0 = args[0] || '', a1 = args[1] || '';
+    switch (name) {
+      case 'frac': case 'dfrac': return '<span class="mf"><span class="mfn">' + a0 + '</span><span class="mfd">' + a1 + '</span></span>';
+      case 'sqrt': return '<span class="mrt"><span class="mrs">√</span><span class="mrb">' + a0 + '</span></span>';
+      case 'cbrt': return '<span class="mrt"><sup class="mri">3</sup><span class="mrs">√</span><span class="mrb">' + a0 + '</span></span>';
+      case 'root': return '<span class="mrt"><sup class="mri">' + a0 + '</sup><span class="mrs">√</span><span class="mrb">' + a1 + '</span></span>';
+      case 'vec': return '<span class="mvec"><span class="mva">→</span>' + a0 + '</span>';
+      case 'bar': case 'overline': return '<span class="mbar">' + a0 + '</span>';
+      case 'hat': return '<span class="mvec"><span class="mva">^</span>' + a0 + '</span>';
+      case 'abs': return '|' + a0 + '|';
+      case 'text': return '<span class="mt">' + a0 + '</span>';
+      case 'under': case 'underline': return '<u>' + a0 + '</u>';
+      case 'binom': return '<span class="mbn">(</span><span class="mf"><span class="mfn">' + a0 + '</span><span class="mfd" style="border-top:0">' + a1 + '</span></span><span class="mbn">)</span>';
+      default: return null;
+    }
+  }
+  const CALLS = ['frac', 'dfrac', 'sqrt', 'cbrt', 'root', 'vec', 'bar', 'overline', 'hat', 'abs', 'text', 'under', 'underline', 'binom', 'mat'];
+  function wordAtom() {
+    const w = tk[i].v;
+    if (CALLS.indexOf(w) >= 0 && tk[i + 1] && tk[i + 1].t === 'ch' && tk[i + 1].v === '(') { i++; const h = call(w); if (h != null) return A(h); }
+    i++;
+    if (PQ_M_GREEK[w]) return A('<i>' + PQ_M_GREEK[w] + '</i>');
+    if (PQ_M_BIG[w]) return A('<span class="mbig">' + PQ_M_BIG[w] + '</span>');
+    if (PQ_M_WORDS[w]) { const s = PQ_M_WORDS[w]; return PQ_M_BIN.has(s) ? { h: op(s), op: true, sym: s } : A(esc(s)); }
+    if (PQ_M_FUNCS.indexOf(w) >= 0) return A('<span class="mfn2">' + esc(w) + '</span>');
+    return A(ital(w));
+  }
+  function atom(stop) {
+    const t = tk[i];
+    if (t.t === 'sym') {
+      i++;
+      return PQ_M_BIN.has(t.v) ? { h: op(t.v, false), op: true, sym: t.v } : A(esc(t.v));
+    }
+    if (t.t === 'ch') {
+      const v = t.v;
+      if (v === '+' || v === '-' || v === '=' || v === '<' || v === '>' || v === '*') {
+        i++; const s = PQ_M_OPMAP[v] || v;
+        return { h: op(s, false), op: true, sym: s };
+      }
+      if (v === '%') { i++; return A('%'); }
+    }
+    return simpleAtom();
+  }
+  const html = seq('');
+  return '<span class="pqm">' + html + '</span>';
+}
+
+// Splits $...$ out of the raw text, runs the normal escaping on the rest, then puts the maths back.
+function pqMathWrap(escBase) {
+  return function (s) {
+    const store = [];
+    const raw = String(s == null ? '' : s).replace(/\$(?=\S)([^$\n]*[^$\s])\$/g, (m, e) => { store.push(pqMathHtml(e)); return '\u0001' + (store.length - 1) + '\u0002'; });
+    return escBase(raw).replace(/\u0001(\d+)\u0002/g, (m, k) => store[+k]);
+  };
+}
+
 const PQ_SUP = {'⁰':'0','¹':'1','²':'2','³':'3','⁴':'4','⁵':'5','⁶':'6','⁷':'7','⁸':'8','⁹':'9','⁻':'\u2212','⁺':'+'};
-const pqEsc = s => esc(s)
+const pqEscBase = s => esc(s)
   .replace(/[⁰¹²³⁴⁵⁶⁷⁸⁹⁻⁺]+/g, m => '<sup>' + Array.from(m).map(c => PQ_SUP[c]).join('') + '</sup>')
   .replace(/\^([-\u2212+]?\d+)/g, (m, d) => '<sup>' + d.replace('-', '\u2212') + '</sup>')
   // [[word]] -> underlined word (for "underline the word" style questions)
@@ -20215,6 +20545,83 @@ const pqEsc = s => esc(s)
   .replace(/\r?\n/g, '<br>')
   // {{345+128}} -> vertical column sum (works in every question type)
   .replace(/\{\{([^{}]{1,80})\}\}/g, (m, e) => pqColSumHtml(e));
+const pqEsc = pqMathWrap(pqEscBase);
+
+// ---- Maths keyboard: symbols, templates and a class 6-10 formula library ----
+let pqMathOpen = false, pqMathTab = 'sym', pqLastField = null;
+document.addEventListener('focusin', e => {
+  const t = e.target;
+  if (!t || !t.tagName) return;
+  const ok = (t.tagName === 'TEXTAREA') || (t.tagName === 'INPUT' && (!t.type || t.type === 'text' || t.type === 'search'));
+  if (ok && t.closest && t.closest('#main') && !t.closest('#pq-mkb')) pqLastField = t;
+});
+function pqMathIns(txt, back) {
+  const f = pqLastField;
+  if (!f || !document.body.contains(f)) { alert(qt('Tap inside a question box first, then press a symbol.', 'پہلے کسی سوال کے خانے میں ٹیپ کریں، پھر علامت دبائیں۔')); return; }
+  f.focus();
+  const st = (f.selectionStart == null) ? f.value.length : f.selectionStart, en = (f.selectionEnd == null) ? st : f.selectionEnd;
+  f.setRangeText(txt, st, en, 'end');
+  if (back) { const p = f.selectionStart - back; f.setSelectionRange(p, p); }
+  f.dispatchEvent(new Event('input', { bubbles: true }));
+}
+function pqMathToggle() { pqMathOpen = !pqMathOpen; renderTab(); }
+function pqMathSetTab(k) { pqMathTab = k; const b = document.getElementById('pq-mkb-body'); if (b) b.innerHTML = pqMathBody(); document.querySelectorAll('#pq-mkb .pq-mkb-tab').forEach(x => x.classList.toggle('on', x.dataset.k === k)); }
+const PQ_SYM_GROUPS = [
+  ['Operations', 'عمل', ['×', '÷', '±', '∓', '√', '∛', 'π', '°', '′', '″', '%', '‰', '∞', '=', '≠', '≈', '<', '>', '≤', '≥', '∝', '·', '→', '⇒', '⇔']],
+  ['Fractions & powers', 'کسر اور طاقت', ['½', '⅓', '⅔', '¼', '¾', '⅕', '⅖', '⅛', '²', '³', '⁴', '⁻¹', 'ⁿ', '₀', '₁', '₂', '₃', 'ₙ']],
+  ['Geometry', 'جیومیٹری', ['∠', '△', '□', '○', '⊥', '∥', '≅', '∼', '∴', '∵', '⌒', '°', '′', '″', '⊿']],
+  ['Greek letters', 'یونانی حروف', ['α', 'β', 'γ', 'δ', 'ε', 'θ', 'λ', 'μ', 'π', 'ρ', 'σ', 'τ', 'φ', 'ω', 'Δ', 'Σ', 'Ω', 'Π', 'Θ', 'Φ']],
+  ['Sets & logic', 'سیٹ اور منطق', ['∈', '∉', '⊂', '⊆', '⊄', '∪', '∩', '∅', 'ℕ', 'ℤ', 'ℚ', 'ℝ', 'ℂ', '∀', '∃', '¬', '∧', '∨', '′']]
+];
+// [label, code inserted, caret moved back by N characters]
+const PQ_TPL = [
+  ['Fraction', '$frac(a,b)$', 6], ['Mixed fraction', '$2 3/4$', 1], ['Power', '$x^2$', 2], ['Power n', '$x^(n+1)$', 4], ['Subscript', '$a_1$', 2], ['Square root', '$sqrt(x)$', 3], ['Cube root', '$cbrt(x)$', 3], ['nth root', '$root(n,x)$', 5],
+  ['sin / cos / tan', '$sin theta$', 1], ['sin² + cos²', '$sin^2 theta+cos^2 theta=1$', 1], ['log', '$log_10 x$', 1], ['ln', '$ln x$', 1], ['Matrix 2×2', '$mat(a,b;c,d)$', 1], ['Matrix 3×3', '$mat(a,b,c;d,e,f;g,h,i)$', 1],
+  ['Vector', '$vec(AB)$', 3], ['Bar / mean', '$bar(x)$', 3], ['Sum', '$sum_(i=1)^n i$', 1], ['Modulus', '$abs(x)$', 2], ['± value', '$x=+-3$', 1], ['Angle', '$angle ABC=90 deg$', 1],
+  ['Triangles congruent', '$triangle ABC cong triangle PQR$', 1], ['Parallel / perpendicular', '$AB // CD$', 1], ['Union / intersection', '$A union B$', 1], ['Subset', '$A subset B$', 1], ['Inequality', '$x<=5$', 1], ['Ratio', '$a:b=3:4$', 1],
+  ['Quadratic formula', '$x=frac(-b+-sqrt(b^2-4ac),2a)$', 1], ['Pythagoras', '$a^2+b^2=c^2$', 1]
+];
+// Class 6-10 formula library: [topic, [[title, code], ...]]
+const PQ_FORMULAS = [
+  ['Algebra', [['(a+b)²', '$(a+b)^2=a^2+2ab+b^2$'], ['(a−b)²', '$(a-b)^2=a^2-2ab+b^2$'], ['a²−b²', '$a^2-b^2=(a+b)(a-b)$'], ['(a+b)³', '$(a+b)^3=a^3+3a^2 b+3ab^2+b^3$'], ['(a−b)³', '$(a-b)^3=a^3-3a^2 b+3ab^2-b^3$'],
+    ['a³+b³', '$a^3+b^3=(a+b)(a^2-ab+b^2)$'], ['a³−b³', '$a^3-b^3=(a-b)(a^2+ab+b^2)$'], ['Quadratic equation', '$ax^2+bx+c=0$'], ['Quadratic formula', '$x=frac(-b+-sqrt(b^2-4ac),2a)$'], ['Discriminant', '$D=b^2-4ac$'],
+    ['Sum of roots', '$alpha+beta=-b/a$'], ['Product of roots', '$alpha beta=c/a$'], ['Linear equation', '$ax+b=0$'], ['Simultaneous', '$a_1 x+b_1 y=c_1$']]],
+  ['Exponents & logarithms', [['a^m × a^n', '$a^m times a^n=a^(m+n)$'], ['a^m ÷ a^n', '$a^m/a^n=a^(m-n)$'], ['(a^m)^n', '$(a^m)^n=a^(mn)$'], ['(ab)^n', '$(ab)^n=a^n b^n$'], ['a⁰', '$a^0=1$'], ['a^−n', '$a^-n=1/a^n$'],
+    ['Square root of product', '$sqrt(ab)=sqrt(a) sqrt(b)$'], ['log of product', '$log(ab)=log a+log b$'], ['log of quotient', '$log(a/b)=log a-log b$'], ['log of power', '$log a^n=n log a$'], ['Change of base', '$log_a b=frac(log b,log a)$'], ['Log definition', '$log_a x=y <-> a^y=x$']]],
+  ['Sequences', [['AP: nth term', '$a_n=a+(n-1)d$'], ['AP: sum', '$S_n=n/2(2a+(n-1)d)$'], ['GP: nth term', '$a_n=a r^(n-1)$'], ['GP: sum', '$S_n=frac(a(r^n-1),r-1)$']]],
+  ['Area & perimeter', [['Rectangle', '$A=l times b$, $P=2(l+b)$'], ['Square', '$A=a^2$, $P=4a$'], ['Triangle', '$A=1/2 times b times h$'], ['Heron’s formula', '$A=sqrt(s(s-a)(s-b)(s-c))$, $s=(a+b+c)/2$'], ['Equilateral triangle', '$A=frac(sqrt(3),4) a^2$'],
+    ['Parallelogram', '$A=b times h$'], ['Rhombus', '$A=1/2 d_1 d_2$'], ['Trapezium', '$A=1/2(a+b)h$'], ['Circle', '$A=pi r^2$, $C=2 pi r$'], ['Sector area', '$A=theta/360 times pi r^2$'], ['Arc length', '$l=theta/360 times 2 pi r$'], ['Ring', '$A=pi(R^2-r^2)$']]],
+  ['Volume & surface area', [['Cube', '$V=a^3$, $TSA=6a^2$, $LSA=4a^2$'], ['Cuboid', '$V=l b h$, $TSA=2(lb+bh+hl)$, $LSA=2h(l+b)$'], ['Cylinder', '$V=pi r^2 h$, $CSA=2 pi r h$, $TSA=2 pi r(r+h)$'], ['Cone', '$V=1/3 pi r^2 h$, $l=sqrt(r^2+h^2)$'],
+    ['Cone area', '$CSA=pi r l$, $TSA=pi r(r+l)$'], ['Sphere', '$V=4/3 pi r^3$, $S=4 pi r^2$'], ['Hemisphere', '$V=2/3 pi r^3$, $CSA=2 pi r^2$, $TSA=3 pi r^2$'], ['Pyramid', '$V=1/3 times B times h$'], ['Prism', '$V=B times h$']]],
+  ['Geometry', [['Pythagoras', '$a^2+b^2=c^2$'], ['Angle sum of triangle', '$angle A+angle B+angle C=180 deg$'], ['Exterior angle', '$"Exterior angle"=angle A+angle B$'], ['Polygon angle sum', '$(n-2) times 180 deg$'], ['Each angle of regular polygon', '$frac((n-2) times 180 deg,n)$'],
+    ['Thales (BPT)', '$AD/DB=AE/EC$'], ['Similar triangles', '$AB/PQ=BC/QR=CA/RP$'], ['Area of similar triangles', '$frac("ar"(triangle ABC),"ar"(triangle PQR))=(AB/PQ)^2$'], ['Angle at centre', '$angle AOB=2 angle ACB$'], ['Angle in semicircle', '$angle ACB=90 deg$'],
+    ['Cyclic quadrilateral', '$angle A+angle C=180 deg$'], ['Tangent-secant', '$PT^2=PA times PB$'], ['Chords', '$AP times PB=CP times PD$'], ['Tangent ⊥ radius', '$OT perp PT$']]],
+  ['Trigonometry', [['sin θ', '$sin theta=frac("Perpendicular","Hypotenuse")$'], ['cos θ', '$cos theta=frac("Base","Hypotenuse")$'], ['tan θ', '$tan theta=frac("Perpendicular","Base")$'], ['tan = sin ÷ cos', '$tan theta=frac(sin theta,cos theta)$'],
+    ['sin² + cos²', '$sin^2 theta+cos^2 theta=1$'], ['1 + tan²', '$1+tan^2 theta=sec^2 theta$'], ['1 + cot²', '$1+cot^2 theta=csc^2 theta$'], ['sin(A+B)', '$sin(A+B)=sin A cos B+cos A sin B$'], ['cos(A+B)', '$cos(A+B)=cos A cos B-sin A sin B$'],
+    ['sin 2A', '$sin 2A=2 sin A cos A$'], ['cos 2A', '$cos 2A=cos^2 A-sin^2 A$'], ['Complementary', '$sin(90 deg-theta)=cos theta$'], ['sin 30°, 45°, 60°', '$sin 30 deg=1/2$, $sin 45 deg=1/sqrt(2)$, $sin 60 deg=sqrt(3)/2$']]],
+  ['Coordinate geometry', [['Distance', '$d=sqrt((x_2-x_1)^2+(y_2-y_1)^2)$'], ['Mid-point', '$M=((x_1+x_2)/2,(y_1+y_2)/2)$'], ['Section formula', '$P=((m x_2+n x_1)/(m+n),(m y_2+n y_1)/(m+n))$'], ['Slope', '$m=frac(y_2-y_1,x_2-x_1)$'],
+    ['Line (slope-intercept)', '$y=mx+c$'], ['Line (point-slope)', '$y-y_1=m(x-x_1)$'], ['Centroid', '$G=((x_1+x_2+x_3)/3,(y_1+y_2+y_3)/3)$'], ['Area of triangle', '$A=1/2 abs(x_1(y_2-y_3)+x_2(y_3-y_1)+x_3(y_1-y_2))$']]],
+  ['Sets', [['n(A ∪ B)', '$n(A union B)=n(A)+n(B)-n(A inter B)$'], ['De Morgan 1', '$(A union B)^′=A^′ inter B^′$'], ['De Morgan 2', '$(A inter B)^′=A^′ union B^′$'], ['Subset', '$A subset B$'], ['Number of subsets', '$2^n$']]],
+  ['Statistics & probability', [['Mean', '$bar(x)=frac(sum x,n)$'], ['Mean (grouped)', '$bar(x)=frac(sum f x,sum f)$'], ['Range', '$"Range"=H-L$'], ['Median', '$"Median"=((n+1)/2)^"th" "value"$'], ['Probability', '$P(E)=frac("Favourable outcomes","Total outcomes")$'], ['Complement', '$P(E^′)=1-P(E)$']]],
+  ['Arithmetic & business', [['HCF × LCM', '$"HCF" times "LCM"=a times b$'], ['Percentage', '$"Percentage"=frac("Part","Whole") times 100$'], ['Simple interest', '$I=frac(P times R times T,100)$'], ['Compound interest', '$A=P(1+R/100)^n$'], ['Profit', '$"Profit"="S.P"-"C.P"$'], ['Profit %', '$"Profit %"=frac("Profit","C.P") times 100$'], ['Speed', '$"Speed"=frac("Distance","Time")$'], ['Direct proportion', '$x/y=k$']]]
+];
+function pqMathBody() {
+  const btn = (txt, label, back, wide) => `<button type="button" class="pq-mk${wide ? ' w' : ''}" onpointerdown="event.preventDefault()" onmousedown="event.preventDefault()" onclick="pqMathIns(${JSON.stringify(txt).replace(/"/g, '&quot;')},${back || 0})">${label}</button>`;
+  if (pqMathTab === 'sym') {
+    return PQ_SYM_GROUPS.map(g => `<div class="pq-mk-h">${esc(qt(g[0], g[1]))}</div><div class="pq-mk-row">${g[2].map(c => btn(c, esc(c))).join('')}</div>`).join('');
+  }
+  if (pqMathTab === 'tpl') {
+    return `<div class="pq-mk-note">${esc(qt('Write maths between $ signs. Examples: $frac(1,2)$ → ½ as a real fraction, $x^2$ → x squared, $sqrt(25)$ → square root, $a/b$ → fraction. Use brackets for longer parts: $(2x+1)/3$.', 'ریاضی کو $ کے درمیان لکھیں۔ مثال: $frac(1,2)$ سے اصل کسر، $x^2$ سے طاقت، $sqrt(25)$ سے جذر، $a/b$ سے کسر۔ لمبے حصے کے لیے بریکٹ استعمال کریں: $(2x+1)/3$۔'))}</div>` +
+      `<div class="pq-mk-row">${PQ_TPL.map(t => btn(t[1], `<span class="pq-mk-lbl">${esc(t[0])}</span><span class="pq-mk-prev">${pqMathHtml(t[1].slice(1, -1))}</span>`, t[2], true)).join('')}</div>`;
+  }
+  return PQ_FORMULAS.map(g => `<div class="pq-mk-h">${esc(g[0])}</div><div class="pq-mk-row">${g[1].map(f => btn(f[1], `<span class="pq-mk-lbl">${esc(f[0])}</span><span class="pq-mk-prev">${pqMathHtml(f[1].replace(/^\$|\$$/g, '').replace(/\$, \$/g, ' ,  '))}</span>`, 1, true)).join('')}</div>`).join('');
+}
+function tplPqMathPanel() {
+  const tabs = [['sym', qt('Symbols', 'علامات')], ['tpl', qt('Fractions, powers, roots…', 'کسر، طاقت، جذر…')], ['lib', qt('Formulas (class 6–10)', 'فارمولے (جماعت 6 تا 10)')]];
+  return `<button type="button" class="pq-mkb-fab" onclick="pqMathToggle()">∑ ${esc(qt('Maths', 'ریاضی'))}</button>` +
+    (pqMathOpen ? `<div id="pq-mkb" class="pq-mkb"><div class="pq-mkb-top">${tabs.map(t => `<button type="button" class="pq-mkb-tab${pqMathTab === t[0] ? ' on' : ''}" data-k="${t[0]}" onpointerdown="event.preventDefault()" onclick="pqMathSetTab('${t[0]}')">${esc(t[1])}</button>`).join('')}<button type="button" class="pq-mkb-x" onclick="pqMathToggle()">✕</button></div><div id="pq-mkb-body" class="pq-mkb-body">${pqMathBody()}</div></div>` : '');
+}
+
 
 function printQuestionPaper() {
   const hasSec = sc => (sc.type === 'free' || sc.type === 'title') ? pqSecHasContent(sc) : sc.type === 'match' ? ((sc.A || []).some(v => v.trim()) && (sc.B || []).some(v => v.trim())) : (sc.items || []).some(x => (x.q || '').trim());
