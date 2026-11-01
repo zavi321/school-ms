@@ -19048,7 +19048,7 @@ function pqBackupOk(ur, bk) {
 }
 function pqHasBackup() { try { return !!localStorage.getItem(PQ_BACKUP_KEY); } catch (e) { return false; } }
 function pqResetPaper() {
-  paperMeta = { school_name: paperMeta.school_name, logo: paperMeta.logo, exam_name: '', class_name: '', subject: '', total_marks: '', time_allowed: '', exam_date: '' };
+  paperMeta = { school_name: paperMeta.school_name, logo: paperMeta.logo, wm: paperMeta.wm, exam_name: '', class_name: '', subject: '', total_marks: '', time_allowed: '', exam_date: '' };
   paperMcqMarksEach = 1;
   paperMcqs = [ { no:1, q:'', options:['','','',''] } ];
   paperBlanks = [ { no:1, q:'' } ];
@@ -19420,7 +19420,7 @@ async function kgNewPaper() {
     await kgKvSet('backup', kgSnap()); kgHasBackup = true;
   }
   kgBlocks = kgStarter(); kgLibOpen = -1; kgLibT = null; kgCmpT = null;
-  paperMeta = { school_name: paperMeta.school_name, logo: paperMeta.logo, exam_name: '', class_name: '', subject: '', total_marks: '', time_allowed: '', exam_date: '' };
+  paperMeta = { school_name: paperMeta.school_name, logo: paperMeta.logo, wm: paperMeta.wm, exam_name: '', class_name: '', subject: '', total_marks: '', time_allowed: '', exam_date: '' };
   pqFlush(); renderTab(); }
 async function kgRestorePrevious() {
   const ur = LANG === 'ur', b = await kgKvGet('backup'); if (!b || !Array.isArray(b.kgBlocks)) return;
@@ -20494,6 +20494,9 @@ function tplPapersStd() {
         </label>
         <input style="flex:1;font-weight:600;" value="${esc(paperMeta.school_name)}" oninput="paperMeta.school_name=this.value">
       </div>
+      <div class="flexgap" style="margin-top:8px;align-items:center;flex-wrap:wrap;"><span style="font-size:13px;font-weight:600;flex:1;min-width:150px;">${esc(qt('Watermark (logo in the middle of the paper)', 'واٹر مارک (کاغذ کے بیچ میں لوگو)'))}</span>
+        <button class="${paperMeta.wm !== false ? 'btn-primary' : 'btn-ghost'}" style="padding:6px 16px;" onclick="paperMeta.wm=true;pqTouch();renderTab()">${esc(qt('Yes', 'ہاں'))}</button>
+        <button class="${paperMeta.wm === false ? 'btn-primary' : 'btn-ghost'}" style="padding:6px 16px;" onclick="paperMeta.wm=false;pqTouch();renderTab()">${esc(qt('No', 'نہیں'))}</button></div>
       <div class="row2" style="margin-top:10px;">
         <label><span>${esc(t.paperExamName)}</span>
           <input list="paper-exam-name-list" value="${esc(paperMeta.exam_name)}" oninput="paperMeta.exam_name=this.value" placeholder="${esc(t.paperExamName)}">
@@ -20919,7 +20922,7 @@ function printQuestionPaper() {
   };
 
   document.getElementById('print-area').innerHTML = `
-    ${paperMeta.logo ? `<div class="pq-wm-fixed"><img src="${safeSrc(paperMeta.logo)}" alt=""></div>` : ''}
+    ${(paperMeta.logo && paperMeta.wm !== false) ? `<div class="pq-wm-fixed"><img src="${safeSrc(paperMeta.logo)}" alt=""></div>` : ''}
     <div class="qpaper-print" id="qpaper-print-el">
       <div class="qp-head">
         <div class="qp-head-row">
