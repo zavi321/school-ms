@@ -18797,12 +18797,70 @@ function pqDelItem(si, i) { const sc = paperSecs[si]; pqDropAt(sc.items, i, pqBl
 function pqMatchAdd(si, c) { paperSecs[si][c].push(''); renderTab(); }
 function pqMatchDel(si, c, i) { paperSecs[si][c].splice(i, 1); renderTab(); }
 
+
+// ---- Shapes INSIDE a question: {fig:KIND:SIZE_MM[:n][:a=60|70|50]} tokens, several per line ----
+let pqFigOpen = '', pqFigGroup = 'tri'; const pqFigCaretPos = {};
+const PQ_FIG_RE = /\{fig:([A-Za-z0-9-]+):(\d{1,3})(:n)?(?::a=([^:{}]*))?\}/g;
+const pqFigTok = (k, sz, nl, ang) => '{fig:' + k + ':' + Math.max(10, Math.min(190, +sz || 30)) + (nl ? ':n' : '') + (ang && ang.split('|').some(x => x.trim()) ? ':a=' + ang : '') + '}';
+function pqFw(q) { return q && /\{fig:/.test(q.q || '') ? ' style="width:100%;flex:0 0 100%"' : ''; }
+function pqFigCaret(si, i, el) { pqFigCaretPos[si + ':' + i] = el.selectionStart; }
+function pqFigKeep(fn) { const y = window.scrollY || 0; fn(); renderTab(); window.scrollTo({ top: y, left: 0, behavior: 'instant' }); }
+function pqFigToggle(si, i) { const k = si + ':' + i; pqFigKeep(() => { pqFigOpen = pqFigOpen === k ? '' : k; }); }
+function pqFigGrp(g) { pqFigKeep(() => { pqFigGroup = g; }); }
+function pqFigAdd(si, i, kind) {
+  const it = paperSecs[si].items[i], q = it.q || '', p = pqFigCaretPos[si + ':' + i], at = (p == null || p > q.length) ? q.length : p;
+  const tok = pqFigTok(kind, 30);
+  it.q = q.slice(0, at) + tok + q.slice(at); pqFigCaretPos[si + ':' + i] = at + tok.length; pqTouch();
+  pqFigKeep(() => {});
+}
+function pqFigEdit(si, i, n, fn) {
+  const it = paperSecs[si].items[i]; let c = -1;
+  it.q = (it.q || '').replace(PQ_FIG_RE, (m, k, sz, nl, ang) => { c++; return c === n ? fn(k, +sz, !!nl, ang || '') : m; });
+  pqTouch();
+}
+function pqFigPrev(si, i, n, k, sz, nl, ang) {
+  const el = document.getElementById('pqfig-' + si + '-' + i + '-' + n);
+  if (el) el.innerHTML = pqShSvg({ kind: k, size: sz, labels: !nl, marks: true, fill: false, lw: 1.5, ang: ang ? ang.split('|') : [] }, { thumb: true, css: Math.max(30, Math.min(110, sz)) + 'px' });
+  const ta = document.getElementById('pqq-' + si + '-' + i); if (ta) ta.value = paperSecs[si].items[i].q;
+}
+function pqFigGet(si, i, n) { let r = null, c = -1; (paperSecs[si].items[i].q || '').replace(PQ_FIG_RE, (m, k, sz, nl, ang) => { c++; if (c === n) r = [k, +sz, !!nl, ang || '']; return m; }); return r; }
+function pqFigSize(si, i, n, v) {
+  v = Math.max(10, Math.min(190, +v || 30));
+  pqFigEdit(si, i, n, (k, sz, nl, ang) => pqFigTok(k, v, nl, ang));
+  const f = pqFigGet(si, i, n); if (f) pqFigPrev(si, i, n, f[0], f[1], f[2], f[3]);
+  const lb = document.getElementById('pqfigv-' + si + '-' + i + '-' + n); if (lb) lb.value = v;
+  const sl = document.getElementById('pqfigs-' + si + '-' + i + '-' + n); if (sl) sl.value = v;
+}
+function pqFigStep(si, i, n, d) { const f = pqFigGet(si, i, n); if (f) pqFigSize(si, i, n, f[1] + d); }
+function pqFigAng(si, i, n, txt) {
+  const ang = txt.replace(/[:{}]/g, '').split(/[,\s]+/).filter((x, j, arr) => x !== '' || j < arr.length - 1).join('|');
+  pqFigEdit(si, i, n, (k, sz, nl) => pqFigTok(k, sz, nl, ang));
+  const f = pqFigGet(si, i, n); if (f) pqFigPrev(si, i, n, f[0], f[1], f[2], f[3]);
+}
+function pqFigLabels(si, i, n) { pqFigEdit(si, i, n, (k, sz, nl, ang) => pqFigTok(k, sz, !nl, ang)); pqFigKeep(() => {}); }
+function pqFigDel(si, i, n) { pqFigEdit(si, i, n, () => ''); pqFigKeep(() => {}); }
+function pqFigPanel(si, i, it) {
+  const q = it.q || '', figs = []; q.replace(PQ_FIG_RE, (m, k, sz, nl, ang) => { figs.push([k, +sz, !!nl, ang || '']); return m; });
+  const open = pqFigOpen === si + ':' + i;
+  if (!open && !figs.length) return '';
+  const bt = 'padding:4px 10px;font-size:15px;line-height:1;';
+  const chips = figs.map((f, n) => { const d = pqShDef(f[0]), id = si + '-' + i + '-' + n, hasPts = true;
+    return `<div style="display:flex;align-items:center;gap:8px;margin:6px 0;"><span id="pqfig-${id}" style="flex:0 0 112px;text-align:center;">${pqShSvg({ kind: f[0], size: f[1], labels: !f[2], marks: true, fill: false, lw: 1.5, ang: f[3] ? f[3].split('|') : [] }, { thumb: true, css: Math.max(30, Math.min(110, f[1])) + 'px' })}</span>
+      <span style="flex:1;min-width:0;font-size:11px;"><b>${esc(d ? qt(d[2], d[3]) : f[0])}</b>
+      <span style="display:flex;align-items:center;gap:4px;margin:3px 0;"><button class="btn-ghost" style="${bt}" onclick="pqFigStep(${si},${i},${n},-5)">−</button><input id="pqfigs-${id}" type="range" min="10" max="190" value="${f[1]}" style="flex:1;min-width:0;" oninput="pqFigSize(${si},${i},${n},this.value)"><button class="btn-ghost" style="${bt}" onclick="pqFigStep(${si},${i},${n},5)">+</button><input id="pqfigv-${id}" type="number" min="10" max="190" value="${f[1]}" style="width:56px;padding:4px;" onchange="pqFigSize(${si},${i},${n},this.value)"><span>mm</span></span>
+      <input dir="ltr" style="width:100%;padding:5px;" placeholder="${esc(qt('Angles at A, B, C… e.g. 90, 45, 45 (skip one with -)', 'زاویے A, B, C… مثلاً 90, 45, 45 (چھوڑنے کے لیے -)'))}" value="${esc((f[3] || '').split('|').join(', '))}" oninput="pqFigAng(${si},${i},${n},this.value)">
+      <label style="display:inline-block;margin-top:3px;"><input type="checkbox" style="width:auto;" ${f[2] ? '' : 'checked'} onchange="pqFigLabels(${si},${i},${n})"> ${esc(qt('Letters (A, B, C)', 'حروف (A, B, C)'))}</label></span>
+      <button class="btn-ghost" style="padding:4px 8px;" onclick="pqFigDel(${si},${i},${n})">✕</button></div>`; }).join('');
+  const pick = open ? `<div style="margin-top:6px;"><div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:6px;">${PQ_SH_GROUPS.map(g => `<button class="${pqFigGroup === g[0] ? 'btn-primary' : 'btn-ghost'}" style="padding:4px 8px;font-size:11px;" onclick="pqFigGrp('${g[0]}')">${esc(qt(g[1], g[2]))}</button>`).join('')}</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(70px,1fr));gap:6px;max-height:210px;overflow:auto;">${PQ_SH.defs.filter(d => d[1] === pqFigGroup).map(d => `<button class="btn-ghost" style="padding:4px;display:block;" title="${esc(qt(d[2], d[3]))}" onclick="pqFigAdd(${si},${i},'${d[0]}')"><span style="display:block;height:44px;">${pqShSvg({ kind: d[0], size: 40, labels: false, marks: false, fill: false, lw: 2.4 }, { thumb: true, css: '44px' })}</span><span style="font-size:9px;display:block;line-height:1.1;">${esc(qt(d[2], d[3]))}</span></button>`).join('')}</div></div>` : '';
+  return `<div style="margin:-2px 0 8px 58px;padding:6px 8px;border:1px dashed var(--line,#ccc);border-radius:8px;"><div style="font-size:11px;opacity:.7;">${esc(qt('Shapes inside this question (as many as you like, they sit in one line):', 'اس سوال کے اندر شکلیں (جتنی چاہیں، ایک ہی لائن میں آئیں گی):'))}</div>${chips}${pick}</div>`;
+}
 function pqSecCard(sc, si) {
   const k = sc.type;
   const itemRow = (it, i) => {
     const base = `paperSecs[${si}].items[${i}]`;
     const noIn = `<input type="text" inputmode="text" autocapitalize="none" autocomplete="off" maxlength="8" value="${esc(it.no)}" oninput="${base}.no=this.value" style="width:52px;flex-shrink:0;padding:6px;text-align:center;">`;
-    const q = `<textarea rows="1" style="flex:1;" placeholder="${esc(pqTypeLbl(k))}..." oninput="${base}.q=this.value">${esc(it.q)}</textarea>`;
+    const q = `<textarea id="pqq-${si}-${i}" rows="1" style="flex:1;" placeholder="${esc(pqTypeLbl(k))}..." oninput="${base}.q=this.value" onblur="pqFigCaret(${si},${i},this)">${esc(it.q)}</textarea><button class="btn-ghost" style="padding:6px 8px;flex-shrink:0;" title="${esc(qt('Add shape / diagram inside this question', 'اس سوال کے اندر شکل شامل کریں'))}" onclick="pqFigToggle(${si},${i})">📐</button>`;
     const del = `<button class="btn-ghost" style="padding:6px 10px;" onclick="pqDelItem(${si},${i})">✕</button>`;
     if (k === 'mcq') return `
     <div class="paper-q-row">
@@ -18816,6 +18874,7 @@ function pqSecCard(sc, si) {
     return `
     <div class="flexgap paper-q-row" style="align-items:flex-start;">${noIn}${q}${del}</div>${pqBreakBox(sc.id, i)}`;
   };
+  const itemRowFig = (it, i) => itemRow(it, i) + pqFigPanel(si, i, it);
   const matchCol = (c, num) => (sc[c] || []).map((v, i) => `
     <div class="flexgap paper-q-row" style="align-items:center;">
       <span style="font-size:12px;opacity:.6;width:18px;">${num ? (i + 1) + '.' : String.fromCharCode(97 + i) + ')'}</span>
@@ -18853,7 +18912,7 @@ function pqSecCard(sc, si) {
           <button class="btn-ghost" style="margin-top:4px;" onclick="pqMatchAdd(${si},'A')">${esc(t.addQuestion)}</button></div>
         <div><div style="font-size:11px;opacity:.6;margin-bottom:4px;">Column B</div>${matchCol('B', false)}
           <button class="btn-ghost" style="margin-top:4px;" onclick="pqMatchAdd(${si},'B')">${esc(t.addQuestion)}</button></div>
-      </div>` : `${sc.items.map(itemRow).join('')}
+      </div>` : `${sc.items.map(itemRowFig).join('')}
       <button class="btn-ghost" style="margin-top:6px;" onclick="pqAddItem(${si})">${esc(t.addQuestion)}</button>`;
   return `
     <div class="card" id="pq-sec-${esc(sc.id)}" style="margin-bottom:14px;">
@@ -19826,6 +19885,7 @@ const PQ_SH = (function () {
     return s;
   };
   const pg = (a, ticks, rights, letters) => {
+    o.pts = a;
     let s = poly(a);
     if (o.marks) {
       (ticks || []).forEach(t => { s += tick(a[t[0]], a[t[1]], t[2]); });
@@ -20141,8 +20201,8 @@ const PQ_SH = (function () {
 
   // draw(def, opts) -> {W,H,s}; opts: labels, marks, fill, lw, fs
   function draw(d, opts) {
-    o = Object.assign({ fs: 6, labels: true, marks: true, fill: false, lw: 1.8 }, opts || {});
-    return d[4]();
+    o = Object.assign({ fs: 6, labels: true, marks: true, fill: false, lw: 1.8 }, opts || {}); o.pts = null;
+    const r = d[4](); r.pts = o.pts; return r;
   }
   return { defs: defs, draw: draw };
 })();
@@ -20160,9 +20220,20 @@ function pqShSvg(sh, opt) {
   const fs = opt.thumb ? 6 : Math.max(3.2, Math.min(10, 4.2 * (r.W + 2 * PQ_SH_PAD) / mm));
   r = PQ_SH.draw(d, Object.assign({}, base, { fs: fs }));
   const vbW = r.W + 2 * PQ_SH_PAD, vbH = r.H + 2 * PQ_SH_PAD;
+  let angSvg = '';
+  const angs = Array.isArray(sh.ang) ? sh.ang : [];
+  if (angs.some(a => a && a.trim()) && r.pts && r.pts.length) {
+    const P = r.pts, cx = P.reduce((q, p) => q + p[0], 0) / P.length, cy = P.reduce((q, p) => q + p[1], 0) / P.length;
+    P.forEach((p, i) => {
+      let v = (angs[i] || '').trim(); if (!v || v === '-') return;
+      if (/^[0-9]+(\.[0-9]+)?$/.test(v)) v += '\u00b0';
+      const dx = cx - p[0], dy = cy - p[1], dist = Math.hypot(dx, dy) || 1, k = Math.min(fs * 2.6, dist * 0.55) / dist;
+      angSvg += '<text x="' + R1(p[0] + dx * k) + '" y="' + R1(p[1] + dy * k) + '" font-size="' + R1(fs * 0.9) + '" font-family="Arial,Helvetica,sans-serif" text-anchor="middle" dominant-baseline="central" stroke="none" fill="#000">' + esc(v) + '</text>';
+    });
+  }
   const css = opt.css || (R1(mm * vbW / Math.max(r.W, 1)) + 'mm');
-  return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="' + (-PQ_SH_PAD) + ' ' + (-PQ_SH_PAD) + ' ' + vbW + ' ' + vbH + '" style="width:' + css + ';max-width:100%;height:auto;display:block;margin:0 auto;overflow:visible" role="img" aria-label="' + esc(d[2]) + '">' +
-    '<g fill="none" stroke="#000" stroke-width="' + base.lw + '" stroke-linejoin="round" stroke-linecap="round">' + r.s + '</g></svg>';
+  return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="' + (-PQ_SH_PAD) + ' ' + (-PQ_SH_PAD) + ' ' + vbW + ' ' + vbH + '" style="width:' + css + ';max-width:100%;height:auto;' + (opt.inline ? 'display:inline-block;vertical-align:middle;margin:2px 8px;' : 'display:block;margin:0 auto;') + 'overflow:visible" role="img" aria-label="' + esc(d[2]) + '">' +
+    '<g fill="none" stroke="#000" stroke-width="' + base.lw + '" stroke-linejoin="round" stroke-linecap="round">' + r.s + angSvg + '</g></svg>';
 }
 function R1(n) { return Math.round(n * 10) / 10; }
 
@@ -20628,7 +20699,9 @@ const pqEscBase = s => esc(s)
   // a new line typed inside a question stays a new line on the printed paper
   .replace(/\r?\n/g, '<br>')
   // {{345+128}} -> vertical column sum (works in every question type)
-  .replace(/\{\{([^{}]{1,80})\}\}/g, (m, e) => pqColSumHtml(e));
+  .replace(/\{\{([^{}]{1,80})\}\}/g, (m, e) => pqColSumHtml(e))
+  // {fig:KIND:SIZE_MM[:n]} -> a geometry / maths diagram right inside the question line
+  .replace(/\{fig:([A-Za-z0-9-]+):(\d{1,3})(:n)?(?::a=([^:{}]*))?\}/g, (m, k, n, nl, ang) => { try { return pqShSvg({ kind: k, size: +n, labels: !nl, marks: true, fill: false, lw: 1.5, ang: ang ? ang.split('|') : [] }, { inline: true }) || m; } catch (e) { return m; } });
 const pqEsc = pqMathWrap(pqEscBase);
 
 // ---- Maths keyboard: symbols, templates and a class 6-10 formula library ----
@@ -20755,14 +20828,14 @@ function printQuestionPaper() {
     let pre = '', body = '', two = false;
     if (k === 'mcq') {
       body = valid.map((m, i) => { const d = qDir(m.q); const opts = m.options.map((o, oi) => o.trim() ? `<span>(${letters[oi] || String.fromCharCode(97 + oi)}) ${pqEsc(o)}</span>` : '').join(''); return `
-        <div class="pq-q" dir="${d}">
+        <div class="pq-q" dir="${d}"${pqFw(m)}>
           <div class="pq-q-text"><b>${esc(printNo(src, m, i))}.</b> ${pqEsc(m.q)}</div>${opts ? `<div class="pq-options">${opts}</div>` : ''}
         </div>${pqBreakLine(sc.id, src.indexOf(m))}`; }).join('');
     } else if (k === 'blanks') {
       two = true;
-      body = valid.map((b, i) => `<div class="pq-q" dir="${qDir(b.q)}"><div class="pq-q-text" dir="${qDir(b.q)}"><b>${esc(printNo(src, b, i))}.</b> ${pqEsc(b.q)}</div></div>${pqBreakLine(sc.id, src.indexOf(b))}`).join('');
+      body = valid.map((b, i) => `<div class="pq-q" dir="${qDir(b.q)}"${pqFw(b)}><div class="pq-q-text" dir="${qDir(b.q)}"><b>${esc(printNo(src, b, i))}.</b> ${pqEsc(b.q)}</div></div>${pqBreakLine(sc.id, src.indexOf(b))}`).join('');
     } else if (k === 'tf') {
-      body = valid.map((x, i) => `<div class="pq-q" dir="${qDir(x.q)}"><div class="pq-q-text" dir="${qDir(x.q)}"><b>${esc(printNo(src, x, i))}.</b> ${pqEsc(x.q)} <span class="pq-tf">${RTL_CHAR_RE.test(x.q) ? '( &nbsp;صحیح&nbsp; / &nbsp;غلط&nbsp; )' : '( &nbsp;True&nbsp; / &nbsp;False&nbsp; )'}</span></div></div>${pqBreakLine(sc.id, src.indexOf(x))}`).join('');
+      body = valid.map((x, i) => `<div class="pq-q" dir="${qDir(x.q)}"${pqFw(x)}><div class="pq-q-text" dir="${qDir(x.q)}"><b>${esc(printNo(src, x, i))}.</b> ${pqEsc(x.q)} <span class="pq-tf">${RTL_CHAR_RE.test(x.q) ? '( &nbsp;صحیح&nbsp; / &nbsp;غلط&nbsp; )' : '( &nbsp;True&nbsp; / &nbsp;False&nbsp; )'}</span></div></div>${pqBreakLine(sc.id, src.indexOf(x))}`).join('');
     } else if (k === 'match') {
       const A = sc.A.filter(v => v.trim()), B = sc.B.filter(v => v.trim());
       body = `<div class="pq-match">
@@ -20770,9 +20843,9 @@ function printQuestionPaper() {
         <div class="pq-match-col">${B.map((v, i) => `<div dir="auto">${String.fromCharCode(97 + i)}) ${pqEsc(v)}</div>`).join('')}</div>
       </div>`;
     } else {
-      two = true;
+      two = !valid.some(x => /\{fig:/.test(x.q || ''));   // a question holding diagrams needs the full line
       body = valid.map((it, i) => `
-        <div class="pq-q" dir="${qDir(it.q)}">
+        <div class="pq-q" dir="${qDir(it.q)}"${pqFw(it)}>
           <div class="pq-q-text" dir="${qDir(it.q)}"><b>${esc(printNo(src, it, i))}.</b> ${pqEsc(it.q)} ${it.marks ? `<span class="pq-marks">[${esc(it.marks)}]</span>` : ''}</div>
         </div>${pqBreakLine(sc.id, src.indexOf(it))}`).join('');
     }
