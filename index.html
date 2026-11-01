@@ -20274,7 +20274,7 @@ function pqShSvg(sh, opt) {
       angSvg += '<line x1="' + R1(p[0]) + '" y1="' + R1(p[1]) + '" x2="' + R1(q[0]) + '" y2="' + R1(q[1]) + '"' + VEa + '/>' + T(50, 50 + (sh.kind === 'circ-parts' ? -fs * 1.1 : -fs * 0.95), dv);
     }
   }
-  const css = opt.css || (R1(mm * vbW / Math.max(r.W, 1)) + 'mm');
+  const css = opt.css || ('calc(' + R1(mm * vbW / Math.max(r.W, 1)) + 'mm * var(--pq-fig, 1))');
   return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="' + (-PAD) + ' ' + (-PAD) + ' ' + vbW + ' ' + vbH + '" style="width:' + css + ';max-width:100%;height:auto;' + (opt.inline ? 'display:inline-block;vertical-align:middle;margin:2px 8px;' : 'display:block;margin:0 auto;') + 'overflow:visible" role="img" aria-label="' + esc(d[2]) + '">' +
     '<g fill="none" stroke="#000" stroke-width="' + base.lw + '" stroke-linejoin="round" stroke-linecap="round">' + r.s + angSvg + '</g></svg>';
 }
@@ -20980,10 +20980,10 @@ function printQuestionPaper() {
     // own page break can differ from the on-screen measurement by a few px,
     // and filling the sheet exactly is what pushed the last question onto a
     // 2nd page.
-    fitAndSpacePaper('qpaper-print-el', 8, 0.85);
-    fitAndSpacePaper('qpaper-print-el', 8, 0.85); // second pass = refine once fonts/layout have settled
+    fitAndSpacePaper('qpaper-print-el', 8, 0.97);
+    fitAndSpacePaper('qpaper-print-el', 8, 0.97); // second pass = refine once fonts/layout have settled
     const pqZoom = Number((printEl && printEl.style.zoom) || 1);
-    if (pqZoom < 0.85) {
+    if (pqZoom < 0.8) {
       return pqLongChoice(pqZoom).then(ch => {
         if (!ch) return;                                   // cancelled: user will trim the paper first
         if (ch === 'two' && printEl) { printEl.style.zoom = 1; printEl.style.setProperty('--pq-space', 1); }
@@ -21034,35 +21034,52 @@ function fitAndSpacePaper(elId, marginMm, safety) {
   el.style.display = 'block';
   el.style.zoom = 1;
   el.style.setProperty('--pq-space', 1);
+  el.style.setProperty('--pq-fig', 1);
   el.style.height = 'auto';
 
   const baselineHeight = el.scrollHeight;
 
-  // How far spacing can stretch (short paper, fill the sheet) or shrink
-  // (long paper, help it fit) before it starts looking wrong.
-  const MIN_SPACE = 1;
-  const MAX_SPACE = 2.4;
-  let space = baselineHeight > 0 ? (limitPx / baselineHeight) : 1;
-  space = Math.max(MIN_SPACE, Math.min(MAX_SPACE, space));
-  el.style.setProperty('--pq-space', space);
-
-  // Spacing isn't perfectly linear with height (the header/logo/images don't
-  // scale with --pq-space), so nudge once more toward the target if the
-  // first pass landed noticeably off.
-  const afterFirstPass = el.scrollHeight;
-  if (afterFirstPass > 0 && Math.abs(afterFirstPass - limitPx) > limitPx * 0.03) {
-    const nudged = space * (limitPx / afterFirstPass);
-    space = Math.max(MIN_SPACE, Math.min(MAX_SPACE, nudged));
+  // Priority: a paper that is shorter than the sheet gets BIGGER WRITING first (zoom up to MAX_ZOOM),
+  // and only then slightly wider spacing for whatever gap is left. A paper that is too long gets its
+  // spacing tightened first, then (last resort) a zoom-out.
+  const MIN_SPACE = 1, MAX_SPACE = 2.2, MAX_ZOOM = 1.7, MIN_ZOOM = 0.45;
+  const vh = () => el.getBoundingClientRect().height;   // real (zoomed) height in px
+  el.style.zoom = 1; el.style.setProperty('--pq-space', 1);
+  let zoom = 1, space = 1;
+  if (baselineHeight < limitPx * 0.97) {
+    zoom = Math.min(MAX_ZOOM, limitPx / baselineHeight);
+    for (let k = 0; k < 8; k++) {            // text re-wraps when zoomed, so converge on the real height
+      el.style.zoom = zoom;
+      const h = vh();
+      if (h <= limitPx && h >= limitPx * 0.97) break;
+      zoom = Math.max(1, Math.min(MAX_ZOOM, zoom * (limitPx / h) * (h > limitPx ? 0.995 : 1)));
+    }
+    el.style.zoom = zoom;
+    if (vh() > limitPx) { zoom = Math.max(1, zoom * (limitPx / vh()) * 0.99); el.style.zoom = zoom; }
+    // what is still empty goes into spacing
+    const h2 = vh();
+    if (h2 < limitPx * 0.97) {
+      space = Math.max(MIN_SPACE, Math.min(MAX_SPACE, space * (limitPx / h2)));
+      el.style.setProperty('--pq-space', space);
+      for (let k = 0; k < 3 && vh() > limitPx; k++) { space = Math.max(MIN_SPACE, space * 0.95); el.style.setProperty('--pq-space', space); }
+    }
+  } else {
+    space = Math.max(MIN_SPACE, Math.min(MAX_SPACE, limitPx / baselineHeight));
     el.style.setProperty('--pq-space', space);
+    const afterFirstPass = el.scrollHeight;
+    if (afterFirstPass > 0 && Math.abs(afterFirstPass - limitPx) > limitPx * 0.03) {
+      space = Math.max(MIN_SPACE, Math.min(MAX_SPACE, space * (limitPx / afterFirstPass)));
+      el.style.setProperty('--pq-space', space);
+    }
+    // still too long at minimum spacing: shrink the DIAGRAMS first (down to 45%) so the writing keeps its size
+    if (el.scrollHeight > limitPx) {
+      for (const fg of [0.85, 0.72, 0.6, 0.5, 0.45]) { el.style.setProperty('--pq-fig', fg); if (el.scrollHeight <= limitPx) break; }
+    }
+    // still too long: small zoom-out
+    const finalHeight = el.scrollHeight;
+    zoom = finalHeight > limitPx ? Math.max(MIN_ZOOM, limitPx / finalHeight) : 1;
+    el.style.zoom = zoom !== 1 ? zoom : 1;
   }
-
-  // Safety net: a paper so long that even MIN_SPACE still overflows the page
-  // gets a small zoom-out on top, same as before — just now only kicking in
-  // after spacing has already done most of the work.
-  const finalHeight = el.scrollHeight;
-  const MIN_ZOOM = 0.45;
-  const zoomScale = finalHeight > limitPx ? Math.max(MIN_ZOOM, limitPx / finalHeight) : 1;
-  el.style.zoom = zoomScale < 1 ? zoomScale : 1;
 
   el.style.display = prevElDisplay;
 
