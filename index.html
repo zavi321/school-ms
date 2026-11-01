@@ -14476,7 +14476,7 @@ let dmcDesign = {
   bgImage: '',             // optional background picture (data URL); '' = none
   bgImageOpacity: 0.25,    // 0.05 - 1
   bgImageFit: 'cover',     // 'cover' | 'contain'
-  bgPreset: '',            // '' (auto) | 'none' | 'custom' (own upload in bgImage) | 'bg1'..'bg19' (built-in gallery)
+  bgPreset: '',            // '' (auto) | 'none' | 'custom' (own upload in bgImage)
   showPosition: true,      // "Position in class" summary block
   showStamp: true,         // dashed "SCHOOL STAMP" circle in footer
   teacherLabel: 'CLASS TEACHER SIGNATURE',
@@ -14946,78 +14946,21 @@ function renderDMCPreviewIfOpen() {
   generateDMCPreview();
 }
 
-// 19 certificate backgrounds. Only their names/paths are listed (in the inert dmc-bg-data block at the end of the page);
-// the pictures themselves are files in the bg/ folder.
-let _dmcBgCache = null;
-function dmcBgPresets() {
-  if (_dmcBgCache) return _dmcBgCache;
-  try { _dmcBgCache = JSON.parse(document.getElementById('dmc-bg-data').textContent); } catch (e) { _dmcBgCache = []; }
-  return _dmcBgCache;
-}
-
-// Which background is active: a gallery id, 'custom' (own upload), or 'none'.
-// Older saved designs only have bgImage (no bgPreset) -> treated as 'custom'.
+// DMC background = sirf apni upload ki hui picture (ya koi nahi). Built-in gallery hata di gayi hai.
+// Which background is active: 'custom' (own upload) or 'none'.
+// Purane saved designs jin mein gallery id (bg1..) thi, wo ab 'none' maane jate hain.
 function dmcBgSelected() {
   const d = dmcDesign;
-  return d.bgPreset || (d.bgImage ? 'custom' : 'none');
+  if (/^bg\d+$/.test(d.bgPreset || '')) return 'none';
+  if (d.bgPreset === 'none') return 'none';
+  return d.bgImage ? 'custom' : 'none';
 }
 // The actual picture (data URL) the certificate should draw, or '' for none.
 function dmcBgSrc() {
-  const sel = dmcBgSelected();
-  if (sel === 'custom') return dmcDesign.bgImage || '';
-  const p = dmcBgPresets().find(x => x.id === sel);
-  if (!p) return '';
-  if (_dmcBgData[p.id]) return _dmcBgData[p.id];
-  dmcBgEnsure(p.id);          // not loaded yet: start loading; the screen redraws itself when it arrives
-  return '';
+  return dmcBgSelected() === 'custom' ? (dmcDesign.bgImage || '') : '';
 }
-// The 19 gallery pictures are separate files (bg/bgN.webp) instead of being inside index.html.
-// A picture is downloaded only when it is chosen/printed, kept in the browser's cache for offline use,
-// and converted to a data URL so the print window and previews work exactly as before.
-const _dmcBgData = {}, _dmcBgLoading = {}, _dmcBgFailed = {};
-async function dmcBgFetchBlob(path) {
-  const url = new URL(path, location.href).href;
-  try {
-    if (self.caches) {
-      const c = await caches.open('dmc-bg-v1');
-      let r = await c.match(url);
-      if (!r) { r = await fetch(url); if (!r.ok) throw new Error('bg ' + r.status); try { await c.put(url, r.clone()); } catch (e) {} }
-      const b = await r.blob();
-      if (!/^image\//i.test(b.type)) { try { await c.delete(url); } catch (e) {} throw new Error('not an image (' + (b.type || 'unknown') + ')'); }
-      return b;
-    }
-  } catch (e) { _dmcBgLastError = String(e && e.message || e); /* fall through to a plain fetch */ }
-  const r = await fetch(url, { cache: 'reload' });
-  if (!r.ok) { _dmcBgLastError = 'HTTP ' + r.status + ' for ' + path; throw new Error(_dmcBgLastError); }
-  const b = await r.blob();
-  if (!/^image\//i.test(b.type)) { _dmcBgLastError = 'file is not an image (' + (b.type || 'unknown') + ') for ' + path; throw new Error(_dmcBgLastError); }
-  return b;
-}
-let _dmcBgLastError = '';
-function dmcBgEnsure(id, retry) {
-  if (_dmcBgData[id]) return Promise.resolve(true);
-  if (_dmcBgLoading[id]) return _dmcBgLoading[id];
-  if (_dmcBgFailed[id] && !retry) return Promise.resolve(false);
-  const p = dmcBgPresets().find(x => x.id === id);
-  if (!p || !p.file) return Promise.resolve(false);
-  _dmcBgLoading[id] = dmcBgFetchBlob(p.file).then(blob => new Promise((res, rej) => {
-    const fr = new FileReader(); fr.onload = () => res(fr.result); fr.onerror = () => rej(fr.error); fr.readAsDataURL(blob);
-  })).then(url => {
-    _dmcBgData[id] = url; delete _dmcBgFailed[id];
-    try { refreshDMCBgBox(); renderDMCPreviewIfOpen(); } catch (e) {}
-    return true;
-  }).catch(() => { _dmcBgFailed[id] = true; try { refreshDMCBgBox(); } catch (e) {} return false; })
-    .finally(() => { delete _dmcBgLoading[id]; });
-  return _dmcBgLoading[id];
-}
-// Wait for the chosen gallery picture (if any) before building a printout.
-async function dmcBgReady() {
-  const sel = dmcBgSelected();
-  if (/^bg\d+$/.test(sel)) {
-    const ok = await dmcBgEnsure(sel, true);
-    if (!ok) alert('Background picture load nahi hui, certificate bina background ke print hoga.\n\nWajah: ' + (_dmcBgLastError || 'unknown') + '\n\nCheck karein ke "bg" folder index.html ke saath upload hai aur internet chal raha hai.');
-  }
-}
+// Kept so the print/preview code that awaits it keeps working (nothing to load now).
+async function dmcBgReady() { return true; }
 function dmcBgTileHtml(id, label, inner) {
   const on = dmcBgSelected() === id;
   return `<button type="button" onclick="selectDMCBgPreset('${escJs(id)}')" title="${esc(label)}" style="padding:0;margin:0;border:${on ? '3px solid #2E7D32' : '1px solid var(--line)'};border-radius:8px;overflow:hidden;background:#fff;cursor:pointer;position:relative;aspect-ratio:3/4;display:block;width:100%;">
@@ -15033,13 +14976,11 @@ function dmcBgBoxHtml() {
   const op = Math.round((d.bgImageOpacity == null ? 0.25 : d.bgImageOpacity) * 100);
   const noneTile = dmcBgTileHtml('none', 'Koi nahi (sirf rang)', '<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:26px;opacity:.5;background:' + esc(d.bgColor || '#FAF6EC') + ';">&#8856;</div>');
   const customTile = d.bgImage ? dmcBgTileHtml('custom', 'Meri upload ki hui', `<img alt="" src="${safeSrc(d.bgImage)}" style="width:100%;height:100%;object-fit:cover;display:block;">`) : '';
-  const presetTiles = dmcBgPresets().map((p, i) => dmcBgTileHtml(p.id, (i + 1) + '. ' + p.name, `<img alt="" loading="lazy" src="${safeSrc(p.thumb || p.file || p.src)}" decoding="async" style="width:100%;height:100%;object-fit:cover;display:block;">`)).join('');
   return `
-    <p style="font-size:12px;opacity:.7;margin:0 0 8px;">Neeche se jo background pasand ho select karein. Pasand na ho to apni picture upload karein.</p>
-    ${/^bg\d+$/.test(sel) ? `<p style="font-size:12px;margin:0 0 8px;padding:6px 10px;border-radius:8px;background:${_dmcBgData[sel] ? '#e6f4ec' : (_dmcBgFailed[sel] ? '#fdecdc' : '#eef2f7')};color:#1d2433;">${_dmcBgData[sel] ? '&#10003; Background tayar hai (' + esc(sel) + ')' : (_dmcBgFailed[sel] ? '&#10007; Background load nahi hui: ' + esc(_dmcBgLastError || 'file nahi mili') + ' &mdash; "bg" folder index.html ke saath upload karein' : 'Background load ho rahi hai...')} <span style="opacity:.5">[bg-v3]</span></p>` : ''}
-    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px;">${noneTile}${customTile}${presetTiles}</div>
+    <p style="font-size:12px;opacity:.7;margin:0 0 8px;">Jo design pasand ho uski picture neeche se upload karein.</p>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px;">${noneTile}${customTile}</div>
     <label style="display:block;margin-bottom:10px;">
-      <span style="display:block;font-size:12px;font-weight:500;opacity:.7;margin-bottom:4px;">Apni background picture upload karein (agar upar koi pasand na ho)</span>
+      <span style="display:block;font-size:12px;font-weight:500;opacity:.7;margin-bottom:4px;">Background picture upload karein</span>
       <input type="file" accept="image/*" onchange="handleDMCBgUpload(this.files[0]); this.value='';">
     </label>
     ${has ? `
@@ -15061,15 +15002,10 @@ function dmcBgBoxHtml() {
       <input type="color" value="${esc(d.bgColor || '#FAF6EC')}" onchange="setDMCBgColor(this.value)" style="width:48px;height:32px;padding:0;">
     </label>`;
 }
-// Pick a gallery background (or 'custom' / 'none'). Gallery pictures are full designs,
-// so the first time one is picked from a non-gallery state it starts at 100% opacity, cover.
+// Background choose karein: 'custom' (upload ki hui) ya 'none'.
 function selectDMCBgPreset(id) {
-  const prev = dmcBgSelected();
-  const prevIsGallery = /^bg\d+$/.test(prev);
   if (id === 'custom' && !dmcDesign.bgImage) return;
-  dmcDesign.bgPreset = id;
-  if (/^bg\d+$/.test(id)) dmcBgEnsure(id, true);
-  if (/^bg\d+$/.test(id) && !prevIsGallery) { dmcDesign.bgImageOpacity = 1; dmcDesign.bgImageFit = 'cover'; }
+  dmcDesign.bgPreset = id === 'custom' ? 'custom' : 'none';
   saveDMCConfig();
   refreshDMCBgBox();
   renderDMCPreviewIfOpen();
@@ -15092,6 +15028,7 @@ function handleDMCBgUpload(file) {
       c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
       dmcDesign.bgImage = c.toDataURL('image/jpeg', 0.82);
       dmcDesign.bgPreset = 'custom';
+      dmcDesign.bgImageOpacity = 1; dmcDesign.bgImageFit = 'cover';   // poora design picture seedha, bina dhundhlahat ke
       saveDMCConfig();
       refreshDMCBgBox();
       renderDMCPreviewIfOpen();
@@ -19793,13 +19730,78 @@ function symBarHtml() {
   </div>`;
 }
 
+
+// ---------- Paper bank: save papers by name, open / copy / delete them any time (kept on this device) ----------
+let pqBankOpen = false, pqBankList = null, pqBankBusy = false;
+async function pqBankLoad() {
+  try { const v = await kgKvGet('bank'); pqBankList = Array.isArray(v) ? v : []; } catch (e) { pqBankList = []; }
+  if (pqBankOpen && TAB === 'papers') renderTab();
+}
+async function pqBankStore(list) { await kgKvSet('bank', list); pqBankList = list; }
+function pqBankToggle() { pqBankOpen = !pqBankOpen; if (pqBankOpen && pqBankList == null) pqBankLoad(); renderTab(); }
+async function pqBankSave() {
+  const ur = LANG === 'ur', kg = paperMode === 'kg', has = kg ? kgHasContent() : pqHasContent();
+  if (!has) { alert(ur ? 'پہلے پرچہ بنائیں، پھر محفوظ کریں۔' : 'Make the paper first, then save it.'); return; }
+  const inp = document.getElementById('pq-bank-name'), def = [paperMeta.class_name, paperMeta.subject, paperMeta.exam_name].filter(Boolean).join(' - ');
+  const name = ((inp && inp.value) || '').trim() || def || (ur ? 'نیا پرچہ' : 'Untitled paper');
+  if (pqBankBusy) return; pqBankBusy = true;
+  try {
+    if (pqBankList == null) await pqBankLoad();
+    const snap = kg ? kgSnap() : pqSnapshot(true);
+    const entry = { id: 'p' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), name: name, t: Date.now(), mode: kg ? 'kg' : 'std', cls: paperMeta.class_name || '', subj: paperMeta.subject || '', snap: JSON.parse(JSON.stringify(snap)) };
+    const list = (pqBankList || []).filter(x => !(x.name === name && x.mode === entry.mode));   // same name = replace the old one
+    list.unshift(entry); await pqBankStore(list);
+    if (inp) inp.value = '';
+    renderTab();
+  } catch (e) { alert((ur ? 'محفوظ نہیں ہو سکا: ' : 'Could not save: ') + (e && e.message || e)); }
+  pqBankBusy = false;
+}
+async function pqBankOpenPaper(id) {
+  const ur = LANG === 'ur', e = (pqBankList || []).find(x => x.id === id); if (!e) return;
+  const kg = paperMode === 'kg', has = kg ? kgHasContent() : pqHasContent();
+  if (has && !confirm(ur ? 'موجودہ پرچہ بدل جائے گا۔ اگر اسے رکھنا ہے تو پہلے "محفوظ کریں" دبائیں۔ جاری رکھیں؟' : 'This replaces the paper on screen. Save it first if you want to keep it. Continue?')) return;
+  const d = JSON.parse(JSON.stringify(e.snap));
+  if (e.mode === 'kg') {
+    kgBlocks = Array.isArray(d.kgBlocks) ? d.kgBlocks : [];
+    if (d.paperMeta) { const m = Object.assign({}, d.paperMeta); delete m.logo; Object.assign(paperMeta, m); }
+    paperMode = 'kg'; kgLibOpen = -1; kgLibT = null; kgCmpT = null;
+  } else {
+    pqApplyPack(d);
+    paperEndImage = d.paperEndImage || null;
+    if (d.paperMeta && d.paperMeta.logo) paperMeta.logo = d.paperMeta.logo;
+    paperMode = 'std';
+  }
+  try { pqFlush(); } catch (x) {}
+  pqBankOpen = false; renderTab(); window.scrollTo({ top: 0, behavior: 'instant' });
+}
+async function pqBankDel(id) {
+  const ur = LANG === 'ur', e = (pqBankList || []).find(x => x.id === id); if (!e) return;
+  if (!confirm((ur ? 'یہ پرچہ مٹا دیں؟ ' : 'Delete this saved paper? ') + e.name)) return;
+  await pqBankStore((pqBankList || []).filter(x => x.id !== id)); renderTab();
+}
+async function pqBankCopy(id) {
+  const e = (pqBankList || []).find(x => x.id === id); if (!e) return;
+  const c = JSON.parse(JSON.stringify(e)); c.id = 'p' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6); c.t = Date.now(); c.name = e.name + (LANG === 'ur' ? ' (کاپی)' : ' (copy)');
+  await pqBankStore([c].concat(pqBankList || [])); renderTab();
+}
+function tplPqBank() {
+  const ur = LANG === 'ur', n = pqBankList ? pqBankList.length : 0;
+  const head = `<div class="card" style="margin-top:14px;"><div class="flexgap" style="align-items:center;"><b style="flex:1;font-size:14px;">📚 ${ur ? 'پرچہ بینک (محفوظ پرچے)' : 'Paper bank (saved papers)'}${pqBankList ? ` <span style="opacity:.6;font-weight:400;">(${n})</span>` : ''}</b><button class="${pqBankOpen ? 'btn-primary' : 'btn-ghost'}" style="padding:6px 14px;" onclick="pqBankToggle()">${pqBankOpen ? (ur ? 'بند کریں' : 'Close') : (ur ? 'کھولیں' : 'Open')}</button></div>`;
+  if (!pqBankOpen) return head + `<div style="font-size:11px;opacity:.65;margin-top:4px;">${ur ? 'پرچہ نام کے ساتھ محفوظ کریں اور اگلے مہینے دوبارہ استعمال کریں۔' : 'Save a paper under a name and reuse it next month.'}</div></div>`;
+  const rows = (pqBankList || []).map(x => `<div style="display:flex;align-items:center;gap:6px;padding:8px 0;border-top:1px solid var(--line,#ddd);"><div style="flex:1;min-width:0;"><div style="font-weight:700;font-size:13px;overflow-wrap:anywhere;">${esc(x.name)}</div><div style="font-size:11px;opacity:.6;">${esc(x.mode === 'kg' ? 'Nursery/KG' : (x.cls || '—'))}${x.subj ? ' · ' + esc(x.subj) : ''} · ${esc(new Date(x.t).toLocaleDateString())}</div></div>
+      <button class="btn-primary" style="padding:5px 10px;font-size:12px;" onclick="pqBankOpenPaper('${x.id}')">${ur ? 'کھولیں' : 'Open'}</button><button class="btn-ghost" style="padding:5px 8px;font-size:12px;" onclick="pqBankCopy('${x.id}')" title="${ur ? 'کاپی' : 'Copy'}">⧉</button><button class="btn-ghost" style="padding:5px 8px;font-size:12px;" onclick="pqBankDel('${x.id}')">✕</button></div>`).join('');
+  return head + `<div class="flexgap" style="margin-top:10px;"><input id="pq-bank-name" dir="auto" style="flex:1;" placeholder="${esc(ur ? 'پرچے کا نام (مثلاً 5th Maths Oct)' : 'Paper name (e.g. 5th Maths Oct)')}"><button class="btn-primary" style="padding:6px 14px;" onclick="pqBankSave()">💾 ${ur ? 'محفوظ کریں' : 'Save'}</button></div>
+    <div style="font-size:11px;opacity:.65;margin:4px 0 6px;">${ur ? 'موجودہ پرچہ اسی نام سے محفوظ ہوگا۔ وہی نام دوبارہ لکھنے سے پرانا پرچہ بدل جائے گا۔ یہ آپ کے اسی فون/براؤزر میں رہتے ہیں۔' : 'Saves the paper on screen. Saving under the same name replaces that saved paper. Papers stay on this phone/browser.'}</div>
+    ${pqBankList == null ? `<div style="font-size:12px;opacity:.6;">…</div>` : (rows || `<div style="font-size:12px;opacity:.6;padding:8px 0;">${ur ? 'ابھی کوئی پرچہ محفوظ نہیں۔' : 'No saved papers yet.'}</div>`)}</div>`;
+}
 function tplPapers() {
   const html = tplPapersStd();
   const tg = `<div style="padding-top:16px;"><div class="flexgap">
     <button class="${paperMode==='std'?'btn-primary':'btn-ghost'}" style="flex:1;" onclick="setPaperMode('std')">📝 Standard</button>
     <button class="${paperMode==='kg'?'btn-primary':'btn-ghost'}" style="flex:1;" onclick="setPaperMode('kg')">🧸 Nursery / KG</button></div></div>`;
-  if (paperMode !== 'kg') return tg + html;
-  return tg + html.split('<!--PQ_HDR_END-->')[0] + tplKgBuilder() + '</div>';
+  if (pqBankList == null && !window.__pqBankLoading) { window.__pqBankLoading = true; pqBankLoad(); }
+  if (paperMode !== 'kg') return tg + tplPqBank() + html;
+  return tg + tplPqBank() + html.split('<!--PQ_HDR_END-->')[0] + tplKgBuilder() + '</div>';
 }
 function kgBodyHtml() {
   const kimg = (x, cls) => kpic(x, cls);
@@ -25993,7 +25995,6 @@ function sylpPrintFull() {
 
 console.log('SchoolMS build: 2026-10-13c-dmc-21-formats-qpaper-fixes-dashboard-icons-fast-open-idcard-offline-lesson-plan-staff-leave-advance-xlsx-lazy-load-fit-any-paper-print-logo-tint-watermark-fixed-text-editable-footer-single-syllabus-no-flicker-editable-headings-school-logo-no-legacy-syllabus-monthwise-grid-money-round-single-table-reload-csp-blob-img-fix-daily-quiz-7am-latest-result-lightsync-staffreq-chat-voice-syllabus-fixes2'); // bump this string on every deploy to verify (in browser console) which version is actually running
 </script>
-<script type="text/plain" id="dmc-bg-data">[{"id": "bg1", "name": "Blue Red Ribbon (Islamic pattern)", "file": "bg/bg1.webp", "thumb": "bg/bg1_t.webp"}, {"id": "bg2", "name": "Blue & Gold Waves", "file": "bg/bg2.webp", "thumb": "bg/bg2_t.webp"}, {"id": "bg3", "name": "Cream Leaf Corners", "file": "bg/bg3.webp", "thumb": "bg/bg3_t.webp"}, {"id": "bg4", "name": "Blue Gold Frame + Books", "file": "bg/bg4.webp", "thumb": "bg/bg4_t.webp"}, {"id": "bg5", "name": "Soft Desk & Books", "file": "bg/bg5.webp", "thumb": "bg/bg5_t.webp"}, {"id": "bg6", "name": "Study Room (Lamp)", "file": "bg/bg6.webp", "thumb": "bg/bg6_t.webp"}, {"id": "bg7", "name": "Bright Study Desk", "file": "bg/bg7.webp", "thumb": "bg/bg7_t.webp"}, {"id": "bg8", "name": "Gold Diamond Border", "file": "bg/bg8.webp", "thumb": "bg/bg8_t.webp"}, {"id": "bg9", "name": "Blue Masjid Theme", "file": "bg/bg9.webp", "thumb": "bg/bg9_t.webp"}, {"id": "bg10", "name": "Green Study Board", "file": "bg/bg10.webp", "thumb": "bg/bg10_t.webp"}, {"id": "bg11", "name": "Lamp & Window Desk", "file": "bg/bg11.webp", "thumb": "bg/bg11_t.webp"}, {"id": "bg12", "name": "Royal Gold Ornament", "file": "bg/bg12.webp", "thumb": "bg/bg12_t.webp"}, {"id": "bg13", "name": "Library Shelves", "file": "bg/bg13.webp", "thumb": "bg/bg13_t.webp"}, {"id": "bg14", "name": "Classic Desk & Globe", "file": "bg/bg14.webp", "thumb": "bg/bg14_t.webp"}, {"id": "bg15", "name": "Graduation Desk", "file": "bg/bg15.webp", "thumb": "bg/bg15_t.webp"}, {"id": "bg16", "name": "Gold Leaf Minimal", "file": "bg/bg16.webp", "thumb": "bg/bg16_t.webp"}, {"id": "bg17", "name": "Blue Gold Diagonal", "file": "bg/bg17.webp", "thumb": "bg/bg17_t.webp"}, {"id": "bg18", "name": "School Building", "file": "bg/bg18.webp", "thumb": "bg/bg18_t.webp"}, {"id": "bg19", "name": "Gold Leaf Waves", "file": "bg/bg19.webp", "thumb": "bg/bg19_t.webp"}]</script>
 <!-- ======================================================================
      Library / Transport / Hostel  —  added as a separate block.
      Nothing above this line was changed. It plugs in by wrapping
