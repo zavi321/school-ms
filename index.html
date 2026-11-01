@@ -14946,24 +14946,19 @@ function renderDMCPreviewIfOpen() {
   generateDMCPreview();
 }
 
-// DMC background = sirf apni upload ki hui picture (ya koi nahi). Built-in gallery hata di gayi hai.
-// Which background is active: 'custom' (own upload) or 'none'.
-// Purane saved designs jin mein gallery id (bg1..) thi, wo ab 'none' maane jate hain.
+// DMC background: sirf apni upload ki hui picture ('custom') ya koi nahi ('none').
 function dmcBgSelected() {
   const d = dmcDesign;
-  if (/^bg\d+$/.test(d.bgPreset || '')) return 'none';
   if (d.bgPreset === 'none') return 'none';
-  return d.bgImage ? 'custom' : 'none';
+  return (d.bgImage && (d.bgPreset === 'custom' || !d.bgPreset)) ? 'custom' : 'none';
 }
 // The actual picture (data URL) the certificate should draw, or '' for none.
 function dmcBgSrc() {
   return dmcBgSelected() === 'custom' ? (dmcDesign.bgImage || '') : '';
 }
-// Kept so the print/preview code that awaits it keeps working (nothing to load now).
-async function dmcBgReady() { return true; }
 function dmcBgTileHtml(id, label, inner) {
   const on = dmcBgSelected() === id;
-  return `<button type="button" onclick="selectDMCBgPreset('${escJs(id)}')" title="${esc(label)}" style="padding:0;margin:0;border:${on ? '3px solid #2E7D32' : '1px solid var(--line)'};border-radius:8px;overflow:hidden;background:#fff;cursor:pointer;position:relative;aspect-ratio:3/4;display:block;width:100%;">
+  return `<button type="button" onclick="selectDMCBg('${escJs(id)}')" title="${esc(label)}" style="padding:0;margin:0;border:${on ? '3px solid #2E7D32' : '1px solid var(--line)'};border-radius:8px;overflow:hidden;background:#fff;cursor:pointer;position:relative;aspect-ratio:3/4;display:block;width:100%;">
     ${inner}
     ${on ? '<span style="position:absolute;top:4px;right:4px;background:#2E7D32;color:#fff;border-radius:50%;width:20px;height:20px;line-height:20px;font-size:12px;font-weight:700;text-align:center;">&#10003;</span>' : ''}
     <span style="position:absolute;left:0;right:0;bottom:0;background:rgba(15,39,64,.78);color:#fff;font-size:10px;line-height:1.2;padding:3px 4px;text-align:center;">${esc(label)}</span>
@@ -15003,7 +14998,7 @@ function dmcBgBoxHtml() {
     </label>`;
 }
 // Background choose karein: 'custom' (upload ki hui) ya 'none'.
-function selectDMCBgPreset(id) {
+function selectDMCBg(id) {
   if (id === 'custom' && !dmcDesign.bgImage) return;
   dmcDesign.bgPreset = id === 'custom' ? 'custom' : 'none';
   saveDMCConfig();
@@ -17125,7 +17120,6 @@ async function viewSavedDMCRecord(id) {
   dmcBatchDateOfIssue = rec.date_of_issue || todayISO();
   dmcResults = (cohort || []).map(c => ({ studentName: c.student_name, class: c.class_name, marks: c.marks }));
 
-  await dmcBgReady();
   const pseudo = { studentName: rec.student_name, fatherName: rec.father_name, rollNo: rec.roll_no, class: rec.class_name, marks: rec.marks, positionOverride: rec.position ? String(rec.position) : '' };
   let certHtml;
   try { certHtml = renderDMCCertificate(pseudo); }
@@ -17190,7 +17184,6 @@ async function printSavedDMCRecord(id) {
   dmcBatchDateOfIssue = rec.date_of_issue || todayISO();
   dmcResults = (cohort || []).map(c => ({ studentName: c.student_name, class: c.class_name, marks: c.marks }));
 
-  await dmcBgReady();
   const pseudo = { studentName: rec.student_name, fatherName: rec.father_name, rollNo: rec.roll_no, class: rec.class_name, marks: rec.marks, positionOverride: rec.position ? String(rec.position) : '' };
   let certHtml;
   try { certHtml = renderDMCCertificate(pseudo); }
@@ -17317,7 +17310,6 @@ async function printDMCResults(results) {
   if (!preW) { alert('Print window block ho gayi. Browser mein is site ke liye pop-ups allow karein, phir dobara try karein.'); return; }
   _dmcPrinting = true;
   try {
-    await dmcBgReady();
     let body = '';
     _dmcRankCache = { map: dmcRankMap(dmcResults), members: new Set(dmcResults) };
     try { results.forEach(r => { body += renderDMCCertificate(r); }); }
