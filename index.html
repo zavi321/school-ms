@@ -13747,7 +13747,7 @@ async function storeAddMove() {
     if (r2.error) reportSaveError(r2.error);
   }
   logCustomActivity('Store ' + it.name + ': ' + mode + ' ' + fmt(qty) + (price ? ' @ Rs' + fmt(price) : '') + ' on ' + date, 'insert', 'store_moves');
-  await storeLoad(); if (txn_id) await loadAllData();
+  await storeLoad(); if (txn_id) await reloadTable('transactions');
   openStoreItem(it.id);
 }
 async function storeDeleteMove(id) {
@@ -13765,7 +13765,7 @@ async function storeDeleteMove(id) {
   if (reportSaveError(error)) return;
   const nm = (STORE.items.find(x => x.id === m.item_id) || {}).name || '';
   logCustomActivity('Deleted store ' + m.move_type + ' of ' + nm + ' (' + fmt(m.qty) + ', ' + String(m.entry_date).slice(0, 10) + ') — Reason: ' + why, 'delete', 'store_moves');
-  if (m.txn_id) { const r2 = await sb.from('transactions').delete().eq('id', m.txn_id); if (r2.error) reportSaveError(r2.error); await loadAllData(); }
+  if (m.txn_id) { const r2 = await sb.from('transactions').delete().eq('id', m.txn_id); if (r2.error) reportSaveError(r2.error); await reloadTable('transactions'); }
   await storeLoad(); openStoreItem(STORE_CUR);
 }
 function openStoreSales() {
@@ -25508,7 +25508,7 @@ function chOpen(role) {
     </div>`;
   document.body.appendChild(ov);
   chToPaint(); chLoad();
-  CH.poll = setInterval(() => { if (!CH.rec) chLoad(); }, 20000);
+  CH.poll = setInterval(() => { if (!CH.rec && !document.hidden && navigator.onLine) chLoad(); }, 20000);
 }
 function chClose() {
   clearInterval(CH.poll); clearInterval(CH.tick);
