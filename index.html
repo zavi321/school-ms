@@ -2477,6 +2477,59 @@ function friendlyErrorMsg(error) {
 
 let DATA = { students:[], feePayments:[], teachers:[], salaryPayments:[], transactions:[], admissionRegister:[], teacherAttendance:[], holidays:[], classLogins:[], studentAttendance:[] };
 let TAB = 'dashboard';
+
+// ============================================================================
+// TAB-WISE DATA LOADING
+// Only the tables the open tab actually needs are downloaded. Every other
+// table "sleeps" until its tab is opened. After a save, only the open tab's
+// tables are re-read; the rest are marked stale and refreshed on next open.
+// ============================================================================
+const DS_DEF = {
+  students:          { table: 'students',           q: () => sb.from('students').select('*').order('created_at') },
+  feePayments:       { table: 'fee_payments',       q: () => sb.from('fee_payments').select('*') },
+  teachers:          { table: 'teachers',           q: () => sb.from('teachers').select('*').order('created_at') },
+  salaryPayments:    { table: 'salary_payments',    q: () => sb.from('salary_payments').select('*') },
+  transactions:      { table: 'transactions',       q: () => sb.from('transactions').select('*').order('txn_date', { ascending: false }) },
+  teacherAttendance: { table: 'teacher_attendance', q: () => sb.from('teacher_attendance').select('*') },
+  holidays:          { table: 'holidays',           q: () => sb.from('holidays').select('*') },
+};
+const DS_KEYS = Object.keys(DS_DEF);
+const DS_FRESH = {};   // key -> true once fetched from the server and not yet marked stale
+const TAB_DS = {
+  dashboard:       ['students', 'feePayments', 'teachers', 'salaryPayments', 'transactions', 'teacherAttendance'],
+  students:        ['students', 'feePayments'],
+  teachers:        ['teachers', 'salaryPayments', 'teacherAttendance', 'holidays'],
+  teacherRegister: ['teachers', 'salaryPayments', 'teacherAttendance', 'holidays'],
+  finance:         ['students', 'feePayments', 'teachers', 'salaryPayments', 'transactions'],
+  reports:         DS_KEYS.slice(),
+};
+const DS_DEFAULT = ['students', 'teachers', 'feePayments'];   // every other tab: just the basic roster
+function dsForTab(tab) { return TAB_DS[tab] || DS_DEFAULT; }
+function dsNeedSet(tab) { const o = {}; dsForTab(tab).forEach(k => { o[k] = true; }); return o; }
+function dsMissing(keys) { return keys.filter(k => !DS_FRESH[k]); }
+const _dsInflight = {};
+function dsEnsure(keys) {
+  keys = dsMissing(keys);
+  if (!keys.length || !navigator.onLine || !CURRENT_USER) return Promise.resolve();
+  return Promise.all(keys.map(k => {
+    if (_dsInflight[k]) return _dsInflight[k];
+    const d = DS_DEF[k];
+    return (_dsInflight[k] = (async () => {
+      try {
+        const r = await Promise.race([fetchAll(d.q), new Promise(res => setTimeout(() => res(null), 20000))]);
+        if (!r || r.error || !Array.isArray(r.data)) return;   // keep the cached copy, retry on next open
+        DATA[k] = r.data;
+        DS_FRESH[k] = true;
+        if (k === 'feePayments') {
+          try { if (DATA.feePayments.length) setFeeInstOk('installments' in DATA.feePayments[0]); else probeFeeInstallments(); probeFeeColumns(); } catch (e) {}
+        }
+        await idbReplaceAll(d.table, r.data);
+        saveOfflineSnapshotSoon();
+      } catch (e) { console.error('dsEnsure failed for ' + k + ', using cached copy', e); }
+      finally { delete _dsInflight[k]; }
+    })());
+  }));
+}
 let CURRENT_USER = null;   // { id, email }
 let CURRENT_PROFILE = null; // { school_name }
 // Remembers the id of the last account that successfully logged in on this
@@ -2628,13 +2681,13 @@ async function idbQueueUpdate(item) {
 // opened with no signal at all.
 async function offlineCacheStore() {
   await Promise.all([
-    idbReplaceAll('students', DATA.students),
-    idbReplaceAll('fee_payments', DATA.feePayments),
-    idbReplaceAll('teachers', DATA.teachers),
-    idbReplaceAll('salary_payments', DATA.salaryPayments),
-    idbReplaceAll('transactions', DATA.transactions),
-    idbReplaceAll('teacher_attendance', DATA.teacherAttendance),
-    idbReplaceAll('holidays', DATA.holidays),
+    DS_FRESH.students ? idbReplaceAll('students', DATA.students) : null,
+    DS_FRESH.feePayments ? idbReplaceAll('fee_payments', DATA.feePayments) : null,
+    DS_FRESH.teachers ? idbReplaceAll('teachers', DATA.teachers) : null,
+    DS_FRESH.salaryPayments ? idbReplaceAll('salary_payments', DATA.salaryPayments) : null,
+    DS_FRESH.transactions ? idbReplaceAll('transactions', DATA.transactions) : null,
+    DS_FRESH.teacherAttendance ? idbReplaceAll('teacher_attendance', DATA.teacherAttendance) : null,
+    DS_FRESH.holidays ? idbReplaceAll('holidays', DATA.holidays) : null,
     idbReplaceAll('class_logins', DATA.classLogins),
     idbReplaceAll('student_attendance', DATA.studentAttendance),
     idbReplaceAll('admission_register', DATA.admissionRegister),
@@ -2651,10 +2704,13 @@ async function offlineCacheStore() {
 const OFFLINE_SNAPSHOT_KEY = 'sms_offline_snapshot';
 function saveOfflineSnapshot() {
   try {
+    // A table that has not been downloaded this session and is empty in memory keeps its previous snapshot copy.
+    const prevSnap = loadOfflineSnapshot() || {};
+    const pick = (k) => (DS_FRESH[k] || (DATA[k] && DATA[k].length)) ? DATA[k] : (prevSnap[k] || DATA[k]);
     const snap = {
-      students: DATA.students, feePayments: DATA.feePayments, teachers: DATA.teachers,
-      salaryPayments: DATA.salaryPayments, transactions: DATA.transactions,
-      teacherAttendance: DATA.teacherAttendance, holidays: DATA.holidays,
+      students: pick('students'), feePayments: pick('feePayments'), teachers: pick('teachers'),
+      salaryPayments: pick('salaryPayments'), transactions: pick('transactions'),
+      teacherAttendance: pick('teacherAttendance'), holidays: pick('holidays'),
       classLogins: DATA.classLogins, studentAttendance: DATA.studentAttendance,
       admissionRegister: DATA.admissionRegister, savedAt: Date.now(),
     };
@@ -3907,20 +3963,21 @@ async function loadAllData() {
   const saCutoff = (() => { const d = new Date(); if (LAZY_DATA.loaded) d.setDate(d.getDate() - 1);
     return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); })();
   const TIMED_OUT = Symbol('timed-out');
+  const dsNeed = dsNeedSet(TAB);   // only the tables the open tab needs; the rest sleep until their tab is opened
   try {
     const result = await Promise.race([
       Promise.all([
-        fetchAll(() => sb.from('students').select('*').order('created_at')),
-        fetchAll(() => sb.from('fee_payments').select('*')),
-        fetchAll(() => sb.from('teachers').select('*').order('created_at')),
-        fetchAll(() => sb.from('salary_payments').select('*')),
-        fetchAll(() => sb.from('transactions').select('*').order('txn_date',{ascending:false})),
+        dsNeed.students ? fetchAll(() => sb.from('students').select('*').order('created_at')) : null,
+        dsNeed.feePayments ? fetchAll(() => sb.from('fee_payments').select('*')) : null,
+        dsNeed.teachers ? fetchAll(() => sb.from('teachers').select('*').order('created_at')) : null,
+        dsNeed.salaryPayments ? fetchAll(() => sb.from('salary_payments').select('*')) : null,
+        dsNeed.transactions ? fetchAll(() => sb.from('transactions').select('*').order('txn_date',{ascending:false})) : null,
         // Admission & Withdrawal Register: a standalone record, unrelated to the
         // students/fee-finance tables above — it is never joined or cross-referenced.
         // Deferred until the first tap away from the Dashboard (see ensureLazyData) — not needed to draw it.
         LAZY_DATA.loaded ? fetchAll(() => sb.from('admission_register').select('*').order('serial_no')) : null,
-        fetchAll(() => sb.from('teacher_attendance').select('*')),
-        fetchAll(() => sb.from('holidays').select('*')),
+        dsNeed.teacherAttendance ? fetchAll(() => sb.from('teacher_attendance').select('*')) : null,
+        dsNeed.holidays ? fetchAll(() => sb.from('holidays').select('*')) : null,
         // Class Logins: one login per class, used by teachers on a shared class
         // device (no real Supabase Auth session — see class_login_verify etc.).
         // The owner reads this table directly; only the RPCs can write to it.
@@ -3965,19 +4022,22 @@ async function loadAllData() {
     // Request(s) failed mid-flight (signal dropped just now) — same fallback.
     await offlineCacheRestore(); renderOfflineBanner(); return;
   }
-  DATA.students = s.data || [];
-  DATA.feePayments = fp.data || [];
-  if (DATA.feePayments.length) setFeeInstOk('installments' in DATA.feePayments[0]); else probeFeeInstallments();
+  if (s) DATA.students = s.data || [];
+  if (fp) {
+    DATA.feePayments = fp.data || [];
+    if (DATA.feePayments.length) setFeeInstOk('installments' in DATA.feePayments[0]); else probeFeeInstallments();
+  }
   probeFeeColumns();
-  DATA.teachers = tc.data || [];
-  DATA.salaryPayments = sp.data || [];
-  DATA.transactions = tx.data || [];
+  if (tc) DATA.teachers = tc.data || [];
+  if (sp) DATA.salaryPayments = sp.data || [];
+  if (tx) DATA.transactions = tx.data || [];
   if (ar) DATA.admissionRegister = ar.data || [];   // null = deferred: keep what the offline cache already restored
-  DATA.teacherAttendance = ta.data || [];
-  DATA.holidays = hd.data || [];
+  if (ta) DATA.teacherAttendance = ta.data || [];
+  if (hd) DATA.holidays = hd.data || [];
   if (cl) DATA.classLogins = cl.data || [];
   DATA.studentAttendance = sa.data || [];
   CACHE_UNAVAILABLE = false; // fresh data straight from the server — definitely real
+  DS_KEYS.forEach(k => { DS_FRESH[k] = !!dsNeed[k]; });   // fetched now = fresh; the rest are stale until their tab opens
   await offlineCacheStore();
   renderOfflineBanner();
   flushSyncQueue();
@@ -24620,6 +24680,41 @@ function renderClassPortalDiaryEntry(subject) {
   guard('openClassLogins', { screen: true, tab: () => 'classLogins' });
   ['openGlobalSearch', 'openAttendanceHub', 'openNewAdmission', 'submitNewAdmission', 'openFullRecord',
    'syncRegisterFromStudent', 'exportFullBackupJSON'].forEach(n => guard(n, {}));
+})();
+
+// ---- Tab-wise data guards: opening a tab downloads only the tables that tab still needs (once; stale ones again).
+// With a saved copy on screen the tab opens instantly and refreshes quietly; with nothing cached a short "Loading…" shows.
+(function installTabDataGuards() {
+  const spinner = () => { const m = document.getElementById('main'); if (m) m.innerHTML = `<div class="card" style="margin:16px;text-align:center;opacity:.8;">${esc(LANG === 'ur' ? 'لوڈ ہو رہا ہے…' : 'Loading…')}</div>`; };
+  function wrapTab(name, tabOf) {
+    const orig = window[name];
+    if (typeof orig !== 'function') return;
+    window[name] = function (...args) {
+      const tab = tabOf(...args);
+      const miss = dsMissing(dsForTab(tab));
+      if (!miss.length || !navigator.onLine) return orig.apply(this, args);
+      if (miss.every(k => DATA[k] && DATA[k].length)) {
+        const r = orig.apply(this, args);
+        dsEnsure(miss).then(() => { if (TAB === tab) { try { safeRenderTab(); } catch (e) {} } });
+        return r;
+      }
+      TAB = tab; try { renderNav(); renderSidebar(); } catch (e) {}
+      spinner();
+      return dsEnsure(miss).then(() => { if (TAB !== tab) return; return orig.apply(this, args); });
+    };
+  }
+  wrapTab('setTab', k => k);
+  wrapTab('openTeacherRegister', () => 'teacherRegister');
+  // Anything that reads every table (search, full record, backups) first makes sure none is missing or stale.
+  ['openGlobalSearch', 'openFullRecord', 'exportFullBackupJSON', 'exportBackup'].forEach(name => {
+    const orig = window[name];
+    if (typeof orig !== 'function') return;
+    window[name] = function (...args) {
+      const miss = dsMissing(DS_KEYS);
+      if (!miss.length || !navigator.onLine) return orig.apply(this, args);
+      return dsEnsure(miss).then(() => orig.apply(this, args));
+    };
+  });
 })();
 
 boot();
