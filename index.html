@@ -2948,6 +2948,13 @@ function logActivity(table, action, payload, id, baseRow, logNote) {
 }
 
 async function offlineWrite({ table, action, payload, id, onConflict, baseRow, run, optimisticApply, logNote }) {
+  // Always store the standard class name (so "5", "Five", "Class 5" all become "5th") — the Class Portal matches on it.
+  try {
+    if (payload && !Array.isArray(payload) && typeof canonClass === 'function') {
+      if (table === 'students' && typeof payload.class_name === 'string') { const c = canonClass(payload.class_name); if (c) payload.class_name = c; }
+      if (table === 'admission_register' && typeof payload.class_admitted === 'string') { const c = canonClass(payload.class_admitted); if (c) payload.class_admitted = c; }
+    }
+  } catch (e) {}
   optimisticApply();
   bumpIdx();
   logActivity(table, action, payload, id, baseRow, logNote);
@@ -5277,7 +5284,7 @@ function openAlertsModal() {
           <div class="nm">${a.icon} ${esc(LANG === 'ur' ? a.ur : a.en)}</div>
         </div>`).join('')
     : `<div class="empty">${esc(LANG === 'ur' ? 'فی الحال کوئی اہم الرٹ نہیں۔' : 'No important alerts right now.')}</div>`;
-  showModal(LANG === 'ur' ? 'اہم الرٹس' : 'Important Alerts', `<div class="list-card">${body}</div>`);
+  showModal(LANG === 'ur' ? 'اہم الرٹس' : 'Important Alerts', `<div class="list-card">${body}</div><button class="btn-primary" style="width:100%;margin-top:10px;" onclick="openParentAlerts()">📩 ${esc(qt('Message parents', 'والدین کو پیغام'))}</button>`);
 }
 
 function tplSuggestions() {
@@ -14264,6 +14271,7 @@ function tplReports() {
   const stfNoteHtml = !D.stfOk ? `<div style="font-size:11px;opacity:.65;padding:6px 14px;">${esc(qt('Staff advance figures are not available yet (offline or not set up).', 'عملے کے ایڈوانس کے اعداد ابھی دستیاب نہیں (آف لائن یا سیٹ اپ نہیں)۔'))}</div>` : '';
   return `
     <div style="padding-top:16px;">
+      <button class="btn-ghost" style="width:100%;margin-bottom:12px;" onclick="openParentAlerts()">📩 ${esc(qt('Parent Alerts (fees, absence, results)', 'والدین کو اطلاع (فیس، غیر حاضری، نتیجہ)'))}</button>
       <button class="btn-ghost" style="width:100%;margin-bottom:12px;" onclick="openExamAnalysis()">📊 ${esc(qt('Exam Analysis (class & subject results)', 'امتحانی تجزیہ (جماعت اور مضمون وار نتائج)'))}</button>
       <div class="section-title" style="margin-top:0;">${esc(qt('Report period', 'رپورٹ کی مدت'))}</div>
       <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;">
@@ -25515,6 +25523,206 @@ function rolesTurnOff() {
   window.logOut = async function (...args) { try { sessionStorage.removeItem('role_active_' + roleUid()); } catch (e) {} roleHideLock(); return origLogOut.apply(this, args); };
 })();
 
+
+// ===================== PARENT ALERTS (absence + result messages to parents, one-tap queue) =====================
+// Fee reminders already have their own queue (openFeeRequestReminders). This adds the same one-by-one flow for
+// today's absentees and for exam results, and puts all three behind one screen. Messages open the phone's own
+// Messages app pre-filled (sms: link, sent from the school's SIM) — the app cannot send in the background without a
+// paid SMS/WhatsApp gateway, so the person at the desk taps Send for each parent. "Send next" keeps that to one tap.
+const PA = { kind: '', title: '', items: [], pos: 0, sent: {}, cls: '', classes: null, label: '' };
+const paSchool = () => (CURRENT_PROFILE && CURRENT_PROFILE.school_name) ? CURRENT_PROFILE.school_name : '';
+const paCanFees = () => !roleOn() || ['principal', 'accountant'].includes(roleActive());
+
+function openParentAlerts() {
+  const sum = (typeof todayStudentAttendanceSummary === 'function') ? todayStudentAttendanceSummary() : { absent: 0 };
+  const btn = (fn, icon, en, ur, sub) => `<button class="btn-ghost" style="width:100%;margin-bottom:10px;text-align:start;" onclick="${fn}">
+      <div style="font-weight:700;">${icon} ${esc(qt(en, ur))}</div><div style="font-size:11px;opacity:.65;font-weight:400;margin-top:2px;">${esc(sub)}</div></button>`;
+  showModal(qt('Parent Alerts', 'والدین کو اطلاع'), `
+    <p style="font-size:13px;opacity:.8;margin:0 0 12px;">${esc(qt('Send fee, absence and result messages to parents one after another. Each opens your Messages app ready to send — just tap Send.', 'فیس، غیر حاضری اور نتیجے کے پیغامات والدین کو ایک کے بعد ایک بھیجیں۔ ہر پیغام آپ کی میسجز ایپ میں تیار کھلتا ہے — بس Send دبائیں۔'))}</p>
+    ${paCanFees() ? btn('closeModal();openFeeRequestReminders()', '💰', 'Fees due', 'بقایا فیس', qt('Parents with unpaid fees', 'جن کی فیس باقی ہے')) : ''}
+    ${btn('paOpenAbsent()', '📩', 'Absent today', 'آج غیر حاضر', qt(sum.absent + ' absent in today\'s attendance', 'آج کی حاضری میں ' + sum.absent + ' غیر حاضر'))}
+    ${btn('paOpenResultPick()', '📊', 'Exam results', 'امتحانی نتیجہ', qt('Result message for every student of a class', 'کلاس کے ہر طالب علم کا نتیجہ'))}`);
+}
+
+function paStart(kind, title, items) { PA.kind = kind; PA.title = title; PA.items = items; PA.pos = 0; PA.sent = {}; paRender(); }
+function paRender() {
+  const withPhone = PA.items.filter(i => i.contact && !PA.sent[i.key]);
+  const nextI = withPhone[0];
+  const done = PA.items.filter(i => PA.sent[i.key]).length;
+  const rows = PA.items.length ? PA.items.map(i => `<div class="list-row" style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
+      <div style="min-width:0;"><div class="nm">${esc(i.name)}${PA.sent[i.key] ? ' ✓' : ''}</div><div class="sub">${esc(i.sub || '')}${i.contact ? '' : ' · ' + esc(qt('no number', 'نمبر نہیں'))}</div></div>
+      ${i.contact ? `<button class="print-btn" onclick="paSend('${escJs(i.key)}')">💬</button>` : ''}</div>`).join('')
+    : `<div class="empty">${esc(qt('Nothing to send.', 'بھیجنے کے لیے کچھ نہیں۔'))}</div>`;
+  showModal(PA.title, `
+    <div style="font-weight:700;margin:4px 0 8px;">${esc(qt('Total', 'کل'))}: ${PA.items.length} · ${esc(qt('Sent', 'بھیجے گئے'))}: ${done}</div>
+    ${nextI ? `<button class="btn-primary" style="width:100%;margin-bottom:10px;" onclick="paNext()">▶ ${esc(qt('Send next', 'اگلا بھیجیں'))}: ${esc(nextI.name)} (${withPhone.length} ${esc(qt('left', 'باقی'))})</button>` : ''}
+    <div class="list-card">${rows}</div>
+    <button class="btn-ghost" style="width:100%;margin-top:10px;" onclick="openParentAlerts()">${esc(qt('Back', 'واپس'))}</button>`);
+}
+function paSend(key) { const i = PA.items.find(x => x.key === key); if (!i) return; PA.sent[key] = 1; paRender(); openFatherWhatsapp(i.contact, i.msg); }
+function paNext() { const i = PA.items.find(x => x.contact && !PA.sent[x.key]); if (i) paSend(i.key); }
+
+// ---- absent today ----
+function paOpenAbsent() {
+  const map = todayStudentAttendanceStatuses(), school = paSchool();
+  const items = DATA.students.filter(s => s.status !== 'inactive').filter(s => { const r = map[s.id]; return r && (r.am === 'absent' || r.pm === 'absent'); })
+    .sort((a, b) => String(a.class_name).localeCompare(String(b.class_name), undefined, { numeric: true }) || String(a.name).localeCompare(String(b.name)))
+    .map(s => ({ key: 'a' + s.id, name: s.name, sub: s.class_name || '', contact: s.contact || '',
+      msg: `${fmtDate(todayISO())}: محترم سرپرست، آپ کا بچہ ${studentNameUrdu(s)} آج اسکول میں غیر حاضر ہے۔ براہ کرم اسکول سے رابطہ کریں۔${school ? '\n' + school : ''}` }));
+  paStart('absent', qt('Absent today', 'آج غیر حاضر'), items);
+}
+
+// ---- exam results ----
+async function paOpenResultPick() {
+  showModal(qt('Exam results', 'امتحانی نتیجہ'), '<div class="empty" style="padding:16px 0;">…</div>');
+  try { exaInit(); const src = await exaLoadMarksSheet(); PA.classes = src.classes; PA.label = src.label; } catch (e) { PA.classes = []; }
+  const list = PA.classes || [];
+  showModal(qt('Exam results', 'امتحانی نتیجہ'), list.length ? `
+    <p style="font-size:13px;opacity:.8;margin:0 0 10px;">${esc(qt('Choose a class (from the Marks Sheet).', 'کلاس چنیں (مارکس شیٹ سے)۔'))}</p>
+    ${list.map((c, k) => `<button class="btn-ghost" style="width:100%;margin-bottom:8px;" onclick="paOpenResult(${k})">${esc(c.cls)} · ${c.students.length}</button>`).join('')}
+    <button class="btn-ghost" style="width:100%;margin-top:6px;" onclick="openParentAlerts()">${esc(qt('Back', 'واپس'))}</button>`
+    : `<p style="font-size:13px;">${esc(qt('No marks entered in the Marks Sheet yet.', 'مارکس شیٹ میں ابھی کوئی نمبر درج نہیں۔'))}</p>
+       <button class="btn-ghost" style="width:100%;" onclick="openParentAlerts()">${esc(qt('Back', 'واپس'))}</button>`);
+}
+function paOpenResult(k) {
+  const c = (PA.classes || [])[k]; if (!c) return;
+  const r = exaCompute(c), school = paSchool();
+  const pool = DATA.students.filter(s => s.status !== 'inactive');
+  const find = x => pool.find(s => normName(s.name) === normName(x.name) && (!x.father || !s.father_name || normName(s.father_name) === normName(x.father)))
+    || pool.find(s => s.class_name === c.cls && normName(s.name) === normName(x.name));
+  const items = r.rows.slice().sort((a, b) => a.pos - b.pos).map((x, n) => {
+    const st = find(x);
+    const g = x.pass ? exaGrade(x.pct) : 'F';
+    const failed = x.failedSubj && x.failedSubj.length ? ` (${x.failedSubj.join('، ')})` : '';
+    return { key: 'r' + n, name: x.name, sub: `${c.cls} · ${exaPct(x.pct)} · ${x.pass ? qt('Pass', 'پاس') : qt('Fail', 'فیل')}`, contact: st ? st.contact || '' : '',
+      msg: `محترم سرپرست، ${st ? studentNameUrdu(st) : x.name} کا نتیجہ (${c.cls}، ${PA.label}): کل نمبر ${x.obt}/${x.poss}، ${exaPct(x.pct)}، گریڈ ${g}، پوزیشن ${x.pos}۔ نتیجہ: ${x.pass ? 'پاس' : 'فیل'}${x.pass ? '' : failed}۔${school ? '\n' + school : ''}` };
+  });
+  paStart('result', qt('Results', 'نتائج') + ' · ' + c.cls, items);
+}
+
+// ===================== ONE STUDENT LIST EVERYWHERE (class-name cleanup + auto roster sync) =====================
+// Students can be entered in several places: Students (fees), Admission Register, Marks Sheet and the Class Portal.
+// The Class Portal finds its students by the exact class name, so "5", "Five", "Class 5" or "5th " used to be missed.
+// 1) canonClass() turns any spelling into the standard name (Nursery, KG, 1st … 12th). It is applied on every save
+//    of a student / register entry, and once over existing records.
+// 2) rosterSync() then makes sure a person entered in one place also exists in the others (matched by name + father's
+//    name): Register / Marks Sheet -> Students (so fees + Class Portal see them), Students -> Marks Sheet. Students
+//    added from the Class Portal already land in Students, so every screen sees them after this runs.
+// It runs automatically after data loads and after a Marks Sheet student is added. Each item is copied only once
+// (remembered on this device), so a student you deliberately delete from one place does not keep coming back.
+const CANON_WORDS = { one:1, two:2, three:3, four:4, five:5, six:6, seven:7, eight:8, nine:9, ten:10, eleven:11, twelve:12,
+  first:1, second:2, third:3, fourth:4, fifth:5, sixth:6, seventh:7, eighth:8, ninth:9, tenth:10, eleventh:11, twelfth:12,
+  i:1, ii:2, iii:3, iv:4, v:5, vi:6, vii:7, viii:8, ix:9, x:10, xi:11, xii:12 };
+function canonClass(raw) {
+  const orig = String(raw == null ? '' : raw).trim(); if (!orig) return '';
+  let s = orig.toLowerCase().replace(/[._\-\/]+/g, ' ').replace(/\s+/g, ' ').trim();
+  s = s.replace(/^(class|grade|std|standard|cls)\s+/, '').replace(/\s+(class|grade)$/, '').trim();
+  if (/^(nursery|nur|pre ?nursery|playgroup|play group)$/.test(s)) return 'Nursery';
+  if (/^(kg|k g|kinder ?garten|prep|preparatory|kg1|kg 1)$/.test(s)) return 'KG';
+  let n = null; const m = s.match(/^(\d{1,2})\s*(st|nd|rd|th)?$/);
+  if (m) n = Number(m[1]); else if (CANON_WORDS[s]) n = CANON_WORDS[s];
+  if (n >= 1 && n <= 12) return CLASS_OPTIONS[n + 1];   // CLASS_OPTIONS: Nursery, KG, 1st …
+  return orig;
+}
+
+const RS = { busy: false, last: 0 };
+const rsDoneKey = () => 'rosterSynced_v1_' + (CURRENT_USER ? CURRENT_USER.id : 'x');
+const rsDone = () => { try { return new Set(JSON.parse(localStorage.getItem(rsDoneKey()) || '[]')); } catch (e) { return new Set(); } };
+const rsSaveDone = set => { try { localStorage.setItem(rsDoneKey(), JSON.stringify([...set].slice(-20000))); } catch (e) {} };
+const rsNameKey = (n, f) => normName(n) + '|' + normName(f);
+
+async function rosterSync(force) {
+  if (RS.busy || !CURRENT_USER || !navigator.onLine) return;
+  if (typeof roleOn === 'function' && roleOn() && !roleActive()) return;           // locked screen
+  if (!force && Date.now() - RS.last < 60000) return;
+  RS.busy = true;
+  let changed = false;
+  try {
+    const done = rsDone();
+    // 1) standard class names on existing students + register entries
+    for (const s of DATA.students.slice()) {
+      const c = canonClass(s.class_name);
+      if (c && c !== s.class_name && CLASS_OPTIONS.includes(c)) {
+        const r = await offlineUpdateStudentCore(s.id, { class_name: c }); if (!r.error) changed = true;
+      }
+    }
+    for (const r of DATA.admissionRegister.slice()) {
+      const c = canonClass(r.class_admitted);
+      if (c && c !== r.class_admitted && CLASS_OPTIONS.includes(c)) {
+        const patch = { class_admitted: c };
+        const res = await offlineWrite({ table: 'admission_register', action: 'update', payload: patch, id: r.id, baseRow: r,
+          run: () => sb.from('admission_register').update(patch).eq('id', r.id), optimisticApply: () => { Object.assign(r, patch); idbPutRow('admission_register', r); } });
+        if (!res.error) changed = true;
+      }
+    }
+    // helpers
+    const byKey = new Map(), byName = new Map();
+    const index = s => { byKey.set(rsNameKey(s.name, s.father_name), s); const k = canonClass(s.class_name) + '|' + normName(s.name); if (!byName.has(k)) byName.set(k, s); };
+    DATA.students.forEach(index);
+    const findStudent = (name, father, cls) => byKey.get(rsNameKey(name, father)) || ((!father) && byName.get(canonClass(cls) + '|' + normName(name))) || null;
+    const makeStudent = async (name, father, cls, extra) => {
+      const p = Object.assign({ id: crypto.randomUUID ? crypto.randomUUID() : `local-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, owner_id: CURRENT_USER.id,
+        name, father_name: father || '', class_name: canonClass(cls) || cls, student_type: 'paying', admission_date: todayISO(),
+        monthly_fee: setupDefaultFee(canonClass(cls) || cls) || 0, contact: '', status: 'active' }, extra || {});
+      const r = await offlineWrite({ table: 'students', action: 'insert', payload: p, id: p.id, baseRow: null, run: () => sb.from('students').insert(p),
+        optimisticApply: () => { DATA.students.push(p); idbPutRow('students', p); } });
+      if (r.error) return null;
+      index(p); changed = true; return p;
+    };
+    // 2) Admission Register -> Students
+    for (const r of DATA.admissionRegister.slice()) {
+      const dk = 'reg:' + r.id;
+      if (done.has(dk) || !r.student_name) continue;
+      if (r.student_id && DATA.students.some(s => s.id === r.student_id)) { done.add(dk); continue; }
+      let st = findStudent(r.student_name, r.father_name, r.class_admitted);
+      if (!st) st = await makeStudent(r.student_name, r.father_name, r.class_admitted || '', { name_ur: r.student_name_ur || null, admission_date: r.admission_date || todayISO() });
+      if (!st) continue;
+      if (!r.student_id) {
+        const patch = { student_id: st.id };
+        await offlineWrite({ table: 'admission_register', action: 'update', payload: patch, id: r.id, baseRow: r,
+          run: () => sb.from('admission_register').update(patch).eq('id', r.id), optimisticApply: () => { Object.assign(r, patch); idbPutRow('admission_register', r); } });
+      }
+      done.add(dk);
+    }
+    // 3) Marks Sheet <-> Students
+    try { await loadMarksSheetData(); } catch (e) {}
+    const yr = msAcademicYear || 'Unspecified';
+    let msChanged = false;
+    for (const key of Object.keys(msStudents || {})) {
+      for (const ms of (msStudents[key] || [])) {
+        const dk = 'ms:' + yr + ':' + ms.id;
+        if (done.has(dk) || !ms.name) continue;
+        const st = findStudent(ms.name, ms.fatherName, key) || await makeStudent(ms.name, ms.fatherName, key);
+        if (st) { done.add(dk); done.add('tms:' + yr + ':' + st.id); }
+      }
+    }
+    for (const s of DATA.students) {
+      if (s.status === 'inactive') continue;
+      const dk = 'tms:' + yr + ':' + s.id; if (done.has(dk)) continue;
+      const cls = canonClass(s.class_name); if (!cls) continue;
+      const key = Object.keys(msStudents || {}).find(k => canonClass(k) === cls) || cls;
+      const exists = (msStudents[key] || []).some(x => rsNameKey(x.name, x.fatherName) === rsNameKey(s.name, s.father_name));
+      if (!exists) {
+        const id = Math.random().toString(36).substr(2, 9);
+        (msStudents[key] = msStudents[key] || []).push({ id, name: s.name, fatherName: s.father_name || '' });
+        (msMarksData[key] = msMarksData[key] || {})[id] = {};
+        if (!msClasses.includes(key)) msClasses.push(key);
+        msChanged = true;
+      }
+      done.add(dk);
+    }
+    if (msChanged) { try { saveMarksSheetData(); } catch (e) {} }
+    rsSaveDone(done);
+    if (changed || msChanged) { try { renderTab(); } catch (e) {} }
+  } catch (e) { console.warn('rosterSync', e); }
+  finally { RS.busy = false; RS.last = Date.now(); }
+}
+(function () {
+  const origLoad = window.loadAllData;
+  window.loadAllData = async function (...a) { const r = await origLoad.apply(this, a); if (!RS.busy) setTimeout(() => rosterSync(false), 1500); return r; };
+  const origAddMs = window.addMarksSheetStudent;
+  window.addMarksSheetStudent = function (...a) { const r = origAddMs.apply(this, a); setTimeout(() => rosterSync(true), 400); return r; };
+})();
 
 boot();
 
