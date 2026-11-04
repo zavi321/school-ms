@@ -1186,6 +1186,36 @@ body:not(.ur) .qpaper-print .pq-instruction::before{counter-increment:pqq;conten
      ============================================================================ -->
 
 <!-- ============================================================================
+     ONE-TIME SETUP for Visitor Log (guests / parents / vendors at the gate) - run once in the
+     Supabase SQL editor. Safe to re-run. Rows can be added, read and checked-out (out_at), but NOT deleted from the app.
+
+  create table if not exists visitor_log (
+    id uuid primary key default gen_random_uuid(),
+    owner_id uuid not null references auth.users(id) on delete cascade,
+    visitor_name text not null,
+    phone text,
+    id_number text,
+    visitor_type text not null default 'other',
+    purpose text,
+    meet_whom text,
+    persons int not null default 1,
+    vehicle_no text,
+    notes text,
+    in_at timestamptz not null default now(),
+    out_at timestamptz,
+    created_at timestamptz not null default now()
+  );
+  create index if not exists visitor_log_owner_in on visitor_log(owner_id, in_at desc);
+  alter table visitor_log enable row level security;
+  drop policy if exists "visitor_log_select_own" on visitor_log;
+  create policy "visitor_log_select_own" on visitor_log for select using (owner_id = auth.uid());
+  drop policy if exists "visitor_log_insert_own" on visitor_log;
+  create policy "visitor_log_insert_own" on visitor_log for insert with check (owner_id = auth.uid());
+  drop policy if exists "visitor_log_update_own" on visitor_log;
+  create policy "visitor_log_update_own" on visitor_log for update using (owner_id = auth.uid()) with check (owner_id = auth.uid());
+     ============================================================================ -->
+
+<!-- ============================================================================
      ONE-TIME SETUP for Vendors / Suppliers / Agents (payable & receivable) - run once in
      the Supabase SQL editor. Safe to re-run.
 
@@ -2116,8 +2146,10 @@ const FEE_OPT_COLS = ['installments', 'pay_method', 'adjustment', 'adjustment_no
 const FEE_NEW_SQL = "alter table public.fee_payments add column if not exists pay_method text;\nalter table public.fee_payments add column if not exists adjustment numeric default 0;\nalter table public.fee_payments add column if not exists adjustment_note text;\nnotify pgrst, 'reload schema';";
 function feeColMissing(c) { try { return localStorage.getItem('fee_col_missing_' + c) === '1'; } catch (e) { return false; } }
 function feeColSetMissing(c, v) { try { localStorage.setItem('fee_col_missing_' + c, v ? '1' : '0'); } catch (e) {} }
+let _feeColsProbed = false;   // schema probe: once per app open is enough (was repeated on every data refresh)
 async function probeFeeColumns() {
-  if (!navigator.onLine) return;
+  if (!navigator.onLine || _feeColsProbed) return;
+  _feeColsProbed = true;
   probeSalCols();
   for (const c of ['pay_method', 'adjustment', 'adjustment_note']) {
     try {
@@ -2502,6 +2534,16 @@ const TAB_DS = {
   teacherRegister: ['teachers', 'salaryPayments', 'teacherAttendance', 'holidays'],
   finance:         ['students', 'feePayments', 'teachers', 'salaryPayments', 'transactions'],
   reports:         DS_KEYS.slice(),
+  // Screens that never read fees / salaries / transactions: they download only what they really show
+  // (or nothing at all). Everything else sleeps until its own tab is opened.
+  admin:             [],
+  notices:           [],
+  timetable:         ['teachers'],
+  syllabus:          ['students'],
+  datesheet:         ['students'],
+  classLogins:       ['students'],
+  marksSheet:        ['students'],
+  admissionRegister: ['students'],
 };
 const DS_DEFAULT = ['students', 'teachers', 'feePayments'];   // every other tab: just the basic roster
 function dsForTab(tab) { return TAB_DS[tab] || DS_DEFAULT; }
@@ -2894,7 +2936,7 @@ function logActivity(table, action, payload, id, baseRow, logNote) {
   if (!ACTIVITY_LOG_TABLES.has(table)) return;
   if (!CURRENT_USER) return;
   try {
-    const description = describeActivity(table, action, payload, baseRow) + (logNote ? ' — ' + logNote : '');
+    const description = roleTag() + describeActivity(table, action, payload, baseRow) + (logNote ? ' — ' + logNote : '');
     if (!navigator.onLine) { const q = _logqRead(); q.push({ action, table_name: table, description, at: new Date().toLocaleString() }); _logqWrite(q); return; }
     flushActivityQueue();
     sb.from('activity_log').insert({
@@ -3087,7 +3129,7 @@ async function flushSyncQueue() {
   } else { _syncRetryMs = 0; }
   if (conflicts.length) { PENDING_CONFLICTS = conflicts; renderSyncConflictModal(); }
   else {
-    try { if (!(await idbGetAll('sync_queue')).some(x => x.table === 'staff_advance_recoveries')) await stfLoad(); } catch (e) { _logClientError('stfLoad', e); }
+    try { if (!(await idbGetAll('sync_queue')).some(x => x.table === 'staff_advance_recoveries')) { if (STF_TABS.indexOf(TAB) >= 0) await stfLoad(); else STF.loaded = false; } } catch (e) { _logClientError('stfLoad', e); }
     await loadAllData(); if (TAB) safeRenderTab();
     notifyDuplicateReceipts();
     flushActivityQueue();
@@ -3593,7 +3635,7 @@ function srPaintBadges() {
 }
 // Head-only count query (no rows downloaded) — a few hundred bytes per check, and only while the app is visible.
 async function refreshStaffReqCount() {
-  if (!CURRENT_USER || document.hidden || !navigator.onLine) return;
+  if (!CURRENT_USER || document.hidden || !navigator.onLine || TAB !== 'dashboard') return;   // badge is only drawn on the Dashboard
   const { count, error } = await sb.from('staff_att_requests').select('id', { count: 'exact', head: true })
     .eq('owner_id', CURRENT_USER.id).eq('status', 'pending');
   if (error) return;
@@ -4637,7 +4679,7 @@ const SIDE_ICONS = {
 function renderSidebar() {
   const el = document.getElementById('sidebar');
   if (!el) return;
-  const link = (key, label, icon, action, tabMatch) => `
+  const link = (key, label, icon, action, tabMatch) => !roleTabOk(tabMatch || key) ? '' : `
     <button class="side-link ${tabMatch && TAB===tabMatch ? 'active' : ''}" onclick="${action}">
       <span class="side-ic">${icon}</span><span>${esc(label)}</span>
     </button>`;
@@ -4701,7 +4743,7 @@ function renderNav() {
   if (CURRENT_PROFILE && CURRENT_PROFILE.is_admin) tabs.push('admin');
   const _nb = document.getElementById('navbar');
   if (_nb && _nb.children.length) NAV_SCROLL = _nb.scrollLeft;   // remember where the bar was scrolled to
-  _nb.innerHTML = tabs.map(k => `
+  _nb.innerHTML = tabs.filter(roleTabOk).map(k => `
     <button class="${TAB===k?'active':''}" onclick="setTab('${escJs(k)}')">
       ${NAV_ICONS[k]}<span>${k==='timetable' ? (LANG==='ur'?'ٹائم ٹیبل':'Timetable') : k==='datesheet' ? esc(qt('Date Sheet','ڈیٹ شیٹ')) : k==='notices' ? esc(qt('Notices','نوٹس')) : k==='syllabus' ? esc(qt('Syllabus','نصاب')) : esc(t[k] || t.admin)}</span>
     </button>`).join('');
@@ -5718,8 +5760,15 @@ async function submitAddWhitelist() {
 // every time a tool is opened); offline we open that saved copy through srcdoc instead.
 const IDC_CACHE = 'sms-idcard-tools-v1';
 const IDC_FILES = ['id-card-generator.html', 'teacher-id-card-generator.html'];
-async function idcPrefetch() {
+async function idcPrefetch(force) {
   if (!navigator.onLine || !window.caches) return;
+  // Offline copy of the ID-card tools: refreshed at most once a day in the background (not on every app open).
+  // Opening an ID-card tool still forces a refresh. (Online, the tool itself always loads the latest file.)
+  try {
+    const last = Number(localStorage.getItem('idc_prefetch_ts') || 0);
+    if (!force && last && Date.now() - last < 24 * 3600 * 1000) return;
+    localStorage.setItem('idc_prefetch_ts', String(Date.now()));
+  } catch (e) {}
   try {
     const c = await caches.open(IDC_CACHE);
     for (const f of IDC_FILES) {
@@ -5734,7 +5783,7 @@ async function openIdCardTool(file, title) {
   `);
   const fr = document.getElementById('idc-frame');
   if (!fr) return;
-  if (navigator.onLine) { fr.src = file; idcPrefetch(); return; }
+  if (navigator.onLine) { fr.src = file; idcPrefetch(true); return; }
   let html = null;
   try { if (window.caches) { const r = await (await caches.open(IDC_CACHE)).match(file); if (r) html = await r.text(); } } catch (e) {}
   fr.srcdoc = html || `<body style="font-family:sans-serif;padding:28px;text-align:center;color:#555;line-height:1.7;">${esc(qt('This tool is not saved on this phone yet. Open it once while connected to the internet, then it will work offline.', 'یہ ٹول ابھی اس فون میں محفوظ نہیں۔ ایک بار انٹرنیٹ پر کھولیں، پھر یہ آف لائن بھی چلے گا۔'))}</body>`;
@@ -5784,6 +5833,9 @@ function openSettings() {
       <input type="file" id="restore-file-input" accept="application/json" style="display:none;" onchange="handleRestoreFileSelected(this)">
       <button class="btn-ghost" style="width:100%;" onclick="document.getElementById('restore-file-input').click()">⤴ ${LANG==='ur' ? 'بیک اپ سے بحال کریں' : 'Restore from Backup'}</button>
       <div id="restore-msg" style="margin-top:8px;"></div>
+    </div>
+    <div style="margin-top:18px;padding-top:16px;border-top:1px solid var(--line);">
+      <button class="btn-ghost" style="width:100%;" onclick="openRolesSetup()">🔐 ${esc(qt('Staff Roles & PINs', 'اسٹاف رولز اور PIN'))}</button>
     </div>
     <div style="margin-top:18px;padding-top:16px;border-top:1px solid var(--line);">
       <button class="btn-ghost" style="width:100%;" onclick="openActivityLog()">📋 ${LANG==='ur' ? 'سرگرمی لاگ دیکھیں' : 'View Activity Log'}</button>
@@ -6000,6 +6052,7 @@ async function saveDiaryPassword() {
 // never-throws behavior as logActivity().
 function logCustomActivity(description, action, tableName) {
   if (!CURRENT_USER) return;
+  description = roleTag() + description;
   if (!navigator.onLine) { const q = _logqRead(); q.push({ action: action || 'other', table_name: tableName || 'backup', description, at: new Date().toLocaleString() }); _logqWrite(q); return; }
   try {
     sb.from('activity_log').insert({
@@ -8327,6 +8380,149 @@ async function gpSave() {
     <button class="btn-ghost" style="margin-top:8px;" onclick="openGatePass()">${esc(gpL('close'))}</button>`);
 }
 
+// ===================== VISITOR LOG (gate register for guests: parents, vendors, officials) =====================
+// Separate from Gate Pass (which is only for students leaving early / being picked up). Needs the
+// "ONE-TIME SETUP for Visitor Log" SQL (top of this file). Online only, like Gate Pass.
+const VL_L = {
+  en: { title:'Visitor Log', newV:'New Visitor', inside:'Inside now', today:'Today', week:'Last 7 days', search:'Search name, phone, whom to meet…',
+        name:'Visitor name', phone:'Phone', type:'Visitor type', purpose:'Purpose of visit', meet:'Whom to meet', persons:'No. of persons', vehicle:'Vehicle no.',
+        idno:'ID / CNIC (optional)', notes:'Notes', save:'Save entry', saving:'Saving…', needName:'Enter the visitor name.', timeIn:'In', timeOut:'Out',
+        checkout:'Check out', inNow:'Inside', noOut:'No check-out recorded', none:'No visitors yet.', back:'Back', close:'Close', meetPre:'To meet: ',
+        setup:'Visitor log table is not set up yet. Run the one-time SQL "ONE-TIME SETUP for Visitor Log" (top of index.html) in Supabase, then try again.',
+        loadFail:'Could not load visitors: ', total:'Total', min:'min',
+        types:{ parent:'Parent', vendor:'Vendor / Delivery', official:'Official / Inspector', guest:'Guest', other:'Other' },
+        purposes:['Admission enquiry','Meet principal','Meet teacher','Fee / accounts','Delivery','Inspection','Maintenance work'] },
+  ur: { title:'وزیٹر لاگ', newV:'نیا مہمان', inside:'اس وقت اندر', today:'آج', week:'پچھلے 7 دن', search:'نام، فون یا ملاقات والے کا نام لکھیں…',
+        name:'مہمان کا نام', phone:'فون', type:'مہمان کی قسم', purpose:'آنے کی وجہ', meet:'کس سے ملنا ہے', persons:'افراد کی تعداد', vehicle:'گاڑی نمبر',
+        idno:'شناختی کارڈ نمبر (اختیاری)', notes:'نوٹ', save:'اندراج محفوظ کریں', saving:'محفوظ ہو رہا ہے…', needName:'مہمان کا نام لکھیں۔', timeIn:'آمد', timeOut:'روانگی',
+        checkout:'روانگی درج کریں', inNow:'اندر ہے', noOut:'روانگی درج نہیں ہوئی', none:'ابھی کوئی مہمان نہیں۔', back:'واپس', close:'بند کریں', meetPre:'ملاقات: ',
+        setup:'وزیٹر لاگ کا ٹیبل ابھی سیٹ اپ نہیں ہے۔ index.html کے شروع میں دیا گیا "ONE-TIME SETUP for Visitor Log" والا SQL سپابیس میں چلائیں، پھر دوبارہ کوشش کریں۔',
+        loadFail:'وزیٹرز لوڈ نہیں ہو سکے: ', total:'کل', min:'منٹ',
+        types:{ parent:'والدین', vendor:'سپلائر / ڈیلیوری', official:'سرکاری افسر / انسپکٹر', guest:'مہمان', other:'دیگر' },
+        purposes:['داخلے کی معلومات','پرنسپل سے ملاقات','ٹیچر سے ملاقات','فیس / اکاؤنٹس','ڈیلیوری','معائنہ','مرمت کا کام'] }
+};
+const vlL = k => (VL_L[LANG] && VL_L[LANG][k] !== undefined) ? VL_L[LANG][k] : VL_L.en[k];
+let VL = { rows: [], q: '', range: 'today' };
+
+function vlStartOfToday() { const d = new Date(); d.setHours(0, 0, 0, 0); return d; }
+function vlFiltered() {
+  const start = vlStartOfToday(), n = normName(VL.q);
+  return VL.rows.filter(r => {
+    if (VL.range === 'today' && new Date(r.in_at) < start) return false;
+    if (!n) return true;
+    return normName([r.visitor_name, r.phone, r.meet_whom, r.purpose, r.vehicle_no].join(' ')).includes(n);
+  }).sort((a, b) => {
+    const ai = a.out_at ? 1 : 0, bi = b.out_at ? 1 : 0;
+    if (VL.range === 'today' && ai !== bi) return ai - bi;      // people still inside come first
+    return String(b.in_at).localeCompare(String(a.in_at));
+  });
+}
+function vlDuration(r) {
+  if (!r.out_at) return '';
+  const m = Math.max(0, Math.round((new Date(r.out_at) - new Date(r.in_at)) / 60000));
+  return m >= 60 ? Math.floor(m / 60) + 'h ' + (m % 60) + 'm' : m + ' ' + vlL('min');
+}
+function vlListHtml() {
+  const list = vlFiltered(), start = vlStartOfToday();
+  if (!list.length) return `<div class="empty">${esc(vlL('none'))}</div>`;
+  return list.map(r => {
+    const stale = !r.out_at && new Date(r.in_at) < start;
+    const typeLbl = (vlL('types') || {})[r.visitor_type] || '';
+    const status = r.out_at
+      ? `<span style="font-size:12px;opacity:.75;">${esc(vlL('timeOut'))} ${esc(gpTime(r.out_at))} · ${esc(vlDuration(r))}</span>`
+      : stale
+        ? `<span style="font-size:12px;opacity:.6;">${esc(vlL('noOut'))}</span>`
+        : `<button class="btn-primary" style="padding:4px 10px;font-size:12px;" onclick="vlOut('${escJs(r.id)}')">${esc(vlL('checkout'))}</button>`;
+    return `
+    <div style="display:flex;justify-content:space-between;gap:8px;padding:8px 0;border-bottom:1px solid rgba(0,0,0,.08);">
+      <div style="min-width:0;">
+        <div style="font-weight:600;">${esc(r.visitor_name)}${r.persons > 1 ? ` <span style="font-weight:400;opacity:.7;font-size:12px;">×${esc(r.persons)}</span>` : ''}
+          ${typeLbl ? `<span style="font-weight:400;opacity:.7;font-size:12px;">· ${esc(typeLbl)}</span>` : ''}</div>
+        <div style="font-size:12px;opacity:.75;">${esc(gpDate(r.in_at))} · ${esc(vlL('timeIn'))} ${esc(gpTime(r.in_at))}${r.phone ? ` · <a href="tel:${esc(r.phone)}" style="color:inherit;">${esc(r.phone)}</a>` : ''}${r.vehicle_no ? ' · ' + esc(r.vehicle_no) : ''}</div>
+        ${r.meet_whom ? `<div style="font-size:12px;">${esc(vlL('meetPre'))}${esc(r.meet_whom)}</div>` : ''}
+        ${r.purpose ? `<div style="font-size:12px;opacity:.75;">${esc(r.purpose)}</div>` : ''}
+        ${r.notes ? `<div style="font-size:12px;opacity:.6;">${esc(r.notes)}</div>` : ''}
+      </div>
+      <div style="align-self:center;text-align:end;white-space:nowrap;">${status}</div>
+    </div>`;
+  }).join('');
+}
+function vlHeaderHtml() {
+  const start = vlStartOfToday();
+  const insideN = VL.rows.filter(r => !r.out_at && new Date(r.in_at) >= start).length;
+  const todayN = VL.rows.filter(r => new Date(r.in_at) >= start).length;
+  const tab = (k, lbl) => `<button class="btn-ghost" style="flex:1;${VL.range === k ? 'font-weight:700;border-color:var(--gold);' : ''}" onclick="vlSetRange('${k}')">${esc(lbl)}</button>`;
+  return `
+    <div style="display:flex;gap:8px;margin-bottom:10px;">
+      <div class="greenbox" style="flex:1;text-align:center;"><div class="lbl">${esc(vlL('inside'))}</div><div class="val" style="font-size:22px;">${insideN}</div></div>
+      <div class="greenbox" style="flex:1;text-align:center;"><div class="lbl">${esc(vlL('today'))}</div><div class="val" style="font-size:22px;">${todayN}</div></div>
+    </div>
+    <button class="btn-primary" onclick="vlNew()">＋ ${esc(vlL('newV'))}</button>
+    <div style="display:flex;gap:8px;margin:12px 0 8px;">${tab('today', vlL('today'))}${tab('week', vlL('week'))}</div>
+    <input id="vl-q" autocomplete="off" placeholder="${esc(vlL('search'))}" value="${esc(VL.q)}" oninput="VL.q=this.value; vlRefreshList();" style="width:100%;margin-bottom:6px;">`;
+}
+function vlShow() {
+  showModal(vlL('title'), `${vlHeaderHtml()}<div id="vl-list">${vlListHtml()}</div>`);
+}
+function vlRefreshList() { const el = document.getElementById('vl-list'); if (el) el.innerHTML = vlListHtml(); }
+function vlSetRange(k) { VL.range = k; vlShow(); }
+
+async function openVisitorLog() {
+  showModal(vlL('title'), `<div class="empty" style="padding:16px 0;">…</div>`);
+  const since = new Date(Date.now() - 7 * 86400000).toISOString();
+  const { data, error } = await fetchAll(() => sb.from('visitor_log').select('*').gte('in_at', since).order('in_at', { ascending: false }));
+  if (error) {
+    const msg = String(error.message || '');
+    const missing = error.code === '42P01' || (/visitor_log/i.test(msg) && /does not exist|schema cache|relation/i.test(msg));
+    showModal(vlL('title'), `<div class="empty" style="padding:16px 0;">${esc(missing ? vlL('setup') : vlL('loadFail') + msg)}</div><button class="btn-ghost" onclick="closeModal()">${esc(vlL('close'))}</button>`);
+    return;
+  }
+  VL.rows = data || [];
+  vlShow();
+}
+
+function vlNew() {
+  const types = Object.entries(vlL('types')).map(([k, v]) => `<option value="${esc(k)}">${esc(v)}</option>`).join('');
+  const purposes = vlL('purposes').map(x => `<option value="${esc(x)}">`).join('');
+  showModal(vlL('newV'), `
+    <label><span>${esc(vlL('name'))} *</span><input id="vl-name" autocomplete="off"></label>
+    <div class="row2">
+      <label style="margin-bottom:0;"><span>${esc(vlL('phone'))}</span><input id="vl-phone" type="tel" autocomplete="off"></label>
+      <label style="margin-bottom:0;"><span>${esc(vlL('type'))}</span><select id="vl-type">${types}</select></label>
+    </div>
+    <label style="margin-top:8px;"><span>${esc(vlL('purpose'))}</span><input id="vl-purpose" list="vl-purposes" autocomplete="off"><datalist id="vl-purposes">${purposes}</datalist></label>
+    <label><span>${esc(vlL('meet'))}</span><input id="vl-meet" autocomplete="off"></label>
+    <div class="row2">
+      <label style="margin-bottom:0;"><span>${esc(vlL('persons'))}</span><input id="vl-persons" type="number" min="1" value="1"></label>
+      <label style="margin-bottom:0;"><span>${esc(vlL('vehicle'))}</span><input id="vl-vehicle" autocomplete="off"></label>
+    </div>
+    <label style="margin-top:8px;"><span>${esc(vlL('idno'))}</span><input id="vl-idno" autocomplete="off"></label>
+    <label><span>${esc(vlL('notes'))}</span><input id="vl-notes" autocomplete="off"></label>
+    <button id="vl-save" class="btn-primary" onclick="vlSave()">💾 ${esc(vlL('save'))}</button>
+    <button class="btn-ghost" style="margin-top:8px;" onclick="vlShow()">${esc(vlL('back'))}</button>`);
+}
+async function vlSave() {
+  const v = id => (document.getElementById(id).value || '').trim();
+  if (!v('vl-name')) { alert(vlL('needName')); return; }
+  const btn = document.getElementById('vl-save'); btn.disabled = true; btn.textContent = vlL('saving');
+  const row = { owner_id: CURRENT_USER.id, visitor_name: v('vl-name'), phone: v('vl-phone') || null, visitor_type: v('vl-type') || 'other',
+    purpose: v('vl-purpose') || null, meet_whom: v('vl-meet') || null, persons: Math.max(1, parseInt(v('vl-persons'), 10) || 1),
+    vehicle_no: v('vl-vehicle') || null, id_number: v('vl-idno') || null, notes: v('vl-notes') || null };
+  const { data, error } = await sb.from('visitor_log').insert(row).select().single();
+  if (error) { btn.disabled = false; btn.textContent = '💾 ' + vlL('save'); reportSaveError(error); return; }
+  VL.rows.unshift(data);
+  VL.range = 'today'; VL.q = '';
+  vlShow();
+}
+async function vlOut(id) {
+  const r = VL.rows.find(x => String(x.id) === String(id)); if (!r || r.out_at) return;
+  const outAt = new Date().toISOString();
+  const { error } = await sb.from('visitor_log').update({ out_at: outAt }).eq('id', id).eq('owner_id', CURRENT_USER.id);
+  if (error) { reportSaveError(error); return; }
+  r.out_at = outAt;
+  vlShow();
+}
+
 // ===================== PARENT COMPLAINTS / SUGGESTIONS (tracked tickets) =====================
 // Separate from parent_messages: every item is a numbered ticket with a status
 // (New -> Seen -> In progress -> Resolved) and a visible history. The parent picks Principal or
@@ -8669,6 +8865,9 @@ function tplStudents() {
         <button class="icon-btn" title="${esc(gpL('title'))}" onclick="openGatePass()">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#E4C765" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4H5a1 1 0 0 0-1 1v14a1 1 0 0 0 1 1h4"/><path d="M16 8l4 4-4 4M20 12H10"/></svg>
         </button>
+        <button class="icon-btn" title="${esc(vlL('title'))}" onclick="openVisitorLog()">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#E4C765" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><path d="M17 11h5M19.5 8.5v5"/></svg>
+        </button>
         <button class="icon-btn" title="${esc(gmL('title'))}" onclick="openGenerateFees()" style="background:var(--gold);">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#0F2740" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4M12 13v5M9.5 15.5h5"/></svg>
         </button>
@@ -8779,6 +8978,7 @@ function tplStudentsResults() {
               🎓 Promote All (New Year)
             </button>
           </div>
+          <button class="btn-ghost" style="width:100%;margin-bottom:12px;" onclick="openPromoteSelect()">🎯 ${esc(qt('Select & Promote (class-wise, hold back students)', 'منتخب طلبہ کی پروموشن (جماعت وار)'))}</button>
           ${lfBannerHtml()}
           <button class="btn-ghost" style="width:100%;margin-bottom:12px;" onclick="openConcessionReport()">🏷 ${esc(t.concReport)}</button>`;
       })()}
@@ -8886,6 +9086,7 @@ async function runPromoteAllStudents() {
   if (_promoteBusy) return;
   const typed = ((document.getElementById('promo-typed') || {}).value || '').trim().toUpperCase();
   if (typed !== 'PROMOTE') { alert(qt('Type PROMOTE in the box to confirm.', 'تصدیق کے لیے خانے میں PROMOTE لکھیں۔')); return; }
+  if (_psDoneIds().size && !confirm(qt('Some students were already promoted with Select & Promote. Promote All will move them up ANOTHER class.\n\nContinue anyway?', 'کچھ طلبہ Select & Promote سے پروموٹ ہو چکے ہیں۔ Promote All انہیں ایک اور جماعت اوپر لے جائے گا۔\n\nپھر بھی جاری رکھیں؟'))) return;
   const _pu = _promoUndoRead();
   if (_pu && _pu.ts && (Date.now() - _pu.ts) < 150 * 86400000 &&
       !confirm(qt('Promote All was already done recently (' + new Date(_pu.ts).toLocaleDateString() + '). Doing it again will move every student up ANOTHER class.\n\nContinue anyway?', 'Promote All حال ہی میں ہو چکا ہے (' + new Date(_pu.ts).toLocaleDateString() + ')۔ دوبارہ کرنے سے ہر طالب علم ایک اور جماعت اوپر چلا جائے گا۔\n\nپھر بھی جاری رکھیں؟'))) return;
@@ -8931,6 +9132,114 @@ async function _runPromoteAllStudentsInner() {
   closeModal();
   await loadAllData();
   renderTab();
+}
+
+// ---------------- Select & Promote (class-wise promotion: hold back some students, undo each step) ----------------
+// Promote All moves everybody. This lets the school promote ONE class at a time, leaving failed / held-back
+// students in their class. Students already promoted this year (here or by Promote All) are locked so they can
+// never be moved twice, whatever order the classes are done in.
+let PSEL = { cls: '' };
+function _psStackKey() { return 'promote_sel_stack_' + (CURRENT_USER ? CURRENT_USER.id : ''); }
+function _psStackRead() { try { const a = JSON.parse(localStorage.getItem(_psStackKey()) || '[]'); return Array.isArray(a) ? a : []; } catch (e) { return []; } }
+function _psStackWrite(a) { try { localStorage.setItem(_psStackKey(), JSON.stringify(a.slice(-30))); } catch (e) {} }
+// ids promoted within the last 150 days (the same window Promote All uses to warn about a repeat)
+function _psDoneIds() {
+  const lim = Date.now() - 150 * 86400000, s = new Set();
+  _psStackRead().forEach(e => { if (e && e.ts > lim && e.map) Object.keys(e.map).forEach(id => s.add(id)); });
+  const pa = _promoUndoRead();
+  if (pa && pa.ts > lim && pa.map) Object.keys(pa.map).forEach(id => s.add(id));
+  return s;
+}
+function openPromoteSelect(cls) {
+  const active = DATA.students.filter(s => s.status !== 'inactive');
+  const classes = CLASS_OPTIONS.filter(c => active.some(s => s.class_name === c));
+  if (!classes.length) { alert(qt('No active students found.', 'کوئی فعال طالب علم نہیں ملا۔')); return; }
+  if (!cls || !classes.includes(cls)) cls = (PSEL.cls && classes.includes(PSEL.cls)) ? PSEL.cls : classes[0];
+  PSEL.cls = cls;
+  const next = CLASS_OPTIONS[CLASS_OPTIONS.indexOf(cls) + 1];
+  const done = _psDoneIds();
+  const list = active.filter(s => s.class_name === cls).sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+  const stack = _psStackRead();
+  const last = stack[stack.length - 1];
+  const opts = classes.map(c => `<option value="${esc(c)}" ${c === cls ? 'selected' : ''}>${esc(c)} (${active.filter(s => s.class_name === c).length})</option>`).join('');
+  const rows = list.map(s => {
+    const isDone = done.has(String(s.id));
+    const bal = (typeof studentBalance === 'function') ? Number(studentBalance(s.id)) || 0 : 0;
+    return `<label style="display:flex;gap:8px;align-items:center;padding:7px 0;border-bottom:1px solid rgba(0,0,0,.08);${isDone ? 'opacity:.5;' : ''}">
+      <input type="checkbox" class="ps-chk" value="${esc(s.id)}" data-due="${bal > 0 ? 1 : 0}" style="width:auto;" ${isDone ? 'disabled' : 'checked'} onchange="psCount()">
+      <span style="flex:1;min-width:0;">${esc(s.name)}${s.father_name ? ` <span style="font-size:12px;opacity:.65;">· ${esc(s.father_name)}</span>` : ''}</span>
+      ${isDone ? `<span style="font-size:11px;">✓ ${esc(qt('already promoted', 'پروموٹ ہو چکا'))}</span>` : (bal > 0 ? `<span style="font-size:11px;color:var(--rust);">₨${esc(fmt(bal))} ${esc(qt('due', 'باقی'))}</span>` : '')}
+    </label>`;
+  }).join('');
+  showModal(qt('Select & Promote', 'منتخب طلبہ کی پروموشن'), `
+    <label><span>${esc(qt('Class', 'جماعت'))}</span><select onchange="openPromoteSelect(this.value)">${opts}</select></label>
+    ${next ? `
+      <p style="font-size:13px;margin:6px 0;">${esc(cls)} → <b>${esc(next)}</b>. ${esc(qt('Untick students who should stay in', 'جو طلبہ نہیں بڑھیں گے ان کا نشان ہٹا دیں، وہ'))} ${esc(cls)}${esc(qt('.', ' میں ہی رہیں گے۔'))}</p>
+      <div style="display:flex;gap:8px;margin-bottom:6px;">
+        <button class="btn-ghost" style="flex:1;font-size:12px;" onclick="psSetAll(true)">${esc(qt('Select all', 'سب منتخب'))}</button>
+        <button class="btn-ghost" style="flex:1;font-size:12px;" onclick="psSetAll(false)">${esc(qt('Clear', 'سب ہٹائیں'))}</button>
+        <button class="btn-ghost" style="flex:1;font-size:12px;" onclick="psHoldDues()">${esc(qt('Hold back dues', 'بقایا والے روکیں'))}</button>
+      </div>
+      <div class="list-card" style="max-height:42vh;overflow:auto;margin:6px 0;">${rows}</div>
+      <div id="ps-count" style="font-size:12px;opacity:.75;margin:4px 0 8px;"></div>
+      <p style="font-size:12px;color:var(--rust);margin:4px 0;">${esc(qt('Monthly fee does NOT change with the class — check the new class fee afterwards.', 'جماعت بدلنے سے ماہانہ فیس نہیں بدلتی — بعد میں نئی جماعت کی فیس چیک کریں۔'))}</p>
+      <button class="btn-primary" onclick="guardedSubmit(this, runPromoteSelect)">🎓 ${esc(qt('Promote selected to', 'منتخب طلبہ کو پروموٹ کریں:'))} ${esc(next)}</button>`
+    : `<p class="err" style="margin:10px 0;">${esc(qt('This is the last class — there is no next class. Use the "Left" option on the student for passed-out students.', 'یہ آخری جماعت ہے، اگلی جماعت نہیں۔ فارغ ہونے والے طلبہ کے لیے طالب علم پر "Left" آپشن استعمال کریں۔'))}</p>`}
+    ${last ? `<div style="padding:8px 10px;border-radius:10px;background:rgba(200,150,40,.14);font-size:12px;margin-top:10px;">${esc(qt('Last step: ', 'آخری مرحلہ: '))}${esc(last.cls)} → ${esc(last.to)} (${Object.keys(last.map || {}).length}) · ${esc(new Date(last.ts).toLocaleDateString())}
+      <button class="btn-ghost" style="padding:3px 10px;font-size:12px;margin-inline-start:8px;" onclick="undoPromoteSelect()">↩ ${esc(qt('Undo', 'واپس'))}</button></div>` : ''}
+    <button class="btn-ghost" style="margin-top:10px;" onclick="closeModal()">${esc(qt('Close', 'بند کریں'))}</button>`);
+  psCount();
+}
+function psCount() {
+  const el = document.getElementById('ps-count'); if (!el) return;
+  const all = document.querySelectorAll('.ps-chk:not(:disabled)'), on = document.querySelectorAll('.ps-chk:checked');
+  el.textContent = qt(on.length + ' will be promoted · ' + (all.length - on.length) + ' stay in this class', on.length + ' پروموٹ ہوں گے · ' + (all.length - on.length) + ' اسی جماعت میں رہیں گے');
+}
+function psSetAll(v) { document.querySelectorAll('.ps-chk:not(:disabled)').forEach(c => { c.checked = !!v; }); psCount(); }
+function psHoldDues() { document.querySelectorAll('.ps-chk:not(:disabled)').forEach(c => { c.checked = c.dataset.due !== '1'; }); psCount(); }
+
+let _psBusy = false;
+async function runPromoteSelect() {
+  if (_psBusy) return;
+  const cls = PSEL.cls, next = CLASS_OPTIONS[CLASS_OPTIONS.indexOf(cls) + 1];
+  if (!next) return;
+  const ids = Array.from(document.querySelectorAll('.ps-chk:checked')).map(c => c.value);
+  if (!ids.length) { alert(qt('Select at least one student.', 'کم از کم ایک طالب علم منتخب کریں۔')); return; }
+  // Re-check against live data: only students still in this class, active, and not already promoted
+  const done = _psDoneIds(), map = {};
+  ids.forEach(id => { const s = DATA.students.find(x => String(x.id) === String(id)); if (s && s.status !== 'inactive' && s.class_name === cls && !done.has(String(s.id))) map[s.id] = { from: cls, to: next }; });
+  const n = Object.keys(map).length;
+  if (!n) { alert(qt('Nothing to promote.', 'پروموٹ کرنے کے لیے کوئی طالب علم نہیں۔')); return; }
+  if (!confirm(qt('Promote ' + n + ' student(s) from ' + cls + ' to ' + next + '?', n + ' طلبہ کو ' + cls + ' سے ' + next + ' میں پروموٹ کریں؟'))) return;
+  _psBusy = true;
+  try {
+    const stack = _psStackRead(); stack.push({ ts: Date.now(), cls, to: next, map }); _psStackWrite(stack);
+    const flat = {}; Object.entries(map).forEach(([id, v]) => { flat[id] = v.to; });
+    await _bulkSetClass(flat);
+    logCustomActivity('Select & Promote — ' + n + ' students moved ' + cls + ' → ' + next, 'update', 'students');
+    renderOfflineBanner();
+    await loadAllData();
+    renderTab();
+    openPromoteSelect(cls);   // stay in the tool: the next class can be done straight away
+  } finally { _psBusy = false; }
+}
+async function undoPromoteSelect() {
+  const stack = _psStackRead(), e = stack[stack.length - 1];
+  if (!e || !e.map) { alert(qt('Nothing to undo.', 'واپس کرنے کے لیے کچھ نہیں۔')); return; }
+  const back = {}; let skipped = 0;
+  Object.entries(e.map).forEach(([id, v]) => {
+    const st = DATA.students.find(x => String(x.id) === String(id));
+    if (st && st.class_name === v.to) back[id] = v.from; else skipped++;
+  });
+  const n = Object.keys(back).length;
+  if (!n) { alert(qt('No student can be moved back (their classes were changed after the promotion).', 'کوئی طالب علم واپس نہیں جا سکتا (پروموشن کے بعد ان کی جماعت بدل چکی ہے)۔')); return; }
+  if (!confirm(qt('Undo the last step (' + e.cls + ' → ' + e.to + ')? ' + n + ' students go back.' + (skipped ? ' ' + skipped + ' changed since then and stay as they are.' : ''),
+                  'آخری مرحلہ (' + e.cls + ' ← ' + e.to + ') واپس کریں؟ ' + n + ' طلبہ واپس جائیں گے۔' + (skipped ? ' ' + skipped + ' بعد میں بدل چکے ہیں، وہ ویسے ہی رہیں گے۔' : '')))) return;
+  await _bulkSetClass(back);
+  stack.pop(); _psStackWrite(stack);
+  logCustomActivity('Undid Select & Promote (' + e.cls + ' → ' + e.to + ') — ' + n + ' students restored', 'update', 'students');
+  await loadAllData(); renderTab();
+  openPromoteSelect(e.cls);
 }
 
 function openOverdueReminders() {
@@ -12249,6 +12558,9 @@ async function lpvMarkSeen(id) {
 // amount due for that month and saves NET (salary - recovery) as the salary payment.
 // Needs the "ONE-TIME SETUP for Staff Leave & Salary Advance" SQL (top of this file). Online only.
 const STF = { leaves: [], advances: [], recoveries: [], loaded: false, err: false, loading: false, cached: false };
+// Tabs that actually show staff leave / advance data. On any other tab a background sync does NOT re-download it:
+// it is just marked stale and fetched the next time one of these screens needs it.
+const STF_TABS = ['dashboard', 'finance', 'reports', 'teachers', 'teacherRegister'];
 let STF_LV_TEACHER = '', STF_AD_TEACHER = '';
 // Last-synced copy of leaves / advances / recoveries, kept on the device so the salary form can
 // still work out (and save) an advance recovery with no internet. Leave & Advance screens
@@ -13952,6 +14264,7 @@ function tplReports() {
   const stfNoteHtml = !D.stfOk ? `<div style="font-size:11px;opacity:.65;padding:6px 14px;">${esc(qt('Staff advance figures are not available yet (offline or not set up).', 'عملے کے ایڈوانس کے اعداد ابھی دستیاب نہیں (آف لائن یا سیٹ اپ نہیں)۔'))}</div>` : '';
   return `
     <div style="padding-top:16px;">
+      <button class="btn-ghost" style="width:100%;margin-bottom:12px;" onclick="openExamAnalysis()">📊 ${esc(qt('Exam Analysis (class & subject results)', 'امتحانی تجزیہ (جماعت اور مضمون وار نتائج)'))}</button>
       <div class="section-title" style="margin-top:0;">${esc(qt('Report period', 'رپورٹ کی مدت'))}</div>
       <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;">
         ${repChip(REP.preset === 'month', qt('This month', 'یہ مہینہ'), "repSetPreset('month')")}
@@ -15065,6 +15378,7 @@ function tplDMC() {
         <button class="btn-ghost" onclick="openDMCImportStudents()">${dqt('📥 From Students list', '📥 طلبہ کی فہرست سے')}</button>
         <button class="btn-ghost" onclick="openDMCImportMarksSheet()">${dqt('📋 From Marks Sheet', '📋 مارکس شیٹ سے')}</button>
         <button class="btn-ghost" onclick="openDMCImportArchive()">${dqt('🗂 From Archive', '🗂 آرکائیو سے')}</button>
+        <button class="btn-ghost" onclick="openExamAnalysis()">${dqt('📊 Exam Analysis', '📊 امتحانی تجزیہ')}</button>
       </div>
     </div>
 
@@ -18249,6 +18563,7 @@ function tplMarksSheet() {
   
   return `
     <h2>📋 Marks Sheet (Independent)</h2>
+    <button class="btn-ghost" style="width:100%;margin-bottom:10px;" onclick="openExamAnalysis()">📊 Exam Analysis</button>
 
     <div class="card">
       <h3 style="margin-top:0;">Academic Year</h3>
@@ -24716,6 +25031,490 @@ function renderClassPortalDiaryEntry(subject) {
     };
   });
 })();
+
+// Coming back to the Dashboard: refresh the Teacher Requests badge once (it does not poll on other tabs).
+(function () {
+  const orig = window.setTab;
+  if (typeof orig !== 'function') return;
+  window.setTab = function (k, ...rest) {
+    const r = orig.call(this, k, ...rest);
+    if (k === 'dashboard') { try { refreshStaffReqCount(); } catch (e) {} }
+    return r;
+  };
+})();
+
+// ===================== EXAM ANALYSIS (class & subject result analysis) =====================
+// Reads either the live Marks Sheet or a saved year from the DMC archive (dmc_records) and shows, per class:
+// pass %, average, grade spread, toppers, weakest subjects and the students who need attention.
+let EXA = { src: '', year: '', pass: null, anySubj: null, classes: [], sel: -1, years: [], label: '' };
+
+function exaInit() {
+  if (EXA.pass == null) EXA.pass = (typeof dmcPassPercent === 'function') ? dmcPassPercent() : 40;
+  if (EXA.anySubj == null) EXA.anySubj = !!(typeof dmcDesign !== 'undefined' && dmcDesign && dmcDesign.failIfAnySubjectFails);
+}
+const exaIsAbs = v => v === 'A' || (typeof v === 'string' && /^(a|abs|absent)$/i.test(v.trim()));
+const exaIsNum = v => v !== '' && v != null && !exaIsAbs(v) && isFinite(Number(v));
+const exaGrade = pct => (typeof dmcCertGrade === 'function') ? dmcCertGrade(pct) : (pct >= 80 ? 'A+' : pct >= 70 ? 'A' : pct >= 60 ? 'B' : pct >= 50 ? 'C' : pct >= 40 ? 'D' : 'F');
+const exaPct = n => (Math.round(n * 10) / 10) + '%';
+
+// c = { cls, subjects:[{name,total}], students:[{name,father,roll,marks:{subject:number|'A'|''}}] }
+function exaCompute(c) {
+  const pp = Number(EXA.pass) || 40, anySubj = !!EXA.anySubj;
+  const subj = c.subjects.map(s => ({ name: s.name, total: Number(s.total) || 0, sum: 0, n: 0, pass: 0, fail: 0, abs: 0, hi: null, lo: null }));
+  const rows = []; let notAppeared = 0;
+  c.students.forEach(st => {
+    const m = st.marks || {};
+    let obt = 0, poss = 0, anyNum = false; const failedSubj = [], perSubj = [];
+    c.subjects.forEach((s, j) => {
+      const tot = Number(s.total) || 0, v = m[s.name];
+      const isNum = exaIsNum(v), n = isNum ? Number(v) : 0;
+      poss += tot;
+      if (isNum) {
+        anyNum = true; obt += n;
+        const S = subj[j]; S.n++; S.sum += n; if (S.hi == null || n > S.hi) S.hi = n; if (S.lo == null || n < S.lo) S.lo = n;
+        if (tot && n / tot * 100 >= pp) S.pass++; else if (tot) S.fail++;
+      } else if (exaIsAbs(v)) subj[j].abs++;
+      perSubj.push(n);
+      if (tot && n / tot * 100 < pp) failedSubj.push(s.name);
+    });
+    if (!anyNum) { notAppeared++; return; }
+    const pct = poss ? obt / poss * 100 : 0;
+    rows.push({ name: st.name, father: st.father, roll: st.roll, obt, poss, pct, pass: Number(pct.toFixed(1)) >= pp && !(anySubj && failedSubj.length), failedSubj });
+  });
+  const passed = rows.filter(r => r.pass).length, failed = rows.length - passed;
+  const avg = rows.length ? rows.reduce((a, r) => a + r.pct, 0) / rows.length : 0;
+  const grades = { 'A+': 0, 'A': 0, 'B': 0, 'C': 0, 'D': 0, 'F': 0 };
+  rows.forEach(r => { grades[r.pass ? exaGrade(r.pct) : 'F']++; });
+  const sorted = rows.slice().sort((a, b) => b.obt - a.obt);
+  const totals = [...new Set(sorted.map(r => r.obt))];
+  sorted.forEach(r => { r.pos = totals.indexOf(r.obt) + 1; });
+  const toppers = sorted.filter(r => r.pass && r.pos <= 3).slice(0, 8);
+  const weak = rows.filter(r => !r.pass).sort((a, b) => a.pct - b.pct);
+  const border = rows.filter(r => r.pass && r.pct < pp + 5).sort((a, b) => a.pct - b.pct);
+  subj.forEach(S => { S.avgPct = (S.n && S.total) ? S.sum / S.n / S.total * 100 : 0; S.passPct = S.n ? S.pass / S.n * 100 : 0; });
+  const ranked = subj.filter(S => S.n).slice().sort((a, b) => a.avgPct - b.avgPct);
+  return { cls: c.cls, rows, appeared: rows.length, notAppeared, total: c.students.length, passed, failed, passPct: rows.length ? passed / rows.length * 100 : 0,
+    avg, hi: rows.length ? Math.max(...rows.map(r => r.pct)) : 0, lo: rows.length ? Math.min(...rows.map(r => r.pct)) : 0,
+    grades, toppers, weak, border, subj, weakest: ranked[0] || null, strongest: ranked[ranked.length - 1] || null };
+}
+
+// ---- loading the two sources ----
+async function exaLoadMarksSheet() {
+  try { await loadMarksSheetData(); } catch (e) {}
+  const out = [];
+  Object.keys(msStudents || {}).forEach(cls => {
+    const sts = msStudents[cls] || [];
+    if (!sts.length || !msSubjects.length) return;
+    const marks = (msMarksData && msMarksData[cls]) || {};
+    const students = sts.map(st => ({ name: st.name || '', father: st.fatherName || '', roll: st.rollNo || '', marks: marks[st.id] || {} }));
+    if (!students.some(s => Object.values(s.marks).some(exaIsNum))) return;   // nothing entered for this class yet
+    out.push({ cls, subjects: msSubjects.map(n => ({ name: n, total: msSubjectMax(n) })), students });
+  });
+  return { classes: out, label: (qt('Marks Sheet', 'مارکس شیٹ')) + (msAcademicYear ? ' · ' + msAcademicYear : '') };
+}
+async function exaLoadArchive(year) {
+  const { data, error } = await fetchAll(() => sb.from('dmc_records').select('class_name,roll_no,student_name,father_name,marks,subjects')
+    .eq('owner_id', CURRENT_USER.id).eq('academic_year', year));
+  if (error) throw error;
+  const by = new Map();
+  (data || []).forEach(r => { const k = r.class_name || '—'; if (!by.has(k)) by.set(k, []); by.get(k).push(r); });
+  const out = [...by.entries()].map(([cls, recs]) => {
+    const withS = recs.find(r => r.subjects && r.subjects.length);
+    return { cls, subjects: withS ? withS.subjects.map(s => ({ name: s.name, total: s.total })) : [],
+      students: recs.map(r => ({ name: r.student_name || '', father: r.father_name || '', roll: r.roll_no || '', marks: r.marks || {} })) };
+  }).filter(c => c.subjects.length);
+  const order = c => { const k = CLASS_OPTIONS.indexOf(c); return k < 0 ? 999 : k; };
+  out.sort((a, b) => order(a.cls) - order(b.cls) || String(a.cls).localeCompare(String(b.cls), undefined, { numeric: true }));
+  return { classes: out, label: qt('Saved results', 'محفوظ نتائج') + ' · ' + year };
+}
+
+// ---- screens ----
+function openExamAnalysis() {
+  exaInit();
+  showModal(qt('Exam Analysis', 'امتحانی تجزیہ'), `
+    <p style="font-size:13px;opacity:.8;margin:0 0 12px;">${esc(qt('Pass %, toppers, weak subjects and students who need help — class by class. Choose where the marks come from:', 'پاس فیصد، پوزیشنیں، کمزور مضامین اور مدد کے طالب طلبہ — جماعت وار۔ مارکس کہاں سے لیں:'))}</p>
+    <button class="btn-primary" style="width:100%;margin-bottom:8px;" onclick="exaPickSource('ms')">📋 ${esc(qt('Marks Sheet (current marks)', 'مارکس شیٹ (موجودہ مارکس)'))}</button>
+    <button class="btn-ghost" style="width:100%;margin-bottom:8px;" onclick="exaPickSource('arch')">🗂 ${esc(qt('Saved results (DMC archive)', 'محفوظ نتائج (DMC آرکائیو)'))}</button>
+    <button class="btn-ghost" style="width:100%;" onclick="closeModal()">${esc(qt('Close', 'بند کریں'))}</button>`);
+}
+async function exaPickSource(src) {
+  EXA.src = src; EXA.sel = -1;
+  showModal(qt('Exam Analysis', 'امتحانی تجزیہ'), '<div class="empty" style="padding:16px 0;">…</div>');
+  try {
+    if (src === 'ms') {
+      const r = await exaLoadMarksSheet(); EXA.classes = r.classes; EXA.label = r.label;
+      if (!EXA.classes.length) { exaMsg(qt('No marks have been entered in the Marks Sheet yet.', 'مارکس شیٹ میں ابھی کوئی مارکس درج نہیں۔')); return; }
+      exaShow();
+    } else {
+      if (!navigator.onLine) { exaMsg(qt('Saved results need an internet connection.', 'محفوظ نتائج کے لیے انٹرنیٹ ضروری ہے۔')); return; }
+      const { data, error } = await fetchAll(() => sb.from('dmc_records').select('academic_year').eq('owner_id', CURRENT_USER.id));
+      if (error) { exaMsg(String(error.message || error)); return; }
+      EXA.years = [...new Set((data || []).map(r => r.academic_year).filter(Boolean))].sort().reverse();
+      if (!EXA.years.length) { exaMsg(qt('No saved results yet. Results are saved when you print DMC certificates.', 'ابھی کوئی محفوظ نتیجہ نہیں۔ DMC سرٹیفکیٹ پرنٹ کرنے پر نتائج محفوظ ہوتے ہیں۔')); return; }
+      showModal(qt('Choose exam / session', 'امتحان / سیشن منتخب کریں'), `
+        <div class="list-card" style="margin:10px 0;">${EXA.years.map((y, i) => `<div class="list-row" style="cursor:pointer;" onclick="exaPickYear(${i})"><div class="nm">${esc(y)}</div></div>`).join('')}</div>
+        <button class="btn-ghost" style="width:100%;" onclick="openExamAnalysis()">${esc(qt('Back', 'واپس'))}</button>`);
+    }
+  } catch (e) { exaMsg(String((e && e.message) || e)); }
+}
+function exaMsg(text) {
+  showModal(qt('Exam Analysis', 'امتحانی تجزیہ'), `<p style="font-size:13px;">${esc(text)}</p><button class="btn-ghost" style="width:100%;" onclick="openExamAnalysis()">${esc(qt('Back', 'واپس'))}</button>`);
+}
+async function exaPickYear(i) {
+  const y = EXA.years[i]; if (!y) return;
+  showModal(qt('Exam Analysis', 'امتحانی تجزیہ'), '<div class="empty" style="padding:16px 0;">…</div>');
+  try {
+    const r = await exaLoadArchive(y); EXA.classes = r.classes; EXA.label = r.label; EXA.year = y; EXA.sel = -1;
+    if (!EXA.classes.length) { exaMsg(qt('No marks found for this session.', 'اس سیشن کے مارکس نہیں ملے۔')); return; }
+    exaShow();
+  } catch (e) { exaMsg(String((e && e.message) || e)); }
+}
+function exaSetPass(v) { const n = Number(v); if (n > 0 && n <= 100) { EXA.pass = n; } exaShow(); }
+function exaSetAny(on) { EXA.anySubj = !!on; exaShow(); }
+function exaSel(i) { EXA.sel = i; exaShow(); }
+function exaBack() { EXA.sel = -1; exaShow(); }
+
+function exaControls() {
+  return `<div class="row2" style="margin-bottom:8px;align-items:end;">
+      <label style="margin-bottom:0;"><span>${esc(qt('Pass mark %', 'پاس مارک %'))}</span><input type="number" min="1" max="100" value="${esc(EXA.pass)}" onchange="exaSetPass(this.value)"></label>
+      <label style="margin-bottom:0;display:flex;gap:6px;align-items:center;font-size:12px;"><input type="checkbox" style="width:auto;" ${EXA.anySubj ? 'checked' : ''} onchange="exaSetAny(this.checked)"><span>${esc(qt('Fail if any subject below pass mark', 'کسی مضمون میں کم ہو تو فیل'))}</span></label>
+    </div>`;
+}
+const exaBar = (pct, color) => `<div style="background:rgba(0,0,0,.08);border-radius:6px;height:10px;overflow:hidden;"><div style="width:${Math.max(0, Math.min(100, pct))}%;height:100%;background:${color || 'var(--gold,#C9A227)'};"></div></div>`;
+function exaShow() {
+  const title = qt('Exam Analysis', 'امتحانی تجزیہ');
+  if (EXA.sel >= 0 && EXA.classes[EXA.sel]) { showModal(title, exaClassHtml(exaCompute(EXA.classes[EXA.sel]))); return; }
+  const rs = EXA.classes.map(exaCompute);
+  const all = rs.reduce((a, r) => ({ ap: a.ap + r.appeared, ps: a.ps + r.passed }), { ap: 0, ps: 0 });
+  const rowsHtml = rs.map((r, i) => `<tr style="cursor:pointer;" onclick="exaSel(${i})">
+      <td style="padding:7px 6px;font-weight:600;">${esc(r.cls)}</td><td style="text-align:center;">${r.appeared}</td>
+      <td style="text-align:center;color:${r.passPct >= 80 ? '#2f855a' : r.passPct >= 50 ? '#b7791f' : '#c0392b'};font-weight:700;">${exaPct(r.passPct)}</td>
+      <td style="text-align:center;">${exaPct(r.avg)}</td><td style="text-align:center;">${r.toppers[0] ? esc(r.toppers[0].name) : '—'}</td></tr>`).join('');
+  showModal(title, `
+    <div style="font-size:12px;opacity:.7;margin-bottom:8px;">${esc(EXA.label)}</div>
+    ${exaControls()}
+    <div class="greenbox" style="text-align:center;margin-bottom:10px;"><div class="lbl">${esc(qt('Whole school', 'پورا اسکول'))}</div><div class="val" style="font-size:22px;">${all.ap ? exaPct(all.ps / all.ap * 100) : '—'} <span style="font-size:12px;font-weight:400;">${esc(qt('pass', 'پاس'))} · ${all.ps}/${all.ap}</span></div></div>
+    <div style="overflow-x:auto;"><table style="width:100%;font-size:13px;border-collapse:collapse;">
+      <tr style="opacity:.65;font-size:11px;text-align:center;"><td style="text-align:start;">${esc(qt('Class', 'جماعت'))}</td><td>${esc(qt('Appeared', 'شریک'))}</td><td>${esc(qt('Pass', 'پاس'))}</td><td>${esc(qt('Avg', 'اوسط'))}</td><td>${esc(qt('Topper', 'اول'))}</td></tr>
+      ${rowsHtml}</table></div>
+    <p style="font-size:11px;opacity:.6;margin:8px 0;">${esc(qt('Tap a class for the full analysis.', 'مکمل تجزیے کے لیے جماعت پر ٹیپ کریں۔'))}</p>
+    <button class="btn-ghost" style="width:100%;" onclick="openExamAnalysis()">${esc(qt('Back', 'واپس'))}</button>`);
+}
+function exaClassHtml(r) {
+  const gcol = { 'A+': '#2f855a', 'A': '#48a56a', 'B': '#7aa83b', 'C': '#b7791f', 'D': '#d9822b', 'F': '#c0392b' };
+  const gmax = Math.max(1, ...Object.values(r.grades));
+  const grades = Object.entries(r.grades).map(([g, n]) => `<div style="display:flex;align-items:center;gap:8px;margin:3px 0;font-size:12px;"><span style="width:26px;font-weight:700;">${g}</span><div style="flex:1;">${exaBar(n / gmax * 100, gcol[g])}</div><span style="width:24px;text-align:end;">${n}</span></div>`).join('');
+  const subj = r.subj.filter(S => S.n || S.abs).slice().sort((a, b) => a.avgPct - b.avgPct).map(S => `<tr>
+      <td style="padding:5px 4px;">${esc(S.name)}</td>
+      <td style="width:34%;">${exaBar(S.avgPct, S.avgPct < (Number(EXA.pass) || 40) ? '#c0392b' : 'var(--gold,#C9A227)')}</td>
+      <td style="text-align:end;">${exaPct(S.avgPct)}</td><td style="text-align:center;">${exaPct(S.passPct)}</td><td style="text-align:center;">${S.fail}${S.abs ? `<span style="opacity:.6;"> (${S.abs}A)</span>` : ''}</td></tr>`).join('');
+  const person = (x, extra) => `<div style="display:flex;justify-content:space-between;gap:8px;padding:5px 0;border-bottom:1px solid rgba(0,0,0,.07);font-size:13px;">
+      <span style="min-width:0;">${extra || ''}${esc(x.name)}${x.father ? ` <span style="opacity:.55;font-size:11px;">· ${esc(x.father)}</span>` : ''}${x.failedSubj && x.failedSubj.length && !x.pass ? `<div style="font-size:11px;color:#c0392b;">${esc(x.failedSubj.join(', '))}</div>` : ''}</span>
+      <span style="white-space:nowrap;font-weight:600;">${exaPct(x.pct)}</span></div>`;
+  const top = r.toppers.map(x => person(x, `<b>${x.pos}.</b> `)).join('') || `<div class="empty">—</div>`;
+  const weak = r.weak.slice(0, 15).map(x => person(x)).join('') + (r.weak.length > 15 ? `<div style="font-size:11px;opacity:.6;padding-top:4px;">+ ${r.weak.length - 15} ${esc(qt('more', 'مزید'))}</div>` : '');
+  const border = r.border.slice(0, 8).map(x => person(x)).join('');
+  const sec = t => `<div class="section-title" style="margin:14px 0 4px;">${esc(t)}</div>`;
+  return `
+    <button class="btn-ghost" style="padding:6px 12px;margin-bottom:8px;" onclick="exaBack()">‹ ${esc(qt('All classes', 'تمام جماعتیں'))}</button>
+    <h3 style="margin:0 0 2px;">${esc(r.cls)}</h3><div style="font-size:12px;opacity:.65;margin-bottom:8px;">${esc(EXA.label)}</div>
+    ${exaControls()}
+    <div style="display:flex;gap:8px;margin-bottom:8px;">
+      <div class="greenbox" style="flex:1;text-align:center;"><div class="lbl">${esc(qt('Pass', 'پاس'))}</div><div class="val" style="font-size:20px;">${exaPct(r.passPct)}</div></div>
+      <div class="greenbox" style="flex:1;text-align:center;"><div class="lbl">${esc(qt('Average', 'اوسط'))}</div><div class="val" style="font-size:20px;">${exaPct(r.avg)}</div></div>
+    </div>
+    <div style="font-size:12px;opacity:.8;line-height:1.7;">${esc(qt('Appeared', 'شریک'))}: <b>${r.appeared}</b> / ${r.total} · ${esc(qt('Passed', 'پاس'))}: <b>${r.passed}</b> · ${esc(qt('Failed', 'فیل'))}: <b>${r.failed}</b>${r.notAppeared ? ' · ' + esc(qt('No marks', 'بغیر مارکس')) + ': ' + r.notAppeared : ''}<br>
+      ${esc(qt('Highest', 'سب سے زیادہ'))}: ${exaPct(r.hi)} · ${esc(qt('Lowest', 'سب سے کم'))}: ${exaPct(r.lo)}</div>
+    ${r.weakest ? `<div style="margin-top:8px;padding:8px 10px;border-radius:10px;background:rgba(200,150,40,.14);font-size:12px;">⚠ ${esc(qt('Weakest subject', 'سب سے کمزور مضمون'))}: <b>${esc(r.weakest.name)}</b> (${exaPct(r.weakest.avgPct)}, ${r.weakest.fail} ${esc(qt('failed', 'فیل'))})${r.strongest && r.strongest !== r.weakest ? ` · ${esc(qt('Best', 'بہترین'))}: <b>${esc(r.strongest.name)}</b> (${exaPct(r.strongest.avgPct)})` : ''}</div>` : ''}
+    ${sec(qt('Grades', 'گریڈز'))}${grades}
+    ${sec(qt('Subjects (weakest first)', 'مضامین (کمزور پہلے)'))}
+    <div style="overflow-x:auto;"><table style="width:100%;font-size:12px;border-collapse:collapse;">
+      <tr style="opacity:.6;font-size:11px;"><td></td><td></td><td style="text-align:end;">${esc(qt('Avg', 'اوسط'))}</td><td style="text-align:center;">${esc(qt('Pass', 'پاس'))}</td><td style="text-align:center;">${esc(qt('Failed', 'فیل'))}</td></tr>${subj}</table></div>
+    ${sec(qt('Toppers', 'پوزیشن ہولڈرز'))}${top}
+    ${r.weak.length ? sec(qt('Needs attention (failed)', 'توجہ درکار (فیل)')) + weak : ''}
+    ${r.border.length ? sec(qt('Just passed (within 5%)', 'بمشکل پاس (5% کے اندر)')) + border : ''}
+    <div style="display:flex;gap:8px;margin-top:14px;">
+      <button class="btn-primary" style="flex:1;" onclick="exaShare()">📤 ${esc(qt('Share summary', 'خلاصہ شیئر کریں'))}</button>
+      <button class="btn-ghost" style="flex:1;" onclick="exaBack()">${esc(qt('Back', 'واپس'))}</button>
+    </div>`;
+}
+function exaSummaryText(r) {
+  const L = [];
+  L.push((CURRENT_PROFILE && CURRENT_PROFILE.school_name ? CURRENT_PROFILE.school_name + ' — ' : '') + 'Result analysis: Class ' + r.cls + ' (' + EXA.label + ')');
+  L.push('Appeared ' + r.appeared + ' | Passed ' + r.passed + ' | Failed ' + r.failed + ' | Pass ' + exaPct(r.passPct) + ' | Avg ' + exaPct(r.avg));
+  if (r.toppers.length) L.push('Toppers: ' + r.toppers.map(x => x.pos + '. ' + x.name + ' (' + exaPct(x.pct) + ')').join(', '));
+  if (r.weakest) L.push('Weakest subject: ' + r.weakest.name + ' (avg ' + exaPct(r.weakest.avgPct) + ', ' + r.weakest.fail + ' failed)');
+  if (r.weak.length) L.push('Failed: ' + r.weak.slice(0, 15).map(x => x.name).join(', ') + (r.weak.length > 15 ? ' +' + (r.weak.length - 15) + ' more' : ''));
+  return L.join('\n');
+}
+async function exaShare() {
+  const r = EXA.classes[EXA.sel] && exaCompute(EXA.classes[EXA.sel]); if (!r) return;
+  const text = exaSummaryText(r);
+  try { if (navigator.share) { await navigator.share({ text }); return; } } catch (e) { if (e && e.name === 'AbortError') return; }
+  try { await navigator.clipboard.writeText(text); alert(qt('Summary copied.', 'خلاصہ کاپی ہو گیا۔')); }
+  catch (e) { window.open('https://wa.me/?text=' + encodeURIComponent(text), '_blank'); }
+}
+
+
+// ===================== STAFF ROLES (desk lock: Principal / Accountant / Clerk) =====================
+// One school login, several people at the desk. The Principal sets PINs (Settings → Staff Roles & PINs); after
+// that every device that has roles turned on asks "who is using the app?" and only shows what that role may use.
+// IMPORTANT: this is a lock on THIS app on THIS device (PINs are stored hashed in the browser). It keeps staff out
+// of screens and actions they should not touch and tags the Activity Log with the role. It is not server-side
+// security: anyone who knows the school login password can still sign in on another device without roles.
+const ROLE_DEF = {
+  principal:  { en: 'Principal',  ur: 'پرنسپل',   tabs: null },
+  accountant: { en: 'Accountant', ur: 'اکاؤنٹنٹ', tabs: ['dashboard', 'students', 'teachers', 'finance', 'reports', 'notices', 'attendance'] },
+  clerk:      { en: 'Clerk',      ur: 'کلرک',     tabs: ['students', 'admissionRegister', 'dmc', 'marksSheet', 'papers', 'timetable', 'datesheet', 'notices', 'syllabus', 'attendance'] }
+};
+const roleName = r => ROLE_DEF[r] ? qt(ROLE_DEF[r].en, ROLE_DEF[r].ur) : '';
+const roleUid = () => (CURRENT_USER ? CURRENT_USER.id : '');
+function roleCfg() {
+  try { const c = JSON.parse(localStorage.getItem('roles_cfg_' + roleUid()) || 'null'); return (c && c.pins && c.pins.principal) ? c : null; } catch (e) { return null; }
+}
+function roleOn() { return !!CURRENT_USER && !!roleCfg(); }
+// '' while locked; 'principal' when roles are off (full access)
+function roleActive() {
+  if (!roleOn()) return 'principal';
+  try { const r = sessionStorage.getItem('role_active_' + roleUid()); return ROLE_DEF[r] ? r : ''; } catch (e) { return ''; }
+}
+function roleTabOk(tab) {
+  if (!roleOn()) return true;
+  const r = roleActive(); if (!r) return false;
+  const d = ROLE_DEF[r]; return !d.tabs || d.tabs.includes(tab);
+}
+function roleTag() { return roleOn() && roleActive() ? '[' + ROLE_DEF[roleActive()].en + '] ' : ''; }
+function roleDeny(need) {
+  alert(qt('This is not allowed for your role' + (need ? ' (' + need + ' only)' : '') + '.', 'آپ کے رول کے لیے یہ اجازت شدہ نہیں' + (need ? ' (صرف ' + need + ')' : '') + '۔'));
+}
+
+async function roleHash(salt, pin) {
+  const data = new TextEncoder().encode(salt + ':' + pin);
+  try {
+    if (window.crypto && crypto.subtle) {
+      const buf = await crypto.subtle.digest('SHA-256', data);
+      return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+    }
+  } catch (e) {}
+  let h = 5381; data.forEach(b => { h = ((h << 5) + h + b) >>> 0; }); return 'f' + h.toString(16);   // plain-http fallback
+}
+function roleSalt() { try { const a = new Uint8Array(8); crypto.getRandomValues(a); return Array.from(a).map(b => b.toString(16).padStart(2, '0')).join(''); } catch (e) { return String(Math.random()).slice(2) + Date.now(); } }
+async function roleMakePin(pin) { const s = roleSalt(); return { s, h: await roleHash(s, pin) }; }
+async function roleCheckPin(role, pin) {
+  const c = roleCfg(), p = c && c.pins[role]; if (!p) return false;
+  return (await roleHash(p.s, pin)) === p.h;
+}
+
+// ---- lock screen ----
+let ROLE_FAIL = { n: 0, until: 0 };
+function roleShowLock(note) {
+  const c = roleCfg(); if (!c) return;
+  let el = document.getElementById('role-lock');
+  if (!el) { el = document.createElement('div'); el.id = 'role-lock'; document.body.appendChild(el); }
+  el.style.cssText = 'position:fixed;inset:0;z-index:100000;background:#0F2740;color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px;overflow:auto;';
+  let last = ''; try { last = localStorage.getItem('role_last_' + roleUid()) || ''; } catch (e) {}
+  const roles = Object.keys(ROLE_DEF).filter(r => c.pins[r]);
+  const opts = roles.map(r => `<option value="${r}" ${r === last ? 'selected' : ''}>${esc(roleName(r))}</option>`).join('');
+  el.innerHTML = `
+    <div style="width:100%;max-width:340px;text-align:center;">
+      <div style="font-size:34px;margin-bottom:6px;">🔒</div>
+      <div style="font-weight:700;font-size:18px;">${esc((CURRENT_PROFILE && CURRENT_PROFILE.school_name) || '')}</div>
+      <div style="opacity:.75;font-size:13px;margin:4px 0 18px;">${esc(qt('Who is using the app?', 'ایپ کون استعمال کر رہا ہے؟'))}</div>
+      <select id="rl-role" style="width:100%;padding:12px;border-radius:10px;font-size:16px;margin-bottom:10px;">${opts}</select>
+      <input id="rl-pin" type="password" inputmode="numeric" autocomplete="off" maxlength="8" placeholder="PIN" style="width:100%;padding:12px;border-radius:10px;font-size:20px;text-align:center;letter-spacing:6px;margin-bottom:10px;"
+        onkeydown="if(event.key==='Enter')roleUnlock()">
+      <div id="rl-msg" style="min-height:20px;font-size:13px;color:#ffb4a2;margin-bottom:8px;">${esc(note || '')}</div>
+      <button class="btn-primary" style="width:100%;" onclick="roleUnlock()">${esc(qt('Unlock', 'کھولیں'))}</button>
+      <div style="display:flex;justify-content:space-between;margin-top:16px;font-size:13px;">
+        <a href="#" style="color:#E4C765;" onclick="roleForgot();return false;">${esc(qt('Forgot PIN?', 'PIN بھول گئے؟'))}</a>
+        <a href="#" style="color:#fff;opacity:.8;" onclick="roleLogOut();return false;">${esc(qt('Log out', 'لاگ آؤٹ'))}</a>
+      </div>
+    </div>`;
+  setTimeout(() => { const i = document.getElementById('rl-pin'); if (i) i.focus(); }, 50);
+}
+function roleHideLock() { const el = document.getElementById('role-lock'); if (el) el.remove(); }
+function roleLock() {
+  if (!roleOn()) return;
+  try { sessionStorage.removeItem('role_active_' + roleUid()); } catch (e) {}
+  closeModal(); roleShowLock();
+}
+async function roleUnlock() {
+  const msg = document.getElementById('rl-msg'), role = (document.getElementById('rl-role') || {}).value, pin = ((document.getElementById('rl-pin') || {}).value || '').trim();
+  if (Date.now() < ROLE_FAIL.until) { msg.textContent = qt('Too many wrong tries. Wait ' + Math.ceil((ROLE_FAIL.until - Date.now()) / 1000) + ' seconds.', 'بہت زیادہ غلط کوششیں۔ ' + Math.ceil((ROLE_FAIL.until - Date.now()) / 1000) + ' سیکنڈ انتظار کریں۔'); return; }
+  if (!role || !pin) { msg.textContent = qt('Enter your PIN.', 'اپنا PIN لکھیں۔'); return; }
+  if (!(await roleCheckPin(role, pin))) {
+    ROLE_FAIL.n++; if (ROLE_FAIL.n >= 5) { ROLE_FAIL = { n: 0, until: Date.now() + 30000 }; }
+    msg.textContent = qt('Wrong PIN.', 'غلط PIN۔'); const i = document.getElementById('rl-pin'); if (i) { i.value = ''; i.focus(); } return;
+  }
+  ROLE_FAIL = { n: 0, until: 0 };
+  try { sessionStorage.setItem('role_active_' + roleUid(), role); localStorage.setItem('role_last_' + roleUid(), role); } catch (e) {}
+  ROLE_LAST = Date.now();
+  roleHideLock();
+  logCustomActivity('Unlocked the app', 'other', 'settings');
+  roleApplyUi();
+}
+function roleForgot() {
+  const el = document.getElementById('role-lock'); if (!el) return;
+  el.innerHTML = `
+    <div style="width:100%;max-width:340px;text-align:center;">
+      <div style="font-weight:700;font-size:17px;margin-bottom:6px;">${esc(qt('Reset staff PINs', 'اسٹاف PIN ری سیٹ کریں'))}</div>
+      <div style="opacity:.8;font-size:13px;margin-bottom:14px;">${esc(qt('Enter the school account password. All staff PINs will be removed and you can set new ones in Settings.', 'اسکول اکاؤنٹ کا پاس ورڈ لکھیں۔ تمام اسٹاف PIN ہٹ جائیں گے، نئے PIN سیٹنگز میں بنائیں۔'))}</div>
+      <input id="rl-pw" type="password" autocomplete="off" style="width:100%;padding:12px;border-radius:10px;font-size:16px;margin-bottom:10px;" onkeydown="if(event.key==='Enter')roleForgotGo()">
+      <div id="rl-msg" style="min-height:20px;font-size:13px;color:#ffb4a2;margin-bottom:8px;"></div>
+      <button class="btn-primary" style="width:100%;" onclick="roleForgotGo()">${esc(qt('Reset PINs', 'PIN ری سیٹ کریں'))}</button>
+      <div style="margin-top:14px;"><a href="#" style="color:#fff;opacity:.8;font-size:13px;" onclick="roleShowLock();return false;">${esc(qt('Back', 'واپس'))}</a></div>
+    </div>`;
+}
+async function roleForgotGo() {
+  const msg = document.getElementById('rl-msg'), pw = (document.getElementById('rl-pw') || {}).value || '';
+  if (!pw) return;
+  if (!navigator.onLine) { msg.textContent = qt('Internet is needed to verify the password.', 'پاس ورڈ کی تصدیق کے لیے انٹرنیٹ ضروری ہے۔'); return; }
+  msg.textContent = '…';
+  try {
+    // isolated client: checks the password without touching the signed-in session
+    const { error } = await makeOtpVerifyClient().auth.signInWithPassword({ email: CURRENT_USER.email, password: pw });
+    if (error) { msg.textContent = qt('Wrong password.', 'غلط پاس ورڈ۔'); return; }
+  } catch (e) { msg.textContent = qt('Could not verify. Try again.', 'تصدیق نہیں ہو سکی۔ دوبارہ کوشش کریں۔'); return; }
+  try { localStorage.removeItem('roles_cfg_' + roleUid()); sessionStorage.removeItem('role_active_' + roleUid()); } catch (e) {}
+  logCustomActivity('Staff roles reset with the school password (all PINs removed)', 'update', 'settings');
+  roleHideLock(); roleApplyUi();
+  alert(qt('Staff PINs removed. Set new ones in Settings → Staff Roles & PINs.', 'اسٹاف PIN ہٹا دیے گئے۔ سیٹنگز → Staff Roles & PINs میں نئے بنائیں۔'));
+}
+async function roleLogOut() { roleHideLock(); try { sessionStorage.removeItem('role_active_' + roleUid()); } catch (e) {} await logOut(); }
+
+// after unlock / setup change: redraw nav, put the lock button in the header, leave screens this role may not open
+function roleApplyUi() {
+  try { renderNav(); renderSidebar(); } catch (e) {}
+  const top = document.querySelector('.top-actions');
+  let b = document.getElementById('role-lock-btn');
+  if (roleOn()) {
+    if (top && !b) {
+      b = document.createElement('button'); b.id = 'role-lock-btn'; b.className = 'pill-btn lock'; b.setAttribute('onclick', 'roleLock()');
+      top.insertBefore(b, top.lastElementChild);
+    }
+    if (b) { b.textContent = '🔒'; b.title = qt('Lock / switch user', 'لاک / یوزر بدلیں') + ' — ' + roleName(roleActive()); }
+  } else if (b) b.remove();
+  if (!roleTabOk(TAB)) {
+    const first = ['dashboard', 'students', 'teachers', 'finance', 'reports', 'dmc', 'marksSheet', 'admissionRegister', 'papers', 'timetable', 'datesheet', 'notices', 'syllabus'].find(roleTabOk);
+    if (first) { setTab(first); return; }
+  }
+  try { safeRenderTab(); } catch (e) {}
+}
+
+// idle auto-lock (15 min)
+let ROLE_LAST = Date.now(); const ROLE_IDLE_MS = 15 * 60 * 1000;
+['click', 'keydown', 'touchstart', 'scroll'].forEach(ev => document.addEventListener(ev, () => { ROLE_LAST = Date.now(); }, { passive: true, capture: true }));
+function roleIdleCheck() { if (roleOn() && roleActive() && Date.now() - ROLE_LAST > ROLE_IDLE_MS) roleLock(); }
+setInterval(roleIdleCheck, 30000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) roleIdleCheck(); });
+
+// ---- setup screen (Principal only) ----
+function openRolesSetup() {
+  if (roleOn() && roleActive() !== 'principal') { roleDeny(roleName('principal')); return; }
+  const c = roleCfg(), on = !!c;
+  const row = (r, label, required) => `
+    <label><span>${esc(label)}${on && c.pins[r] ? ' ✓ ' + esc(qt('set', 'سیٹ ہے')) : ''}</span>
+      <input id="rs-${r}" type="password" inputmode="numeric" maxlength="8" autocomplete="off" placeholder="${esc(on && c.pins[r] ? qt('Leave empty to keep', 'خالی چھوڑیں تو وہی رہے گا') : (required ? qt('4–8 digits', '4 سے 8 ہندسے') : qt('Optional — 4–8 digits', 'اختیاری — 4 سے 8 ہندسے')))}"></label>`;
+  showModal(qt('Staff Roles & PINs', 'اسٹاف رولز اور PIN'), `
+    <p style="font-size:13px;opacity:.8;margin:0 0 10px;">${esc(qt('Give the accountant and the clerk their own PIN. After that the app asks who is using it and shows only their screens. Roles are set per device.', 'اکاؤنٹنٹ اور کلرک کو الگ PIN دیں۔ پھر ایپ پوچھے گی کون استعمال کر رہا ہے اور صرف اسی کی اسکرینز دکھائے گی۔ رولز ہر ڈیوائس پر الگ سیٹ ہوتے ہیں۔'))}</p>
+    <div class="list-card" style="font-size:12px;padding:8px 12px;margin-bottom:10px;line-height:1.7;">
+      <b>${esc(roleName('principal'))}:</b> ${esc(qt('everything (settings, backup, deletes, promotion)', 'سب کچھ (سیٹنگز، بیک اپ، حذف، پروموشن)'))}<br>
+      <b>${esc(roleName('accountant'))}:</b> ${esc(qt('Dashboard, Students, Teachers & salaries, Finance, Reports — cannot delete payments or change settings', 'ڈیش بورڈ، طلبہ، اساتذہ و تنخواہیں، فنانس، رپورٹس — ادائیگیاں حذف یا سیٹنگز نہیں بدل سکتا'))}<br>
+      <b>${esc(roleName('clerk'))}:</b> ${esc(qt('Students, Admission Register, DMC, Marks, Papers, Timetable, Notices — no fee, salary or finance actions', 'طلبہ، داخلہ رجسٹر، DMC، مارکس، پیپرز، ٹائم ٹیبل، نوٹس — فیس، تنخواہ یا فنانس کے کام نہیں'))}
+    </div>
+    ${row('principal', qt('Principal PIN', 'پرنسپل PIN'), true)}
+    ${on ? '' : `<label><span>${esc(qt('Repeat Principal PIN', 'پرنسپل PIN دوبارہ لکھیں'))}</span><input id="rs-principal2" type="password" inputmode="numeric" maxlength="8" autocomplete="off"></label>`}
+    ${row('accountant', qt('Accountant PIN', 'اکاؤنٹنٹ PIN'), false)}
+    ${row('clerk', qt('Clerk PIN', 'کلرک PIN'), false)}
+    <div id="rs-msg" class="err" style="min-height:18px;"></div>
+    <button class="btn-primary" style="width:100%;" onclick="guardedSubmit(this, rolesSaveSetup)">${esc(on ? qt('Save changes', 'تبدیلیاں محفوظ کریں') : qt('Turn on staff roles', 'اسٹاف رولز آن کریں'))}</button>
+    ${on ? `
+      <div style="display:flex;gap:8px;margin-top:8px;">
+        ${c.pins.accountant ? `<button class="btn-ghost" style="flex:1;font-size:12px;" onclick="rolesRemovePin('accountant')">✕ ${esc(roleName('accountant'))}</button>` : ''}
+        ${c.pins.clerk ? `<button class="btn-ghost" style="flex:1;font-size:12px;" onclick="rolesRemovePin('clerk')">✕ ${esc(roleName('clerk'))}</button>` : ''}
+      </div>
+      <button class="btn-ghost danger" style="width:100%;margin-top:8px;" onclick="rolesTurnOff()">${esc(qt('Turn off staff roles on this device', 'اس ڈیوائس پر اسٹاف رولز بند کریں'))}</button>` : ''}
+    <button class="btn-ghost" style="width:100%;margin-top:8px;" onclick="closeModal()">${esc(qt('Close', 'بند کریں'))}</button>`);
+}
+async function rolesSaveSetup() {
+  const msg = document.getElementById('rs-msg'), v = id => ((document.getElementById(id) || {}).value || '').trim();
+  const c = roleCfg(), on = !!c, bad = x => x && !/^\d{4,8}$/.test(x);
+  const p = v('rs-principal'), a = v('rs-accountant'), k = v('rs-clerk');
+  if (!on && !p) { msg.textContent = qt('Set a Principal PIN first.', 'پہلے پرنسپل PIN بنائیں۔'); return; }
+  if (bad(p) || bad(a) || bad(k)) { msg.textContent = qt('A PIN must be 4–8 digits.', 'PIN 4 سے 8 ہندسوں کا ہونا چاہیے۔'); return; }
+  if (!on && p !== v('rs-principal2')) { msg.textContent = qt('The two Principal PINs do not match.', 'دونوں پرنسپل PIN آپس میں نہیں ملتے۔'); return; }
+  const pins = Object.assign({}, c ? c.pins : {});
+  if (p) pins.principal = await roleMakePin(p);
+  if (a) pins.accountant = await roleMakePin(a);
+  if (k) pins.clerk = await roleMakePin(k);
+  const uniq = ['principal', 'accountant', 'clerk'].filter(r => pins[r]);
+  try {
+    localStorage.setItem('roles_cfg_' + roleUid(), JSON.stringify({ v: 1, pins }));
+    if (!on) sessionStorage.setItem('role_active_' + roleUid(), 'principal');
+  } catch (e) { msg.textContent = qt('Could not save on this device.', 'اس ڈیوائس پر محفوظ نہیں ہو سکا۔'); return; }
+  logCustomActivity((on ? 'Staff PINs changed' : 'Staff roles turned on') + ' (' + uniq.join(', ') + ')', 'update', 'settings');
+  closeModal(); roleApplyUi();
+}
+function rolesRemovePin(role) {
+  const c = roleCfg(); if (!c || !c.pins[role]) return;
+  if (!confirm(qt('Remove the ' + ROLE_DEF[role].en + ' PIN? That role can no longer sign in.', roleName(role) + ' کا PIN ہٹا دیں؟ یہ رول پھر لاگ ان نہیں ہو سکے گا۔'))) return;
+  delete c.pins[role];
+  try { localStorage.setItem('roles_cfg_' + roleUid(), JSON.stringify(c)); } catch (e) {}
+  logCustomActivity(ROLE_DEF[role].en + ' PIN removed', 'update', 'settings');
+  openRolesSetup();
+}
+function rolesTurnOff() {
+  if (!confirm(qt('Turn off staff roles on this device? Everyone will have full access.', 'اس ڈیوائس پر اسٹاف رولز بند کریں؟ سب کو مکمل رسائی مل جائے گی۔'))) return;
+  logCustomActivity('Staff roles turned off', 'update', 'settings');
+  try { localStorage.removeItem('roles_cfg_' + roleUid()); sessionStorage.removeItem('role_active_' + roleUid()); } catch (e) {}
+  closeModal(); roleApplyUi();
+}
+
+// ---- guards (same wrapping pattern as the lazy-data guards: existing code stays untouched) ----
+(function installRoleGuards() {
+  const PRINCIPAL_ONLY = ['openSettings', 'exportBackup', 'exportFullBackupJSON', 'handleRestoreFileSelected', 'openActivityLog',
+    'openPromoteAllConfirm', 'runPromoteAllStudents', 'undoPromoteAll', 'openPromoteSelect', 'runPromoteSelect', 'undoPromoteSelect',
+    'confirmDelete', 'doDelete', 'deleteFeePayment', 'doDeleteFeePayment', 'deleteSalaryPayment', 'doDeleteSalaryPayment',
+    'deleteTxn', 'doDeleteTxn', 'finvDeleteEntry', 'storeDeleteMove', 'openStaffRequests'];
+  const MONEY = ['submitFeePayment', 'submitFeeAdjust', 'lfApply', 'odSave', 'gmSave', 'gmRemove', 'scanCollect', 'submitSalaryPayment',
+    'submitAddTxn', 'submitFinTransfer', 'finSaveEdit', 'finvAddEntry', 'storeAddMove', 'openTeacherRegister', 'openAlertsModal'];
+  function guard(name, roles, label) {
+    const orig = window[name]; if (typeof orig !== 'function') return;
+    window[name] = function (...args) {
+      if (!roleOn()) return orig.apply(this, args);
+      const r = roleActive();
+      if (!r) { roleShowLock(); return; }
+      if (roles.includes(r)) return orig.apply(this, args);
+      roleDeny(label);
+    };
+  }
+  PRINCIPAL_ONLY.forEach(n => guard(n, ['principal'], roleName('principal')));
+  MONEY.forEach(n => guard(n, ['principal', 'accountant'], roleName('accountant') + ' / ' + roleName('principal')));
+
+  const origSetTab = window.setTab;
+  window.setTab = function (k, ...rest) {
+    if (roleOn() && !roleTabOk(k)) { if (!roleActive()) roleShowLock(); else roleDeny(); return; }
+    return origSetTab.call(this, k, ...rest);
+  };
+  const origRenderApp = window.renderApp;
+  window.renderApp = function (...args) {
+    const r = origRenderApp.apply(this, args);
+    try { if (roleOn()) { if (!roleActive()) roleShowLock(); roleApplyUiLight(); } } catch (e) {}
+    return r;
+  };
+  // after a redraw only the header button and tab visibility need refreshing (no extra full re-render)
+  function roleApplyUiLight() {
+    try { renderNav(); renderSidebar(); } catch (e) {}
+    const top = document.querySelector('.top-actions');
+    if (top && !document.getElementById('role-lock-btn')) {
+      const b = document.createElement('button'); b.id = 'role-lock-btn'; b.className = 'pill-btn lock'; b.setAttribute('onclick', 'roleLock()'); b.textContent = '🔒';
+      b.title = qt('Lock / switch user', 'لاک / یوزر بدلیں'); top.insertBefore(b, top.lastElementChild);
+    }
+  }
+  const origLogOut = window.logOut;
+  window.logOut = async function (...args) { try { sessionStorage.removeItem('role_active_' + roleUid()); } catch (e) {} roleHideLock(); return origLogOut.apply(this, args); };
+})();
+
 
 boot();
 
