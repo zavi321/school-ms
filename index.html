@@ -5243,6 +5243,15 @@ function generateAlerts() {
         ur: `${s.name} — فیس ${m} ماہ سے واجب الادا ہے`,
         onclick: `openStudentDetail('${s.id}')`
       });
+    } else {
+      // Balance is still due but no single month of the current fee card is short (e.g. dues carried over from a
+      // previous year, or an opening balance). These used to be skipped, so the student never showed in alerts.
+      list.push({
+        severity: 'medium', icon: '🟠',
+        en: `${s.name} — Rs ${fmt(latestBalance)} previous dues pending`,
+        ur: `${s.name} — پچھلے بقایا روپے ${fmt(latestBalance)} باقی ہیں`,
+        onclick: `openStudentDetail('${s.id}')`
+      });
     }
   });
 
