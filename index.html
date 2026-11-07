@@ -7240,13 +7240,14 @@ function dashTiles() {
     ['pap', t.papers, "setTab('papers')", 'g2'],
     ['tmt', q('Timetable','ٹائم ٹیبل'), "setTab('timetable')", 'g4'],
     ['adm', t.admissionRegister, "setTab('admissionRegister')", 'g5'],
+    ['pap', q('Diary Report','ڈائری رپورٹ'), 'openDiaryReport()', 'g2'],
     ['mrk', q('Charts','چارٹس'), 'openDashChartsModal()', 'g3'],
     ['bld', q('Store','سٹور'), 'openStore()', 'g5']
   ];
   let n = 0;
   try { n = generateAlerts().length; } catch(e) {}
   if (n) list.push(['bel', q('Alerts','الرٹس'), 'openAlertsModal()', 'g5', 'dot']);
-  const catOf = i => i<7 ? 'ov' : i<9 ? 'td' : i<12 ? 'mo' : i<15 ? 'st' : i<17 ? 'mr' : i<25 ? 'qa' : 'mr';
+  const catOf = i => i<7 ? 'ov' : i<9 ? 'td' : i<12 ? 'mo' : i<15 ? 'st' : i<17 ? 'mr' : i<26 ? 'qa' : 'mr';
   return list.map(([ic,label,act,c,badge],i) => ({ic,label:String(label),act,c,badge,cat:catOf(i)}));
 }
 function dashLetter(label) {
@@ -22609,6 +22610,141 @@ async function submitEditAdmissionEntry(id) {
   arOfferStatusSync(baseRow, entry);
 }
 
+
+// ---------------- Principal: Diary Report ----------------
+// Class by class: was a diary written on the chosen day (default today), which subjects, and a 6-day strip.
+// Reads the same diary_portal_list the parent portal uses, so no database change is needed.
+let DR = { date: '', map: null, rows: [], err: '', onlyMissing: false, open: {}, editId: null };
+const drD10 = e => String((e && e.entry_date) || '').slice(0, 10);
+const DR_TA = 'width:100%;box-sizing:border-box;padding:9px 12px;border:1px solid var(--line);border-radius:8px;font-family:inherit;font-size:14px;background:#fff;color:var(--ink);';
+function drClasses() {
+  const have = new Set(DATA.students.filter(s => s.status !== 'inactive').map(s => s.class_name).filter(Boolean));
+  const list = CLASS_OPTIONS.filter(c => have.has(c));
+  have.forEach(c => { if (!list.includes(c)) list.push(c); });
+  return list;
+}
+function drShiftDate(iso, days) { const p = iso.split('-').map(Number); return localISO(new Date(p[0], p[1] - 1, p[2] + days)); }
+function drIsSunday(iso) { const p = iso.split('-').map(Number); return new Date(p[0], p[1] - 1, p[2]).getDay() === 0; }
+async function drFetchRows(from, to) {
+  const out = [];
+  for (let off = 0; off < 20000; off += 1000) {
+    const { data, error } = await sb.from('diary_entries').select('id,class_name,subject,entry_date,entry_text')
+      .gte('entry_date', from).lte('entry_date', to).order('entry_date', { ascending: false }).order('id').range(off, off + 999);
+    if (error) throw error;
+    out.push(...(data || []));
+    if (!data || data.length < 1000) break;
+  }
+  return out;
+}
+function drRebuild() { const m = {}; drClasses().forEach(c => { m[c] = DR.rows.filter(r => r.class_name === c); }); DR.map = m; }
+async function drFetch() {
+  DR.err = ''; DR.map = null; DR.editId = null; drRender();
+  if (!navigator.onLine) { DR.err = 'offline'; drRender(); return; }
+  try { DR.rows = await drFetchRows(drShiftDate(DR.date, -5), DR.date); drRebuild(); }
+  catch (e) { DR.err = 'x'; }
+  drRender();
+}
+function openDiaryReport() {
+  DR = { date: todayISO(), map: null, rows: [], err: '', onlyMissing: false, open: {}, editId: null };
+  showModal(qt('Diary Report', 'ڈائری رپورٹ'), '<div id="dr-body"></div>');
+  drFetch();
+}
+function drSetDate(v) { if (!v) return; DR.date = v > todayISO() ? todayISO() : v; DR.open = {}; drFetch(); }
+function drStep(n) { drSetDate(drShiftDate(DR.date, n)); }
+function drToggleMissing() { DR.onlyMissing = !DR.onlyMissing; drRender(); }
+function drToggleClass(i) { DR.open[i] = !DR.open[i]; drRender(); }
+function drEntryHtml(e) {
+  const id = esc(e.id);
+  const body = DR.editId === e.id
+    ? `<textarea id="dr-edit-text" rows="4" maxlength="5000" style="${DR_TA}margin-top:4px;">${esc(e.entry_text || '')}</textarea>
+       <div class="flexgap" style="margin-top:8px;"><button class="btn-ghost" onclick="drEditCancel()">${esc(qt('Cancel', 'منسوخ'))}</button><button class="btn-primary" style="flex:1;" onclick="drEditSave('${id}')">${esc(qt('Save', 'محفوظ کریں'))}</button></div>`
+    : `<div style="margin-top:4px;font-size:13px;line-height:1.5;white-space:pre-wrap;">${esc(e.entry_text || '')}</div>
+       <div style="display:flex;gap:16px;margin-top:6px;font-size:12px;"><a onclick="drEdit('${id}')" style="color:var(--navy);font-weight:600;cursor:pointer;">✎ ${esc(qt('Edit', 'ایڈٹ'))}</a><a onclick="drDelete('${id}')" style="color:var(--rust);font-weight:600;cursor:pointer;">🗑 ${esc(qt('Delete', 'حذف'))}</a></div>`;
+  return `<div style="padding:8px 0;border-top:1px solid var(--line);margin-top:8px;"><div class="nm">${esc(e.subject || '')}</div>${body}</div>`;
+}
+function drEdit(id) { DR.editId = id; drRender(); const t = document.getElementById('dr-edit-text'); if (t) t.focus(); }
+function drEditCancel() { DR.editId = null; drRender(); }
+async function drEditSave(id) {
+  const ta = document.getElementById('dr-edit-text'), txt = ta ? ta.value.trim() : '';
+  if (!txt) { alert(qt('Diary text cannot be empty. Use Delete to remove it.', 'ڈائری خالی نہیں ہو سکتی۔ ہٹانے کے لیے حذف دبائیں۔')); return; }
+  if (!navigator.onLine) { alert(qt('Internet is needed.', 'انٹرنیٹ ضروری ہے۔')); return; }
+  try {
+    const { data, error } = await sb.from('diary_entries').update({ entry_text: txt }).eq('id', id).select('id');
+    if (error || !data || !data.length) { alert(qt('Could not save. Only the owner or principal can edit the diary.', 'محفوظ نہیں ہو سکا۔ ڈائری صرف مالک یا پرنسپل ایڈٹ کر سکتے ہیں۔')); return; }
+    const row = DR.rows.find(r => r.id === id); if (row) row.entry_text = txt;
+    DR.editId = null; drRender();
+  } catch (e) { alert(qt('Could not save. Please try again.', 'محفوظ نہیں ہو سکا۔ دوبارہ کوشش کریں۔')); }
+}
+async function drDelete(id) {
+  if (!confirm(qt('Delete this diary entry? Parents will no longer see it.', 'یہ ڈائری حذف کریں؟ والدین کو یہ نظر نہیں آئے گی۔'))) return;
+  if (!navigator.onLine) { alert(qt('Internet is needed.', 'انٹرنیٹ ضروری ہے۔')); return; }
+  try {
+    const { data, error } = await sb.from('diary_entries').delete().eq('id', id).select('id');
+    if (error || !data || !data.length) { alert(qt('Could not delete. Only the owner or principal can delete the diary.', 'حذف نہیں ہو سکا۔ ڈائری صرف مالک یا پرنسپل حذف کر سکتے ہیں۔')); return; }
+    DR.rows = DR.rows.filter(r => r.id !== id); drRebuild(); DR.editId = null; drRender();
+  } catch (e) { alert(qt('Could not delete. Please try again.', 'حذف نہیں ہو سکا۔ دوبارہ کوشش کریں۔')); }
+}
+function drRender() {
+  const el = document.getElementById('dr-body'); if (!el) return;
+  const today = todayISO();
+  const head = `<div style="display:flex;gap:6px;align-items:center;margin-bottom:10px;">
+      <button class="btn-ghost" style="flex:0 0 44px;padding:9px 0;" onclick="drStep(-1)">‹</button>
+      <input type="date" id="dr-date" value="${esc(DR.date)}" max="${esc(today)}" onchange="drSetDate(this.value)" style="flex:1;text-align:center;">
+      <button class="btn-ghost" style="flex:0 0 44px;padding:9px 0;" onclick="drStep(1)" ${DR.date >= today ? 'disabled' : ''}>›</button>
+    </div>`;
+  if (DR.err) {
+    const msg = DR.err === 'nocode'
+      ? qt('School code is not set. Please set it in Settings first.', 'اسکول کوڈ سیٹ نہیں ہے۔ پہلے سیٹنگز میں سیٹ کریں۔')
+      : DR.err === 'x' ? qt('Could not load the diary. Please try again.', 'ڈائری لوڈ نہیں ہو سکی۔ دوبارہ کوشش کریں۔')
+      : qt('Internet is needed to load the diary report.', 'ڈائری رپورٹ دیکھنے کے لیے انٹرنیٹ ضروری ہے۔');
+    el.innerHTML = head + `<div class="err">${esc(msg)}</div>`; return;
+  }
+  if (!DR.map) { el.innerHTML = head + `<div class="sub">${esc(qt('Loading…', 'لوڈ ہو رہا ہے…'))}</div>`; return; }
+  const classes = drClasses();
+  if (!classes.length) { el.innerHTML = head + `<div class="sub">${esc(qt('No classes with students yet.', 'ابھی کسی کلاس میں طلبہ نہیں ہیں۔'))}</div>`; return; }
+  const wk = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
+  const rows = classes.map(c => {
+    const all = DR.map[c];
+    const todayE = all ? all.filter(e => drD10(e) === DR.date) : null;
+    const subs = todayE ? Array.from(new Set(todayE.map(e => e.subject || '—'))) : [];
+    const days = [];
+    for (let k = 5; k >= 0; k--) {
+      const d = drShiftDate(DR.date, -k), p = d.split('-').map(Number);
+      days.push({ wd: wk[new Date(p[0], p[1] - 1, p[2]).getDay()], sun: drIsSunday(d), has: !!(all && all.some(e => drD10(e) === d)) });
+    }
+    return { c, all, todayE, subs, days };
+  });
+  const loaded = rows.filter(r => r.all), failed = rows.length - loaded.length;
+  const done = loaded.filter(r => r.todayE.length).length, missing = loaded.length - done;
+  const summary = `<div class="card" style="margin-bottom:10px;padding:12px;display:flex;justify-content:space-between;align-items:center;gap:8px;">
+      <div><div style="font-size:12px;opacity:.7;">${esc(qt('Classes with diary', 'ڈائری لکھنے والی کلاسیں'))}</div>
+        <div style="font-size:22px;font-weight:700;color:${missing ? 'var(--rust)' : 'var(--sage)'};">${done} / ${loaded.length}</div></div>
+      <button class="btn-ghost" style="flex:0 0 auto;padding:9px 12px;${DR.onlyMissing ? 'background:var(--rust);color:#fff;' : ''}" onclick="drToggleMissing()">${esc(DR.onlyMissing ? qt('Show all', 'سب دکھائیں') : qt('Only missing (' + missing + ')', 'صرف نہ لکھی گئی (' + missing + ')'))}</button>
+    </div>`;
+  const note = (drIsSunday(DR.date) ? `<div class="sub" style="margin-bottom:8px;">${esc(qt('This day is Sunday.', 'یہ اتوار کا دن ہے۔'))}</div>` : '')
+    + (failed ? `<div class="err">${esc(qt(failed + ' class(es) could not be loaded. Tap Refresh.', failed + ' کلاس لوڈ نہیں ہو سکیں۔ ریفریش دبائیں۔'))}</div>` : '');
+  const cards = rows.map((r, i) => {
+    if (DR.onlyMissing && !(r.all && !r.todayE.length)) return '';
+    const label = LANG === 'ur' ? classNameUrdu(r.c) : r.c;
+    const ok = r.all && r.todayE.length;
+    const status = !r.all ? `<span style="font-size:12px;opacity:.6;">${esc(qt('Not loaded', 'لوڈ نہیں ہوئی'))}</span>`
+      : ok ? `<span style="font-size:12px;font-weight:600;color:var(--sage);">✓ ${r.subs.length} ${esc(qt(r.subs.length === 1 ? 'subject' : 'subjects', 'مضامین'))}</span>`
+      : `<span style="font-size:12px;font-weight:600;color:var(--rust);">✗ ${esc(qt('No diary', 'ڈائری نہیں'))}</span>`;
+    const chips = r.subs.map(x => `<span style="background:#F0EBDA;border-radius:10px;padding:2px 8px;font-size:11px;">${esc(x)}</span>`).join(' ');
+    const strip = `<div style="display:flex;gap:6px;margin-top:8px;">${r.days.map(d => `<span style="text-align:center;font-size:11px;min-width:22px;"><span style="display:block;font-size:9px;opacity:.55;">${d.wd}</span><span style="color:${d.sun ? 'inherit' : d.has ? 'var(--sage)' : 'var(--rust)'};opacity:${d.sun ? .35 : 1};font-weight:700;">${d.sun ? '–' : d.has ? '✓' : '✗'}</span></span>`).join('')}</div>`;
+    const detail = (DR.open[i] && ok) ? r.todayE.map(drEntryHtml).join('') : '';
+    return `<div class="card" style="margin-bottom:8px;padding:12px;">
+      <div onclick="drToggleClass(${i})" style="cursor:pointer;">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;"><b>${esc(label)}</b>${status}</div>
+        ${chips ? `<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:6px;">${chips}</div>` : ''}
+        ${strip}
+      </div>${detail}
+    </div>`;
+  }).join('');
+  el.innerHTML = head + summary + note + (cards || `<div class="sub">${esc(qt('All classes have written diary.', 'تمام کلاسوں کی ڈائری لکھی گئی ہے۔'))}</div>`)
+    + `<button class="btn-ghost" style="width:100%;margin-top:6px;" onclick="drFetch()">${esc(qt('Refresh', 'ریفریش'))}</button>
+       <div class="sub" style="margin-top:8px;font-size:11px;opacity:.6;">${esc(qt('Tap a class to read what was written. The strip shows the last 6 days (– = Sunday).', 'کلاس پر ٹیپ کر کے لکھا ہوا پڑھیں۔ پٹی میں پچھلے 6 دن ہیں (– = اتوار)۔'))}</div>`;
+}
 
 function showModal(title, bodyHtml) {
   document.getElementById('modal-root').innerHTML = `
