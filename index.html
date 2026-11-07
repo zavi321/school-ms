@@ -14,7 +14,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' https://cdn.jsdelivr.net; worker-src 'self' blob: https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https:; media-src 'self' data: blob:; connect-src 'self' https://*.supabase.co wss://*.supabase.co https://cdn.jsdelivr.net https://tessdata.projectnaptha.com; manifest-src 'self' blob:; base-uri 'self'; object-src 'none'; frame-src 'none'; form-action 'self'; upgrade-insecure-requests;">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' https://cdn.jsdelivr.net; worker-src 'self' blob: https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https:; media-src 'self' data: blob:; connect-src 'self' https://*.supabase.co wss://*.supabase.co https://cdn.jsdelivr.net https://tessdata.projectnaptha.com; manifest-src 'self' blob:; base-uri 'self'; object-src 'none'; frame-src 'self'; form-action 'self'; upgrade-insecure-requests;">
 <meta name="referrer" content="strict-origin-when-cross-origin">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, interactive-widget=resizes-visual">
 <title>SchoolMS</title>
@@ -5228,7 +5228,7 @@ function generateAlerts() {
 
   // Fee alerts: every active fee-paying student currently overdue.
   const active = DATA.students.filter(x => x.status !== 'inactive');
-  active.filter(s => isFeePaying(s)).forEach(s => {
+  active.forEach(s => {   // includes free/orphan/concession-type students who still owe a balance
     // Only alert if the LATEST recorded month's running balance is still due.
     // If earlier months had dues but the student has since caught up (their
     // most recent entry brings the running balance to 0 or below), this is
@@ -15311,6 +15311,7 @@ let dmcDesign = {
   passPercent: 40,                 // overall pass mark (%)
   failIfAnySubjectFails: false,    // true = FAIL if any single subject is below passPercent
   gradeCuts: { 'A+': 80, 'A': 70, 'B': 60, 'C': 50, 'D': 40 },   // minimum % for each grade; below D = F
+  gradeSystem: 'school',           // 'school' (own A+..F scale) | 'fbise' | 'punjab' (Punjab / KPK boards)
   positionLimit: 15,               // positions beyond this are not printed (0 = print every position)
   positionPassedOnly: false,       // true = only students who passed are ranked
   showVerifyCode: true,            // print Cert. No. + Verification Code at the bottom of each certificate
@@ -15433,19 +15434,7 @@ function tplDMC() {
     <div class="card">
       <h3 style="margin-top:0;">${dqt('Result & Grade Rules', 'نتیجہ اور گریڈ کے اصول')}</h3>
       <p style="font-size:12px;opacity:.7;">${dqt('These rules apply to every certificate of this school. The Marks Sheet tab grades separately.', 'یہ اصول اس اسکول کے ہر سرٹیفکیٹ پر لاگو ہوتے ہیں۔ مارکس شیٹ ٹیب کی گریڈنگ الگ رہتی ہے۔')}</p>
-      <label>
-        <span>${dqt('Pass percentage (%)', 'پاس فیصد (%)')}</span>
-        <input type="number" id="dmc-pass-pct" inputmode="decimal" min="1" max="100" value="${esc(dmcPassPercent())}" onchange="dmcSetRule('passPercent', this.value)">
-      </label>
-      <label style="display:flex;align-items:center;gap:8px;">
-        <input type="checkbox" id="dmc-fail-any" style="width:auto;flex-shrink:0;" ${dmcDesign.failIfAnySubjectFails ? 'checked' : ''} onchange="dmcSetRule('failIfAnySubjectFails', this.checked)">
-        <span>${dqt('FAIL if any single subject is below the pass percentage', 'کسی ایک مضمون میں بھی پاس فیصد سے کم ہو تو نتیجہ FAIL')}</span>
-      </label>
-      <div style="font-size:12px;opacity:.7;margin:8px 0 4px;">${dqt('Minimum % for each grade (below D = F)', 'ہر گریڈ کے لیے کم از کم فیصد (D سے نیچے = F)')}</div>
-      <div style="display:flex;gap:6px;">${['A+', 'A', 'B', 'C', 'D'].map(g => `
-        <label style="flex:1;min-width:0;"><span>${g}</span>
-          <input type="number" id="dmc-cut-${g.replace('+', 'p')}" inputmode="decimal" min="1" max="100" value="${esc(dmcGradeCuts()[g])}" onchange="dmcSetCut('${g}', this.value)">
-        </label>`).join('')}</div>
+      <div id="dmc-grade-box">${dmcGradeBoxHtml()}</div>
       <label>
         <span>${dqt('Print positions only up to (0 = everyone)', 'پوزیشن صرف پہلے N تک چھاپیں (0 = سب)')}</span>
         <input type="number" id="dmc-pos-limit" inputmode="numeric" min="0" value="${esc(Number(dmcDesign.positionLimit) || 0)}" onchange="dmcSetRule('positionLimit', this.value)">
@@ -15539,10 +15528,53 @@ function applyDMCConfigToFields() {
   dmcSyncRuleFields();
 }
 
+
+// ---- Grading system box (school style or board style) ----
+function dmcGradeBoxHtml() {
+  const id = dmcGradeSystemId();
+  const opts = Object.keys(DMC_GRADE_SYSTEMS).map(k => `<option value="${k}" ${k === id ? 'selected' : ''}>${esc(dqt(DMC_GRADE_SYSTEMS[k].label, DMC_GRADE_SYSTEMS[k].labelUr))}</option>`).join('');
+  const scaleHtml = id === 'school'
+    ? `<div style="font-size:12px;opacity:.7;margin:8px 0 4px;">${dqt('Minimum % for each grade (below D = F)', 'ہر گریڈ کے لیے کم از کم فیصد (D سے نیچے = F)')}</div>
+      <div style="display:flex;gap:6px;">${['A+', 'A', 'B', 'C', 'D'].map(g => `
+        <label style="flex:1;min-width:0;"><span>${g}</span>
+          <input type="number" id="dmc-cut-${g.replace('+', 'p')}" inputmode="decimal" min="1" max="100" value="${esc(dmcGradeCuts()[g])}" onchange="dmcSetCut('${g}', this.value)">
+        </label>`).join('')}</div>`
+    : `<div style="font-size:12px;opacity:.7;margin:8px 0 4px;">${dqt('Grades of this board (fixed)', 'اس بورڈ کے گریڈ (مقررہ)')}</div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px;font-size:13px;">${dmcGradeScale().map(x => `<span style="border:1px solid #cbd5e0;border-radius:8px;padding:4px 8px;"><b>${esc(x[0])}</b> ${x[1]}%+</span>`).join('')}<span style="border:1px solid #cbd5e0;border-radius:8px;padding:4px 8px;"><b>F</b> &lt; ${dmcGradeScale().slice(-1)[0][1]}%</span></div>
+      <p style="font-size:12px;opacity:.7;margin:6px 0 0;">${dqt('Board rules change from time to time. Please check against your board\'s latest notification.', 'بورڈ کے اصول وقتاً فوقتاً بدلتے رہتے ہیں۔ اپنے بورڈ کے تازہ نوٹیفکیشن سے ضرور تصدیق کر لیں۔')}</p>`;
+  return `
+      <label>
+        <span>${dqt('Grading system', 'گریڈنگ سسٹم')}</span>
+        <select id="dmc-grade-system" onchange="dmcSetGradeSystem(this.value)">${opts}</select>
+      </label>
+      <label>
+        <span>${dqt('Pass percentage (%)', 'پاس فیصد (%)')}</span>
+        <input type="number" id="dmc-pass-pct" inputmode="decimal" min="1" max="100" value="${esc(dmcPassPercent())}" onchange="dmcSetRule('passPercent', this.value)">
+      </label>
+      <label style="display:flex;align-items:center;gap:8px;">
+        <input type="checkbox" id="dmc-fail-any" style="width:auto;flex-shrink:0;" ${dmcDesign.failIfAnySubjectFails ? 'checked' : ''} onchange="dmcSetRule('failIfAnySubjectFails', this.checked)">
+        <span>${dqt('FAIL if any single subject is below the pass percentage', 'کسی ایک مضمون میں بھی پاس فیصد سے کم ہو تو نتیجہ FAIL')}</span>
+      </label>
+      ${scaleHtml}`;
+}
+function dmcRefreshGradeBox() { const el = document.getElementById('dmc-grade-box'); if (el) el.innerHTML = dmcGradeBoxHtml(); }
+function dmcSetGradeSystem(id) {
+  if (!DMC_GRADE_SYSTEMS[id]) id = 'school';
+  dmcDesign.gradeSystem = id;
+  if (id !== 'school') {
+    // Board style: board's usual pass mark, and every subject must pass on its own.
+    dmcDesign.passPercent = DMC_GRADE_SYSTEMS[id].pass;
+    dmcDesign.failIfAnySubjectFails = true;
+  }
+  dmcRefreshGradeBox();
+  dmcRulesChanged();
+}
+
 // ---- Result & Grade Rules (saved with the school's DMC config) ----
 function dmcSyncRuleFields() {
   const setV = (id, v) => { const el = document.getElementById(id); if (el && document.activeElement !== el) el.value = v; };
   const setC = (id, v) => { const el = document.getElementById(id); if (el) el.checked = !!v; };
+  dmcRefreshGradeBox();
   setV('dmc-pass-pct', dmcPassPercent());
   setC('dmc-fail-any', dmcDesign.failIfAnySubjectFails);
   const cuts = dmcGradeCuts();
@@ -16048,11 +16080,30 @@ function dmcGradeCuts() {
   ['A+', 'A', 'B', 'C', 'D'].forEach(g => { const n = Number(c[g]); out[g] = isFinite(n) && n >= 0 ? n : d[g]; });
   return out;
 }
+// Board-style grading systems. Cuts are the minimum % for each grade (below the last = F).
+// Pass marks here are the usual defaults; the school can still change them in the rules box.
+// Boards revise these from time to time, so check against the board's latest notification.
+const DMC_GRADE_SYSTEMS = {
+  school: { label: 'School style (A+ to F, my own %)', labelUr: 'اسکول کا اپنا (A+ سے F)' },
+  fbise:  { label: 'FBISE style (A1 to E)', labelUr: 'وفاقی بورڈ طرز (A1 سے E)', pass: 40,
+            cuts: [['A1', 90], ['A', 80], ['B', 70], ['C', 60], ['D', 50], ['E', 40]] },
+  punjab: { label: 'Punjab / KPK board style (A1 to E)', labelUr: 'پنجاب / خیبر پختونخوا بورڈ طرز (A1 سے E)', pass: 33,
+            cuts: [['A1', 80], ['A', 70], ['B', 60], ['C', 50], ['D', 40], ['E', 33]] }
+};
+function dmcGradeSystemId() { return DMC_GRADE_SYSTEMS[dmcDesign.gradeSystem] && dmcDesign.gradeSystem !== 'school' ? dmcDesign.gradeSystem : 'school'; }
+// Ordered list of [grade, minPercent] for the current system.
+function dmcGradeScale() {
+  const id = dmcGradeSystemId();
+  if (id !== 'school') return DMC_GRADE_SYSTEMS[id].cuts;
+  const c = dmcGradeCuts();
+  return ['A+', 'A', 'B', 'C', 'D'].map(g => [g, c[g]]);
+}
 // Grade for the DMC certificate / archive. (dmcGradeFor below keeps the fixed scale the
 // Marks Sheet uses, so the two screens are not changed by this school's DMC settings.)
 function dmcCertGrade(pct) {
-  const c = dmcGradeCuts(); pct = Number(pct) || 0;
-  return pct >= c['A+'] ? 'A+' : pct >= c['A'] ? 'A' : pct >= c['B'] ? 'B' : pct >= c['C'] ? 'C' : pct >= c['D'] ? 'D' : 'F';
+  pct = Number(pct) || 0;
+  const hit = dmcGradeScale().find(x => pct >= x[1]);
+  return hit ? hit[0] : 'F';
 }
 // Pass/fail for one student: overall % against the pass mark and, if the school turned it
 // on, every subject against the same pass mark (absent / not entered count as 0).
@@ -16624,7 +16675,7 @@ function dmcGradeFor(pct) {
   return pct >= 80 ? 'A+' : pct >= 70 ? 'A' : pct >= 60 ? 'B' : pct >= 50 ? 'C' : pct >= 40 ? 'D' : 'F';
 }
 function dmcRemarkFor(grade) {
-  const map = { 'A+':'Outstanding', 'A':'Excellent', 'B':'Very Good', 'C':'Good', 'D':'Satisfactory', 'F':'Needs Improvement' };
+  const map = { 'A+':'Outstanding', 'A1':'Outstanding', 'A':'Excellent', 'B':'Very Good', 'C':'Good', 'D':'Satisfactory', 'E':'Acceptable', 'F':'Needs Improvement' };
   return map[grade] || '';
 }
 // A color per grade, so the Grade/Remarks shown on the certificate are
@@ -16637,11 +16688,11 @@ function dmcGradeColor(grade) {
     let base = dmcDesign.accentColor;
     if (!/^#[0-9a-f]{6}$/i.test(base || '')) base = dmcInkFor('#1C2530');
     base = dmcDeepen(base, 0.18);
-    const step = { 'A+':0, 'A':0.1, 'B':0.2, 'C':0.3, 'D':0.4, 'F':0.5 }[grade];
+    const step = { 'A+':0, 'A1':0, 'A':0.1, 'B':0.2, 'C':0.3, 'D':0.4, 'E':0.45, 'F':0.5 }[grade];
     if (step == null) return base;
     return dmcDeepen(lightenColor(base, step), 0.3);
   }
-  const map = { 'A+':'#2F7D4F', 'A':'#3F7154', 'B':'#3D7A9E', 'C':'#B2871F', 'D':'#B2752F', 'F':'#B24A32' };
+  const map = { 'A+':'#2F7D4F', 'A1':'#2F7D4F', 'A':'#3F7154', 'B':'#3D7A9E', 'C':'#B2871F', 'D':'#B2752F', 'E':'#B2652F', 'F':'#B24A32' };
   return map[grade] || '#1C2530';
 }
 
