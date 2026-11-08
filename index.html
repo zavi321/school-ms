@@ -16491,7 +16491,7 @@ function handleDMCExcelUpload(file) {
         wb = XLSX.read(data, {type: 'array'});
       }
       const picked = dmcPickSheetRows(wb);
-      const rows = picked.rows;
+      let rows = picked.rows;
 
       // Keep the list being replaced so the upload can be undone from the message below.
       dmcUploadBackup = dmcResults.length
@@ -16503,8 +16503,31 @@ function handleDMCExcelUpload(file) {
       const allCols = [];
       rows.forEach(r => Object.keys(r).forEach(c => { if (!allCols.includes(c)) allCols.push(c); }));
       const colOf = key => allCols.find(c => DMC_COLS[key].includes(dmcNormHdr(c)));
-      const cName = colOf('name'), cFather = colOf('father'), cRoll = colOf('roll'), cClass = colOf('class'), cSection = colOf('section');
+      // A column headed "Grade" that holds result grades (A+, A1, B, C, D, E, F...) is the student's grade, NOT the class.
+      // (It used to be read as the Class, which put every grade in its own "class" and ranked positions inside those.)
+      const isLetterGradeCol = col => {
+        const vals = rows.map(r => String(r[col] == null ? '' : r[col]).trim()).filter(v => v !== '');
+        return vals.length > 0 && vals.every(v => /^(a\s*\+|a\s*-|a\s*1|a|b\s*\+|b\s*-|b|c|d|e|f)$/i.test(v));
+      };
+      const cName = colOf('name'), cFather = colOf('father'), cRoll = colOf('roll'), cClass = allCols.find(c => DMC_COLS.class.includes(dmcNormHdr(c)) && !(dmcNormHdr(c) === 'grade' && isLetterGradeCol(c))), cSection = colOf('section');
       const cell = (r, c) => { if (!c) return ''; const v = r[c]; return v == null ? '' : (typeof v === 'string' ? v.trim() : v); };
+
+      // The file decides the totals: if it has a row such as "Total Marks" / "Max Marks" / "Out of", its numbers are each
+      // subject's total marks (and that row is not a student). A total written in a header ("Urdu/75") is used too.
+      const fileTotals = {};
+      {
+        const isTotalsLabel = v => /^(total marks|max marks|maximum marks|full marks|marks out of|out of|subject total|subject total marks)$/.test(String(v == null ? '' : v).toLowerCase().replace(/[^a-z]+/g, ' ').trim());
+        const ti = rows.findIndex(r => isTotalsLabel(cell(r, cName)) || isTotalsLabel(cell(r, allCols[0])));
+        if (ti >= 0) {
+          const tr = rows[ti];
+          allCols.forEach(col => {
+            const raw = tr[col] == null ? '' : String(tr[col]).trim();
+            const n = Number(raw.replace(',', '.'));
+            if (raw !== '' && isFinite(n) && n > 0) fileTotals[col] = n;
+          });
+          rows = rows.filter((_, i) => i !== ti);
+        }
+      }
 
       dmcResults = rows.map((r, idx) => {
         const excelClass = String(cell(r, cClass)).replace(/[\s\u00A0]+/g, ' ').trim();
@@ -16556,27 +16579,17 @@ function handleDMCExcelUpload(file) {
           if (isNonSubjectCol(col)) return;
           const parsed = parseSubjectHeader(col);
           if (!parsed.name) return; // no subject name could be read from this header — skip it entirely
+          if (parsed.assumed && fileTotals[col]) { parsed.total = fileTotals[col]; parsed.assumed = false; }
           subjectMap.set(col, parsed);
         });
       }
-      // Subjects already saved here stay (with their totals) until the user removes them with the cross.
-      // An Excel header with an explicit total ("Urdu/75") updates that subject's total; a plain header keeps the saved total.
-      const prevSubjects = dmcSubjects.map(s => ({ name: s.name, total: s.total }));
+      // The file is the only source: subjects, their order, their exact names and their totals come from its columns.
+      // Older saved subjects are NOT carried over and a saved total never overrides what the file says.
+      // Only when the file gives no total for a subject is 100 assumed — and that is reported below.
       const lc = v => String(v).trim().toLowerCase();
-      // The new list follows the Excel/PDF column order exactly. Old saved subjects that are not in the file go at the end.
       const orderedSubjects = [];
-      subjectMap.forEach(x => {
-        const prev = prevSubjects.find(p => lc(p.name) === lc(x.name));
-        if (prev) {
-          if (!x.assumed) prev.total = x.total;
-          x.name = prev.name; x.total = prev.total; x.assumed = false;
-        }
-        if (!orderedSubjects.some(o => lc(o.name) === lc(x.name))) orderedSubjects.push({ name: x.name, total: x.total });
-      });
+      subjectMap.forEach(x => { if (!orderedSubjects.some(o => lc(o.name) === lc(x.name))) orderedSubjects.push({ name: x.name, total: x.total }); });
       const keptOnly = [];
-      prevSubjects.forEach(p => {
-        if (!orderedSubjects.some(o => lc(o.name) === lc(p.name))) { orderedSubjects.push(p); keptOnly.push(p.name); }
-      });
       const assumedNames = Array.from(subjectMap.values()).filter(x => x.assumed).map(x => x.name);
       dmcSubjects = orderedSubjects;
       dmcSubjectsTouched = true;
@@ -16595,7 +16608,7 @@ function handleDMCExcelUpload(file) {
           let n = Number(txt.replace(',', '.'));
           if (isNaN(n)) { badCells++; r.marks[subj.name] = ''; return; }   // a typo — left blank so it gets noticed
           if (n < 0) n = 0;
-          if (n > subj.total) { overCells++; n = subj.total; }
+          if (n > subj.total) overCells++;          // kept exactly as in the file, only flagged below
           r.marks[subj.name] = n;
         });
         dmcSubjects.forEach(s => { if (r.marks[s.name] === undefined) r.marks[s.name] = ''; });
@@ -16614,7 +16627,7 @@ function handleDMCExcelUpload(file) {
       if (skippedRows) upNotes.push(`${skippedRows} khali rows chhor di gayin.`);
       if (assumedNames.length) upNotes.push(`⚠️ In subjects ke total marks header mein nahi mile, 100 maane gaye: ${assumedNames.join(', ')} — neeche "Subjects & Total Marks" mein theek karein (ya header "Urdu/75" ki tarah likhein).`);
       if (keptOnly.length) upNotes.push(`ℹ️ Pehle se saved subjects list mein rakhe gaye (Excel mein nahi the): ${keptOnly.join(', ')} — zaroorat na ho to \"Subjects & Total Marks\" mein ✕ dabayen.`);
-      if (overCells) upNotes.push(`⚠️ ${overCells} marks subject ke total se zyada the, total ke barabar kar diye gaye.`);
+      if (overCells) upNotes.push(`⚠️ ${overCells} marks subject ke total se zyada hain — file ke mutabiq hi rakhe gaye hain. File ya subject ka total check karein.`);
       const blankCells = dmcResults.reduce((a, r) => a + Object.values(r.marks).filter(v => v === '').length, 0);
       if (badCells) upNotes.push(`⚠️ ${badCells} cells mein marks ki jagah text tha — unhe khali chhoda gaya hai. Absent ke liye "Abs" likhein.`);
       if (absCells) upNotes.push(`${absCells} cells Absent (Abs) mark hue — certificate par "Abs" chhapega.`);
