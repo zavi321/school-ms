@@ -41,7 +41,16 @@
     s.integrity = 'sha384-vtjasyidUo0kW94K5MXDXntzOJpQgBKXmE7e2Ga4LG0skTTLeBi97eFAXsqewJjw';
     s.crossOrigin = 'anonymous';
     s.async = true;
-    s.onerror = function () { if (s.parentNode) s.parentNode.removeChild(s); };
+    s.onerror = function () {
+      if (s.parentNode) s.parentNode.removeChild(s);
+      // Offline: use the copy saved earlier on this phone.
+      if (window.XLSX || !window.smsLibBlobUrl) return;
+      smsLibBlobUrl('https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js').then(function (b) {
+        if (!b || window.XLSX || document.getElementById('xlsx-lib')) return;
+        var t = document.createElement('script'); t.id = 'xlsx-lib'; t.src = b; t.async = true;
+        document.head.appendChild(t);
+      });
+    };
     document.head.appendChild(s);
   }
   window.loadXLSXLib = load;
@@ -3750,6 +3759,38 @@ async function ensurePersistentStorage() {
     if (!already) await navigator.storage.persist();
   } catch (e) { console.error('ensurePersistentStorage failed', e); }
 }
+
+// ---- Offline copies of the helper libraries (Excel, PDF reader, QR scan) ----
+// Downloaded once while the phone is online (idle time), kept in Cache Storage, and used when offline.
+const SMS_LIB_CACHE = 'sms-libs-v1';
+const SMS_LIB_URLS = [
+  'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js',
+  'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js',
+  'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js',
+  'https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js'
+];
+async function smsLibBlobUrl(url) {
+  try {
+    if (!window.caches) return null;
+    const c = await caches.open(SMS_LIB_CACHE);
+    const r = await c.match(url);
+    if (!r) return null;
+    return URL.createObjectURL(await r.blob());
+  } catch (e) { return null; }
+}
+async function smsLibPrefetch() {
+  try {
+    if (!navigator.onLine || !window.caches) return;
+    if (navigator.connection && navigator.connection.saveData) return;
+    const c = await caches.open(SMS_LIB_CACHE);
+    for (const u of SMS_LIB_URLS) {
+      if (await c.match(u)) continue;
+      try { const r = await fetch(u, { mode: 'cors' }); if (r && r.ok) await c.put(u, r.clone()); } catch (e) {}
+    }
+  } catch (e) {}
+}
+window.addEventListener('load', () => setTimeout(smsLibPrefetch, 6000));
+window.addEventListener('online', () => setTimeout(smsLibPrefetch, 3000));
 
 // ---- Marketing landing page shown to new web visitors before the login screen ----
 // Set LANDING_ENABLED to false to switch it off completely.
@@ -8156,7 +8197,11 @@ function scanLoadJsQr() {
     document.head.appendChild(el);
   });
   if (window.jsQR) return Promise.resolve(window.jsQR);
-  return load('jsQR.js').catch(() => load('https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js'));
+  return load('jsQR.js').catch(async () => {
+    const b = await smsLibBlobUrl(SMS_LIB_URLS[3]);
+    if (b) { try { return await load(b); } catch (e) {} }
+    return load('https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js');
+  });
 }
 
 function openFeeScan(mode) {
@@ -16863,7 +16908,7 @@ function dmcPickSheetRows(wb) {
 // header row ("Student Name", "Roll No", "Urdu/75" ...); every cell below is placed under the nearest header.
 async function dmcPdfToWorkbook(buf) {
   await pqLoadScript(PQ_PDFJS);
-  pdfjsLib.GlobalWorkerOptions.workerSrc = PQ_PDFJS_W;
+  pdfjsLib.GlobalWorkerOptions.workerSrc = (await smsLibBlobUrl(PQ_PDFJS_W)) || PQ_PDFJS_W;
   const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
   const rows = [];                                   // each row = list of cells {t, c (centre x)}
   let anyText = false;
@@ -20704,7 +20749,7 @@ function kgRefreshBlock(i) { const el = document.getElementById('kgb-' + i); if 
 // ---- Import a paper from a PDF / photo (both paper modes) ----
 const PQ_PDFJS = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js', PQ_PDFJS_W = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js', PQ_TESS = 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js';
 const pqLibP = {};
-function pqLoadScript(src) { return pqLibP[src] || (pqLibP[src] = new Promise((res, rej) => { const e = document.createElement('script'); e.src = src; e.onload = res; e.onerror = () => { delete pqLibP[src]; rej(new Error('Internet needed to load PDF reader')); }; document.head.appendChild(e); })); }
+function pqLoadScript(src) { return pqLibP[src] || (pqLibP[src] = new Promise(async (res, rej) => { const cached = await smsLibBlobUrl(src); const e = document.createElement('script'); e.src = cached || src; e.onload = res; e.onerror = () => { delete pqLibP[src]; rej(new Error('Internet needed to load PDF reader')); }; document.head.appendChild(e); })); }
 function pqImpMsg(t, ms) { let d = document.getElementById('pqImpMsg'); if (!d) { d = document.createElement('div'); d.id = 'pqImpMsg'; d.style.cssText = 'position:fixed;left:50%;bottom:90px;transform:translateX(-50%);background:#222;color:#fff;padding:10px 16px;border-radius:12px;z-index:99999;font-size:14px;max-width:90%;text-align:center;'; document.body.appendChild(d); }
   d.textContent = t; d.style.display = ''; clearTimeout(d._t); if (ms) d._t = setTimeout(() => { d.style.display = 'none'; }, ms); }
 const pqNorm = l => String(l || '').replace(/[٠-٩]/g, c => c.charCodeAt(0) - 0x0660).replace(/[۰-۹]/g, c => c.charCodeAt(0) - 0x06F0).replace(/\s+/g, ' ').trim();
@@ -20812,7 +20857,7 @@ async function pqImportFile(file) {
   try {
     pqImpMsg('⏳ Opening file…'); let lines = [];
     if (file.type === 'application/pdf' || /\.pdf$/i.test(file.name)) {
-      await pqLoadScript(PQ_PDFJS); pdfjsLib.GlobalWorkerOptions.workerSrc = PQ_PDFJS_W;
+      await pqLoadScript(PQ_PDFJS); pdfjsLib.GlobalWorkerOptions.workerSrc = (await smsLibBlobUrl(PQ_PDFJS_W)) || PQ_PDFJS_W;
       const pdf = await pdfjsLib.getDocument({ data: await file.arrayBuffer() }).promise;
       pqImpMsg('🔎 Looking for the saved paper inside the PDF…');
       const pack = await pqFindPackInPdf(pdf);
@@ -27956,7 +28001,7 @@ async function sylaReadFile(inp) {
     let lines = [], note = '', found = [];
     const f = files[0];
     if (files.length === 1 && (f.type === 'application/pdf' || /\.pdf$/i.test(f.name))) {
-      await pqLoadScript(PQ_PDFJS); pdfjsLib.GlobalWorkerOptions.workerSrc = PQ_PDFJS_W;
+      await pqLoadScript(PQ_PDFJS); pdfjsLib.GlobalWorkerOptions.workerSrc = (await smsLibBlobUrl(PQ_PDFJS_W)) || PQ_PDFJS_W;
       const pdf = await pdfjsLib.getDocument({ data: await f.arrayBuffer() }).promise;
       // 1) bookmarks
       let ol = null; try { ol = await pdf.getOutline(); } catch (e) {}
