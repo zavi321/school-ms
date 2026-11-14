@@ -1789,7 +1789,7 @@ box-sizing:border-box;}
 <div class="f" role="button" onclick="lpGo('settings')"><div class="e">🪪</div><b>ID cards</b><span>Student cards with front and back, and teacher cards.</span></div>
 <div class="f" role="button" onclick="lpGo('gate')"><div class="e">🚪</div><b>Gate pass</b><span>Record early leaves and pickups by someone else.</span></div>
 <div class="f" role="button" onclick="lpGo('visitor')"><div class="e">🧍</div><b>Visitor log</b><span>Guests, parents and vendors at the gate, with check-out.</span></div>
-<div class="f"><div class="e">🗣️</div><b>Complaints</b><span>Parents send tracked complaints to the principal or class teacher.</span></div>
+<div class="f" role="button" onclick="lpGo('complaints')"><div class="e">🗣️</div><b>Complaints</b><span>Parents send tracked complaints to the principal or class teacher.</span></div>
 </div>
 <h3 class="cat">Attendance &amp; staff</h3>
 <div class="grid">
@@ -1819,8 +1819,8 @@ box-sizing:border-box;}
 <div class="f" role="button" onclick="lpGo('store')"><div class="e">📦</div><b>Store</b><span>Uniform, books and stationery stock and sales.</span></div>
 <div class="f" role="button" onclick="lpGo('lang')"><div class="e">🌐</div><b>Urdu &amp; English</b><span>Switch the whole app between both languages.</span></div>
 <div class="f" role="button" onclick="lpGo('settings')"><div class="e">💾</div><b>Backup</b><span>Download a full copy of your records as Excel.</span></div>
-<div class="f"><div class="e">📲</div><b>Install as app</b><span>Works on Android, iPhone and PC, and keeps going offline.</span></div>
-<div class="f"><div class="e">📖</div><b>User guides</b><span>Colourful guide books for principal, teacher, parent and accountant.</span></div>
+<div class="f" role="button" onclick="lpGo('install')"><div class="e">📲</div><b>Install as app</b><span>Works on Android, iPhone and PC, and keeps going offline.</span></div>
+<div class="f" role="button" onclick="lpGo('guides')"><div class="e">📖</div><b>User guides</b><span>Colourful guide books for principal, teacher, parent and accountant.</span></div>
 </div>
 </div></section>
 
@@ -3799,8 +3799,19 @@ const LP_GO = {
   marks: () => setTab('marksSheet'), analysis: () => openExamAnalysis(), dmc: () => setTab('dmc'),
   papers: () => setTab('papers'), diaryrep: () => openDiaryReport(), notices: () => setTab('notices'),
   tools: () => dashOpenTools(), charts: () => openDashChartsModal(), alerts: () => openAlertsModal(),
-  store: () => openStore(), lang: () => toggleLangApp()
+  store: () => openStore(), lang: () => toggleLangApp(),
+  complaints: () => setTab('notices'), install: () => lpInstallHelp(),
+  guides: () => window.open('https://wa.me/923412565659?text=' + encodeURIComponent('Assalam o Alaikum, I want the SchoolMS user guides (Principal, Teacher, Parent, Accountant).'), '_blank')
 };
+function lpInstallHelp() {
+  showModal('Install as app', `
+    <div style="font-size:14px;line-height:1.7;">
+      <p style="margin:0 0 10px;"><b>Android (Chrome):</b> tap the ⋮ menu, then <b>Install app</b> or <b>Add to Home screen</b>.</p>
+      <p style="margin:0 0 10px;"><b>iPhone (Safari):</b> tap the Share button, then <b>Add to Home Screen</b>.</p>
+      <p style="margin:0 0 14px;"><b>Laptop / PC (Chrome):</b> click the install icon at the right end of the address bar.</p>
+      <button class="btn-primary" style="width:100%;" onclick="closeModal()">OK</button>
+    </div>`);
+}
 function lpGo(k) {
   try { const f = LP_GO[k]; if (f) f(); }
   catch (e) { try { _logClientError('lpGo:' + k, e); } catch (_) {} }
