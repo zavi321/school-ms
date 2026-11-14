@@ -1626,6 +1626,11 @@ box-sizing:border-box;}
 #landing-dash .fab{bottom:calc(96px + env(safe-area-inset-bottom,0px))}
 #landing-dash footer{padding-bottom:110px}
 
+
+#landing-dash .f[onclick]{cursor:pointer;-webkit-tap-highlight-color:transparent;transition:transform .12s}
+#landing-dash .f[onclick]:active{transform:scale(.97)}
+#landing-dash .f[onclick]::after{content:"\203A";position:absolute;right:12px;top:10px;font-size:22px;line-height:1;opacity:.45}
+#landing-dash .f{position:relative}
 </style>
 <div id="landing-root" class="lp-hidden">
 <header class="top"><div class="wrap">
@@ -1673,7 +1678,7 @@ box-sizing:border-box;}
 <h3 class="cat">Students &amp; records</h3>
 <div class="grid">
 <div class="f"><div class="e">🗒️</div><b>Admission register</b><span>New admissions, full student record, trash with restore.</span></div>
-<div class="f"><div class="e">⬆️</div><b>Promote &amp; import</b><span>Promote the whole school each new year. Import students from Excel.</span></div>
+<div class="f"><div class="e">⬆️</div><b>Promote students</b><span>Promote the whole school to the next class each new year.</span></div>
 <div class="f"><div class="e">📄</div><b>SLC &amp; certificates</b><span>Leaving certificates and character certificates.</span></div>
 <div class="f"><div class="e">🪪</div><b>ID cards</b><span>Student cards with front and back, and teacher cards.</span></div>
 <div class="f"><div class="e">🚪</div><b>Gate pass</b><span>Record early leaves and pickups by someone else.</span></div>
@@ -1697,7 +1702,6 @@ box-sizing:border-box;}
 <div class="f"><div class="e">📜</div><b>DMC</b><span>21 formats, school or BISE/FBISE grading, Excel or PDF upload, a design per school.</span></div>
 <div class="f"><div class="e">📝</div><b>Question papers</b><span>Nursery/KG, A to Z worksheets in English and Urdu, maths symbols and formulas.</span></div>
 <div class="f"><div class="e">📒</div><b>Diary</b><span>Teachers write it, parents read it. Principal gets a diary report.</span></div>
-<div class="f"><div class="e">✍️</div><b>Diary Notes</b><span>Type or scan a page into text and print on clean A4.</span></div>
 <div class="f"><div class="e">📢</div><b>Notice board</b><span>Text notices for teachers or parents.</span></div>
 </div>
 <h3 class="cat">Dashboard &amp; tools</h3>
@@ -1763,59 +1767,58 @@ box-sizing:border-box;}
 
 <section style="padding-top:0"><div class="wrap">
 <h2>Everything a school runs on</h2>
-<p class="lead">From admission to the result card. Every feature below is in the app today.</p>
+<p class="lead">Tap any feature to open it.</p>
 <h3 class="cat">Fees &amp; accounts</h3>
 <div class="grid">
-<div class="f"><div class="e">💰</div><b>Fee receipts</b><span>Thermal-print receipts, dues categories and opening dues.</span></div>
-<div class="f"><div class="e">🏦</div><b>Fee vouchers</b><span>Bank, school and student copies, with optional late fee.</span></div>
-<div class="f"><div class="e">📷</div><b>Fee scan</b><span>Scan a student's ID card with the camera or a photo to open their fee quickly.</span></div>
-<div class="f"><div class="e">🎁</div><b>Concessions</b><span>Sibling, staff child, scholarship and Hafiz-e-Quran discounts.</span></div>
-<div class="f"><div class="e">➕</div><b>Advance &amp; waive</b><span>Advance payment counts toward later months. Waive dues with a written reason.</span></div>
-<div class="f"><div class="e">🔔</div><b>Defaulters &amp; reminders</b><span>Overdue lists and WhatsApp reminders. Fee received message goes out automatically.</span></div>
-<div class="f"><div class="e">📩</div><b>Parent alerts</b><span>Fees due, absent today and exam result messages to parents, one tap each.</span></div>
-<div class="f"><div class="e">📒</div><b>Day Book &amp; accounts</b><span>Accounts, heads, vendors, transfers and a method-wise report.</span></div>
-<div class="f"><div class="e">💵</div><b>Salaries &amp; advances</b><span>Teacher salaries, staff advances and leaves.</span></div>
-<div class="f"><div class="e">📊</div><b>Reports</b><span>Profit and loss, class-wise tables, concession report, Excel save and share.</span></div>
+<div class="f" role="button" onclick="lpGo('finance')"><div class="e">💰</div><b>Fee receipts</b><span>Thermal-print receipts, dues categories and opening dues.</span></div>
+<div class="f" role="button" onclick="lpGo('vouchers')"><div class="e">🏦</div><b>Fee vouchers</b><span>Bank, school and student copies, with optional late fee.</span></div>
+<div class="f" role="button" onclick="lpGo('scan')"><div class="e">📷</div><b>Fee scan</b><span>Scan a student's ID card with the camera or a photo to open their fee quickly.</span></div>
+<div class="f" role="button" onclick="lpGo('concession')"><div class="e">🎁</div><b>Concessions</b><span>Sibling, staff child, scholarship and Hafiz-e-Quran discounts.</span></div>
+<div class="f" role="button" onclick="lpGo('finance')"><div class="e">➕</div><b>Advance &amp; waive</b><span>Advance payment counts toward later months. Waive dues with a written reason.</span></div>
+<div class="f" role="button" onclick="lpGo('overdue')"><div class="e">🔔</div><b>Defaulters &amp; reminders</b><span>Overdue lists and WhatsApp reminders. Fee received message goes out automatically.</span></div>
+<div class="f" role="button" onclick="lpGo('palerts')"><div class="e">📩</div><b>Parent alerts</b><span>Fees due, absent today and exam result messages to parents, one tap each.</span></div>
+<div class="f" role="button" onclick="lpGo('findash')"><div class="e">📒</div><b>Day Book &amp; accounts</b><span>Accounts, heads, vendors, transfers and a method-wise report.</span></div>
+<div class="f" role="button" onclick="lpGo('teachers')"><div class="e">💵</div><b>Salaries &amp; advances</b><span>Teacher salaries, staff advances and leaves.</span></div>
+<div class="f" role="button" onclick="lpGo('reports')"><div class="e">📊</div><b>Reports</b><span>Profit and loss, class-wise tables, concession report, Excel save and share.</span></div>
 </div>
 <h3 class="cat">Students &amp; records</h3>
 <div class="grid">
-<div class="f"><div class="e">🗒️</div><b>Admission register</b><span>New admissions, full student record, trash with restore.</span></div>
-<div class="f"><div class="e">⬆️</div><b>Promote &amp; import</b><span>Promote the whole school each new year. Import students from Excel.</span></div>
-<div class="f"><div class="e">📄</div><b>SLC &amp; certificates</b><span>Leaving certificates and character certificates.</span></div>
-<div class="f"><div class="e">🪪</div><b>ID cards</b><span>Student cards with front and back, and teacher cards.</span></div>
-<div class="f"><div class="e">🚪</div><b>Gate pass</b><span>Record early leaves and pickups by someone else.</span></div>
-<div class="f"><div class="e">🧍</div><b>Visitor log</b><span>Guests, parents and vendors at the gate, with check-out.</span></div>
+<div class="f" role="button" onclick="lpGo('admission')"><div class="e">🗒️</div><b>Admission register</b><span>New admissions, full student record, trash with restore.</span></div>
+<div class="f" role="button" onclick="lpGo('students')"><div class="e">⬆️</div><b>Promote students</b><span>Promote the whole school to the next class each new year.</span></div>
+<div class="f" role="button" onclick="lpGo('admission')"><div class="e">📄</div><b>SLC &amp; certificates</b><span>Leaving certificates and character certificates.</span></div>
+<div class="f" role="button" onclick="lpGo('settings')"><div class="e">🪪</div><b>ID cards</b><span>Student cards with front and back, and teacher cards.</span></div>
+<div class="f" role="button" onclick="lpGo('gate')"><div class="e">🚪</div><b>Gate pass</b><span>Record early leaves and pickups by someone else.</span></div>
+<div class="f" role="button" onclick="lpGo('visitor')"><div class="e">🧍</div><b>Visitor log</b><span>Guests, parents and vendors at the gate, with check-out.</span></div>
 <div class="f"><div class="e">🗣️</div><b>Complaints</b><span>Parents send tracked complaints to the principal or class teacher.</span></div>
 </div>
 <h3 class="cat">Attendance &amp; staff</h3>
 <div class="grid">
-<div class="f"><div class="e">✅</div><b>Student attendance</b><span>Daily marks, class by class. Older months kept as totals.</span></div>
-<div class="f"><div class="e">🕘</div><b>Teacher attendance</b><span>Daily check-in and a register for every teacher.</span></div>
-<div class="f"><div class="e">📨</div><b>Teacher requests</b><span>Leave and attendance requests for the principal to approve.</span></div>
-<div class="f"><div class="e">🔐</div><b>Staff roles</b><span>Separate logins for principal, accountant and clerk.</span></div>
+<div class="f" role="button" onclick="lpGo('att')"><div class="e">✅</div><b>Student attendance</b><span>Daily marks, class by class. Older months kept as totals.</span></div>
+<div class="f" role="button" onclick="lpGo('tatt')"><div class="e">🕘</div><b>Teacher attendance</b><span>Daily check-in and a register for every teacher.</span></div>
+<div class="f" role="button" onclick="lpGo('requests')"><div class="e">📨</div><b>Teacher requests</b><span>Leave and attendance requests for the principal to approve.</span></div>
+<div class="f" role="button" onclick="lpGo('roles')"><div class="e">🔐</div><b>Staff roles</b><span>Separate logins for principal, accountant and clerk.</span></div>
 </div>
 <h3 class="cat">Exams &amp; teaching</h3>
 <div class="grid">
-<div class="f"><div class="e">🗓️</div><b>Timetable</b><span>Class timetables with a manager for classes.</span></div>
-<div class="f"><div class="e">📅</div><b>Date sheet</b><span>Exam date sheet for each class.</span></div>
-<div class="f"><div class="e">📚</div><b>Syllabus &amp; lesson plans</b><span>Teachers write weekly plans, the principal reads them.</span></div>
-<div class="f"><div class="e">🧮</div><b>Marks sheet</b><span>Enter and view marks. Download as Excel and share on WhatsApp.</span></div>
-<div class="f"><div class="e">📈</div><b>Exam analysis</b><span>Class-wise and subject-wise results.</span></div>
-<div class="f"><div class="e">📜</div><b>DMC</b><span>21 formats, school or BISE/FBISE grading, Excel or PDF upload, a design per school.</span></div>
-<div class="f"><div class="e">📝</div><b>Question papers</b><span>Nursery/KG, A to Z worksheets in English and Urdu, maths symbols and formulas.</span></div>
-<div class="f"><div class="e">📒</div><b>Diary</b><span>Teachers write it, parents read it. Principal gets a diary report.</span></div>
-<div class="f"><div class="e">✍️</div><b>Diary Notes</b><span>Type or scan a page into text and print on clean A4.</span></div>
-<div class="f"><div class="e">📢</div><b>Notice board</b><span>Text notices for teachers or parents.</span></div>
+<div class="f" role="button" onclick="lpGo('timetable')"><div class="e">🗓️</div><b>Timetable</b><span>Class timetables with a manager for classes.</span></div>
+<div class="f" role="button" onclick="lpGo('datesheet')"><div class="e">📅</div><b>Date sheet</b><span>Exam date sheet for each class.</span></div>
+<div class="f" role="button" onclick="lpGo('syllabus')"><div class="e">📚</div><b>Syllabus &amp; lesson plans</b><span>Teachers write weekly plans, the principal reads them.</span></div>
+<div class="f" role="button" onclick="lpGo('marks')"><div class="e">🧮</div><b>Marks sheet</b><span>Enter and view marks. Download as Excel and share on WhatsApp.</span></div>
+<div class="f" role="button" onclick="lpGo('analysis')"><div class="e">📈</div><b>Exam analysis</b><span>Class-wise and subject-wise results.</span></div>
+<div class="f" role="button" onclick="lpGo('dmc')"><div class="e">📜</div><b>DMC</b><span>21 formats, school or BISE/FBISE grading, Excel or PDF upload, a design per school.</span></div>
+<div class="f" role="button" onclick="lpGo('papers')"><div class="e">📝</div><b>Question papers</b><span>Nursery/KG, A to Z worksheets in English and Urdu, maths symbols and formulas.</span></div>
+<div class="f" role="button" onclick="lpGo('diaryrep')"><div class="e">📒</div><b>Diary</b><span>Teachers write it, parents read it. Principal gets a diary report.</span></div>
+<div class="f" role="button" onclick="lpGo('notices')"><div class="e">📢</div><b>Notice board</b><span>Text notices for teachers or parents.</span></div>
 </div>
 <h3 class="cat">Dashboard &amp; tools</h3>
 <div class="grid">
-<div class="f"><div class="e">🔎</div><b>Search &amp; tiles</b><span>One search bar, icon tiles, tap any number to drill down.</span></div>
-<div class="f"><div class="e">📉</div><b>Charts &amp; graphs</b><span>Class-wise attendance and fee collection graphs.</span></div>
-<div class="f"><div class="e">⚠️</div><b>Alerts &amp; activity</b><span>Alerts for the owner, plus a log of recent activity.</span></div>
-<div class="f"><div class="e">🙈</div><b>Private amounts</b><span>Rupee amounts stay hidden until you tap.</span></div>
-<div class="f"><div class="e">📦</div><b>Store</b><span>Uniform, books and stationery stock and sales.</span></div>
-<div class="f"><div class="e">🌐</div><b>Urdu &amp; English</b><span>Switch the whole app between both languages.</span></div>
-<div class="f"><div class="e">💾</div><b>Backup</b><span>Download a full copy of your records as Excel.</span></div>
+<div class="f" role="button" onclick="lpGo('tools')"><div class="e">🔎</div><b>Search &amp; tiles</b><span>One search bar, icon tiles, tap any number to drill down.</span></div>
+<div class="f" role="button" onclick="lpGo('charts')"><div class="e">📉</div><b>Charts &amp; graphs</b><span>Class-wise attendance and fee collection graphs.</span></div>
+<div class="f" role="button" onclick="lpGo('alerts')"><div class="e">⚠️</div><b>Alerts &amp; activity</b><span>Alerts for the owner, plus a log of recent activity.</span></div>
+<div class="f" role="button" onclick="lpGo('tools')"><div class="e">🙈</div><b>Private amounts</b><span>Rupee amounts stay hidden until you tap.</span></div>
+<div class="f" role="button" onclick="lpGo('store')"><div class="e">📦</div><b>Store</b><span>Uniform, books and stationery stock and sales.</span></div>
+<div class="f" role="button" onclick="lpGo('lang')"><div class="e">🌐</div><b>Urdu &amp; English</b><span>Switch the whole app between both languages.</span></div>
+<div class="f" role="button" onclick="lpGo('settings')"><div class="e">💾</div><b>Backup</b><span>Download a full copy of your records as Excel.</span></div>
 <div class="f"><div class="e">📲</div><b>Install as app</b><span>Works on Android, iPhone and PC, and keeps going offline.</span></div>
 <div class="f"><div class="e">📖</div><b>User guides</b><span>Colourful guide books for principal, teacher, parent and accountant.</span></div>
 </div>
@@ -3784,6 +3787,24 @@ function tplDashLanding() {
 }
 function dashOpenTools() { DASH_LANDING = false; renderTab(); try { window.scrollTo(0, 0); } catch (e) {} }
 function dashOpenHome() { DASH_LANDING = true; renderTab(); try { window.scrollTo(0, 0); } catch (e) {} }
+// Tapping a feature card on the home page opens the matching real screen of the app.
+const LP_GO = {
+  finance: () => setTab('finance'), vouchers: () => openFeeVouchers(), scan: () => openFeeScan(),
+  concession: () => openConcessionReport(), overdue: () => openOverdueReminders(), palerts: () => openParentAlerts(),
+  findash: () => openFinDashboard(), teachers: () => setTab('teachers'), reports: () => setTab('reports'),
+  admission: () => setTab('admissionRegister'), students: () => setTab('students'), settings: () => openSettings(),
+  gate: () => openGatePass(), visitor: () => openVisitorLog(), att: () => openAttendanceHub(),
+  tatt: () => openDashTeacherAttendanceModal(), requests: () => openStaffRequests(), roles: () => openRolesSetup(),
+  timetable: () => setTab('timetable'), datesheet: () => setTab('datesheet'), syllabus: () => setTab('syllabus'),
+  marks: () => setTab('marksSheet'), analysis: () => openExamAnalysis(), dmc: () => setTab('dmc'),
+  papers: () => setTab('papers'), diaryrep: () => openDiaryReport(), notices: () => setTab('notices'),
+  tools: () => dashOpenTools(), charts: () => openDashChartsModal(), alerts: () => openAlertsModal(),
+  store: () => openStore(), lang: () => toggleLangApp()
+};
+function lpGo(k) {
+  try { const f = LP_GO[k]; if (f) f(); }
+  catch (e) { try { _logClientError('lpGo:' + k, e); } catch (_) {} }
+}
 
 async function boot() {
   ensurePersistentStorage(); // fire-and-forget — never blocks boot on this
