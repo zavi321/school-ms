@@ -3801,8 +3801,15 @@ const LP_GO = {
   tools: () => dashOpenTools(), charts: () => openDashChartsModal(), alerts: () => openAlertsModal(),
   store: () => openStore(), lang: () => toggleLangApp(),
   complaints: () => setTab('notices'), install: () => lpInstallHelp(),
-  guides: () => window.open('https://wa.me/923412565659?text=' + encodeURIComponent('Assalam o Alaikum, I want the SchoolMS user guides (Principal, Teacher, Parent, Accountant).'), '_blank')
+  guides: () => lpGuides()
 };
+function lpGuides() {
+  const g = [['Principal', 'SchoolMS_Principal_Guide.pdf'], ['Teacher', 'SchoolMS_Teacher_Guide.pdf'], ['Parent', 'SchoolMS_Parent_Guide.pdf'], ['Accountant', 'SchoolMS_Accountant_Guide.pdf']];
+  showModal('User guides', `
+    <div style="font-size:13px;opacity:.75;margin-bottom:10px;">Step-by-step guide book for each role. Tap to open.</div>
+    ${g.map(x => `<a class="btn-primary" style="display:block;text-align:center;text-decoration:none;margin-bottom:8px;" href="${x[1]}" target="_blank" rel="noopener">📖 ${x[0]} guide</a>`).join('')}
+    <button class="btn-ghost" style="width:100%;margin-top:4px;" onclick="closeModal()">Close</button>`);
+}
 function lpInstallHelp() {
   showModal('Install as app', `
     <div style="font-size:14px;line-height:1.7;">
