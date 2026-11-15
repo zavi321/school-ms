@@ -3490,8 +3490,21 @@ async function flushSyncQueue() {
 function renderSyncConflictModal() {
   if (!PENDING_CONFLICTS.length) return;
   const c = PENDING_CONFLICTS[0];
+  const fmtVal = (k, v) => {
+    if (v === null || v === undefined || v === '') return '—';
+    if (k === 'student_id') {
+      try { const st = (DATA.students || []).find(x => x.id === v); if (st) return st.name + (st.class_name ? ' (' + st.class_name + ')' : ''); } catch (e) {}
+      return String(v);
+    }
+    if (Array.isArray(v)) {
+      if (!v.length) return LANG === 'ur' ? 'کوئی نہیں' : 'none';
+      return v.map(x => (x && typeof x === 'object') ? [x.d, x.a != null ? 'Rs ' + x.a : '', x.m].filter(Boolean).join(' · ') : String(x)).join(' | ');
+    }
+    if (typeof v === 'object') { try { return JSON.stringify(v); } catch (e) { return String(v); } }
+    return String(v);
+  };
   const rows = (obj) => Object.keys(obj||{}).filter(k=>!['id','owner_id','created_at'].includes(k))
-    .map(k=>`<div class="list-row"><span style="opacity:.65;font-size:12px;">${esc(k)}</span><span style="font-size:12px;">${esc(String(obj[k]))}</span></div>`).join('');
+    .map(k=>`<div class="list-row"><span style="opacity:.65;font-size:12px;">${esc(k)}</span><span style="font-size:12px;">${esc(fmtVal(k, obj[k]))}</span></div>`).join('');
   showModal(LANG==='ur' ? 'ٹکراؤ — کون سا ورژن رکھیں؟' : 'Sync Conflict — Which version should win?', `
     <div style="font-size:12px;opacity:.75;margin-bottom:10px;">${esc(LANG==='ur'
       ? 'یہ ریکارڈ کسی اور ڈیوائس نے آپ کے آفلائن ہونے کے دوران بدل دیا ہے۔'
@@ -15088,7 +15101,7 @@ function dsLoad() {
   }
   dsData.classes = [...new Set(cl)];
 }
-function dsEnsure() { if (!dsData || dsLoadedKey !== dsKey()) dsLoad(); }
+function dsDateSheetEnsure() { if (!dsData || dsLoadedKey !== dsKey()) dsLoad(); }
 function dsSave() {
   try { localStorage.setItem(dsKey(), JSON.stringify(dsData)); }
   catch (e) { alert(qt('Could not save: ', 'محفوظ نہیں ہوا: ') + e.message); }
@@ -15134,7 +15147,7 @@ function dsSortedRows(cls) {
     .map(c => ({ date: c.date, subject: cells[c.id].trim(), start: c.start, end: c.end }));
 }
 // Rows of the date sheet: the editable class list (NOT taken from the students list).
-function dsClassList() { dsEnsure(); return dsData.classes.slice(); }
+function dsClassList() { dsDateSheetEnsure(); return dsData.classes.slice(); }
 // Classes that have students - used only by the Roll Number Slips (slips are printed per student).
 function dsSlipClassList() {
   const withStudents = DATA.students.filter(s => s.status !== 'inactive').map(s => s.class_name).filter(Boolean);
@@ -15224,7 +15237,7 @@ function dsDeleteClass(cl) {
 }
 // ---------- checker: finds mistakes / gaps in the date sheet ----------
 function dsIssues() {
-  dsEnsure();
+  dsDateSheetEnsure();
   const out = [], cols = dsData.cols, classes = dsData.classes;
   const cellOf = (cl, c) => (((dsData.cells[cl] || {})[c.id]) || '').trim();
   const label = (c, i) => c.date ? fmtDate(c.date) : qt('Column ' + (i + 1), 'کالم ' + (i + 1));
@@ -15274,7 +15287,7 @@ function dsRefreshSlips() {
 // inside a class. The number is for the slip only — it is not saved on the student.
 function dsSlipStudents(scope) {
   const order = c => { const i = CLASS_OPTIONS.indexOf(c); return i < 0 ? 999 : i; };
-  dsEnsure();
+  dsDateSheetEnsure();
   // Only classes that actually sit an exam (have subjects in the date sheet) get slips.
   const sitsExam = c => dsSortedRows(c).length > 0;
   return DATA.students
@@ -15538,7 +15551,7 @@ function dsGenerate() {
 }
 
 function tplDateSheet() {
-  dsEnsure();
+  dsDateSheetEnsure();
   const classes = dsClassList();
   const cols = dsData.cols;
   const ur = LANG === 'ur';
@@ -15615,7 +15628,7 @@ const DS_WM_SIZE = 80;            // watermark size, % of the sheet
 const DS_SLIP_BG_STRENGTH = 0.20;  // roll slips only: logo colour strength on the slip background
 const DS_SLIP_WM_OPACITY = 0.20;  // roll slips only: logo watermark opacity
 async function dsPrintDateSheet() {
-  dsEnsure();
+  dsDateSheetEnsure();
   let cols = dsSortedCols().filter(c => c.date);
   if (!cols.length) {
     alert(qt('Add at least one exam date first.', 'پہلے کم از کم ایک پیپر کی تاریخ شامل کریں۔'));
