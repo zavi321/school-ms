@@ -1648,7 +1648,7 @@ box-sizing:border-box;}
 <h1>Your whole school, in one app.</h1>
 <p class="s">Fees, attendance, exams, DMCs, diary and parent messages, made for Pakistani schools and used from any phone.</p>
 <div class="btns"><a class="b g" href="https://wa.me/923412565659?text=Assalam%20o%20Alaikum%2C%20I%20want%20the%2030-day%20free%20trial%20of%20SchoolMS.">Start 30-day free trial</a><a class="b w" href="https://wa.me/923412565659">WhatsApp us</a></div>
-<ul class="ticks"><li>No card needed</li><li>All features included</li><li>Works on Android, iPhone &amp; PC</li><li>Parent updates on WhatsApp</li></ul>
+<ul class="ticks"><li>No card needed</li><li>All features included</li><li>Works on Android, iPhone &amp; PC</li><li>Parent messages by SMS</li></ul>
 <div class="stage"><div class="arch"><div class="in"><div class="phone">
 <h3>Ayesha Malik</h3><small>Class 3 &middot; Parent portal</small>
 <div class="tile t1">Attendance<b>Present today</b></div>
@@ -1678,7 +1678,7 @@ box-sizing:border-box;}
 <div class="f"><div class="e">📷</div><b>Fee scan</b><span>Scan a student's ID card with the camera or a photo to open their fee quickly.</span></div>
 <div class="f"><div class="e">🎁</div><b>Concessions</b><span>Sibling, staff child, scholarship and Hafiz-e-Quran discounts.</span></div>
 <div class="f"><div class="e">➕</div><b>Advance &amp; waive</b><span>Advance payment counts toward later months. Waive dues with a written reason.</span></div>
-<div class="f"><div class="e">🔔</div><b>Defaulters &amp; reminders</b><span>Overdue lists and WhatsApp reminders. Fee received message goes out automatically.</span></div>
+<div class="f"><div class="e">🔔</div><b>Defaulters &amp; reminders</b><span>Overdue lists and fee reminders to parents by SMS, ready to send in one tap.</span></div>
 <div class="f"><div class="e">📩</div><b>Parent alerts</b><span>Fees due, absent today and exam result messages to parents, one tap each.</span></div>
 <div class="f"><div class="e">📒</div><b>Day Book &amp; accounts</b><span>Accounts, heads, vendors, transfers and a method-wise report.</span></div>
 <div class="f"><div class="e">💵</div><b>Salaries &amp; advances</b><span>Teacher salaries, staff advances and leaves.</span></div>
@@ -1754,7 +1754,7 @@ box-sizing:border-box;}
 <h1>Your whole school, in one app.</h1>
 <p class="s">Fees, attendance, exams, DMCs, diary and parent messages, made for Pakistani schools and used from any phone.</p>
 <div class="btns"><a class="b g" href="https://wa.me/923412565659?text=Assalam%20o%20Alaikum%2C%20I%20want%20the%2030-day%20free%20trial%20of%20SchoolMS.">Start 30-day free trial</a><a class="b w" href="https://wa.me/923412565659">WhatsApp us</a></div>
-<ul class="ticks"><li>No card needed</li><li>All features included</li><li>Works on Android, iPhone &amp; PC</li><li>Parent updates on WhatsApp</li></ul>
+<ul class="ticks"><li>No card needed</li><li>All features included</li><li>Works on Android, iPhone &amp; PC</li><li>Parent messages by SMS</li></ul>
 <div class="stage"><div class="arch"><div class="in"><div class="phone">
 <h3>Ayesha Malik</h3><small>Class 3 &middot; Parent portal</small>
 <div class="tile t1">Attendance<b>Present today</b></div>
@@ -1784,7 +1784,7 @@ box-sizing:border-box;}
 <div class="f" role="button" onclick="lpGo('scan')"><div class="e">📷</div><b>Fee scan</b><span>Scan a student's ID card with the camera or a photo to open their fee quickly.</span></div>
 <div class="f" role="button" onclick="lpGo('concession')"><div class="e">🎁</div><b>Concessions</b><span>Sibling, staff child, scholarship and Hafiz-e-Quran discounts.</span></div>
 <div class="f" role="button" onclick="lpGo('finance')"><div class="e">➕</div><b>Advance &amp; waive</b><span>Advance payment counts toward later months. Waive dues with a written reason.</span></div>
-<div class="f" role="button" onclick="lpGo('overdue')"><div class="e">🔔</div><b>Defaulters &amp; reminders</b><span>Overdue lists and WhatsApp reminders. Fee received message goes out automatically.</span></div>
+<div class="f" role="button" onclick="lpGo('overdue')"><div class="e">🔔</div><b>Defaulters &amp; reminders</b><span>Overdue lists and fee reminders to parents by SMS, ready to send in one tap.</span></div>
 <div class="f" role="button" onclick="lpGo('palerts')"><div class="e">📩</div><b>Parent alerts</b><span>Fees due, absent today and exam result messages to parents, one tap each.</span></div>
 <div class="f" role="button" onclick="lpGo('findash')"><div class="e">📒</div><b>Day Book &amp; accounts</b><span>Accounts, heads, vendors, transfers and a method-wise report.</span></div>
 <div class="f" role="button" onclick="lpGo('teachers')"><div class="e">💵</div><b>Salaries &amp; advances</b><span>Teacher salaries, staff advances and leaves.</span></div>
@@ -6170,6 +6170,19 @@ async function saveSubscription(schoolId) {
 // today, or the school's current paid_until, so early payments stack forward).
 // With the 3-day grace this locks the school on the 5th if it has not paid.
 async function approvePending(submissionId, schoolId) {
+  // Step 1: claim the payment first (only if it is still pending). This way a second tap, or a retry
+  // after a half-failed attempt, can never extend the subscription twice for the same payment.
+  const { data: claim, error: claimErr } = await sb.from('payment_submissions')
+    .update({ status: 'verified', verified_at: new Date().toISOString() })
+    .eq('id', submissionId).eq('status', 'pending').select();
+  if (reportSaveError(claimErr)) return;
+  if (!claim || !claim.length) {
+    reportSaveError({ message: LANG === 'ur' ? 'یہ ادائیگی پہلے ہی منظور ہو چکی ہے یا اجازت نہیں ملی (RLS چیک کریں)۔' : 'This payment was already approved, or a database permission (RLS) rule blocked it.' });
+    loadSubscriptionsAdmin();
+    return;
+  }
+  // If anything below fails, put the payment back to pending so it can be approved again safely.
+  const undoClaim = async () => { try { await sb.from('payment_submissions').update({ status: 'pending', verified_at: null }).eq('id', submissionId); } catch (e) {} };
   const { data: sub } = await sb.from('subscriptions').select('*').eq('school_id', schoolId).maybeSingle();
   const today = new Date();
   const base = (sub && sub.paid_until && new Date(sub.paid_until + 'T00:00:00') > today) ? new Date(sub.paid_until + 'T00:00:00') : today;
@@ -6180,11 +6193,8 @@ async function approvePending(submissionId, schoolId) {
     .upsert({ school_id: schoolId, plan_type: sub ? sub.plan_type : 'monthly', monthly_price: sub ? sub.monthly_price : 0,
       paid_until: localISO(next2), status: 'active', updated_at: new Date().toISOString() }, { onConflict: 'school_id' })
     .select();
-  if (reportSaveError(error)) return;
-  if (!data || !data.length) { reportSaveError({ message: LANG === 'ur' ? 'اجازت نہیں ملی — کوئی ریکارڈ محفوظ نہیں ہوا (RLS چیک کریں)۔' : 'No row was saved — likely blocked by a database permission (RLS) rule.' }); return; }
-  const { data: payData, error: payErr } = await sb.from('payment_submissions').update({ status: 'verified', verified_at: new Date().toISOString() }).eq('id', submissionId).select();
-  if (reportSaveError(payErr)) return;
-  if (!payData || !payData.length) { reportSaveError({ message: LANG === 'ur' ? 'ادائیگی کا ریکارڈ اپ ڈیٹ نہیں ہوا (اجازت کا مسئلہ)۔' : 'Payment record was not updated (permission issue).' }); return; }
+  if (error) { await undoClaim(); reportSaveError(error); return; }
+  if (!data || !data.length) { await undoClaim(); reportSaveError({ message: LANG === 'ur' ? 'اجازت نہیں ملی — کوئی ریکارڈ محفوظ نہیں ہوا (RLS چیک کریں)۔' : 'No row was saved — likely blocked by a database permission (RLS) rule.' }); return; }
   loadSubscriptionsAdmin();
   openReceipt(submissionId, schoolId, localISO(next2));
 }
@@ -14872,7 +14882,7 @@ function tplReports() {
           pageRows.map(r => { const x = r.s; return `
           <div class="list-row" style="cursor:pointer;" onclick="setTab('students'); openStudentDetail('${escJs(x.id)}')">
             <span style="font-size:13px;">${esc(x.name)}${esc(leftTag(x))}<span style="display:block;font-size:11px;opacity:.55;">${esc(x.father_name || '—')} · ${esc(x.class_name || '—')}${x.contact ? ' · ' + esc(x.contact) : ''}</span></span>
-            <span style="display:flex;align-items:center;gap:8px;"><span class="amt-neg">${money(r.bal)}</span>${x.contact ? `<button class="print-btn" title="WhatsApp" onclick="event.stopPropagation(); sendFeeRequestWhatsapp('${escJs(x.id)}')">💬</button>` : ''}</span>
+            <span style="display:flex;align-items:center;gap:8px;"><span class="amt-neg">${money(r.bal)}</span>${x.contact ? `<button class="print-btn" title="SMS" onclick="event.stopPropagation(); sendFeeRequestWhatsapp('${escJs(x.id)}')">💬</button>` : ''}</span>
           </div>`; }).join('')}
       </div>
       ${defs.length <= REP_PAGE ? '' : `
@@ -16117,7 +16127,7 @@ function dmcSetCut(g, val) {
 // onto the in-memory settings used by the certificate generator.
 function applyDMCConfig(data) {
   if (!data) return;
-  if (data.subjects && !dmcSubjectsTouched) dmcSubjects = data.subjects;
+  if (data.subjects && !dmcSubjectsTouched) dmcSubjects = (Array.isArray(data.subjects) ? data.subjects.filter(x => x && !dmcIsSummaryName(x.name)) : data.subjects);
   if (data.school_name) dmcSchoolName = data.school_name;
   if (data.logo) dmcLogo = data.logo;
   if (data.tagline) dmcTagline = data.tagline;
@@ -16821,13 +16831,14 @@ async function openDMCImportMarksSheet() {
 function importDMCFromMarksSheet(k) {
   const g = _dmcImportList[k]; if (!g) return;
   closeModal();
-  if (!msSubjects.length) { alert(qt('The Marks Sheet has no subjects yet.', 'مارکس شیٹ میں ابھی کوئی مضمون نہیں۔')); return; }
+  const subs = msSubjects.filter(n => !dmcIsSummaryName(n));
+  if (!subs.length) { alert(qt('The Marks Sheet has no subjects yet.', 'مارکس شیٹ میں ابھی کوئی مضمون نہیں۔')); return; }
   if (!dmcPrepareImport()) return;
-  dmcSubjects = msSubjects.map(n => ({ name: n, total: msSubjectMax(n) }));
+  dmcSubjects = subs.map(n => ({ name: n, total: msSubjectMax(n) }));
   const marksOf = (cls, id) => (msMarksData[cls] && msMarksData[cls][id]) || {};
   dmcResults = (msStudents[g.cls] || []).map((st, n) => {
     const src = marksOf(g.cls, st.id), marks = {};
-    msSubjects.forEach(sn => { const v = src[sn]; marks[sn] = (v === undefined || v === null || v === '' || !isFinite(Number(v))) ? '' : Number(v); });
+    subs.forEach(sn => { const v = src[sn]; marks[sn] = (v === undefined || v === null || v === '' || !isFinite(Number(v))) ? '' : Number(v); });
     return { serialNo: n + 1, studentName: st.name || '', fatherName: st.fatherName || '', rollNo: '', class: g.cls, classFromExcel: true, section: '', marks };
   });
   dmcSelectedClass = g.cls;
@@ -16880,6 +16891,16 @@ function dmcRestoreUploadBackup() {
 // Headers are compared after lower-casing and stripping punctuation/extra spaces, so
 // "roll no", "Roll No.", " ROLL  NO " and "Roll #" are all the same column.
 const dmcNormHdr = h => String(h == null ? '' : h).toLowerCase().replace(/[^a-z0-9\u0600-\u06FF]+/g, ' ').trim();
+// Headers/subject names that are results, not subjects (Total, Grade, Percentage, Position, Remarks ...).
+// Used so such columns never become a subject on a certificate.
+const DMC_SUMMARY_RE = /(^|\s)(total|grand total|g total|gt|sub total|subtotal|obtained|obt|marks obtained|obtained marks|aggregate|percent|percentage|per|pct|avg|average|gpa|cgpa|result|status|pass|fail|position|pos|rank|class position|grade|grades|remarks?|division|signature|attendance|max|maximum|out of|full marks|sr|s no|serial)(\s|$)/;
+const DMC_SUMMARY_UR = ['کل', 'کل نمبر', 'کل مارکس', 'حاصل کردہ نمبر', 'حاصل نمبر', 'حاصل کردہ', 'مجموعہ', 'فیصد', 'فی صد', 'گریڈ', 'پوزیشن', 'رینک', 'نتیجہ', 'ریمارکس', 'حاضری', 'دستخط'];
+function dmcIsSummaryName(raw) {
+  const n = String(raw == null ? '' : raw).toLowerCase().replace(/[^a-z0-9\u0600-\u06FF]+/g, ' ').trim();
+  if (!n || /^\d+$/.test(n)) return true;
+  if (DMC_SUMMARY_RE.test(n)) return true;
+  return DMC_SUMMARY_UR.some(w => n === w || n.startsWith(w + ' '));
+}
 const DMC_COLS = {
   name:    ['student name', 'name', 'student', 'students name', 'student s name', 'full name', 'naam', 'نام', 'طالب علم کا نام', 'طالب علم'],
   father:  ['father name', 'father s name', 'fathers name', 'father', 's o', 'so', 'walid', 'guardian', 'parent name', 'والد کا نام', 'والد', 'ولدیت'],
@@ -17053,7 +17074,7 @@ function handleDMCExcelUpload(file) {
       // including them would double it up.
       const skipWords = ['total','total marks','total obtained','grand total','overall total','percentage','percent','result','position','rank','grade','remarks','status','division','signature'];
       const isNonSubjectCol = (col) => {
-        if (dmcIsInfoCol(col)) return true;
+        if (dmcIsInfoCol(col) || dmcIsSummaryName(col)) return true;
         const c = String(col || '').trim();
         if (!c || /^__EMPTY/i.test(c)) return true; // blank header column
         const norm = c.toLowerCase().replace(/[^a-z0-9\u0600-\u06FF]+/g, ' ').trim();
