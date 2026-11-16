@@ -1742,6 +1742,7 @@ box-sizing:border-box;}
 <div class="f"><div class="e">💰</div><b>Fee receipts</b><span>Thermal-print receipts, dues categories and opening dues.</span></div>
 <div class="f"><div class="e">🏦</div><b>Fee vouchers</b><span>Bank, school and student copies, with optional late fee.</span></div>
 <div class="f"><div class="e">📷</div><b>Fee scan</b><span>Scan a student's ID card with the camera or a photo to open their fee quickly.</span></div>
+<div class="f"><div class="e">🏷️</div><b>Class fees</b><span>Set the monthly fee of a class once and it applies to every student in it.</span></div>
 <div class="f"><div class="e">🎁</div><b>Concessions</b><span>Sibling, staff child, scholarship and Hafiz-e-Quran discounts.</span></div>
 <div class="f"><div class="e">➕</div><b>Advance &amp; waive</b><span>Advance payment counts toward later months. Waive dues with a written reason.</span></div>
 <div class="f"><div class="e">🔔</div><b>Defaulters &amp; reminders</b><span>Overdue lists and fee reminders to parents by SMS, ready to send in one tap.</span></div>
@@ -1883,6 +1884,7 @@ box-sizing:border-box;}
 <div class="f" role="button" onclick="lpGo('finance')"><div class="e">💰</div><b>Fee receipts</b><span>Thermal-print receipts, dues categories and opening dues.</span></div>
 <div class="f" role="button" onclick="lpGo('vouchers')"><div class="e">🏦</div><b>Fee vouchers</b><span>Bank, school and student copies, with optional late fee.</span></div>
 <div class="f" role="button" onclick="lpGo('scan')"><div class="e">📷</div><b>Fee scan</b><span>Scan a student's ID card with the camera or a photo to open their fee quickly.</span></div>
+<div class="f" role="button" onclick="lpGo('classfees')"><div class="e">🏷️</div><b>Class fees</b><span>Set the monthly fee of a class once and it applies to every student in it.</span></div>
 <div class="f" role="button" onclick="lpGo('concession')"><div class="e">🎁</div><b>Concessions</b><span>Sibling, staff child, scholarship and Hafiz-e-Quran discounts.</span></div>
 <div class="f" role="button" onclick="lpGo('finance')"><div class="e">➕</div><b>Advance &amp; waive</b><span>Advance payment counts toward later months. Waive dues with a written reason.</span></div>
 <div class="f" role="button" onclick="lpGo('overdue')"><div class="e">🔔</div><b>Defaulters &amp; reminders</b><span>Overdue lists and fee reminders to parents by SMS, ready to send in one tap.</span></div>
@@ -3971,6 +3973,7 @@ Object.assign(LP_UR, {"From paper to": "کاغذ سے", "The same school day, wi
 Object.assign(LP_UR, {"Questions every school owner asks": "ہر اسکول مالک کے سوال", "Short answers, before you start.": "شروع کرنے سے پہلے مختصر جواب۔", "Is my school's data safe?": "اسکول کا ڈیٹا محفوظ ہے؟", "Yes. Each school's data stays separate, staff see only what their role allows, and class logins are protected with hashed passwords.": "جی ہاں۔ ہر اسکول کا ڈیٹا الگ رہتا ہے، اسٹاف صرف وہی دیکھتا ہے جس کی اس کے کردار کو اجازت ہو، اور کلاس لاگ ان محفوظ پاس ورڈ سے بچے ہوتے ہیں۔", "Can I take my data with me?": "کیا میں اپنا ڈیٹا ساتھ لے جا سکتا ہوں؟", "Yes. You can download a full copy of your records as Excel at any time, and keep a full backup to restore later.": "جی ہاں۔ آپ کسی بھی وقت اپنے ریکارڈ کی مکمل کاپی ایکسل میں ڈاؤن لوڈ کر سکتے ہیں، اور بعد میں بحال کرنے کے لیے مکمل بیک اپ بھی رکھ سکتے ہیں۔", "Does it work without internet?": "کیا انٹرنیٹ کے بغیر چلتی ہے؟", "Yes. Keep working on a weak connection and it syncs later.": "جی ہاں۔ کمزور انٹرنیٹ پر بھی کام جاری رکھیں، بعد میں خود سنک ہو جائے گا۔", "Do I need a card for the free trial?": "مفت آزمائش کے لیے کارڈ چاہیے؟", "No. Every feature is included for 30 days, no card needed.": "نہیں۔ 30 دن تک ہر فیچر شامل ہے، کارڈ کی ضرورت نہیں۔", "What if I need help?": "اگر مجھے مدد چاہیے ہو؟", "Message us on WhatsApp. We set up your school with you and you can ask us anything.": "ہمیں واٹس ایپ پر پیغام کریں۔ ہم آپ کے ساتھ آپ کا اسکول سیٹ اپ کرتے ہیں اور آپ ہم سے کچھ بھی پوچھ سکتے ہیں۔"});
 let LP_FAQ_OPEN = {};
 function lpFaqToggle(d) { try { if (d.closest('#landing-dash')) LP_FAQ_OPEN[d.dataset.q] = d.open; } catch (e) {} }
+Object.assign(LP_UR, {"Class fees": "کلاس کی فیس", "Set the monthly fee of a class once and it applies to every student in it.": "کلاس کی ماہانہ فیس ایک بار لکھیں، وہ اس کلاس کے ہر طالب علم پر لگ جاتی ہے۔"});
 function lpTranslate(root, lang) {
   try {
     const w = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null);
@@ -4037,6 +4040,7 @@ function dashOpenHome() { DASH_LANDING = true; renderTab(); try { window.scrollT
 // Tapping a feature card on the home page opens the matching real screen of the app.
 const LP_GO = {
   finance: () => setTab('finance'), vouchers: () => openFeeVouchers(), scan: () => openFeeScan(),
+  classfees: () => openClassFees(),
   concession: () => openConcessionReport(), overdue: () => openOverdueReminders(), palerts: () => openParentAlerts(),
   findash: () => openFinDashboard(), teachers: () => setTab('teachers'), reports: () => setTab('reports'),
   admission: () => setTab('admissionRegister'), students: () => setTab('students'), settings: () => openSettings(),
@@ -6523,6 +6527,7 @@ function openSettings() {
     <label><span>${esc(t.changePassword)}</span><input id="set-pw" type="password" autocomplete="new-password"></label>
     <div id="set-msg"></div>
     <button class="btn-primary" onclick="submitSettings()">${esc(t.saveSettings)}</button>
+    <button class="btn-ghost" style="width:100%;margin-top:10px;" onclick="openClassFees()">🏷️ ${esc(qt('Class Fees (set a whole class at once)', 'کلاس کی فیس (پوری کلاس ایک ساتھ)'))}</button>
     <div style="margin-top:18px;padding-top:16px;border-top:1px solid var(--line);">
       <label><span>${esc(t.parentSchoolCode)}</span>
         <div style="display:flex;gap:8px;">
@@ -8285,10 +8290,12 @@ function fvUnits(rows, cls, fam) {
   return units.filter(u => cls === '*' || u.members.some(m => m.s.class_name === cls));
 }
 
-function fvBuild(cls, mk, fam) {
+function fvBuild(cls, mk, fam, sid) {
   const rows = []; let paid = 0, free = 0, nofee = 0;
+  if (sid) fam = false;   // one student selected: a single voucher for that student
   DATA.students.forEach(s => {
     if (s.status === 'inactive') return;
+    if (sid && s.id !== sid) return;
     if (!fam && cls !== '*' && s.class_name !== cls) return;
     if (!isFeePaying(s)) { free++; return; }
     const hasEntry = studentPayments(s.id).some(e => e.month === mk);
@@ -8581,7 +8588,8 @@ function scanHandle(raw) {
         <div class="sub" style="font-size:12px;opacity:.7;">${esc(x.s.class_name || '')}${x.s.father_name ? ' · ' + esc(x.s.father_name) : ''}</div></div>
       <div style="text-align:end;font-size:12px;">
         ${isFeePaying(x.s) ? `<div>${esc(scanL('arrears'))}: ₨${fmt(x.arrears)} · ${esc(scanL('fee'))}: ₨${fmt(x.fee)}</div>
-        <div style="font-size:15px;font-weight:700;color:${x.payable > 0 ? 'var(--rust)' : 'var(--sage)'};">₨${fmt(Math.max(0, x.payable))}</div>` : `<div style="opacity:.7;">${esc(scanL('free'))}</div>`}
+        <div style="font-size:15px;font-weight:700;color:${x.payable > 0 ? 'var(--rust)' : 'var(--sage)'};">₨${fmt(Math.max(0, x.payable))}</div>
+        ${(!single && x.payable > 0) ? `<input id="scan-amt-${esc(x.s.id)}" class="scan-amt" type="number" inputmode="decimal" min="0" value="${x.payable}" oninput="scanRecalc()" style="width:100px;margin-top:4px;text-align:end;" aria-label="${esc(scanL('amount'))}">` : ''}` : `<div style="opacity:.7;">${esc(scanL('free'))}</div>`}
       </div>
     </div>`).join('');
   let action;
@@ -8591,7 +8599,8 @@ function scanHandle(raw) {
     action = `<label style="margin:12px 0 8px;"><span>${esc(scanL('amount'))}</span><input id="scan-amount" type="number" inputmode="decimal" min="0" value="${total}"></label>
       <button id="scan-pay" class="btn-primary" onclick="scanCollect()">💰 ${esc(scanL('collect'))}</button>`;
   } else {
-    action = `<button id="scan-pay" class="btn-primary" style="margin-top:12px;" onclick="scanCollect()">💰 ${esc(scanL('collectAll'))} — ₨${fmt(total)}</button>`;
+    action = `<div style="font-size:12px;opacity:.7;margin-top:10px;">${esc(scanL('amount'))} — ${esc(qt('you can change each child\'s amount (leave 0 to skip a child)', 'ہر بچے کی رقم بدل سکتے ہیں (کسی بچے کو چھوڑنے کے لیے 0 لکھیں)'))}</div>
+      <button id="scan-pay" class="btn-primary" style="margin-top:8px;" onclick="scanCollect()">💰 ${esc(scanL('collectAll'))} — ₨<span id="scan-total">${fmt(total)}</span></button>`;
   }
   showModal(`${monthLabel(r.month)}`, `
     ${mismatch}
@@ -8604,6 +8613,11 @@ function scanHandle(raw) {
     </div>`);
 }
 
+function scanRecalc() {
+  let sum = 0;
+  document.querySelectorAll('.scan-amt').forEach(el => { const a = Number(el.value); if (Number.isFinite(a) && a > 0) sum += a; });
+  const t2 = document.getElementById('scan-total'); if (t2) t2.textContent = fmt(money2(sum));
+}
 function scanFail(text) {
   showModal(SCAN.mode === 'gate' ? scanL('idTitle') : scanL('title'), `<div class="empty" style="padding:16px 0;">${esc(text)}</div>
     <button class="btn-primary" onclick="openFeeScan('${escJs(SCAN.mode || 'fee')}')">${esc(scanL('next'))}</button>`);
@@ -8619,7 +8633,7 @@ function scanGateResult(r) {
 async function scanCollect() {
   const cur = SCAN.cur; if (!cur || cur.busy) return;
   const btn = document.getElementById('scan-pay');
-  const feeRows = cur.rows.filter(x => isFeePaying(x.s) && x.payable > 0);
+  let feeRows = cur.rows.filter(x => isFeePaying(x.s) && x.payable > 0);
   if (!feeRows.length) return;
   // single child: cashier may adjust the received amount (partial payment); family: full payable for every child
   let amounts;
@@ -8628,7 +8642,19 @@ async function scanCollect() {
     if (raw === '' || !Number.isFinite(a) || a <= 0) { alert(scanL('invalid')); return; }
     if (a > feeRows[0].payable + 0.009 && !confirm(scanL('over'))) return;
     amounts = [money2(a)];
-  } else amounts = feeRows.map(x => x.payable);
+  } else {
+    // family scan: the cashier can change each child's received amount; 0 / blank skips that child
+    amounts = []; const keep = [];
+    for (const x of feeRows) {
+      const el = document.getElementById('scan-amt-' + x.s.id), raw = el ? el.value : '';
+      const a = raw === '' ? 0 : Number(raw);
+      if (!Number.isFinite(a) || a < 0) { alert(scanL('invalid')); return; }
+      if (a > x.payable + 0.009 && !confirm(scanL('over'))) return;
+      if (a > 0) { keep.push(x); amounts.push(money2(a)); }
+    }
+    if (!keep.length) { alert(scanL('invalid')); return; }
+    feeRows = keep;
+  }
   cur.busy = true; if (btn) { btn.disabled = true; btn.textContent = scanL('saving'); }
   const saved = []; let anyQueued = false;
   try {
@@ -9498,7 +9524,7 @@ async function pcParentSubmit() {
   btn.disabled = false;
 }
 
-function openFeeVouchers() {
+function openFeeVouchers(preSid) {
   const bank = fvLoadBank();
   const mk = monthKey();
   const classes = Array.from(new Set(DATA.students.filter(s => s.status !== 'inactive').map(s => s.class_name).filter(Boolean)))
@@ -9506,14 +9532,15 @@ function openFeeVouchers() {
   showModal(fvL('title'), `
     <div class="row2">
       <label style="margin-bottom:0;"><span>${esc(fvL('month'))}</span><input id="fv-month" type="month" value="${mk}" onchange="fvMonthChanged()"></label>
-      <label style="margin-bottom:0;"><span>${esc(fvL('cls'))}</span><select id="fv-class" onchange="fvPreview()"><option value="*">${esc(fvL('all'))}</option>${classes.map(c => `<option value="${esc(c)}">${esc(c)}</option>`).join('')}</select></label>
+      <label style="margin-bottom:0;"><span>${esc(fvL('cls'))}</span><select id="fv-class" onchange="fvClassChanged()"><option value="*">${esc(fvL('all'))}</option>${classes.map(c => `<option value="${esc(c)}">${esc(c)}</option>`).join('')}</select></label>
     </div>
+    <label style="margin-top:10px;"><span>${esc(qt('Student (optional — pick one for a single voucher)', 'طالب علم (اختیاری — ایک ہی کا واؤچر بنانے کے لیے چنیں)'))}</span><select id="fv-student" onchange="fvPreview()"></select></label>
     <div class="row2" style="margin-top:10px;">
       <label style="margin-bottom:0;"><span>${esc(fvL('due'))}</span><input id="fv-due" type="date" value="${mk}-10"></label>
       <label style="margin-bottom:0;"><span>${esc(fvL('fine'))}</span><input id="fv-fine" type="number" min="0" placeholder="0"></label>
     </div>
     <label style="margin-top:10px;"><span>${esc(fvL('mode'))}</span><select id="fv-mode" onchange="fvPreview()"><option value="student">${esc(fvL('perStudent'))}</option><option value="family">${esc(fvL('perFamily'))}</option></select></label>
-    <label style="margin-top:10px;"><span>${esc(fvL('perPage'))}</span><select id="fv-per"><option value="2">${esc(fvL('per2'))}</option><option value="3">${esc(fvL('per3'))}</option></select></label>
+    <label style="margin-top:10px;"><span>${esc(fvL('perPage'))}</span><select id="fv-per"><option value="3" selected>${esc(fvL('per3'))}</option><option value="2">${esc(fvL('per2'))}</option></select></label>
     <label style="margin-top:10px;"><span>${esc(fvL('qr'))}</span><select id="fv-qr"><option value="yes">${esc(fvL('qrYes'))}</option><option value="no">${esc(fvL('qrNo'))}</option></select></label>
     <label style="margin-top:10px;"><span>${esc(fvL('copies'))}</span><select id="fv-copies"><option value="3">${esc(fvL('c3'))}</option><option value="2">${esc(fvL('c2'))}</option></select></label>
     <label><span>${esc(fvL('bankName'))}</span><input id="fv-bank-name" value="${esc(bank.name || '')}"></label>
@@ -9524,8 +9551,20 @@ function openFeeVouchers() {
       <button class="btn-ghost" onclick="closeModal()">${esc(t.cancel)}</button>
       <button class="btn-primary" id="fv-print-btn" onclick="fvPrint()">${esc(fvL('print'))}</button>
     </div>`);
+  const pst = preSid ? DATA.students.find(x => x.id === preSid) : null;
+  if (pst) { const c = document.getElementById('fv-class'); if (c) c.value = pst.class_name || '*'; }
+  fvFillStudents(pst ? pst.id : '');
   fvPreview();
 }
+function fvFillStudents(sel) {
+  const c = document.getElementById('fv-class'), el = document.getElementById('fv-student');
+  if (!c || !el) return;
+  const list = c.value === '*' ? [] : DATA.students.filter(x => x.status !== 'inactive' && x.class_name === c.value)
+    .sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')));
+  el.innerHTML = `<option value="">${esc(qt('All students of the class', 'پوری کلاس'))}</option>` + list.map(x => `<option value="${esc(x.id)}"${x.id === sel ? ' selected' : ''}>${esc(x.name || '')}${x.father_name ? ' — ' + esc(x.father_name) : ''}</option>`).join('');
+  el.disabled = c.value === '*';
+}
+function fvClassChanged() { fvFillStudents(''); fvPreview(); }
 function fvMonthChanged() {
   const m = document.getElementById('fv-month'), d = document.getElementById('fv-due');
   if (m && m.value && d) d.value = m.value + '-10';
@@ -9535,7 +9574,8 @@ function fvPreview() {
   const m = document.getElementById('fv-month'), c = document.getElementById('fv-class');
   if (!m || !c) return;
   const md = document.getElementById('fv-mode');
-  const r = fvBuild(c.value, m.value || monthKey(), !!md && md.value === 'family');
+  const sidEl = document.getElementById('fv-student');
+  const r = fvBuild(c.value, m.value || monthKey(), !!md && md.value === 'family', sidEl ? sidEl.value : '');
   const el = document.getElementById('fv-preview'); if (el) el.textContent = fvL('count')(r.units.length, r.paid, r.free, r.nofee);
   const btn = document.getElementById('fv-print-btn'); if (btn) btn.disabled = r.units.length === 0;
 }
@@ -9546,7 +9586,8 @@ function fvPrint() {
   const bank = { name: val('fv-bank-name'), title: val('fv-bank-title'), no: val('fv-bank-no') };
   fvSaveBank(bank);
   const md = document.getElementById('fv-mode');
-  const { units } = fvBuild(cls, mk, !!md && md.value === 'family');
+  const sidEl = document.getElementById('fv-student');
+  const { units } = fvBuild(cls, mk, !!md && md.value === 'family', sidEl ? sidEl.value : '');
   if (!units.length) return;
   const o = { mk, due: dateVal('fv-due', mk + '-10'), fine: Math.max(0, Number(document.getElementById('fv-fine').value) || 0),
               copies: Number(document.getElementById('fv-copies').value) === 2 ? 2 : 3, bank,
@@ -10877,6 +10918,64 @@ async function updateStudentType(studentId) {
   const { queued, error } = await offlineUpdateStudent(studentId, update);
   if (!queued && reportSaveError(error)) return;
   if (!queued) await reloadTable('students'); openStudentDetail(studentId);
+}
+
+
+// ---------------- Class fees: set the monthly fee of a whole class in one click ----------------
+function _cfStudents(cls) { return (DATA.students || []).filter(s => s.class_name === cls && (s.status || 'active') === 'active' && isFeePaying(s)); }
+function openClassFees(msg) {
+  const rows = CLASS_OPTIONS.map((cls, i) => {
+    const st = _cfStudents(cls);
+    const fees = [...new Set(st.map(s => Number(s.monthly_fee || 0)))];
+    const cur = !st.length ? '—' : fees.length === 1 ? '₨' + fmt(fees[0]) : qt('Mixed', 'مختلف') + ' (₨' + fmt(Math.min(...fees)) + '–' + fmt(Math.max(...fees)) + ')';
+    return `<div style="display:flex;align-items:center;gap:8px;padding:10px 0;border-bottom:1px solid var(--line);">
+      <div style="flex:1;min-width:0;"><div style="font-weight:700;">${esc(cls)}</div>
+        <div style="font-size:12px;opacity:.65;">${st.length} ${esc(qt('students', 'طلبہ'))} · ${esc(qt('Now', 'اب'))}: ${esc(cur)}</div></div>
+      <input id="cf-${i}" type="number" min="1" inputmode="numeric" placeholder="₨" value="${fees.length === 1 && fees[0] > 0 ? fees[0] : ''}" style="width:90px;" ${st.length ? '' : 'disabled'}>
+      <button class="btn-ghost" style="padding:8px 12px;" onclick="cfApply(${i})" ${st.length ? '' : 'disabled'}>${esc(qt('Apply', 'لگائیں'))}</button>
+    </div>`;
+  }).join('');
+  showModal(qt('Class Fees', 'کلاس کی فیس'), `
+    <p style="font-size:12px;opacity:.7;margin:0 0 6px;">${esc(qt('Type the monthly fee for a class and tap Apply — it is set for every fee-paying student in that class. Free and orphan students are not changed.', 'کلاس کی ماہانہ فیس لکھیں اور "لگائیں" دبائیں — اس کلاس کے ہر فیس دینے والے طالب علم پر لگ جائے گی۔ فری اور یتیم طلبہ تبدیل نہیں ہوتے۔'))}</p>
+    ${rows}
+    <div id="cf-msg" style="margin:10px 0;font-size:13px;">${msg ? esc(msg) : ''}</div>
+    <button class="btn-primary" style="width:100%;" onclick="cfApply(null)">${esc(qt('Apply to all classes', 'تمام کلاسوں پر لگائیں'))}</button>`);
+}
+async function _bulkSetFee(ids, fee) {
+  ids.forEach(id => { const i = DATA.students.findIndex(x => x.id === id); if (i >= 0) { DATA.students[i] = { ...DATA.students[i], monthly_fee: fee }; idbPutRow('students', DATA.students[i]); } });
+  let done = false;
+  if (navigator.onLine) {
+    try { const { error } = await sb.from('students').update({ monthly_fee: fee }).in('id', ids); if (!error) done = true; else if (!isNetworkError(error)) { console.error(error.message); done = true; } } catch (e) {}
+  }
+  if (!done) await idbQueueAdd({ table: 'students', action: 'bulk_update', payload: { monthly_fee: fee }, ids, baseRow: null, ts: Date.now() });
+}
+async function cfApply(only) {
+  const plan = []; let skipped = 0;
+  for (let i = 0; i < CLASS_OPTIONS.length; i++) {
+    if (only !== null && only !== i) continue;
+    const el = document.getElementById('cf-' + i);
+    if (!el || el.value === '') continue;
+    const fee = Number(el.value);
+    if (!Number.isFinite(fee) || fee <= 0) { alert(t.feeInvalid); return; }
+    const ids = [];
+    _cfStudents(CLASS_OPTIONS[i]).forEach(s => {
+      if (Number(s.monthly_fee || 0) === fee) return;
+      if (s.concession_type === 'fixed' && Number(s.concession_value) >= fee) { skipped++; return; }
+      ids.push(s.id);
+    });
+    if (ids.length) plan.push({ cls: CLASS_OPTIONS[i], fee, ids });
+  }
+  if (!plan.length) { const m = document.getElementById('cf-msg'); if (m) m.textContent = qt('Nothing to change.', 'تبدیل کرنے کے لیے کچھ نہیں۔'); return; }
+  const lines = plan.map(p => p.cls + ': ₨' + fmt(p.fee) + ' (' + p.ids.length + ')').join('\n');
+  if (!confirm(qt('Set the monthly fee for these classes?', 'ان کلاسوں کی ماہانہ فیس تبدیل کریں؟') + '\n\n' + lines)) return;
+  for (const p of plan) await _bulkSetFee(p.ids, p.fee);
+  try { // new students admitted to the class also get this fee by default
+    const sv = setupLoad();
+    if (sv) { sv.fees = sv.fees || {}; plan.forEach(p => { sv.fees[p.cls] = p.fee; }); localStorage.setItem(setupKey(), JSON.stringify(sv)); }
+  } catch (e) {}
+  const total = plan.reduce((a, p) => a + p.ids.length, 0);
+  openClassFees(qt('Done — fee updated for ', 'مکمل — فیس تبدیل ہوئی: ') + total + qt(' students.', ' طلبہ۔') + (skipped ? ' ' + qt(skipped + ' skipped (fixed concession is more than the new fee).', skipped + ' چھوڑ دیے (مقررہ رعایت نئی فیس سے زیادہ ہے)۔') : ''));
+  try { safeRenderTab(); } catch (e) {}
 }
 
 async function updateStudentMonthlyFee(studentId) {
