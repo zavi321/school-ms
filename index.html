@@ -1357,6 +1357,67 @@ body:not(.ur) .qpaper-print .pq-instruction::before{counter-increment:pqq;conten
      ============================================================================ -->
 
 <!-- ============================================================================
+     ONE-TIME SETUP for Weekly Lesson Plan Form (English + Urdu, deleted 30 days after first save).
+     Run once in the Supabase SQL editor AFTER the Lesson Plans setup above. Safe to re-run.
+
+  alter table lesson_plans add column if not exists form jsonb;
+
+  create or replace function lesson_plans_purge() returns void
+  language sql security definer set search_path = public as $$
+    delete from lesson_plans where form is not null and created_at < now() - interval '30 days';
+  $$;
+  revoke all on function lesson_plans_purge() from public, anon, authenticated;
+
+  create or replace function lesson_plans_purge_mine() returns void
+  language sql security definer set search_path = public as $$
+    delete from lesson_plans where owner_id = auth.uid() and form is not null and created_at < now() - interval '30 days';
+  $$;
+  grant execute on function lesson_plans_purge_mine() to authenticated;
+
+  create or replace function lesson_plan_save_form(p_school_code text, p_login_id text, p_password text, p_subject text, p_period_start date, p_form jsonb, p_summary text)
+  returns boolean language plpgsql security definer set search_path = public as $$
+  declare o record;
+  begin
+    select * into o from lesson_plan_owner(p_school_code, p_login_id, p_password);
+    if o.owner_id is null then return false; end if;
+    if coalesce(trim(p_subject),'') = '' or p_form is null then return false; end if;
+    perform lesson_plans_purge();
+    insert into lesson_plans (owner_id, class_name, teacher_name, subject, plan_type, period_start, content, form)
+    values (o.owner_id, o.class_name, coalesce(nullif(trim(p_form->>'teacher'),''), o.teacher_name), trim(p_subject), 'weekly', p_period_start, coalesce(nullif(trim(p_summary),''), trim(p_subject)), p_form)
+    on conflict (owner_id, class_name, subject, plan_type, period_start)
+    do update set content = excluded.content, form = excluded.form, teacher_name = coalesce(nullif(trim(p_form->>'teacher'),''), excluded.teacher_name), status = 'submitted', seen_at = null, updated_at = now();
+    return true;
+  end $$;
+
+  drop function if exists lesson_plan_list(text, text, text);
+  create or replace function lesson_plan_list(p_school_code text, p_login_id text, p_password text)
+  returns table(id uuid, subject text, plan_type text, period_start date, content text, status text, principal_note text, updated_at timestamptz, form jsonb, created_at timestamptz)
+  language plpgsql security definer set search_path = public as $$
+  declare o record;
+  begin
+    select * into o from lesson_plan_owner(p_school_code, p_login_id, p_password);
+    if o.owner_id is null then return; end if;
+    perform lesson_plans_purge();
+    return query select lp.id, lp.subject, lp.plan_type, lp.period_start, lp.content, lp.status, lp.principal_note, lp.updated_at, lp.form, lp.created_at
+      from lesson_plans lp where lp.owner_id = o.owner_id and lp.class_name = o.class_name
+      order by lp.period_start desc, lp.updated_at desc limit 60;
+  end $$;
+
+  do $$ begin
+    create extension if not exists pg_cron;
+    begin perform cron.unschedule('lesson_plans_purge'); exception when others then null; end;
+    perform cron.schedule('lesson_plans_purge', '30 21 * * *', 'select public.lesson_plans_purge()');
+  exception when others then
+    raise notice 'pg_cron not available: old forms are still deleted whenever anyone saves or opens lesson plans';
+  end $$;
+  do $$ begin
+    alter publication supabase_realtime add table lesson_plans;
+  exception when others then null;
+  end $$;
+  notify pgrst, 'reload schema';
+     ============================================================================ -->
+
+<!-- ============================================================================
      ONE-TIME SETUP for Staff Leave & Salary Advance - run once in the Supabase SQL
      editor. Safe to re-run.
 
@@ -4342,6 +4403,7 @@ function startStaffReqPolling() {
   clearInterval(SR_TIMER);
   refreshStaffReqCount();
   SR_TIMER = setInterval(refreshStaffReqCount, 90000);
+  startLessonPlanAlerts();
 }
 async function openStaffRequests() {
   showModal(qt('Teacher Requests', 'اساتذہ کی درخواستیں'), `<div id="sr-body" style="padding:10px 0;opacity:.6;text-align:center;">…</div>`);
@@ -7892,6 +7954,8 @@ function tplDashOverview(s) {
     ['att', t.navAttendance,        'openAttendanceHub()', 'c1'],
     ['bel', qt('Teacher Requests', 'اساتذہ کی درخواستیں'), 'openStaffRequests()', 'c8',
       `<span class="sr-badge" style="display:${SR_PENDING ? '' : 'none'};position:absolute;top:-5px;right:-5px;background:#c0392b;color:#fff;border-radius:10px;font-size:10px;line-height:1;padding:3px 6px;font-weight:700;">${SR_PENDING}</span>`],
+    ['pap', qt('Lesson Plans', 'لیسن پلان'), 'openLessonPlans()', 'c2',
+      `<span class="lp-badge" style="display:${LP_PENDING ? '' : 'none'};position:absolute;top:-5px;right:-5px;background:#c0392b;color:#fff;border-radius:10px;font-size:10px;line-height:1;padding:3px 6px;font-weight:700;">${LP_PENDING}</span>`],
     ['fee', t.navFees,              "setTab('finance')", 'c3'],
     ['mrk', t.navExamsMarks,        "setTab('marksSheet')", 'c7'],
     ['cer', t.dmc,                  "setTab('dmc')", 'c6'],
@@ -13327,8 +13391,9 @@ async function openLessonPlans(useCache) {
   showModal(qt('Lesson Plans', 'لیسن پلان'), `<div id="lpv-body" style="padding:10px 0;text-align:center;opacity:.6;">…</div>`);
   if (!useCache || !LPV.loaded) {
     if (!navigator.onLine) { document.getElementById('lpv-body').innerHTML = `<div class="err">${esc(qt('You are offline. Connect to the internet to view lesson plans.', 'آپ آف لائن ہیں۔ لیسن پلان دیکھنے کے لیے انٹرنیٹ سے جڑیں۔'))}</div>`; return; }
+    try { await sb.rpc('lesson_plans_purge_mine'); } catch (e) {}
     const { data, error } = await fetchAll(() => sb.from('lesson_plans').select('*').order('updated_at', { ascending: false }));
-    LPV.err = !!error; LPV.rows = data || []; LPV.loaded = !error;
+    LPV.err = !!error; LPV.rows = (data || []).filter(wlpAlive); LPV.loaded = !error; lpRefreshCount();
   }
   lpvRender();
 }
@@ -13358,7 +13423,7 @@ function openLessonPlan(id) {
   const r = LPV.rows.find(x => x.id === id); if (!r) return;
   showModal(r.class_name + ' · ' + r.subject, `
     <div style="font-size:12px;opacity:.7;margin-bottom:8px;">${esc(lpTypeLabel(r.plan_type))} · ${esc(lpPeriodLabel(r.plan_type, r.period_start))}${r.teacher_name ? ' · ' + esc(r.teacher_name) : ''}<br>${esc(qt('Updated', 'اپ ڈیٹ'))}: ${esc(fmtDate(String(r.updated_at).slice(0, 10)))}</div>
-    <div dir="auto" style="white-space:pre-wrap;background:#fff;border:1px solid var(--line);border-radius:10px;padding:12px;font-size:14px;line-height:1.7;">${esc(r.content)}</div>
+    ${r.form ? wlpHtml(r.form.lang || 'en', 'view', r.form) + `<div style="font-size:12px;opacity:.7;margin:6px 0;">${esc(qt('Deleted automatically in', 'خود بخود حذف ہوگا'))} ${wlpDaysLeft(r)} ${esc(qt('days', 'دن میں'))}</div><button class="btn-ghost" style="width:100%;margin-top:4px;" onclick="wlpPrintById('${escJs(r.id)}')">🖨 ${esc(qt('Print', 'پرنٹ'))}</button>` : `<div dir="auto" style="white-space:pre-wrap;background:#fff;border:1px solid var(--line);border-radius:10px;padding:12px;font-size:14px;line-height:1.7;">${esc(r.content)}</div>`}
     <div class="field-box" style="margin-top:12px;"><label><span>${esc(qt("Principal's note (optional)", 'پرنسپل کا نوٹ (اختیاری)'))}</span><input id="lpv-note" dir="auto" value="${esc(r.principal_note || '')}"></label></div>
     <button class="btn-primary" onclick="guardedSubmit(this, ()=>lpvMarkSeen('${escJs(r.id)}'))">✓ ${esc(r.status === 'seen' ? qt('Save note', 'نوٹ محفوظ کریں') : qt('Mark as seen', 'دیکھ لیا'))}</button>
     <button class="btn-ghost" style="width:100%;margin-top:8px;" onclick="openLessonPlans(true)">← ${esc(qt('All lesson plans', 'تمام لیسن پلان'))}</button>`);
@@ -13372,6 +13437,158 @@ async function lpvMarkSeen(id) {
   const r = LPV.rows.find(x => x.id === id); if (r) Object.assign(r, patch);
   openLessonPlans(true);
 }
+
+// ---------------- Weekly Lesson Plan FORM (Charter template, English + Urdu) ----------------
+// Teacher fills it in the Class Portal; it is saved in lesson_plans.form and auto-deleted 30 days after the first save.
+// Needs the "ONE-TIME SETUP for Weekly Lesson Plan Form" SQL (top of this file). Online only.
+const WLP_T = {
+  title:['Weekly Lesson Plan','ہفتہ وار سبق کا منصوبہ'], teacher:['Teacher Name','استاد کا نام'], from:['From','از'], to:['To','تا'], cls:['Class / Section','جماعت / سیکشن'],
+  periods:['No. of Periods','پیریڈز کی تعداد'], subject:['Subject','مضمون'], unit:['Unit / Chapter','یونٹ / باب'], day:['Day','دن'],
+  topics:['Topics (and No. of SLOs)','موضوعات (اور مقاصد کی تعداد)'], total:['Total No. of SLOs for the week','ہفتے کے کل تعلیمی مقاصد'],
+  slo:['Student Learning Outcomes (SLOs)','طلبہ کے تعلیمی مقاصد (SLOs)'], know:['Knowledge','علم'], comp:['Comprehension','فہم'], app:['Application','اطلاق'],
+  pk:['Previous Knowledge Questions','سابقہ معلومات کے سوالات'], res:['Resources','وسائل'], av:['AV Aids','سمعی و بصری معاونات'],
+  meth:['Methodologies','طریقۂ تدریس'], flow:['Lesson Flow – Daily Steps (Time, Teacher / Student Activity)','سبق کا روزانہ خاکہ – مراحل (وقت، استاد / طالب علم کی سرگرمی)'],
+  assess:['Assessments','جانچ'], activ:['Activities','سرگرمیاں'], diff:['Differentiation','انفرادی ضروریات'], sup:['Support','معاونت'], chal:['Challenge','چیلنج'],
+  hum:['Humour & Personal Reference','مزاح اور ذاتی حوالہ'], humour:['Humour','مزاح'], pref:['Personal Reference','ذاتی حوالہ'], hw:['Homework','گھر کا کام'],
+  refl:["Teacher's Reflection",'استاد کا جائزہ'], well:['What went well','کیا اچھا رہا'], impr:['What to improve','کیا بہتر کرنا ہے'],
+  tch:['Teacher','استاد'], crd:['Coordinator','کوآرڈینیٹر'], prn:['Principal','پرنسپل'], time:['Time','وقت']
+};
+const WLP_METH = [['Lecture','لیکچر'],['Discussion','مباحثہ'],['Tech Integration','ٹیکنالوجی کا استعمال'],['Student Centered','طالب علم مرکز'],['PBL','پراجیکٹ پر مبنی'],['Flipped','فلپڈ'],['Blended','ملا جلا'],['Kinesthetic','حرکی'],['Activity Based','سرگرمی پر مبنی'],['Montessori','مونٹیسوری'],['Inquiry Based','تحقیق پر مبنی'],['Other','دیگر']];
+const WLP_STEPS = [['1. Hook','۱۔ آغاز'],['2. Explore','۲۔ کھوج'],['3. Explain','۳۔ وضاحت'],['4. Practice','۴۔ مشق'],['5. Wrap-up','۵۔ اختتام']];
+let WLP_LANG = 'en', WLP_LIST = [];
+(function () {
+  const st = document.createElement('style');
+  st.textContent = `.wlp{background:#fff;border:1px solid #cbd5d9;border-radius:10px;overflow:hidden;font-size:13px;color:#111;text-align:start}
+.wlp .wt0{background:#134E5E;color:#fff;text-align:center;padding:10px;font-weight:700;letter-spacing:.05em}
+.wlp .wh{background:#134E5E;color:#fff;padding:6px 10px;font-weight:700;border-inline-start:5px solid #E8883A;margin-top:8px}
+.wlp .wr{display:flex;gap:8px;align-items:flex-start;padding:5px 8px;border-bottom:1px solid #dde4e7;break-inside:avoid}
+.wlp .wr>b{flex:0 0 36%;background:#EEF3F5;padding:6px;border-radius:4px;font-weight:600;font-size:12px}
+.wlp .wr>div{flex:1;min-width:0;display:flex;flex-direction:column;gap:4px}
+.wlp .wr>div.wf{flex-direction:row}
+.wlp input:not([type=checkbox]),.wlp textarea{width:100%;box-sizing:border-box;border:1px solid #cbd5d9;border-radius:6px;padding:6px;font:inherit;background:#fff}
+.wlp .wn{flex:0 0 72px;width:72px}
+.wlp .wv{min-height:20px;white-space:pre-wrap;border-bottom:1px solid #cfd8dc;padding:2px 0;flex:1}
+.wlp .wm{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;padding:8px}
+.wlp .wsg{display:flex;gap:10px;padding:46px 10px 12px;text-align:center}
+.wlp .wsg div{flex:1;border-top:1px solid #000;padding-top:4px;font-weight:600}
+.wlp[dir=rtl]{font-family:'Noto Sans Urdu','Noto Nastaliq Urdu',sans-serif;line-height:2}
+@media print{.wlp{border:none;font-size:11px}.wlp .wh,.wlp .wt0{-webkit-print-color-adjust:exact;print-color-adjust:exact}}`;
+  document.head.appendChild(st);
+})();
+function wlpHtml(lang, mode, f) {
+  f = f || {};
+  const ur = lang === 'ur', E = mode === 'edit', L = k => esc(WLP_T[k][ur ? 1 : 0]), v = k => (f[k] == null ? '' : f[k]);
+  const I = (k, c) => E ? `<input class="${c || ''}" data-k="${k}" dir="auto" autocomplete="off" ${k === 'subject' ? 'list="wlp-subs"' : ''} value="${esc(v(k))}">` : `<div class="wv" dir="auto">${esc(v(k)) || '&nbsp;'}</div>`;
+  const TA = k => E ? `<textarea rows="2" data-k="${k}" dir="auto">${esc(v(k))}</textarea>` : `<div class="wv" dir="auto">${esc(v(k)) || '&nbsp;'}</div>`;
+  const D = k => E ? `<input type="date" data-k="${k}" value="${esc(v(k))}" onchange="wlpDates(this)">` : `<div class="wv">${esc(v(k) ? fmtDate(v(k)) : '') || '&nbsp;'}</div>`;
+  const N = k => E ? `<input class="wn" type="number" min="0" data-k="${k}" value="${esc(v(k))}" oninput="wlpTotal()">` : `<div class="wv wn" style="flex:0 0 60px;text-align:center">${esc(v(k)) || '&nbsp;'}</div>`;
+  const R = (lab, inner, flex) => `<div class="wr"><b>${lab}</b><div class="${flex ? 'wf' : ''}">${inner}</div></div>`;
+  const S = k => `<div class="wh">${L(k)}</div>`;
+  const dn = i => `${ur ? 'دن' : 'Day'}-${i + 1}`, six = [0, 1, 2, 3, 4, 5];
+  const sum = six.reduce((a, i) => a + (Number(f['n' + i]) || 0), 0), meths = f.m || [];
+  return `<div class="wlp" dir="${ur ? 'rtl' : 'ltr'}">
+  <div class="wt0">${L('title')}</div>
+  ${R(L('teacher'), I('teacher'))}${R(L('from'), D('from'))}${R(L('to'), D('to'))}${R(L('cls'), I('cls'))}${R(L('periods'), I('periods'))}${R(L('subject'), I('subject'))}${R(L('unit'), I('unit'))}
+  ${S('topics')}${six.map(i => R(dn(i), I('tp' + i) + N('n' + i), 1)).join('')}${R(L('total'), `<span id="wlp-total" style="font-weight:700">${sum}</span>`)}
+  ${S('slo')}${R(L('know'), I('sk1') + I('sk2'))}${R(L('comp'), I('sc1') + I('sc2'))}${R(L('app'), I('sa1') + I('sa2'))}
+  ${S('pk')}${[1, 2, 3, 4, 5].map(i => R(ur ? '' + i : i, I('pk' + i))).join('')}
+  ${R(L('res'), I('res1') + I('res2'))}${R(L('av'), I('av1') + I('av2'))}
+  ${S('meth')}<div class="wm">${WLP_METH.map((m, i) => E ? `<label><input type="checkbox" data-m="${i}" ${meths.includes(i) ? 'checked' : ''}> ${esc(m[ur ? 1 : 0])}</label>` : `<span>${meths.includes(i) ? '☑' : '☐'} ${esc(m[ur ? 1 : 0])}</span>`).join('')}</div>
+  ${S('flow')}${WLP_STEPS.map((s, i) => R(esc(s[ur ? 1 : 0]), I('ft' + i, 'wn') + I('fa' + i), 1)).join('')}
+  ${S('assess')}${[1, 2, 3].map(i => R('' + i, I('as' + i))).join('')}
+  ${S('activ')}${[1, 2, 3].map(i => R('' + i, I('ac' + i))).join('')}
+  ${S('diff')}${R(L('sup'), I('dsup'))}${R(L('chal'), I('dchal'))}
+  ${S('hum')}${R(L('humour'), I('hum'))}${R(L('pref'), I('pr1') + I('pr2'))}
+  ${S('hw')}${six.map(i => R(dn(i), TA('hw' + i))).join('')}
+  ${S('refl')}${R(L('well'), TA('well'))}${R(L('impr'), TA('impr'))}
+  ${E ? '' : `<div class="wsg"><div>${L('tch')}</div><div>${L('crd')}</div><div>${L('prn')}</div></div>`}
+</div>`;
+}
+const wlpAlive = r => !r.form || (Date.now() - new Date(r.created_at).getTime()) < 30 * 864e5;
+const wlpDaysLeft = r => Math.max(0, 30 - Math.floor((Date.now() - new Date(r.created_at).getTime()) / 864e5));
+const wlpMeKey = () => { const s = getClassSession(); return 'wlp_teacher_' + (s ? s.schoolCode + '_' + s.loginId : ''); };
+const wlpMe = () => { try { return localStorage.getItem(wlpMeKey()) || ''; } catch (e) { return ''; } };
+function wlpDefaults() { const m = lpMonday(todayISO()), d = new Date(m + 'T00:00:00'); d.setDate(d.getDate() + 5); return { from: m, to: localISO(d) }; }
+function wlpDates(el) { if (el.dataset.k !== 'from' || !el.value) return; const d = new Date(el.value + 'T00:00:00'); d.setDate(d.getDate() + 5); const t = document.querySelector('#wlp-form [data-k=to]'); if (t) t.value = localISO(d); }
+function wlpTotal() { let s = 0; for (let i = 0; i < 6; i++) { const e = document.querySelector('#wlp-form [data-k=n' + i + ']'); if (e) s += Number(e.value) || 0; } const t = document.getElementById('wlp-total'); if (t) t.textContent = s; }
+function wlpCollect() {
+  const f = {}; document.querySelectorAll('#wlp-form [data-k]').forEach(e => { f[e.dataset.k] = e.value; });
+  f.m = Array.from(document.querySelectorAll('#wlp-form [data-m]')).filter(e => e.checked).map(e => +e.dataset.m); f.lang = WLP_LANG; return f;
+}
+function wlpDraw(f) {
+  const box = document.getElementById('wlp-form'); if (box) box.innerHTML = wlpHtml(WLP_LANG, 'edit', f);
+  ['en', 'ur'].forEach(l => { const b = document.getElementById('wlp-l-' + l); if (b) b.className = WLP_LANG === l ? 'btn-primary' : 'btn-ghost'; });
+}
+function wlpSetLang(l) { const f = wlpCollect(); WLP_LANG = l; wlpDraw(f); }
+function renderClassPortalWLP(f) {
+  const s = getClassSession(), body = document.getElementById('class-portal-body'); if (!s || !body) return;
+  CLASS_PORTAL_SCREEN = 'wlp';
+  f = f || Object.assign({ cls: s.className, teacher: wlpMe() }, wlpDefaults());
+  if (f.lang) WLP_LANG = f.lang;
+  const subs = diarySubjectList().map(x => `<option value="${esc(x)}"></option>`).join('');
+  body.innerHTML = `
+    <button class="btn-ghost" style="padding:9px 14px;margin-bottom:10px;" onclick="CLASS_PORTAL_SCREEN='menu'; renderClassPortalMenu()">‹ ${esc(t.classPortalBackToMenu)}</button>
+    <h2 style="margin-top:0;">📋 ${esc(qt('Weekly Lesson Plan', 'ہفتہ وار سبق کا منصوبہ'))} — ${esc(s.className)}</h2>
+    <div style="display:flex;gap:8px;margin-bottom:12px;"><button id="wlp-l-en" style="flex:1;padding:10px;" onclick="wlpSetLang('en')">English</button><button id="wlp-l-ur" style="flex:1;padding:10px;" onclick="wlpSetLang('ur')">اردو</button></div>
+    <datalist id="wlp-subs">${subs}</datalist><div id="wlp-form"></div><div id="wlp-msg"></div>
+    <button class="btn-primary" style="margin-top:10px;" onclick="guardedSubmit(this, wlpSave)">${esc(qt('Save & send to principal', 'محفوظ کریں اور پرنسپل کو بھیجیں'))}</button>
+    <div class="section-title">${esc(qt('My saved forms (deleted automatically after 30 days)', 'میرے بھیجے ہوئے فارم (30 دن بعد خود بخود حذف)'))}</div>
+    <div id="wlp-mine" class="ledger"><div style="padding:10px;text-align:center;font-size:12px;opacity:.5;">…</div></div>`;
+  wlpDraw(f); wlpTotal(); wlpLoadMine();
+}
+async function wlpLoadMine() {
+  const s = getClassSession(), box = document.getElementById('wlp-mine'); if (!s || !box) return;
+  if (!navigator.onLine) { box.innerHTML = `<div class="err" style="padding:10px;">${esc(qt('You are offline.', 'آپ آف لائن ہیں۔'))}</div>`; return; }
+  const { data, error } = await sb.rpc('lesson_plan_list', { p_school_code: s.schoolCode, p_login_id: s.loginId, p_password: s.password });
+  if (error) { box.innerHTML = `<div class="err" style="padding:10px;">${esc(lpErrText(error))}</div>`; return; }
+  const me = wlpMe().trim().toLowerCase();
+  WLP_LIST = (data || []).filter(r => r.form && wlpAlive(r) && (!me || String(r.form.teacher || '').trim().toLowerCase() === me));
+  box.innerHTML = WLP_LIST.length ? WLP_LIST.map((r, i) => `
+    <div class="ledger-row" style="flex-direction:column;align-items:stretch;gap:6px;">
+      <div style="display:flex;justify-content:space-between;gap:8px;"><div><div style="font-size:14px;font-weight:600;">${esc(r.subject)}</div>
+        <div style="font-size:12px;opacity:.75;">${esc(lpPeriodLabel('weekly', r.period_start))} · ${esc(qt('Deletes in', 'حذف ہوگا'))} ${wlpDaysLeft(r)} ${esc(qt('days', 'دن میں'))}</div></div>${lpStatusPill(r.status)}</div>
+      <div style="display:flex;gap:8px;"><button class="btn-ghost" style="flex:1;padding:7px;font-size:12px;" onclick="renderClassPortalWLP(WLP_LIST[${i}].form)">✎ ${esc(qt('Edit', 'ترمیم'))}</button>
+        <button class="btn-ghost" style="flex:1;padding:7px;font-size:12px;" onclick="wlpPrintForm(WLP_LIST[${i}].form)">🖨 ${esc(qt('Print', 'پرنٹ'))}</button></div>
+    </div>`).join('') : `<div style="padding:10px;text-align:center;font-size:12px;opacity:.5;">—</div>`;
+}
+async function wlpSave() {
+  const s = getClassSession(), msg = document.getElementById('wlp-msg'); if (!s || !msg) return;
+  const er = m => { msg.innerHTML = `<div class="err">${esc(m)}</div>`; };
+  if (!navigator.onLine) return er(qt('You are offline. Your form is still here - connect and press Save again.', 'آپ آف لائن ہیں۔ فارم یہیں ہے - انٹرنیٹ سے جڑ کر دوبارہ محفوظ کریں۔'));
+  const f = wlpCollect(); f.subject = (f.subject || '').trim();
+  f.teacher = (f.teacher || '').trim();
+  if (!f.teacher) return er(qt('Please enter the teacher name.', 'براہ کرم استاد کا نام لکھیں۔'));
+  if (!f.subject) return er(qt('Please enter the subject.', 'براہ کرم مضمون لکھیں۔'));
+  try { localStorage.setItem(wlpMeKey(), f.teacher); } catch (e) {}
+  const summary = [f.subject, f.unit, [0, 1, 2, 3, 4, 5].map(i => f['tp' + i]).filter(Boolean).join(', ')].filter(Boolean).join(' — ');
+  const { data, error } = await sb.rpc('lesson_plan_save_form', { p_school_code: s.schoolCode, p_login_id: s.loginId, p_password: s.password, p_subject: f.subject, p_period_start: lpMonday(f.from || todayISO()), p_form: f, p_summary: summary });
+  if (error) return er(lpErrText(error));
+  if (data === false) return er(qt('Could not verify this class login. Please log in again.', 'اس کلاس لاگ ان کی تصدیق نہیں ہو سکی۔ دوبارہ لاگ ان کریں۔'));
+  msg.innerHTML = `<div class="ok">✓ ${esc(qt('Sent to the principal. It stays for 30 days, then is deleted automatically.', 'پرنسپل کو بھیج دیا گیا۔ یہ 30 دن رہے گا، پھر خود بخود حذف ہو جائے گا۔'))}</div>`;
+  wlpLoadMine();
+}
+let LP_PENDING = 0, LP_TIMER = null, LP_CH = null;
+function lpPaintBadges() { document.querySelectorAll('.lp-badge').forEach(el => { el.textContent = LP_PENDING; el.style.display = LP_PENDING ? '' : 'none'; }); }
+async function lpRefreshCount() {
+  if (!CURRENT_USER || document.hidden || !navigator.onLine) return;
+  const { count, error } = await sb.from('lesson_plans').select('id', { count: 'exact', head: true }).eq('owner_id', CURRENT_USER.id).eq('status', 'submitted');
+  if (error) return;
+  const prev = LP_PENDING; LP_PENDING = count || 0; lpPaintBadges(); LPV.loaded = false;
+  if (LP_PENDING > prev) { try { if (navigator.vibrate) navigator.vibrate([200, 100, 200]); } catch (e) {} }
+}
+function startLessonPlanAlerts() {
+  clearInterval(LP_TIMER); lpRefreshCount(); LP_TIMER = setInterval(lpRefreshCount, 30000);
+  try {
+    if (LP_CH) { sb.removeChannel(LP_CH); LP_CH = null; }
+    LP_CH = sb.channel('lp-' + CURRENT_USER.id).on('postgres_changes', { event: '*', schema: 'public', table: 'lesson_plans', filter: 'owner_id=eq.' + CURRENT_USER.id }, () => lpRefreshCount()).subscribe();
+  } catch (e) {}
+}
+function wlpPrintForm(f) {
+  const ur = f.lang === 'ur', p = (typeof CURRENT_PROFILE !== 'undefined' && CURRENT_PROFILE) || {};
+  document.getElementById('print-area').innerHTML = `<div style="text-align:center;font-weight:800;font-size:16px;margin-bottom:6px;">${esc((ur ? schoolNameUrdu() : p.school_name) || '')}</div>` + wlpHtml(f.lang || 'en', 'view', f);
+  window.print();
+}
+const wlpPrintById = id => { const r = LPV.rows.find(x => x.id === id); if (r && r.form) wlpPrintForm(r.form); };
 
 // ---------------- Staff Leave & Salary Advance ----------------
 // Leave: requests are approved here; approved working days are written into the Teacher
@@ -24747,6 +24964,7 @@ function renderClassPortalMenu() {
     <button class="btn-primary" style="width:100%;margin-bottom:10px;" onclick="renderClassPortalMarks()">${esc(t.classPortalMenuMarks)}</button>
     <button class="btn-primary" style="width:100%;margin-bottom:10px;" onclick="renderClassPortalMarksView()">${esc(t.classPortalMenuMarksView)}</button>
     <button class="btn-primary" style="width:100%;margin-bottom:10px;" onclick="renderClassPortalLessonPlan()">📝 ${esc(qt('Lesson Plan', 'لیسن پلان'))}</button>
+    <button class="btn-primary" style="width:100%;margin-bottom:10px;" onclick="renderClassPortalWLP()">📋 ${esc(qt('Weekly Lesson Plan Form', 'ہفتہ وار سبق کا منصوبہ فارم'))}</button>
     <button class="btn-primary" style="width:100%;margin-bottom:10px;" onclick="noticeOpenScreen('class')">📢 ${esc(qt('Notice Board', 'نوٹس بورڈ'))}</button>
     <button class="btn-primary" style="width:100%;margin-bottom:10px;" onclick="renderClassPortalParentMsgs()">📩 ${esc(qt('Parent Messages', 'والدین کے پیغامات'))}<span id="cp-pm-badge"></span></button>
     <button class="btn-primary" style="width:100%;margin-bottom:10px;" onclick="renderClassPortalComplaints()">📝 ${esc(qt('Complaints & suggestions', 'شکایات اور مشورے'))}<span id="cp-pc-badge"></span></button>
